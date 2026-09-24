@@ -71,6 +71,16 @@ SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 #: per site is exactly how the first V6 attempt made the identity check fall
 #: through to the legacy identity/v1 branch and fail every V6 receipt.
 RECEIPT_SCHEMAS_V5_FAMILY = frozenset({RECEIPT_SCHEMA, RECEIPT_SCHEMA_V6})
+
+
+def _family_label(schema: str) -> str:
+    """Operator-facing label for a receipt schema in an error message.
+
+    The V5 label stays literally "v5": existing tests and operator runbooks
+    pin that string, and rewording it was not needed for V6 to work.  Newer
+    versions label themselves, so a V6 failure never claims to be a V5 one.
+    """
+    return "v5" if schema == RECEIPT_SCHEMA else schema
 DEP_KEYS = {"python", "simpy", "numpy", "pyyaml"}
 # DDQN runs additionally pin the TensorFlow build: the training path depends
 # on it, so its version is part of the run identity (and its absence on the
@@ -1320,7 +1330,8 @@ def _verify_receipt_dir_impl(out_dir: str, *,
             errors.append("legacy receipt raw resolved config must omit emission_end_s")
         if receipt_schema in RECEIPT_SCHEMAS_V5_FAMILY and not has_emission:
             errors.append(
-                f"{receipt_schema} raw resolved config must include emission_end_s")
+                f"{_family_label(receipt_schema)} receipt raw resolved config "
+                "must include emission_end_s")
         if legacy_contract and not has_emission:
             resolved_cfg = json.loads(json.dumps(raw_resolved_cfg))
             resolved_cfg.setdefault("demand", {})["emission_end_s"] = None
@@ -1359,7 +1370,8 @@ def _verify_receipt_dir_impl(out_dir: str, *,
         if receipt_schema in RECEIPT_SCHEMAS_V5_FAMILY \
                 and manifest.get("schema") != trace_mod.TRACE_MANIFEST_SCHEMA:
             errors.append(
-                f"{receipt_schema} requires trace manifest contract v2")
+                f"{_family_label(receipt_schema)} receipt requires trace "
+                "manifest contract v2")
         if receipt_schema in {LEGACY_RECEIPT_SCHEMA, LEGACY_RECEIPT_SCHEMA_V4} \
                 and manifest.get("schema") != trace_mod.TRACE_MANIFEST_SCHEMA_V1:
             errors.append("legacy receipt requires trace manifest contract v1")
