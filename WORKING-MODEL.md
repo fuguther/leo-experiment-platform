@@ -27,6 +27,38 @@
 - 一条 BLOCK 必须附「复现命令 + 实际输出」;给不出即自动降级
 - 判据集在轮内不可增补
 
+**判据集格式**(`criteria.json`)
+
+```json
+{
+  "work_id": "<标识>",
+  "frozen_at_sha": "<exact full SHA>",
+  "criteria": [
+    {"id": "C1", "statement": "<可判定的主张>", "check": "<命令或谓词>", "touches": ["<依赖路径>"]}
+  ]
+}
+```
+
+`touches` 是"判据级失效"能算出来的前提:修复提交附 `touched_paths`,与各判据的 `touches` 求交,交集才是需要重审的判据集合。
+
+**判定结果格式**(每审阅者一份)
+
+```json
+{
+  "reviewed_sha": "<exact full SHA>",
+  "criteria_sha256": "<criteria.json 的 SHA>",
+  "reviewer_id": "<独立审阅者标识>",
+  "round": 1,
+  "criteria_results": [
+    {"id": "C1", "result": "PASS"},
+    {"id": "C2", "result": "FAIL", "command": "...", "output": "...", "why": "..."}
+  ],
+  "overall": "PASS | FAIL"
+}
+```
+
+`overall` **只能**由 `criteria_results` 推导:任一 `FAIL` → `FAIL`,否则 `PASS`。审阅者不得自由裁量。
+
 **失效是判据级**
 判据对某个代码身份成立。该身份改变时,只有**被改动行所触及的判据**需要重审。交集为空即通过。
 
