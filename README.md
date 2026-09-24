@@ -83,4 +83,17 @@ python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests A
 → 917 passed, 1 skipped
 ```
 
-`CODE/leo_sim/` 的 `code_sha256()` 与源仓库 `2416278` 一致(`ffcad9fc…`)—— 既有运行回执的证据链可复现。
+### 最小闭环(实跑,非"测试通过")
+
+```
+python3 -m CODE.leo_sim config validate CODE/leo_sim/profiles/smoke.yaml
+  → {"status":"ok","sha256":"93431539…"}
+
+python3 -m CODE.leo_sim run --config CODE/leo_sim/profiles/smoke.yaml --out out/smoke
+  → conservation_ok: true
+
+python3 -m CODE.leo_sim receipt verify out/smoke
+  → {"status":"verified"}
+```
+
+回执中的 `code_sha256` = `ffcad9fc…`,与源仓库 `2416278` 一致 —— **既有运行回执的证据链在本仓库可复现。**

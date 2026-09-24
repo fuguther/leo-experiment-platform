@@ -5,3 +5,5 @@ Results/
 remote.env
 *.log
 .DS_Store
+out/
+leo_sim_out/
