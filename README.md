@@ -80,7 +80,7 @@ EXPERIMENTS/              # 契约与模板(不含实验实例)
 
 ```
 python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q
-→ 917 passed, 1 skipped, 1 warning in 314.40s (0:05:14)
+→ 917 passed, 1 skipped
 ```
 
 `CODE/leo_sim/` 的 `code_sha256()` 与源仓库 `2416278` 一致(`ffcad9fc…`)—— 既有运行回执的证据链可复现。
