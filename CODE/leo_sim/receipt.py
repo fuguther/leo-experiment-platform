@@ -28,14 +28,16 @@ import hashlib
 import json
 import math
 import platform
+import re
 from pathlib import Path
 
-from . import (config as config_mod, fates, metrics, rng as rng_mod,
-               trace as trace_mod)
+from . import (config as config_mod, decision_ledger, fates, metrics,
+               rng as rng_mod, trace as trace_mod)
 
 LEGACY_RECEIPT_SCHEMA = "leo-sim-receipt/v3"
 LEGACY_RECEIPT_SCHEMA_V4 = "leo-sim-receipt/v4"
 RECEIPT_SCHEMA = "leo-sim-receipt/v5"
+RECEIPT_SCHEMA_V6 = "leo-sim-receipt/v6"
 METRICS_V1_SCHEMA = "leo-sim-congestion-metrics/v1"
 METRICS_V2_SCHEMA = "leo-sim-congestion-metrics/v2"
 
@@ -52,7 +54,23 @@ RECEIPT_KEYS_V4 = RECEIPT_KEYS_V3 | {"congestion_metrics_contract"}
 RECEIPT_KEYS_V5 = RECEIPT_KEYS_V4 | {
     "trace_manifest_contract", "trace_identity_contract",
 }
+#: V6 binds the decision stream the T1 eleven-instant chain is folded from.
+#: A V6 receipt is written ONLY when a run supplied BOTH streams, so these
+#: three keys always appear together and the exact-key-set invariant keeps
+#: working without optional or null-valued fields.
+RECEIPT_KEYS_V6 = RECEIPT_KEYS_V5 | {
+    "decision_stream_contract", "decision_log_sha256", "timeline_log_sha256",
+}
 RECEIPT_KEYS = RECEIPT_KEYS_V5
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+
+#: Schemas sharing the V5 CONTRACT family: manifest/v2, identity/v2|v3, and a
+#: raw resolved config that carries emission_end_s.  V6 only ADDS stream
+#: bindings on top of V5, so every V5 contract check applies to it unchanged.
+#: A new schema version is added HERE and not to each dispatch site -- doing it
+#: per site is exactly how the first V6 attempt made the identity check fall
+#: through to the legacy identity/v1 branch and fail every V6 receipt.
+RECEIPT_SCHEMAS_V5_FAMILY = frozenset({RECEIPT_SCHEMA, RECEIPT_SCHEMA_V6})
 DEP_KEYS = {"python", "simpy", "numpy", "pyyaml"}
 # DDQN runs additionally pin the TensorFlow build: the training path depends
 # on it, so its version is part of the run identity (and its absence on the
@@ -556,14 +574,34 @@ def build_ledgers(result: dict, rows: list[dict]) -> dict:
 
 
 def build_receipt(resolved: dict, manifest: dict, result: dict,
-                  rows: list[dict], ledgers: dict, ledgers_sha256: str) -> dict:
+                  rows: list[dict], ledgers: dict, ledgers_sha256: str,
+                  streams: dict | None = None) -> dict:
+    """Build one run receipt.
+
+    ``streams`` carries the identities of the decision and timeline streams
+    when the run published BOTH.  Supplying them upgrades the receipt to V6,
+    which is what lets a T1 conclusion point back at ``receipt verify``
+    instead of resting on artifacts outside the chain.  Supplying only one
+    keeps V5: a V6 receipt that bound half the input would claim more than it
+    can support.
+    """
     bits_by_pid = {r["packet_id"]: r["bits"] for r in rows}
     pkt_fates = {str(pid): [fate, bits_by_pid[pid]]
                  for pid, fate in result["fates"].items()}
     requested = requested_from_config(resolved["config"])
     effective = {k: result["mechanisms"]["effective"][k] for k in EFFECTIVE_KEYS}
+    stream_fields: dict = {}
+    schema = RECEIPT_SCHEMA
+    if streams is not None:
+        schema = RECEIPT_SCHEMA_V6
+        stream_fields = {
+            "decision_stream_contract":
+                decision_ledger.DECISION_STREAM_CONTRACT,
+            "decision_log_sha256": streams["decision_log_sha256"],
+            "timeline_log_sha256": streams["timeline_log_sha256"],
+        }
     return {
-        "schema": RECEIPT_SCHEMA,
+        "schema": schema,
         "congestion_metrics_contract": METRICS_V2_SCHEMA,
         "trace_manifest_contract": trace_mod.TRACE_MANIFEST_SCHEMA,
         "trace_identity_contract": config_mod.TRACE_IDENTITY_VERSION,
@@ -600,11 +638,16 @@ def build_receipt(resolved: dict, manifest: dict, result: dict,
             == result["totals"]["delivered_bits"]
             + result["totals"]["terminal_loss_bits"]
             + result["totals"]["in_system_bits_at_stop"]),
+        **stream_fields,
     }
 
 
 def write_run(out_dir: str, resolved: dict, trace_csv: bytes, manifest: dict,
-              result: dict, rows: list[dict]) -> dict:
+              result: dict, rows: list[dict],
+              decision_log_sha256: str | None = None,
+              timeline_log_sha256: str | None = None) -> dict:
+    """Publish one run directory.  Passing BOTH stream identities upgrades
+    the receipt to V6; passing only one (or neither) keeps V5."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     (out / "resolved_config.json").write_text(
@@ -619,8 +662,12 @@ def write_run(out_dir: str, resolved: dict, trace_csv: bytes, manifest: dict,
     (out / "ledgers.json").write_text(
         json.dumps(ledgers, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     ledgers_sha256 = _sha_file(out / "ledgers.json")
+    streams = None
+    if decision_log_sha256 is not None and timeline_log_sha256 is not None:
+        streams = {"decision_log_sha256": decision_log_sha256,
+                   "timeline_log_sha256": timeline_log_sha256}
     receipt = build_receipt(resolved, manifest, result, rows, ledgers,
-                            ledgers_sha256)
+                            ledgers_sha256, streams=streams)
     if result["monitor_log"]:
         with open(out / "monitor.log", "w", encoding="utf-8") as fh:
             for t, kind, kv in result["monitor_log"]:
@@ -1145,6 +1192,28 @@ def _verify_receipt_dir_impl(out_dir: str, *,
                 config_mod.TRACE_IDENTITY_VERSION}:
             errors.append(
                 "v5 trace_identity_contract must be identity/v2 or identity/v3")
+    elif receipt_schema == RECEIPT_SCHEMA_V6:
+        expected_receipt_keys = RECEIPT_KEYS_V6
+        metrics_contract = METRICS_V2_SCHEMA
+        if receipt.get("congestion_metrics_contract") != metrics_contract:
+            errors.append("v6 congestion_metrics_contract must be v2")
+        if receipt.get("trace_manifest_contract") != trace_mod.TRACE_MANIFEST_SCHEMA:
+            errors.append("v6 trace_manifest_contract must be manifest/v2")
+        if receipt.get("trace_identity_contract") not in {
+                config_mod.TRACE_IDENTITY_VERSION_V2,
+                config_mod.TRACE_IDENTITY_VERSION}:
+            errors.append(
+                "v6 trace_identity_contract must be identity/v2 or identity/v3")
+        if receipt.get("decision_stream_contract") \
+                != decision_ledger.DECISION_STREAM_CONTRACT:
+            errors.append(
+                "v6 decision_stream_contract must be "
+                f"{decision_ledger.DECISION_STREAM_CONTRACT}")
+        for stream_key in ("decision_log_sha256", "timeline_log_sha256"):
+            value = receipt.get(stream_key)
+            if not isinstance(value, str) or not SHA256_HEX.fullmatch(value):
+                errors.append(
+                    f"v6 {stream_key} must be a lowercase sha256 hex digest")
     else:
         expected_receipt_keys = RECEIPT_KEYS_V5
         metrics_contract = METRICS_V2_SCHEMA
@@ -1249,8 +1318,9 @@ def _verify_receipt_dir_impl(out_dir: str, *,
                         and "emission_end_s" in raw_resolved_cfg["demand"])
         if legacy_contract and has_emission:
             errors.append("legacy receipt raw resolved config must omit emission_end_s")
-        if receipt_schema == RECEIPT_SCHEMA and not has_emission:
-            errors.append("v5 receipt raw resolved config must include emission_end_s")
+        if receipt_schema in RECEIPT_SCHEMAS_V5_FAMILY and not has_emission:
+            errors.append(
+                f"{receipt_schema} raw resolved config must include emission_end_s")
         if legacy_contract and not has_emission:
             resolved_cfg = json.loads(json.dumps(raw_resolved_cfg))
             resolved_cfg.setdefault("demand", {})["emission_end_s"] = None
@@ -1286,8 +1356,10 @@ def _verify_receipt_dir_impl(out_dir: str, *,
             except Exception as exc:
                 errors.append(f"trace violates resolved config: {exc}")
     if manifest is not None:
-        if receipt_schema == RECEIPT_SCHEMA and manifest.get("schema") != trace_mod.TRACE_MANIFEST_SCHEMA:
-            errors.append("v5 receipt requires trace manifest contract v2")
+        if receipt_schema in RECEIPT_SCHEMAS_V5_FAMILY \
+                and manifest.get("schema") != trace_mod.TRACE_MANIFEST_SCHEMA:
+            errors.append(
+                f"{receipt_schema} requires trace manifest contract v2")
         if receipt_schema in {LEGACY_RECEIPT_SCHEMA, LEGACY_RECEIPT_SCHEMA_V4} \
                 and manifest.get("schema") != trace_mod.TRACE_MANIFEST_SCHEMA_V1:
             errors.append("legacy receipt requires trace manifest contract v1")
@@ -1299,7 +1371,7 @@ def _verify_receipt_dir_impl(out_dir: str, *,
     # unchanged identity/v1 path.
     if manifest is not None and resolved_cfg is not None and resolved_version:
         from . import config as _config
-        if receipt_schema == RECEIPT_SCHEMA:
+        if receipt_schema in RECEIPT_SCHEMAS_V5_FAMILY:
             contract = receipt.get("trace_identity_contract")
             if contract == _config.TRACE_IDENTITY_VERSION_V2:
                 identity_fn = _config.trace_identity_sha256_v2

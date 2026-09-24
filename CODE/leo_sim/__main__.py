@@ -22,6 +22,7 @@ from pathlib import Path
 from . import acceptance as acceptance_mod
 from . import comparison as comparison_mod
 from . import config as config_mod
+from . import decision_ledger
 from . import governance, kernel, learning, platform_check as platform_check_mod
 from . import receipt as receipt_mod, trace as trace_mod
 
@@ -64,7 +65,13 @@ def _publish_new_file(temporary: Path, target: Path) -> None:
 class _DecisionLogWriter:
     """Bounded-memory streaming writer for diagnostic decision rows."""
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, validate=None):
+        # 'validate' is the frozen row contract a FORMAL run must satisfy
+        # (decision_ledger.validate_decision_row).  Diagnostic runs pass None
+        # and keep their historical behaviour; the contract is enforced at
+        # append time so a violation aborts the run rather than publishing a
+        # stream the receipt chain would have to distrust.
+        self._validate = validate
         self.target = Path(path)
         _check_new_destination(self.target)
         fd, temporary_name = tempfile.mkstemp(
@@ -78,6 +85,8 @@ class _DecisionLogWriter:
         self.log_sha256: str | None = None
 
     def append(self, row: dict) -> None:
+        if self._validate is not None:
+            self._validate(row)
         line = json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
         self._handle.write(line)
         self._log_hasher.update(line.encode("utf-8"))
@@ -409,10 +418,12 @@ def _cmd_run(args) -> int:
     except Exception as exc:
         print(f"RUN REFUSED (formal authorization): {exc}")
         return 3
-    if args.decision_log and formal is not None:
-        print("RUN REFUSED: decision audit log is diagnostic-only and cannot "
-              "be attached to a formal authorized run")
-        return 3
+    # A decision log used to be refused outright on a formal authorized run
+    # because it had no row contract and therefore sat outside the
+    # receipt/ledger trust chain (ANALYSIS/T1-MEASUREMENT-PROTOCOL.md 3.3).
+    # The contract now exists (decision_ledger.DECISION_ROW_KEYS), so a formal
+    # run may attach one -- but only one whose every row satisfies it, which
+    # is enforced per row at append time and re-checked for emptiness below.
     if args.decision_log and args.dry_run:
         print("RUN REFUSED: decision audit log is unavailable in dry-run mode")
         return 3
@@ -447,7 +458,10 @@ def _cmd_run(args) -> int:
             # so a collision cannot leave a partial run behind.
             _check_new_destination(
                 _decision_manifest_target(Path(args.decision_log)))
-            decision_writer = _DecisionLogWriter(args.decision_log)
+            decision_writer = _DecisionLogWriter(
+                args.decision_log,
+                validate=(decision_ledger.validate_decision_row
+                          if formal is not None else None))
         except Exception as exc:
             print(f"RUN REFUSED (decision audit log): {exc}")
             return 3
@@ -554,7 +568,17 @@ def _cmd_run(args) -> int:
             timeline_writer.abort()
             print(f"RUN REFUSED (timeline log): {exc}")
             return 6
-    rcp = receipt_mod.write_run(out_dir, resolved, trace_bytes, manifest, result, rows)
+    if formal is not None and decision_writer is not None \
+            and decision_writer.row_count == 0:
+        # An empty stream would bind a V6 receipt to nothing, which is a
+        # weaker claim than the V5 receipt it replaced.  Refuse instead.
+        print("RUN REFUSED (formal decision stream): a formal run's decision "
+              "log must contain at least one contract-valid decision row")
+        return 6
+    rcp = receipt_mod.write_run(
+        out_dir, resolved, trace_bytes, manifest, result, rows,
+        decision_log_sha256=decision_log_sha,
+        timeline_log_sha256=timeline_log_sha)
     decision_manifest_path = None
     if args.decision_log:
         try:
