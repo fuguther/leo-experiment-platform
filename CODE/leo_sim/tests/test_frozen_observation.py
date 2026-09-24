@@ -202,3 +202,58 @@ def test_frozen_agrees_with_refresh_when_nothing_changes_in_the_window():
     frozen_rows = _target_rows(steady("frozen"))
     assert frozen_rows, "the control fixture must actually decide"
     assert frozen_rows == _target_rows(steady("refresh"))
+
+
+# ------------------------------------------- audit boundary: audit trail
+
+def _run_without_timeline(mode: str, up_before: bool, delay: float = DELAY):
+    """Same fixture, decision sink only: no timeline stream is attached."""
+    sink: list = []
+    rows = [row(99, 0.0, A, B, bits=BITS), row(1, TARGET_EMIT, A, B, bits=BITS)]
+    res = kernel.run_simulation(_cfg(mode, delay), rows,
+                                geometry=_geo(up_before), decision_sink=sink)
+    return res, sink
+
+
+def test_frozen_refusals_are_visible_only_through_the_timeline_sink():
+    """Audit boundary: a refused frozen commit is not a decision row.
+
+    ``_record_decision`` writes only on a COMMIT (kernel.py:3571), so an
+    attempt that is inferred at t0 and refused at commit leaves NO row in
+    the decision sink; the refusal is recorded as ``commit_rejected`` on the
+    timeline sink (kernel.py:3991-4005).  That is a deliberate output-only
+    design -- nothing is allocated when nothing records -- but it is a real
+    analysis boundary:
+
+      an analyst holding only decision rows cannot see that a frozen action
+      was inferred, attempted and refused, so the frozen cost is invisible
+      and "acted late" is indistinguishable from "tried and was refused".
+
+    The BEHAVIOUR is identical either way; only the audit trail differs.
+    Pinned here so the limitation is stated rather than discovered.
+    """
+    # the discriminating fixture: ISL up at t0, down at commit
+    res, sink = _run_without_timeline("frozen", up_before=True)
+    assert [r for r in sink if r.get("pid") == 1] == [], \
+        "a refused commit must not produce a decision row"
+    assert res["fates"][1] == "IN_SYSTEM_AT_STOP", \
+        "behaviour is unchanged; only the audit trail is absent"
+
+    # the same fixture WITH a timeline does record the refusal, and the
+    # record carries the instant the action was inferred from
+    _res, _sink, timeline = _run("frozen", up_before=True)
+    rejected = _target_marks(timeline, "commit_rejected")
+    assert len(rejected) == 1
+    assert rejected[0]["action"] == "E"
+    assert rejected[0]["reason"] == "action_no_longer_legal"
+    assert rejected[0]["t_observed"] == pytest.approx(5.082)
+    assert rejected[0]["inferred_at"] == pytest.approx(5.082)
+    assert rejected[0]["at"] == pytest.approx(7.082)
+
+    # and the t0 observation is attached, so the refused attempt stays
+    # attributable to the state it was actually based on
+    observation = rejected[0]["observation_at_start"]
+    assert observation["mode"] == "frozen"
+    assert observation["source"] == "frozen_snapshot_before_compute"
+    assert observation["schema"] == "leo-sim-observation-at-start/v1"
+    assert observation["t_observed"] == pytest.approx(5.082)

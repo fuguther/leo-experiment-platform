@@ -104,8 +104,82 @@ class _DecisionLogWriter:
             self._temporary.unlink()
 
 
+class _TimelineLogWriter(_DecisionLogWriter):
+    """Decision-lifecycle milestone stream (the only channel carrying F2).
+
+    Same atomic JSONL publication as the decision log, deliberately a
+    DIFFERENT policy: execution.node_process_delay_s > 0 cannot run
+    without a timeline sink at all (kernel.py:1145 refuses unattributable
+    node time), so classifying this stream as diagnostic-only and refusing
+    it on a formal run would make F2 formally unusable rather than merely
+    unattributed.  See ANALYSIS/CURRENT-EVENT-TIMELINE.md section 5.
+    """
+
+
 def _decision_manifest_target(path: Path) -> Path:
     return path.with_name(path.name + ".manifest.json")
+
+
+def _timeline_manifest_target(path: Path) -> Path:
+    return path.with_name(path.name + ".manifest.json")
+
+
+def _publish_json_new(target: Path, payload: dict) -> None:
+    """Write payload as newline-terminated canonical JSON to a NEW target.
+
+    Never replaces an existing path and never follows a symlink: the payload
+    is staged in a temporary file in the target directory, fsynced, and then
+    hard-linked into place (the link fails if the target appeared meanwhile).
+    """
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".tmp", dir=str(target.parent))
+    os.close(fd)
+    temporary = Path(temporary_name)
+    try:
+        with temporary.open("w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False,
+                                    indent=2, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        _publish_new_file(temporary, target)
+    except Exception:
+        if temporary.exists() and not temporary.is_symlink():
+            temporary.unlink()
+        raise
+
+
+def _write_timeline_manifest(path: Path, resolved: dict, trace_manifest: dict,
+                             result: dict, receipt_payload: dict, out_dir: str,
+                             row_count: int, log_sha256: str) -> Path:
+    """Sidecar binding the timeline stream to the run it describes.
+
+    The stream is OUTSIDE the receipt own artifact set by design: promoting
+    the F2 stage to a first-class receipt term requires the metrics.py event
+    whitelist and the receipt key set to change, which is a separate task
+    contract.  Until then this manifest is what makes the sidecar
+    attributable -- it pins the config/trace/code identity and the sha256 of
+    the very receipt the stream belongs to.
+    """
+    target = _timeline_manifest_target(path)
+    _check_new_destination(target)
+    _publish_json_new(target, {
+        "schema": "leo-sim-timeline-log/v1",
+        "log_path": str(path.resolve()),
+        "log_sha256": log_sha256,
+        "row_count": row_count,
+        "config_sha256": resolved["sha256"],
+        "trace_sha256": trace_manifest["__trace_sha256"],
+        "trace_identity_sha256": trace_manifest.get("trace_identity_sha256", ""),
+        "code_sha256": receipt_mod.code_sha256(),
+        "result_dir": str(Path(out_dir).resolve()),
+        "natural_end": bool(result["natural_end"]),
+        "conservation_ok": bool(receipt_payload["conservation_ok"]),
+        "node_process_delay_s": float(
+            resolved["config"]["execution"]["node_process_delay_s"]),
+        "receipt_sha256": hashlib.sha256(
+            (Path(out_dir) / "receipt.json").read_bytes()).hexdigest(),
+    })
+    return target
 
 
 def _write_decision_manifest(path: Path, resolved: dict, trace_manifest: dict,
@@ -233,7 +307,8 @@ def _verify_formal_args(args, resolved: dict) -> dict | None:
     }
 
 
-def _write_formal_witness(out_dir: str, formal: dict, receipt_payload: dict) -> None:
+def _write_formal_witness(out_dir: str, formal: dict, receipt_payload: dict,
+                          timeline_log_sha256: str | None = None) -> None:
     out = Path(out_dir)
     if out.resolve(strict=False) != (
             Path(formal["results_dir"]) / formal["run_id"]).resolve(strict=False):
@@ -251,6 +326,11 @@ def _write_formal_witness(out_dir: str, formal: dict, receipt_payload: dict) -> 
         "natural_end": receipt_payload["natural_end"],
         "conservation_ok": receipt_payload["conservation_ok"],
     }
+    if timeline_log_sha256 is not None:
+        # Bind the F2 evidence sidecar into the formal run witness: without
+        # this the node-processing time a formal run was authorized to
+        # measure would live outside the authorized artifact chain.
+        witness["timeline_log_sha256"] = timeline_log_sha256
     (out / "formal_run.json").write_text(
         json.dumps(witness, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     pointers = out.parent / "_run_receipts"
@@ -336,6 +416,19 @@ def _cmd_run(args) -> int:
     if args.decision_log and args.dry_run:
         print("RUN REFUSED: decision audit log is unavailable in dry-run mode")
         return 3
+    if args.timeline_log and args.dry_run:
+        print("RUN REFUSED: timeline log is unavailable in dry-run mode")
+        return 3
+    if cfg["execution"]["node_process_delay_s"] > 0 and not args.timeline_log:
+        # Refuse at the entry point rather than letting the kernel raise:
+        # F2 node processing time must be attributable, and the only channel
+        # that carries it is the timeline stream.  A raw KernelError here
+        # would be technically loud but would leave the operator without the
+        # one remediation the CLI can accept.
+        print("RUN REFUSED (F2 attributable timing): "
+              "execution.node_process_delay_s > 0 requires --timeline-log; "
+              "node processing time is never added silently")
+        return 3
     out_dir = args.out or cfg["outputs"]["out_dir"]
     if formal is not None and Path(out_dir).exists():
         try:
@@ -358,6 +451,26 @@ def _cmd_run(args) -> int:
         except Exception as exc:
             print(f"RUN REFUSED (decision audit log): {exc}")
             return 3
+    timeline_writer = None
+    if args.timeline_log:
+        try:
+            # Same two-artifact preflight as the decision log: the JSONL and
+            # its sidecar manifest are both published, so a collision on
+            # either must stop the run before the simulation starts.
+            _check_new_destination(
+                _timeline_manifest_target(Path(args.timeline_log)))
+            timeline_writer = _TimelineLogWriter(args.timeline_log)
+        except Exception as exc:
+            if decision_writer is not None:
+                decision_writer.abort()
+            print(f"RUN REFUSED (timeline log): {exc}")
+            return 3
+
+    def _abort_writers() -> None:
+        for writer in (decision_writer, timeline_writer):
+            if writer is not None:
+                writer.abort()
+
     tmp = None
     if args.dry_run and args.out is None:
         # dry-run never writes run artifacts into the workspace
@@ -371,14 +484,12 @@ def _cmd_run(args) -> int:
         else:
             manifest, trace_bytes, rows = _compile(resolved, out_dir)
     except (trace_mod.TraceError, FileNotFoundError) as exc:
-        if decision_writer is not None:
-            decision_writer.abort()
+        _abort_writers()
         print(f"TRACE COMPILE FAILED: {exc}")
         return 2
     if args.expect_trace_sha256 and \
             manifest["__trace_sha256"] != args.expect_trace_sha256:
-        if decision_writer is not None:
-            decision_writer.abort()
+        _abort_writers()
         print(f"TRACE COMPILE FAILED: trace sha256 {manifest['__trace_sha256']} "
               f"!= expected {args.expect_trace_sha256}")
         return 2
@@ -409,20 +520,23 @@ def _cmd_run(args) -> int:
             learning_out_dir=(Path(out_dir) / cfg["learning"]["algorithm"])
             if cfg["learning"]["algorithm"] in ("ddqn", "qlearning") else None,
             decision_sink=decision_writer,
+            # The timeline stream is the ONLY channel that can carry the F2
+            # node-processing stage (kernel.py:4261-4302).  Passing it here
+            # is what makes execution.node_process_delay_s > 0 runnable
+            # through the official entry point instead of only through a
+            # hand-written kernel.Kernel(...) call.
+            timeline_sink=timeline_writer,
         )
     except learning.LearningUnavailable as exc:
-        if decision_writer is not None:
-            decision_writer.abort()
+        _abort_writers()
         print(f"RUN REFUSED (fail closed): {exc}")
         return 3
     except kernel.CapExceeded as exc:
-        if decision_writer is not None:
-            decision_writer.abort()
+        _abort_writers()
         print(f"RUN ABORTED (bounded execution): {exc}")
         return 4
     except Exception:
-        if decision_writer is not None:
-            decision_writer.abort()
+        _abort_writers()
         raise
     decision_log_sha = None
     if decision_writer is not None:
@@ -431,6 +545,14 @@ def _cmd_run(args) -> int:
         except Exception as exc:
             decision_writer.abort()
             print(f"RUN REFUSED (decision audit log): {exc}")
+            return 6
+    timeline_log_sha = None
+    if timeline_writer is not None:
+        try:
+            timeline_log_sha = timeline_writer.close()
+        except Exception as exc:
+            timeline_writer.abort()
+            print(f"RUN REFUSED (timeline log): {exc}")
             return 6
     rcp = receipt_mod.write_run(out_dir, resolved, trace_bytes, manifest, result, rows)
     decision_manifest_path = None
@@ -442,9 +564,19 @@ def _cmd_run(args) -> int:
         except Exception as exc:
             print(f"RUN REFUSED (decision audit log): {exc}")
             return 6
+    timeline_manifest_path = None
+    if args.timeline_log:
+        try:
+            timeline_manifest_path = _write_timeline_manifest(
+                Path(args.timeline_log), resolved, manifest, result, rcp,
+                out_dir, timeline_writer.row_count, timeline_log_sha)
+        except Exception as exc:
+            print(f"RUN REFUSED (timeline log): {exc}")
+            return 6
     if formal is not None and rcp["natural_end"]:
         try:
-            _write_formal_witness(out_dir, formal, rcp)
+            _write_formal_witness(out_dir, formal, rcp,
+                                  timeline_log_sha256=timeline_log_sha)
         except Exception as exc:
             print(f"RUN REFUSED (formal result witness): {exc}")
             return 6
@@ -455,7 +587,10 @@ def _cmd_run(args) -> int:
                       "conservation_ok": rcp["conservation_ok"],
                       **({"decision_log": str(Path(args.decision_log).resolve()),
                           "decision_log_manifest": str(decision_manifest_path.resolve())}
-                         if args.decision_log else {})}, indent=2))
+                         if args.decision_log else {}),
+                      **({"timeline_log": str(Path(args.timeline_log).resolve()),
+                          "timeline_log_manifest": str(timeline_manifest_path.resolve())}
+                         if args.timeline_log else {})}, indent=2))
     return 0 if rcp["natural_end"] else 5
 
 
@@ -532,6 +667,10 @@ def main(argv=None) -> int:
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--expect-trace-sha256", default=None,
                    help="fail closed unless the consumed trace has this SHA256")
+    p.add_argument("--timeline-log", default=None,
+                   help="write the decision-lifecycle milestone stream "
+                        "(JSONL + sidecar manifest) to this NEW path; "
+                        "required by execution.node_process_delay_s > 0")
     p.add_argument("--decision-log", default=None,
                    help="diagnostic-only JSONL decision/info audit path; forbidden for formal runs")
     p.add_argument("--authorization", default=None)

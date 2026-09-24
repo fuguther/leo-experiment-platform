@@ -15,6 +15,7 @@ term is identically zero and the closure gate would be a tautology.
 """
 from __future__ import annotations
 
+import json
 import math
 
 import pytest
@@ -808,3 +809,45 @@ def test_negative_overlapping_windows_and_overlapping_phases_are_rejected():
         ONE_HOP_EVENTS, ONE_HOP_WINDOWS, [1])["ok"] is True
     assert metrics.summarize(
         ONE_HOP_EVENTS, [overlapping])["validation"]["ok"] is True
+
+
+def test_the_persisted_ledger_mapping_is_accepted_after_a_json_round_trip():
+    """A JSON round-trip must not blind the second implementation.
+
+    Mapping keys become strings in JSON, so the PERSISTED ledger presents its
+    delivery set as {"1": ...} while the event pids are ints.  Before the
+    coercion this function declared every packet "declared delivered but has
+    no delivered event" and checked NOTHING: it could not read the artifact
+    format it exists to re-check, while still returning ok=False rather than
+    crashing -- so the failure looked like a data problem, not a reader bug.
+    """
+    result = {
+        "packet_events": ONE_HOP_EVENTS,
+        "link_service_windows": ONE_HOP_WINDOWS,
+        "deliveries": {1: {"delivered_at": 1.0}},
+    }
+    live = indep.verify_delay_decomposition(None, None, dict(result))
+    assert live["ok"] is True, live["errors"]
+    assert live["checked_packets"] == 1
+    assert live["delivered_pids"] == [1]
+
+    persisted = json.loads(json.dumps(result))
+    assert set(persisted["deliveries"]) == {"1"}, \
+        "the premise: JSON object keys are strings"
+    restored = indep.verify_delay_decomposition(None, None, persisted)
+    assert restored["ok"] is True, restored["errors"]
+    assert restored["checked_packets"] == 1
+    assert restored["delivered_pids"] == [1]
+
+    # an explicit pid collection is coerced the same way
+    explicit = indep.verify_delay_decomposition(
+        ONE_HOP_EVENTS, ONE_HOP_WINDOWS, ["1"])
+    assert explicit["ok"] is True and explicit["checked_packets"] == 1
+
+    # ...and a NON-canonical key fails loud instead of silently matching
+    # nothing (the failure mode this test exists to prevent)
+    for bad in ("01", "1.0", " 1", "x", ""):
+        broken = json.loads(json.dumps(result))
+        broken["deliveries"] = {bad: {"delivered_at": 1.0}}
+        with pytest.raises(indep.IndependentMetricsError):
+            indep.verify_delay_decomposition(None, None, broken)

@@ -530,3 +530,169 @@ def test_legacy_v3_v1_delivered_run_without_new_ingress_event_reverifies(tmp_pat
     receipt.write_run(str(out), cfg, trace_bytes, manifest, result, rows)
     _convert_run_to_legacy_v1(out)
     assert receipt.verify_receipt_dir(str(out)) == []
+
+
+# ------------------------------------------------- utilization denominators
+# Phase-7 audit fixtures, self-contained (deliberately no cross-test import).
+_IDLE_EVENTS = [
+    {"kind": "packet_emitted", "pid": 1, "at": 0.0, "bits": 100},
+    {"kind": "queue_enter", "pid": 1, "at": 0.0, "queue": "isl",
+     "link_id": "isl:0:1", "queue_id": 7},
+    {"kind": "service_start", "pid": 1, "at": 0.5, "stage": "isl",
+     "link_id": "isl:0:1", "queue_id": 7, "bits": 100, "rate_bps": 400.0},
+    {"kind": "propagation_start", "pid": 1, "at": 0.75, "stage": "isl",
+     "link_id": "isl:0:1", "prop_id": 3, "delay_s": 0.25},
+    {"kind": "propagation_arrival", "pid": 1, "at": 1.0, "prop_id": 3},
+    {"kind": "delivered", "pid": 1, "at": 1.0},
+]
+_SERVED_WINDOW = {
+    "pid": 1, "stage": "isl", "link_id": "isl:0:1",
+    "start": 0.5, "end": 0.75, "rate_bps": 400.0,
+    "capacity_bits": 100.0, "served_bits": 100, "bits": 100, "outcome": "ok",
+}
+# A window that OCCUPIED 0.25 s of a link and served nothing: goodput
+# utilization 0.0 while time occupancy is 100%.
+_STALLED_WINDOW = {
+    "pid": 1, "stage": "isl", "link_id": "isl:1:2",
+    "start": 0.0, "end": 0.25, "rate_bps": 200.0,
+    "capacity_bits": 50.0, "served_bits": 0, "bits": 100, "outcome": "stalled",
+}
+# Availability is sampled INDEPENDENTLY of service: isl:2:3 carries nothing
+# at all yet is physically up for the whole second.
+_AVAILABLE_WINDOWS = [
+    {"stage": "isl", "link_id": "isl:0:1", "start": 0.0, "end": 0.25,
+     "rate_bps": 400.0, "capacity_bits": 100.0},
+    {"stage": "isl", "link_id": "isl:0:1", "start": 0.25, "end": 0.5,
+     "rate_bps": 400.0, "capacity_bits": 100.0},
+    {"stage": "isl", "link_id": "isl:0:1", "start": 0.5, "end": 1.0,
+     "rate_bps": 400.0, "capacity_bits": 200.0},
+    {"stage": "isl", "link_id": "isl:1:2", "start": 0.0, "end": 0.25,
+     "rate_bps": 200.0, "capacity_bits": 50.0},
+    {"stage": "isl", "link_id": "isl:2:3", "start": 0.0, "end": 1.0,
+     "rate_bps": 800.0, "capacity_bits": 800.0},
+]
+
+
+def test_idle_link_denominator():
+    """The utilization denominator contract, stated once and pinned.
+
+    utilization is served_bits / AVAILABLE capacity, and available capacity
+    is geometry-plus-rate only, sampled independently of service.  Hence:
+
+      1. an IDLE physical link stays in the denominator with utilization
+         0.0 -- it is real capacity that was not used, not absent capacity;
+      2. a served link is measured against that sampled availability, never
+         against the capacity of its own service window;
+      3. a link that is geometrically down contributes NO available capacity
+         (outage is not capacity);
+      4. with no availability ledger the production function substitutes the
+         service-window sum, which makes utilization identically 1.0 for any
+         successful service.  That number is NOT a utilization measurement
+         and must not be reported as one.
+
+    The reported quantity is GOODPUT utilization, not time occupancy: a link
+    that spent its entire available interval transmitting without success
+    reads 0.0 here while its occupancy is 1.0.  The two must never be
+    conflated in a paper claim.
+    """
+    windows = [_SERVED_WINDOW, _STALLED_WINDOW]
+
+    # ---- sampled availability governs the denominator --------------------
+    sampled = metrics.summarize(_IDLE_EVENTS, windows,
+                                available_capacity_windows=_AVAILABLE_WINDOWS)
+    links = sampled["links"]
+
+    # (1) the fully idle link is IN the denominator with zero utilization
+    idle = links["isl:2:3"]
+    assert idle["service_windows"] == 0
+    assert idle["capacity_bits"] == 0.0
+    assert idle["available_capacity_bits"] > 0.0
+    assert idle["available_time_s"] > 0.0
+    assert idle["utilization"] == 0.0
+
+    # (2) the served link is measured against availability, not its window
+    served = links["isl:0:1"]
+    assert served["served_bits"] == 100.0
+    assert served["capacity_bits"] == 100.0
+    assert served["available_capacity_bits"] == 400.0
+    assert served["utilization"] == pytest.approx(
+        served["served_bits"] / served["available_capacity_bits"])
+    assert served["utilization"] < 1.0, "idle capacity must dilute it"
+    # the denominator is strictly larger than the service-window capacity,
+    # i.e. idle capacity really is counted
+    assert served["available_capacity_bits"] > served["capacity_bits"]
+
+    # (3) goodput utilization is NOT time occupancy: the stalled link spent
+    # 100% of its available time occupied and served nothing.
+    stalled = links["isl:1:2"]
+    assert stalled["served_bits"] == 0.0
+    assert stalled["utilization"] == 0.0
+    occupancy = stalled["capacity_bits"] / stalled["available_capacity_bits"]
+    assert occupancy == pytest.approx(1.0), (
+        "the stalled window must occupy the whole available interval")
+    assert stalled["utilization"] != pytest.approx(occupancy), \
+        "goodput utilization and time occupancy are different quantities"
+
+    # ---- the degenerate substitute is a different, meaningless number -----
+    degenerate = metrics.summarize(_IDLE_EVENTS, windows)
+    degenerate_links = degenerate["links"]
+    assert set(degenerate_links) == {"isl:0:1", "isl:1:2"}, \
+        "without sampling only served links exist at all -- the idle link " \
+        "is missing from the denominator entirely"
+    assert "isl:2:3" not in degenerate_links
+    for item in degenerate_links.values():
+        assert item["available_time_s"] == 0.0
+        assert item["available_capacity_bits"] == item["capacity_bits"]
+    assert degenerate_links["isl:0:1"]["utilization"] == pytest.approx(1.0)
+    # ...and it is emphatically not the sampled reading
+    assert degenerate_links["isl:0:1"]["utilization"] != pytest.approx(
+        served["utilization"]), \
+        "the default denominator silently publishes ~1.0; it must never be " \
+        "reported as link utilization"
+
+
+def test_idle_capacity_is_absent_when_the_link_is_in_outage():
+    """Outage is not capacity (the discriminating negative for the test above).
+
+    In the 4-satellite ring only satellite 0 sees the source cell and only
+    satellite 2 sees the destination, so the GSL links of satellites 1 and 3
+    are never geometrically usable.  They must be ABSENT from the denominator
+    rather than present with zero capacity: a link that cannot carry traffic
+    contributes no available capacity, while a link that merely carried
+    nothing does.
+    """
+    from CODE.leo_sim.tests.test_metrics_independent import _ring
+    from CODE.leo_sim.tests.helpers import cell_center
+
+    a = cell(0.0, 0.0)
+    b = cell(0.0, 10.0)
+    result = kernel.run_simulation(
+        make_cfg({"scenario": {"duration_s": 120.0, "num_satellites": 4,
+                  "num_planes": 1, "seed": 5},
+                  "links": {"isl_rate_mbps": 8.0},
+                  "execution": {"available_capacity_interval_s": 1.0}}),
+        [row(pid, 0.1 * pid, a, b) for pid in (1, 2, 3)],
+        geometry=_ring(4))
+
+    sampled_links = result["congestion_metrics"]["links"]
+
+    # visible satellites: their GSL links exist in the denominator
+    assert f"gsl:uplink:0:{a}" in sampled_links
+    assert f"gsl:downlink:2:{b}" in sampled_links
+    # never-visible satellites: no GSL capacity at all, in either direction
+    for sat in (1, 3):
+        for stage in ("uplink", "downlink"):
+            assert f"gsl:{stage}:{sat}:{a}" not in sampled_links
+            assert f"gsl:{stage}:{sat}:{b}" not in sampled_links
+
+    # and the idle-but-VISIBLE links ARE present with zero served bits:
+    # satellite 0 is up over the source cell but never receives from it,
+    # satellite 2 is up over the destination but never transmits to it.
+    assert f"gsl:downlink:0:{a}" in sampled_links
+    assert f"gsl:uplink:2:{b}" in sampled_links
+    idle_gsl = [v for k, v in sampled_links.items()
+                if k.startswith("gsl:") and v["served_bits"] == 0.0]
+    assert idle_gsl, "the ring must expose idle-but-visible GSL links"
+    for item in idle_gsl:
+        assert item["available_capacity_bits"] > 0.0
+        assert item["utilization"] == 0.0

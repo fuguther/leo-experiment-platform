@@ -2,7 +2,9 @@
 
 LEO 路由研究的**受控实验环境**。
 
-来源:`leo-direct-sim` @ `549acd8b7cb7a1bb573e7146653f55273999086d`(见 `SOURCE-COMMIT.txt`)
+来源:`leo-direct-sim` @ `241627856886934cbbf2a0820982bef2018e6249`(见 `SOURCE-COMMIT.txt`)
+
+含 PR #221 平台审计成果(F2 CLI 链路打通、独立重算的阶段分离、四份平台事实基线文档)。
 
 ---
 
@@ -32,7 +34,9 @@ CODE/                     # 导入根,不可改名
 ├── data/                 # geoip / traffic
 └── population_map/       # 场景生成数据
 
-ANALYSIS/                 # 指标分析 + claim schema(模块名不可改)
+ANALYSIS/                 # 指标分析 + claim schema + 平台事实基线(模块名不可改)
+                          #   PLATFORM-AUDIT-REPORT / CURRENT-EVENT-TIMELINE
+                          #   TRAFFIC-MODEL-SPEC / BURST-DESIGN
 EXPERIMENTS/              # 契约与模板(不含实验实例)
 ├── templates/            #   请求模板
 ├── contracts/            #   运行工件合同
@@ -76,7 +80,7 @@ EXPERIMENTS/              # 契约与模板(不含实验实例)
 
 ```
 python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q
-→ 906 passed, 1 skipped
+→ 917 passed, 1 skipped, 1 warning in 314.40s (0:05:14)
 ```
 
-`CODE/leo_sim/` 的 `code_sha256()` 与源仓库 `549acd8` 一致 —— 既有运行回执的证据链可复现。
+`CODE/leo_sim/` 的 `code_sha256()` 与源仓库 `2416278` 一致(`ffcad9fc…`)—— 既有运行回执的证据链可复现。

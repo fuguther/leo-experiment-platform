@@ -37,6 +37,30 @@ time twice.
 The uncovered intervals of a packet timeline (a deferred decision consumes
 simulated time that no service window and no propagation interval covers) are
 named decision_compute_s.
+
+F2 (execution.node_process_delay_s) AND THE UNCOVERED SET
+========================================================
+F2 occupies the arriving satellite for a configured time between the
+propagation arrival and the decision (kernel.py:4261-4302) and writes no
+packet_event: it exists ONLY on the kernel timeline sink.  Its interval is
+therefore *exactly* the uncovered set of the packet timeline.  Read without
+that fact, decision_compute_s would silently publish satellite node
+processing time as decision computation time -- two different mechanisms
+collapsed into one number.
+
+The caller must therefore hand this module the F2 occupancies it already has,
+through the keyword-only node_spans argument (per packet) or
+node_spans_by_pid (per run).  node_process_spans() below folds a timeline sink
+into that mapping.  When the spans are supplied, decision_compute_s is the
+residual uncovered time and node_process_s is a SEPARATE named term:
+
+    e2e == queue + holding + tx + prop + node_process + decision_compute
+
+When they are not supplied this module CANNOT detect F2 (an uncovered
+interval is uncovered either way), so the absence of spans is not itself an
+error -- but a run with node_process_delay_s > 0 whose analyzer was not handed
+its timeline has no valid decision_compute_s reading.  Pinned by
+tests/test_f2_node_cost.py::test_f2_delay_is_not_decision_compute.
 """
 from __future__ import annotations
 
@@ -94,6 +118,25 @@ def _nonneg_int(value, name):
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise IndependentMetricsError(f"{name} must be a non-negative integer")
     return value
+
+
+def _declared_pid(value, name):
+    """Accept an int pid or its JSON-object-key form ("7").
+
+    JSON serialises mapping keys as strings, so a persisted ledger's
+    delivery set arrives as {"1", ...} while the event pids are ints.  A
+    module whose whole purpose is to re-check a PERSISTED run must be able
+    to read that form.  Only the canonical decimal spelling is accepted:
+    "07", "7.0", " 7", True and None all fail loud rather than being
+    silently coerced to a pid that happens to exist.
+    """
+    if isinstance(value, str):
+        if not value.isdigit() or str(int(value)) != value:
+            raise IndependentMetricsError(
+                f"{name} must be a canonical decimal integer string, "
+                f"got {value!r}")
+        value = int(value)
+    return _nonneg_int(value, name)
 
 
 def _positive_int(value, name):
@@ -555,8 +598,79 @@ def _propagation_hops(item):
     return hops
 
 
-def _spans(item, tx_windows, queue_waits, holding_waits, propagation_hops):
-    spans = []
+def _node_span_records(node_spans):
+    """Normalise caller-supplied F2 occupancies into labelled spans.
+
+    Accepts (start, end) pairs (extra tuple members are ignored, so the
+    kernel node_process_start/node_process_end milestone pair folds in
+    without reshaping).  Rejects anything that is not a finite,
+    non-negative-width, non-negative interval: an F2 span is a physical
+    occupancy, so a malformed one must never be silently dropped.
+    """
+    records = []
+    for index, span in enumerate(node_spans):
+        if isinstance(span, (str, bytes)) or not hasattr(span, "__len__") \
+                or len(span) < 2:
+            raise IndependentMetricsError(
+                "each node span must be a (start, end) pair")
+        start, end = span[0], span[1]
+        for name, value in (("start", start), ("end", end)):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) \
+                    or not math.isfinite(value):
+                raise IndependentMetricsError(
+                    "node span " + name + " must be a finite number, got "
+                    + repr(value))
+        if start < 0:
+            raise IndependentMetricsError("node span start must be non-negative")
+        if end < start:
+            raise IndependentMetricsError(
+                "node span end must not precede its start")
+        records.append((float(start), float(end), "node_process",
+                        "node_process:" + str(index)))
+    return sorted(records, key=lambda record: (record[0], record[1]))
+
+
+def node_process_spans(timeline_rows, pid=None):
+    """Fold a kernel timeline sink into per-packet F2 occupancy spans.
+
+    This is the bridge that keeps F2 out of decision_compute_s: the F2 stage
+    is named ONLY on the timeline stream (milestones node_process_start /
+    node_process_end, kernel.py:4297/4300), so an analyzer that recomputes a
+    packet delay from packet_events alone has no way to see it.
+
+    Returns {pid: [(start, end), ...]} when pid is None, or the list for one
+    pid.  An unclosed node_process_start is a hard error: a half-recorded
+    occupancy would silently shrink the F2 term.
+    """
+    pending = {}
+    spans = {}
+    for row in timeline_rows:
+        milestone = row.get("milestone")
+        if milestone == "node_process_start":
+            pending[(row.get("pid"), row.get("sat"), row.get("via"),
+                     row.get("at"))] = row["at"]
+        elif milestone == "node_process_end":
+            key = (row.get("pid"), row.get("sat"), row.get("via"),
+                   row.get("started_at"))
+            if key not in pending:
+                raise IndependentMetricsError(
+                    "node_process_end without its start: " + repr(key))
+            start = pending.pop(key)
+            spans.setdefault(row.get("pid"), []).append(
+                (float(start), float(row["at"])))
+    if pending:
+        raise IndependentMetricsError(
+            "unclosed node_process_start: " + repr(sorted(pending, key=repr)))
+    for values in spans.values():
+        values.sort()
+    if pid is None:
+        return spans
+    return spans.get(pid, [])
+
+
+def _spans(item, tx_windows, queue_waits, holding_waits, propagation_hops,
+           node_spans=()):
+    spans = list(_node_span_records(node_spans))
     for wait in queue_waits:
         spans.append((wait["entered_at"], wait["service_start_at"],
                       "queue_wait", wait["queue_id"]))
@@ -605,14 +719,23 @@ def _uncovered(emitted_at, delivered_at, spans, eps):
 
 
 # ------------------------------------------------------------- public API #2
-def decompose_packet_delay(packet_events, service_windows, pid):
+def decompose_packet_delay(packet_events, service_windows, pid, *,
+                           node_spans=()):
     """Decompose one realized packet delay into named, disjoint phases.
 
-    e2e_s == queue_wait_s + holding_wait_s + tx_s + prop_s + decision_compute_s
-    holds to machine precision for every delivered packet; residual_s is the
-    measured slack.  decision_compute_s is the sum of the uncovered intervals of
-    the packet timeline, i.e. simulated time consumed by a deferred decision
-    that no service window and no propagation interval accounts for.
+    e2e_s == queue_wait_s + holding_wait_s + tx_s + prop_s + node_process_s
+    + decision_compute_s holds to machine precision for every delivered
+    packet; residual_s is the measured slack.  decision_compute_s is the sum
+    of the uncovered intervals of the packet timeline, i.e. simulated time
+    consumed by a deferred decision that no service window, no propagation
+    interval and no supplied F2 occupancy accounts for.
+
+    node_spans is the F2 evidence: an iterable of (start, end) satellite
+    node-processing occupancies for THIS packet, from the kernel timeline
+    sink (see node_process_spans).  It is keyword-only and defaults to empty
+    so the historical call signature keeps working, but a run with
+    execution.node_process_delay_s > 0 MUST supply it or its F2 time is
+    reported as decision_compute_s (see the module docstring).
 
     An undelivered packet keeps its phase durations but reports delivered_at,
     gaps, decision_compute_s, e2e_s and residual_s as None: it has no realized
@@ -622,10 +745,10 @@ def decompose_packet_delay(packet_events, service_windows, pid):
     _, by_pid = _validate_service_windows(
         _mapping_list(service_windows, "service_windows"), records)
     pid = _nonneg_int(pid, "pid")
-    return _decompose(records, by_pid, pid)
+    return _decompose(records, by_pid, pid, node_spans)
 
 
-def _decompose(records, by_pid, pid):
+def _decompose(records, by_pid, pid, node_spans=()):
     item = records.get(pid)
     if item is None or item["emitted_at"] is None:
         raise IndependentMetricsError(f"packet {pid} was never emitted")
@@ -639,7 +762,10 @@ def _decompose(records, by_pid, pid):
     tx_s = math.fsum(w["end"] - w["start"] for w in tx_windows)
     prop_s = math.fsum(h["seconds"] for h in propagation_hops)
     spans = _spans(item, tx_windows, queue_waits, holding_waits,
-                   propagation_hops)
+                   propagation_hops, node_spans)
+    node_records = _node_span_records(node_spans)
+    node_process_s = math.fsum(end - start
+                               for start, end, _l, _k in node_records)
     emitted_at = item["emitted_at"]
     delivered_at = item["delivered_at"]
     result = {
@@ -652,6 +778,7 @@ def _decompose(records, by_pid, pid):
         "holding_wait_s": holding_wait_s,
         "tx_s": tx_s,
         "prop_s": prop_s,
+        "node_process_s": node_process_s,
         "queue_waits": queue_waits,
         "holding_waits": holding_waits,
         "propagation_hops": propagation_hops,
@@ -671,7 +798,7 @@ def _decompose(records, by_pid, pid):
     decision_compute_s = math.fsum(gap[2] for gap in gaps)
     e2e_s = delivered_at - emitted_at
     residual_s = e2e_s - (queue_wait_s + holding_wait_s + tx_s + prop_s
-                          + decision_compute_s)
+                          + node_process_s + decision_compute_s)
     result.update({
         "delivered": True,
         "e2e_s": e2e_s,
@@ -689,12 +816,22 @@ def _decompose(records, by_pid, pid):
 # ------------------------------------------------------------- public API #3
 def verify_delay_decomposition(packet_events, service_windows,
                                delivered_pids=None, *,
-                               tolerance_s=DEFAULT_TOLERANCE_S):
+                               tolerance_s=DEFAULT_TOLERANCE_S,
+                               node_spans_by_pid=None):
     """Close every delivered packet decomposition against its own e2e delay.
 
     delivered_pids may be an explicit collection of packet ids or the kernel
     result mapping (which supplies deliveries and, when the two stream
     arguments are None, packet_events and link_service_windows).
+
+    node_spans_by_pid is the F2 evidence for the whole run: a mapping
+    {pid: [(start, end), ...]} as returned by node_process_spans(timeline).
+    Supplying it makes node_process_s a named term of the closure and keeps
+    satellite node processing time OUT of decision_compute_s.  Omitting it
+    leaves the historical identity intact but, for a run with
+    execution.node_process_delay_s > 0, reports F2 time as decision
+    computation time -- the report says so through
+    node_process_spans_supplied.
 
     Returns a report whose ok is False exactly when a closure or double-charge
     violation was found; structural violations (a tampered capacity_bits, an
@@ -713,16 +850,28 @@ def verify_delay_decomposition(packet_events, service_windows,
         if service_windows is None:
             service_windows = result.get("link_service_windows")
         if "deliveries" in result:
-            declared = set(result["deliveries"])
+            # A JSON round-trip turns mapping keys into strings, so the
+            # PERSISTED ledger (ledgers.json) presents its delivery set as
+            # {"1", ...} while the event pids are ints.  Without coercion
+            # the declared set matches no observed packet at all and every
+            # packet is reported as "declared delivered but has no
+            # delivered event" -- the second implementation could not read
+            # the very artifact format it exists to re-check.  Coerce
+            # through the same validator used for explicit pid
+            # collections, so a non-numeric key still fails loud instead of
+            # silently matching nothing.
+            declared = {_declared_pid(pid, "delivered pid")
+                        for pid in result["deliveries"]}
         elif "delivered_pids" in result:
-            declared = set(result["delivered_pids"])
+            declared = {_declared_pid(pid, "delivered pid")
+                        for pid in result["delivered_pids"]}
         else:
             raise IndependentMetricsError(
                 "result mapping has neither deliveries nor delivered_pids")
     elif delivered_pids is None:
         declared = None
     else:
-        declared = {_nonneg_int(pid, "delivered pid") for pid in delivered_pids}
+        declared = {_declared_pid(pid, "delivered pid") for pid in delivered_pids}
 
     records = _scan_packet_events(_mapping_list(packet_events, "packet_events"))
     _, by_pid = _validate_service_windows(
@@ -740,27 +889,37 @@ def verify_delay_decomposition(packet_events, service_windows,
         errors.append(f"packet {pid} has a delivered event but is not in the "
                       f"declared delivered set")
 
+    if node_spans_by_pid is not None and not isinstance(
+            node_spans_by_pid, dict):
+        raise IndependentMetricsError(
+            "node_spans_by_pid must be a {pid: spans} mapping")
+
     packets = {}
     max_abs_residual = 0.0
     total_decision_compute = 0.0
+    total_node_process = 0.0
     for pid in sorted(declared & observed):
-        decomposition = _decompose(records, by_pid, pid)
+        node_spans = (() if node_spans_by_pid is None
+                      else node_spans_by_pid.get(pid, ()))
+        decomposition = _decompose(records, by_pid, pid, node_spans)
         packets[str(pid)] = decomposition
         residual = decomposition["residual_s"]
         max_abs_residual = max(max_abs_residual, abs(residual))
         total_decision_compute += decomposition["decision_compute_s"]
+        total_node_process += decomposition["node_process_s"]
         e2e = decomposition["e2e_s"]
         queue = decomposition["queue_wait_s"]
         holding = decomposition["holding_wait_s"]
         tx = decomposition["tx_s"]
         prop = decomposition["prop_s"]
+        node = decomposition["node_process_s"]
         decision = decomposition["decision_compute_s"]
         if abs(residual) > tolerance_s:
             errors.append(
                 f"packet {pid}: e2e {e2e!r} is not queue {queue!r} + holding "
-                f"{holding!r} + tx {tx!r} + prop {prop!r} + decision_compute "
-                f"{decision!r}; residual {residual!r} exceeds the tolerance "
-                f"{tolerance_s!r}")
+                f"{holding!r} + tx {tx!r} + prop {prop!r} + node_process "
+                f"{node!r} + decision_compute {decision!r}; residual "
+                f"{residual!r} exceeds the tolerance {tolerance_s!r}")
         for overlap in decomposition["overlaps"]:
             previous = overlap["previous"]
             following = overlap["next"]
@@ -777,6 +936,8 @@ def verify_delay_decomposition(packet_events, service_windows,
         "packets": packets,
         "max_abs_residual_s": max_abs_residual,
         "total_decision_compute_s": total_decision_compute,
+        "total_node_process_s": total_node_process,
+        "node_process_spans_supplied": node_spans_by_pid is not None,
         "errors": errors,
     }
 

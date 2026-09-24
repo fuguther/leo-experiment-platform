@@ -193,3 +193,89 @@ def test_fingerprint_separates_different_branch_points():
     assert len(ids) >= 2, "fixture needs two decisions on satellite 0"
     prints = {counterfactual.branch_fingerprint(sink, i) for i in ids}
     assert len(prints) == len(ids), "distinct branch points must differ"
+
+
+# ------------------------------------------------- audit coverage boundary
+
+def test_branch_fingerprint_covers_the_decision_log_and_nothing_else():
+    """Platform-audit boundary for the counterfactual pairing proof.
+
+    The proof is a fingerprint over DECISION ROWS: every decision committed
+    strictly before the target (full row), plus the target own pre-commit
+    fields.  It is NOT a hash of simulator state.  There is no packet /
+    queue / link / RNG / routing state hash anywhere in this platform --
+    grep -rn "state_hash" CODE/ returns nothing -- so the strongest claim
+    two paired runs support is:
+
+        the two runs reached the same branch point AS WITNESSED BY THE
+        DECISION LOG,
+
+    and never "full state identical".  This test pins the covered set so
+    the claim cannot be quietly inflated later.
+    """
+    rows = _rows()
+    sink: list = []
+    kernel.run_simulation(_resolved(), rows, geometry=_geo(),
+                          decision_sink=sink)
+    # Pick a branching decision that is NOT the first appended row, so the
+    # "committed strictly before" half of the proof is non-empty.
+    branches = [i for i, r in enumerate(sink)
+                if r["sat"] == 0 and len(r["candidates"]) > 1]
+    assert branches, "fixture needs a branching decision on satellite 0"
+    index = branches[-1]
+    assert index > 0, "fixture needs a covered row before the target"
+    target = sink[index]
+    tid = target["decision_id"]
+    base = counterfactual.branch_fingerprint(sink, tid)
+
+    def mutated(position, key, value):
+        copy = [dict(r) for r in sink]
+        copy[position][key] = value
+        return copy
+
+    # (a) the CHOSEN action is deliberately OUTSIDE the proof: the branch
+    # point is what must be identical, and the action is what differs.
+    assert "chosen" not in counterfactual.PRECOMMIT_FIELDS
+    assert counterfactual.branch_fingerprint(
+        mutated(index, "chosen", "__forced__"), tid) == base
+
+    # (b) every declared pre-commit field of the TARGET is covered.
+    # decision_id is the lookup key itself, so mutating it makes the
+    # target unfindable rather than merely changing the digest; it is
+    # asserted through that lookup instead.
+    assert "decision_id" in counterfactual.PRECOMMIT_FIELDS
+    with pytest.raises(counterfactual.CounterfactualError):
+        counterfactual.branch_fingerprint(
+            mutated(index, "decision_id", 10 ** 9), tid)
+    for field in counterfactual.PRECOMMIT_FIELDS:
+        if field == "decision_id":
+            continue
+        assert counterfactual.branch_fingerprint(
+            mutated(index, field, "__mutated__"), tid) != base, \
+            f"{field} is declared pre-commit but is not covered by the proof"
+
+    # (c) an EARLIER APPENDED row is covered in FULL, not only via its
+    # pre-commit fields -- that is what makes "arrived the same way"
+    # checkable.  Coverage is by APPEND ORDER, not by decision_id:
+    # decision ids are allocated at decision start, so a larger id can be
+    # appended before the target and a smaller one after it.  A row
+    # appended after the target is deliberately NOT covered, and this is
+    # asserted rather than assumed.
+    assert counterfactual.branch_fingerprint(
+        mutated(index - 1, "chosen", "__mutated__"), tid) != base
+    after = next((i for i in range(index + 1, len(sink))
+                  if sink[i]["decision_id"] != tid), None)
+    if after is not None:
+        assert counterfactual.branch_fingerprint(
+            mutated(after, "t", 1.0), tid) == base, \
+            "rows appended after the target are not part of the proof"
+
+    # (d) the boundary is explicit: no simulator-state object is covered
+    covered = set(counterfactual.PRECOMMIT_FIELDS)
+    assert covered == {
+        "t", "t_decision_start", "decision_id", "state_version",
+        "pid", "src", "dst", "sat", "kind", "policy",
+        "candidates", "own_queue_bits", "obs", "info_audit"}
+    for absent in ("rng_state", "link_state", "queue_state",
+                   "topology_hash", "packet_state"):
+        assert absent not in covered

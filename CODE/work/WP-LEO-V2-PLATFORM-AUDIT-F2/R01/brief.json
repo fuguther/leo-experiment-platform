@@ -1,0 +1,72 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-PLATFORM-AUDIT-F2",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:platform-audit",
+  "producer_session_id": "P-platform-audit-r01",
+  "objective": "Produce one minimal, review-gated end-to-end experiment that proves the formal chain (compile -> three independent reviews -> decision -> finalization -> authorization -> run -> receipt -> analysis) actually closes on this platform, and that simultaneously serves as the F2 single-factor evidence: with PHY rate, routing policy, trace, topology and seed shared, execution.node_process_delay_s (0.0 vs 0.05) must move only the satellite node-processing stage.",
+  "context": [
+    "This is an AUDIT work package, not a research contribution. It adds no algorithm, changes no simulator behaviour, and makes no performance claim.",
+    "It exists because the platform audit found the F2 mechanism implemented but not reachable from the official entry point. Commit 03aecfb added 'run --timeline-log' and the entry-point refusal; commit 8e69d79 made the independent recomputation separate node_process_s from decision_compute_s. This experiment is the end-to-end evidence that the repaired chain closes.",
+    "Design: strict 2-cell paired single factor execution.node_process_delay_s = 0.0 (control) vs 0.05 (f2). common_config pins links.isl_rate_mbps=10.0, routing.policy=hop, demand csv trace CODE/data/traffic/t1_step5_micro_ab.csv, scenario seed 7 / 8 satellites / 1 plane, execution.available_capacity_interval_s=0.1. The compiler enforces that the pair shares trace identity and controlled_signature.",
+    "execution.available_capacity_interval_s is deliberately non-null: metrics.py:334-340 falls back to the service-window denominator when no availability ledger exists, which makes utilization identically 1.0 and makes v2_analysis.py:337 flag every served ISL link as saturated. A run whose utilisation is reported must be sampled.",
+    "DECLARED BLOCKING LIMITATION the reviewers MUST assess and must not paper over: the 'f2' arm cannot be executed by the canonical remote runner today. F2 hard-requires a timeline sink (kernel.py:1145-1152); remote_job.py:304-309 builds the child command from exactly --config --out --authorization --launch-nonce --expect-run-id and never passes a timeline stream; run-remote.sh:44 rejects '--' as 'arbitrary commands are forbidden by the formal runner'. There is therefore no passthrough. The consequence is stated in the request claim_boundary and in R01/PROCEDURE.md section 4a rather than hidden.",
+    "Because of that limitation this batch executes both arms through the LOCAL CLI with the formal binding flags attached (PROCEDURE.md 4b). That path does exercise verify_authorization_for_leo_sim_v2_config and does write formal_run.json on natural_end, but it is NOT the canonical remote route and carries no VM provenance, and no artifact here may be cited as VM evidence.",
+    "The single-factor claim is bounded to this fixture. It is a structural/descriptive check, not an effect size, and it says nothing about any other scenario, load or topology.",
+    "REVIEWER PROVENANCE: the three review roles were executed by three separate cold-start agent sessions distinct from the producing session, at the reviewer ids recorded in each receipt. This satisfies the platform's existing practice (R06 used distinct GLM and Muse sessions); it is NOT human review and must not be described as independent institutional review."
+  ],
+  "allowed_inputs": [
+    "EXPERIMENTS/request-sources/EXP-20260924-PLATFORM-AUDIT-F2-R01.json",
+    "EXPERIMENTS/EXP-20260924-PLATFORM-AUDIT-F2-R01/",
+    "CODE/work/WP-LEO-V2-PLATFORM-AUDIT-F2/R01/PROCEDURE.md",
+    "CODE/data/traffic/t1_step5_micro_ab.csv",
+    "ANALYSIS/CURRENT-EVENT-TIMELINE.md",
+    "ANALYSIS/TRAFFIC-MODEL-SPEC.md",
+    "CODE/leo_sim/kernel.py",
+    "CODE/leo_sim/metrics_independent.py",
+    "CODE/leo_sim/__main__.py",
+    "CODE/leo_sim/matrix.py",
+    "CODE/scripts/remote/run-remote.sh",
+    "CODE/scripts/remote/remote_job.py",
+    "CODE/experiment_platform/authorize_experiment.py",
+    "CODE/leo_sim/tests/test_f2_node_cost.py",
+    "CODE/leo_sim/tests/test_cli.py"
+  ],
+  "excluded_inputs": [
+    "any post-hoc change of thresholds, acceptance values or analysis contracts after seeing results",
+    "learning or checkpoint artefacts (no learning arm exists in this batch)",
+    "results from any other experiment batch"
+  ],
+  "deliverables": [
+    "a compiled matrix with errors=[] and execution_authorized=false",
+    "authorization.json with status=AUTHORIZED covering exactly the two compiled cells",
+    "a natural-end receipt plus formal_run.json for both arms",
+    "the f2 arm timeline stream with node_process_start/node_process_end milestones, plus its sha256-bound sidecar manifest",
+    "independent per-packet delay decomposition for both arms showing node_process_s and decision_compute_s as separate named terms",
+    "a written statement of which parts of the chain were and were not exercised (remote VM leg NOT exercised)"
+  ],
+  "cannot_claim": [
+    "any algorithmic superiority, information value, learning value or new-mechanism contribution",
+    "an effect-size, performance curve, threshold or causal claim about node processing delay",
+    "real subscriber traffic or a calibrated demand model",
+    "VM provenance for any artifact in this batch, or that the canonical remote runner executed the f2 arm",
+    "that the review gate was satisfied by human or institutional review"
+  ],
+  "acceptance": [
+    "compile-report.json reports status=COMPILED_REVIEW_REQUIRED with errors=[] and execution_authorized=false",
+    "all three review receipts are PASS with no blocking findings, and each binds the artifact hashes verbatim",
+    "finalize_decision.py emits agent-work-finalization/v1 and authorize_experiment.py emits status=AUTHORIZED",
+    "every executed run reaches natural_end=true with conservation_ok=true and its receipt verifies",
+    "the f2 arm's timeline sink contains an equal number of node_process_start and node_process_end milestones and no unclosed occupancy",
+    "the independent decomposition reports decision_compute_s identical between arms and node_process_s differing by exactly the recorded occupancy",
+    "each PROCEDURE.md section-6 negative control was executed and failed loudly as specified; an untriggered control is reported as UNPROVEN and not counted"
+  ],
+  "review_roles": [
+    "cold_start",
+    "satellite_drl",
+    "adversarial"
+  ],
+  "cost_tier": "standard",
+  "status": "REVIEW"
+}

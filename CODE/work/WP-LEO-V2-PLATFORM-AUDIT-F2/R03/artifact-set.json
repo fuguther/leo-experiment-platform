@@ -1,0 +1,20 @@
+{
+  "artifacts": {
+    "CODE/leo_sim/metrics_independent.py": "b40961fbc5acd02a6a4507e65c1b956c0ce0ff41c961b150f304b3fa46852430",
+    "CODE/work/WP-LEO-V2-PLATFORM-AUDIT-F2/R03/PROCEDURE.md": "ef5a41691d7fa61248f6c7f6dd8c23211b17cddcfc1a87bc6445012d754a274d",
+    "CODE/work/WP-LEO-V2-PLATFORM-AUDIT-F2/R03/attribute_f2.py": "3fe47991a34023ab67ac319941fa93b47d27cf499d02ce4271a5969da82bd391",
+    "EXPERIMENTS/EXP-20260924-PLATFORM-AUDIT-F2-R03/RUNBOOK.md": "b76651843bed358dff1808be2e3ddf88b3578bfcccf1ebe6c6e6b71ff31434e2",
+    "EXPERIMENTS/EXP-20260924-PLATFORM-AUDIT-F2-R03/analysis-request.json": "3e5ee25327d7b0ee90df87286b592afb94e0bb4cdd8b0a9bc4c7da50060429ad",
+    "EXPERIMENTS/EXP-20260924-PLATFORM-AUDIT-F2-R03/compile-report.json": "31778c5c0f3fd029c4fa86dc6ef2c8d8f400f4baba8337cc8a0f2fd1a26e3f58",
+    "EXPERIMENTS/EXP-20260924-PLATFORM-AUDIT-F2-R03/request.json": "e3fe88e8179f5ce31bfc09ff4c96bc06c2293fc05ba38b053413cabd695fe44d",
+    "EXPERIMENTS/EXP-20260924-PLATFORM-AUDIT-F2-R03/resolved/EXP-20260924-PLATFORM-AUDIT-F2-R03-control-s7.leo-sim.yaml": "872d6282d528b862fe03f37e3c3dc72e8f3afba2397803b55bed766066f6203b",
+    "EXPERIMENTS/EXP-20260924-PLATFORM-AUDIT-F2-R03/resolved/EXP-20260924-PLATFORM-AUDIT-F2-R03-f2-s7.leo-sim.yaml": "e33d19c7cb73cb859ad36a645ade26a3674333b228929acd1e15e088ef4a1d2d",
+    "EXPERIMENTS/EXP-20260924-PLATFORM-AUDIT-F2-R03/run-manifest.json": "00d02e919ad7b2ef5525871b6e83bbf01df25438c3b6f1fab61ce00a296d3e35",
+    "EXPERIMENTS/request-sources/EXP-20260924-PLATFORM-AUDIT-F2-R03.json": "480bb5565a1219439c152c9eb7db39b8f489ec27fe247f6ae64787a67e5ef11f"
+  },
+  "experiment_id": "EXP-20260924-PLATFORM-AUDIT-F2-R03",
+  "note": "revision 4: round-3 findings fixed. R03/reviews-rev3/ holds the revision-3 receipts, which bind the PREVIOUS bytes and are preserved as revision-3 evidence.",
+  "revision": 4,
+  "schema": "leo-sim-audit-artifact-set/v1",
+  "work_id": "WP-LEO-V2-PLATFORM-AUDIT-F2"
+}

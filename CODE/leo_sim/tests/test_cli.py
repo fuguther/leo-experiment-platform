@@ -26,6 +26,102 @@ def _write_cfg(tmp_path, extra=""):
     return str(p)
 
 
+F2_EXEC = "execution:\n  node_process_delay_s: 0.01\n"
+
+
+def test_f2_runs_through_the_official_cli(tmp_path, capsys):
+    """Audit Q1: F2 must be reachable from the official entry point.
+
+    execution.node_process_delay_s > 0 hard-requires a timeline sink
+    (kernel.py:1145), so before --timeline-log existed F2 could only be
+    exercised by a hand-written kernel.Kernel(..., timeline_sink=[...])
+    call -- i.e. it was implemented but not experimentally usable.  This
+    test pins the closed chain: one CLI invocation produces the receipt,
+    the timeline stream and the metrics, and the receipt still verifies.
+    """
+    cfg = _write_cfg(tmp_path, extra=F2_EXEC)
+    out_dir = str(tmp_path / "out")
+    timeline = tmp_path / "timeline.jsonl"
+    rc = main(["run", "--config", cfg, "--out", out_dir,
+               "--timeline-log", str(timeline)])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0, out
+    assert out["natural_end"] is True and out["conservation_ok"] is True
+    assert out["timeline_log"] == str(timeline.resolve())
+
+    # 1. the receipt exists and self-verifies
+    assert (tmp_path / "out" / "receipt.json").is_file()
+    assert main(["receipt", "verify", out_dir]) == 0, capsys.readouterr().out
+    capsys.readouterr()
+
+    # 2. the timeline stream exists, is hashed, and carries the F2 stage
+    rows = [json.loads(line) for line in timeline.read_text().splitlines()]
+    milestones = [r["milestone"] for r in rows]
+    assert "node_process_start" in milestones
+    assert milestones.count("node_process_start") == \
+        milestones.count("node_process_end") > 0
+    assert "satellite_ingress" in milestones
+    assert "service_finish" in milestones
+
+    manifest = json.loads(
+        (tmp_path / "timeline.jsonl.manifest.json").read_text())
+    assert manifest["schema"] == "leo-sim-timeline-log/v1"
+    assert manifest["row_count"] == len(rows)
+    assert manifest["log_sha256"] == hashlib.sha256(
+        timeline.read_bytes()).hexdigest()
+    assert manifest["node_process_delay_s"] == pytest.approx(0.01)
+
+    # 3. the sidecar is bound to THIS run: same config/trace/code identity
+    #    and the sha256 of the very receipt it belongs to.
+    assert manifest["config_sha256"] == out["config_sha256"]
+    assert manifest["trace_sha256"] == out["trace_sha256"]
+    assert manifest["code_sha256"] == out["code_sha256"]
+    assert manifest["receipt_sha256"] == hashlib.sha256(
+        (tmp_path / "out" / "receipt.json").read_bytes()).hexdigest()
+
+
+def test_node_process_delay_without_a_timeline_log_is_refused(tmp_path, capsys):
+    """Fail loud at the entry point: node time that no stream can attribute
+    must never be added silently (AGENTS.md hard fact 4).  The refusal names
+    the one remediation the CLI accepts instead of leaking a KernelError.
+    """
+    cfg = _write_cfg(tmp_path, extra=F2_EXEC)
+    rc = main(["run", "--config", cfg, "--out", str(tmp_path / "out")])
+    printed = capsys.readouterr().out
+    assert rc == 3
+    assert "requires --timeline-log" in printed
+    assert not (tmp_path / "out" / "receipt.json").exists()
+
+
+def test_timeline_log_rejects_an_existing_target(tmp_path, capsys):
+    cfg = _write_cfg(tmp_path)
+    target = tmp_path / "taken.jsonl"
+    target.write_text("sentinel\n", encoding="utf-8")
+    rc = main(["run", "--config", cfg, "--out", str(tmp_path / "out"),
+               "--timeline-log", str(target)])
+    assert rc == 3
+    assert "timeline log" in capsys.readouterr().out
+    assert target.read_text(encoding="utf-8") == "sentinel\n"
+    assert not (tmp_path / "out" / "receipt.json").exists()
+
+
+def test_the_timeline_log_is_output_only(tmp_path, capsys):
+    """A diagnostic stream must not perturb the simulation it observes.
+    Same config, same trace, same seed: the artifacts must be identical
+    with and without the timeline channel."""
+    cfg = _write_cfg(tmp_path)
+    plain = tmp_path / "plain"
+    logged = tmp_path / "logged"
+    assert main(["run", "--config", cfg, "--out", str(plain)]) == 0
+    capsys.readouterr()
+    assert main(["run", "--config", cfg, "--out", str(logged),
+                 "--timeline-log", str(tmp_path / "tl.jsonl")]) == 0
+    capsys.readouterr()
+    assert (plain / "ledgers.json").read_bytes() == \
+        (logged / "ledgers.json").read_bytes()
+    assert (plain / "receipt.json").read_bytes() == \
+        (logged / "receipt.json").read_bytes()
+
 def test_config_validate_ok(capsys):
     rc = main(["config", "validate", SMOKE])
     out = json.loads(capsys.readouterr().out)

@@ -499,3 +499,156 @@ def test_the_node_cost_adds_no_mechanism_counter_and_no_new_event_kind():
     assert kinds == {e["kind"] for e in base["packet_events"]}
     # summarize is the closed-whitelist enforcer; it must accept the streams
     metrics.summarize(costed["packet_events"], costed["link_service_windows"])
+
+
+# --------------------- F2 vs decision computation (audit Q2, blocking issue)
+
+def test_f2_delay_is_not_decision_compute():
+    """F2 is satellite node processing, NOT decision computation.
+
+    decision_compute_s is DEFINED as the uncovered time of the packet
+    timeline (metrics_independent module docstring), and the F2 occupancy IS
+    exactly that uncovered set (test_the_uncovered_set_is_exactly_the_node_
+    stage above asserts it).  Read without the timeline, the second
+    implementation therefore publishes satellite receive/process/schedule
+    time as decision computation time.  This test pins both halves:
+
+    (a) the unlabelled reading is wrong by exactly the F2 total -- that is
+        the trap, and it is asserted rather than assumed;
+    (b) handing over the timeline spans separates the terms, and the
+        decision-compute reading becomes INDEPENDENT of the node cost.
+    """
+    if _indep is None:
+        pytest.skip("metrics_independent not on this base (PR #214 pending)")
+    f2 = 0.05
+    res, timeline = _run(f2, n_packets=1)
+    spans = _indep.node_process_spans(timeline)
+    node_total = math.fsum(end - start for start, end in spans[1])
+    assert node_total == pytest.approx(2 * f2, abs=DUR_TOL)
+
+    def decompose(result, node_spans=()):
+        return _indep.decompose_packet_delay(
+            result["packet_events"], result["link_service_windows"], 1,
+            node_spans=node_spans)
+
+    # (a) no compute delay at all, so the TRUE decision-compute reading is 0.
+    blind = decompose(res)
+    assert blind["decision_compute_s"] == pytest.approx(node_total,
+                                                         abs=CLOSURE_TOL), \
+        "without the timeline the F2 occupancy is indistinguishable from " \
+        "decision computation time -- this is the documented trap"
+
+    # (b) labelled: the two mechanisms are separate, named terms.
+    labelled = decompose(res, spans[1])
+    assert labelled["node_process_s"] == pytest.approx(node_total,
+                                                       abs=CLOSURE_TOL)
+    assert labelled["decision_compute_s"] == pytest.approx(0.0,
+                                                           abs=CLOSURE_TOL)
+    assert labelled["gaps"] == [], "the F2 span must cover the gap"
+    assert labelled["overlaps"] == []
+    assert abs(labelled["residual_s"]) <= CLOSURE_TOL
+
+    # (c) the run-level report closes WITH the node term and keeps the totals
+    # distinct.
+    report = _indep.verify_delay_decomposition(
+        res["packet_events"], res["link_service_windows"], res,
+        node_spans_by_pid=spans)
+    assert report["ok"], report["errors"]
+    assert report["node_process_spans_supplied"] is True
+    assert report["total_node_process_s"] == pytest.approx(node_total,
+                                                           abs=CLOSURE_TOL)
+    assert report["total_decision_compute_s"] == pytest.approx(0.0,
+                                                               abs=CLOSURE_TOL)
+
+    # (d) the discriminating case: BOTH stages non-zero.  The labelled
+    # decision-compute reading must equal the reading of the SAME run with
+    # F2 switched off -- i.e. adding node processing must not move it at all.
+    pinned = {"execution": {"compute_delay_s": 0.02}}
+    costed_res, costed_tl = _run(f2, overrides=pinned)
+    free_res, _free_tl = _run(0.0, overrides=pinned)
+    costed_spans = _indep.node_process_spans(costed_tl)
+    truth = _indep.decompose_packet_delay(
+        free_res["packet_events"], free_res["link_service_windows"], 1)
+    assert truth["decision_compute_s"] > 0.0, \
+        "the control must actually consume decision time"
+    costed = decompose(costed_res, costed_spans[1])
+    assert costed["decision_compute_s"] == pytest.approx(
+        truth["decision_compute_s"], abs=CLOSURE_TOL)
+    assert costed["node_process_s"] == pytest.approx(2 * f2, abs=DUR_TOL)
+    assert costed["decision_compute_s"] != pytest.approx(
+        costed["node_process_s"], abs=CLOSURE_TOL), \
+        "F2 and decision compute must be different numbers"
+    leaked = decompose(costed_res)
+    assert leaked["decision_compute_s"] == pytest.approx(
+        costed["decision_compute_s"] + costed["node_process_s"],
+        abs=CLOSURE_TOL)
+
+
+def test_f2_single_factor_sweep_moves_only_the_node_term():
+    """Single-factor legitimacy: with PHY, routing, traffic, topology, seed
+    and the decision-compute delay all pinned, ONLY
+    execution.node_process_delay_s varies and ONLY the node term moves.
+
+    This is the Q3 control: decision_compute_s must be invariant, node_process_s
+    must change by exactly the recorded occupancy, and every other phase
+    (queue / holding / tx / propagation) plus the delivery path must be
+    untouched.  Without this the F2 factor would be confounded with either the
+    PHY bandwidth (F3) or the decision cost.
+    """
+    if _indep is None:
+        pytest.skip("metrics_independent not on this base (PR #214 pending)")
+
+    # Pinned: same rows (traffic), same StaticGeometry (topology), same seed,
+    # same ISL rate (F3), same routing policy, same decision-compute delay.
+    PINNED = {"links": {"isl_rate_mbps": 400.0},
+              "execution": {"compute_delay_s": 0.02}}
+    rows = [row(i, 0.5 * i, A, B) for i in range(1, 4)]
+    readings = {}
+    paths = {}
+    for f2 in (0.0, 0.05, 0.1):
+        res, timeline = _run(f2, rows=rows, overrides=PINNED)
+        spans = _indep.node_process_spans(timeline)
+        report = _indep.verify_delay_decomposition(
+            res["packet_events"], res["link_service_windows"], res,
+            node_spans_by_pid=spans)
+        assert report["ok"], report["errors"]
+        readings[f2] = {pid: report["packets"][str(pid)]
+                        for pid in sorted(res["deliveries"])}
+        paths[f2] = [res["deliveries"][pid]["path"]
+                     for pid in sorted(res["deliveries"])]
+
+    # the vehicle is intact: every packet still delivered over the same path
+    assert paths[0.0] == paths[0.05] == paths[0.1] == [[0, 1]] * 3
+    assert all(res_f2 == 0.0 or True for res_f2 in readings)
+
+    # 1. decision_compute_s is INVARIANT under the F2 sweep
+    for pid in readings[0.0]:
+        base = readings[0.0][pid]["decision_compute_s"]
+        assert base > 0.0, "the pinned fixture must consume decision time"
+        for f2 in (0.05, 0.1):
+            assert readings[f2][pid]["decision_compute_s"] == pytest.approx(
+                base, abs=CLOSURE_TOL), \
+                "F2 moved the decision-compute reading: the factor is confounded"
+
+    # 2. node_process_s changes by exactly the recorded occupancy:
+    #    3 packets x 2 satellite visits x f2
+    for f2 in (0.0, 0.05, 0.1):
+        total = math.fsum(p["node_process_s"] for p in readings[f2].values())
+        assert total == pytest.approx(6 * f2, abs=CLOSURE_TOL)
+
+    # 3. every other phase is untouched, per packet.  e2e_s is deliberately
+    # NOT in this list: it must grow by exactly the node cost (point 4).
+    for term in ("queue_wait_s", "holding_wait_s", "tx_s", "prop_s"):
+        for pid in readings[0.0]:
+            base = readings[0.0][pid][term]
+            for f2 in (0.05, 0.1):
+                assert readings[f2][pid][term] == pytest.approx(
+                    base, abs=CLOSURE_TOL), \
+                    f"{term} moved with F2 (packet {pid}, f2={f2})"
+
+    # 4. the e2e increase is exactly the node increase (contention-free here)
+    for pid in readings[0.0]:
+        grew = (readings[0.1][pid]["e2e_s"]
+                - readings[0.0][pid]["e2e_s"])
+        node = readings[0.1][pid]["node_process_s"]
+        assert grew == pytest.approx(node, abs=CLOSURE_TOL)
