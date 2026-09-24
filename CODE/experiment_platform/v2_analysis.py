@@ -79,6 +79,8 @@ ANALYZER_FILES = (
     "CODE/experiment_platform/isl_pressure.py",
     "CODE/experiment_platform/isl_pressure_decision.py",
     "CODE/leo_sim/coverage.py",
+    "CODE/leo_sim/counterfactual.py",
+    "CODE/leo_sim/decision_ledger.py",
     "CODE/leo_sim/metrics.py",
     "CODE/leo_sim/receipt.py",
     "CODE/leo_sim/scene_check.py",
