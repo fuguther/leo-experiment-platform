@@ -131,7 +131,7 @@ python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests \
 
 | # | 现象 | 为什么**不是**缺陷 |
 | --- | --- | --- |
-| N1 | formal run 拒绝 `--decision-log`（`__main__.py:332-335`） | 逐跳决策快照是**诊断探针**，附加到正式 run 会引入非契约内容。已显式 fail-loud 而非静默忽略 |
+| N1 | ~~formal run 拒绝 `--decision-log`（`__main__.py:332-335`）~~ **【2026-09-24 起不再成立】** | 当时成立的前提是决策流**没有行键契约**。现在 `decision_ledger.DECISION_ROW_KEYS`（19 键，双向 fail loud）已落地，正式运行可附 `--decision-log`；两条流齐备时回执升为 `leo-sim-receipt/v6`，其流身份与 `fold_decision_ledger` 的 source 哈希闭合。**N2 / N3 不受影响。** 证据见 `CODE/work/WP-LEO-V2-T1-TRUST-CHAIN-V6/` |
 | N2 | `node_process_delay_s>0` 且无 timeline → `KernelError`（`kernel.py:1145-1152`） | 这正是 AGENTS.md 硬事实 4 要求的 fail-loud：不可归因的节点时间**不得**被静默计入 |
 | N3 | `decision_compute_s` 用「未覆盖区间之和」定义 | 定义本身合理（模拟计算占用时间）。缺陷**不在定义**，而在 F2 的占用也是未覆盖区间却未被命名——已由 `node_spans` 修复（`8e69d79`） |
 | N4 | 缺省 `demand.mode = "uniform"`（`config.py:278`） | 有文档的默认值，且计入 resolved config 哈希；属清单风险而非静默回退 |

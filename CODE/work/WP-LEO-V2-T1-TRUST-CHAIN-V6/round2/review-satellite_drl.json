@@ -1,0 +1,135 @@
+{
+ "reviewed_sha": "4d5e28b2bd2286397be67b9a4eecd4c81a5ae9a3",
+ "criteria_sha256": "ac14ea4c607f5ba020ba3c4cf7d3a75b89818fb38094e8f76a8dfec41de56301",
+ "reviewer_id": "satellite_drl",
+ "round": 2,
+ "criteria_results": [
+  {
+   "id": "C1",
+   "result": "PASS",
+   "command": "# 1) 在被审 SHA 上现场生成 V5 回执（无 --decision-log/--timeline-log）并验证\ncd /tmp/leo-r2/head && python3 /tmp/leo-r2/legacy_samples.py /tmp/leo-r2/head head\n#   （内部：python3 -m CODE.leo_sim run --config CODE/leo_sim/profiles/smoke.yaml --out <base>/<schema>/run; 再 receipt verify）\n# 2) 父提交上同样的现场生成与验证\ncd /tmp/leo-r2/head && python3 /tmp/leo-r2/legacy_samples.py /tmp/leo-r2/parent parent\n# 3) 跨检出验证对照（说明该 check 必须“各检出各自现场生成”）\ncd /tmp/leo-r2/head && python3 -m CODE.leo_sim receipt verify /private/tmp/leo-r2/samples/parent/v5/run\n# 4) 把 local==runtime 的 code-sha 门禁单独摘掉后，用两个检出的 verify 逻辑跑同一批父提交样本\npython3 - <<'PY' … receipt._verify_receipt_dir_artifacts_unbound(sample) for ck in (parent, head) … PY",
+   "output": "v5 : exit 0 {\"status\": \"verified\", \"dir\": \"<BASE>/v5/run\"}   28 keys\nv4 : exit 0 {\"status\": \"verified\", \"dir\": \"<BASE>/v4/run\"}   26 keys\nv3 : exit 2 {\"status\": \"FAILED\", \"errors\": [\"congestion_metrics schema != receipt contract\"]}   25 keys\ndiff verdicts-head.json verdicts-parent.json -> 完全一致（零差异行）\n\n# 跨检出对照（双向）:\n{\"status\": \"FAILED\", \"errors\": [\"leo_sim code sha mismatch (sources changed since the run)\"]}   EXIT=2\n# 摘掉 code-sha 门禁后, 同一批父提交样本在两个检出下逐字相同的判定:\nv5: identical=True  parent=[]  head=[]\nv4: identical=True  parent=[]  head=[]\nv3: identical=True  parent=[congestion_metrics schema != receipt contract] head=[同上]",
+   "why": "重写后的 check 可判定且成立：它不再点名任何仓库内已冻结/会过期的产物，两半都在被审 SHA 上现场复现。V5 现场生成 -> verified 且 28 键；v3/v4/v5 样本在两个检出上各自现场生成后裁决逐字相同。注意一个语义细节（判据字面未写明，但不影响判定）：若把同一份样本拿给另一个检出验证，会因 code_sha256 覆盖 CODE/leo_sim/*.py 而报 'leo_sim code sha mismatch'——这是设计内的 local==runtime 门禁、且双向对称；把该门禁单独摘除后，同一批样本在两个检出下给出完全相同的错误列表。故 V5 验证行为确为逐位不变（本提交对 CODE/leo_sim/receipt.py 的 diff 为 0 行可佐证）。"
+  },
+  {
+   "id": "C2",
+   "result": "PASS",
+   "command": "cd /tmp/leo-r2/head && python3 -c \"from CODE.leo_sim import config; print(config.load_config_file('CODE/leo_sim/profiles/smoke.yaml')['sha256'])\"\ncd /tmp/leo-r2/head && git diff 98f7412..4d5e28b -- CODE/leo_sim/config.py | wc -l\ncd /Users/lge/Desktop/topic/leo-experiment-platform && git show --stat 4d5e28b | tail -6",
+   "output": "934315391f9572ca2f03a641a3b2a800889330e8f0579fccbb7ee29379c68816\n0        # config.py 相对父提交零改动\nCODE/experiment_platform/v2_analysis.py       | 10 +++-\nCODE/leo_sim/__main__.py                      | 30 +++++++---\nCODE/leo_sim/tests/test_trust_chain_round2.py | 84 +++++++++++++++++++++++++++\nCODE/scripts/remote/remote_job.py             | 14 ++++-",
+   "why": "smoke.yaml 的 config_sha256 与判据期望逐位一致；本提交的 4 个改动文件不含 config.py / profiles，故没有也不可能有新 config key。"
+  },
+  {
+   "id": "C3",
+   "result": "PASS",
+   "command": "cd /tmp/leo-r2/head && python3 -c \"from CODE.leo_sim import decision_ledger as d; print(len(d.DECISION_ROW_KEYS))\"\n# 与一次真实（正式）运行写出的行键集比对:\npython3 -c \"import json;from CODE.leo_sim import decision_ledger as d;rows=[json.loads(l) for l in open('/private/tmp/leo-r2/formal1/d.jsonl')];print(len(rows), len({frozenset(r) for r in rows}), {frozenset(r) for r in rows}=={frozenset(d.DECISION_ROW_KEYS)})\"\ngrep -n \"self.decision_sink.append\" CODE/leo_sim/kernel.py",
+   "output": "19\n9 1 True      # 9 行真实 decision 行, 只有 1 个键集, 与契约完全相等\n3571:        self.decision_sink.append({ ... })   # 全仓唯一的 append, 单个无条件 dict 字面量",
+   "why": "19 键契约不是约定而是构造事实：kernel 全仓只有一处 decision_sink.append（kernel.py:3571），是一个与所有路径共用的无条件 19 键字面量；一次真实正式运行写出的行键集与 DECISION_ROW_KEYS 完全相等。"
+  },
+  {
+   "id": "C4",
+   "result": "PASS",
+   "command": "# 以真实运行行为基注入未知键\ncd /tmp/leo-r2/head && python3 -c \"import json;from CODE.leo_sim import decision_ledger as d;r=dict(json.loads(open('/private/tmp/leo-r2/formal1/d.jsonl').readline()));r['rogue_key']=1;d.validate_decision_row(r)\"\n# 端到端：真实运行里逐行注入越契约键（见 C7 的 rogue 探针）",
+   "output": "DecisionRowError: decision row carries keys outside the frozen contract: ['rogue_key']\n# 端到端（正式与非正式各一次）: FAILED (fail closed): DecisionRowError: decision row carries keys outside the frozen contract: ['rogue_key_beyond_contract'] -> exit 2, 无回执",
+   "why": "未知键被拒绝且报错点名该键，没有静默丢弃；端到端路径同样 fail closed。"
+  },
+  {
+   "id": "C5",
+   "result": "PASS",
+   "command": "cd /tmp/leo-r2/head && python3 -c \"import json;from CODE.leo_sim import decision_ledger as d;r=dict(json.loads(open('/private/tmp/leo-r2/formal1/d.jsonl').readline()));r.pop('chosen');d.validate_decision_row(r)\"",
+   "output": "DecisionRowError: decision row is missing contract keys: ['chosen']",
+   "why": "缺失键同样 fail loud 并点名该键；validate_decision_row 先查未知键再查缺失键，双向校验成立。"
+  },
+  {
+   "id": "C6",
+   "result": "PASS",
+   "command": "# 判据字面：formal 三参数 + --decision-log（新建 sandbox 授权，三参数来自仓库自身 matrix 编译 + work finalization）\npython3 /tmp/leo-r2/formal_setup.py /tmp/leo-r2/head /private/tmp/leo-r2/sb6 /tmp/leo-r2/small_common.json\ncd /tmp/leo-r2/head && python3 -m CODE.leo_sim run --config /private/tmp/leo-r2/sb6/EXPERIMENTS/EXP-LEO-V2-MATRIX/resolved/EXP-LEO-V2-MATRIX-control-s42.leo-sim.yaml --authorization /private/tmp/leo-r2/sb6/EXPERIMENTS/EXP-LEO-V2-MATRIX/authorization.json --launch-nonce 0123456789abcdef0123456789abcdef --expect-run-id EXP-LEO-V2-MATRIX-control-s42 --out /private/tmp/leo-r2/sb6/CODE/Results/EXP-LEO-V2-MATRIX-control-s42 --decision-log /private/tmp/leo-r2/c6/d.jsonl\ngrep -c 'diagnostic-only' /private/tmp/leo-r2/c6/run.out ; python3 -m CODE.leo_sim receipt verify /private/tmp/leo-r2/sb6/CODE/Results/EXP-LEO-V2-MATRIX-control-s42\n# 双流（decision+timeline）变体: sb1/sb5 两个 arm, 回执升 V6 31 键",
+   "output": "EXIT=0\ndiagnostic-only occurrences: 0\n{\"status\": \"verified\", \"dir\": \"/private/tmp/leo-r2/sb6/CODE/Results/EXP-LEO-V2-MATRIX-control-s42\"}\nschema leo-sim-receipt/v5 keys 28      # 只给 decision 流时保持 V5（符合 build_receipt 的“缺一半仍是 V5”语义）\nschema leo-sim-receipt/v6 keys 31      # 两条流都给时升 V6, verify 仍 verified",
+   "why": "正式运行可附 decision log，不再出现 diagnostic-only，产出通过 verify 的回执；配齐两条流时回执升 V6。授权是仓库自身 matrix 编译 + work finalization 生成的正式授权，不是打桩。"
+  },
+  {
+   "id": "C7",
+   "result": "PASS",
+   "command": "# 正式路径注入越契约行（真实授权 + 真实 _DecisionLogWriter，只在 append 前给行加一个未知键）\npython3 /tmp/leo-r2/rogue_run.py /tmp/leo-r2/head /private/tmp/leo-r2/sb6/CODE/Results/EXP-LEO-V2-MATRIX-treatment-s42 /private/tmp/leo-r2/c7-d.jsonl /private/tmp/leo-r2/sb6/EXPERIMENTS/EXP-LEO-V2-MATRIX/resolved/EXP-LEO-V2-MATRIX-treatment-s42.leo-sim.yaml /private/tmp/leo-r2/sb6/EXPERIMENTS/EXP-LEO-V2-MATRIX/authorization.json 0123456789abcdef0123456789abcdef EXP-LEO-V2-MATRIX-treatment-s42\n# 非正式路径同样注入（round1 的漏洞路径）\npython3 /tmp/leo-r2/rogue_run.py /tmp/leo-r2/head /private/tmp/leo-r2/rogue-head/out /private/tmp/leo-r2/rogue-head/d.jsonl\n# 父提交对照（同一探针）\npython3 /tmp/leo-r2/rogue_run.py /tmp/leo-r2/parent /private/tmp/leo-r2/rogue-parent/out /private/tmp/leo-r2/rogue-parent/d.jsonl",
+   "output": "FAILED (fail closed): DecisionRowError: decision row carries keys outside the frozen contract: ['rogue_key_beyond_contract']\n{\"exit\": 2, \"rows_offered_to_writer\": 1, \"decision_log_published\": false, \"receipt_published\": false, \"receipt_schema\": null}\n# 非正式: {\"exit\": 2, ... \"decision_log_published\": false, \"receipt_published\": false}\n# 父提交: {\"exit\": 0, \"rows_offered_to_writer\": 3, \"decision_log_published\": true, \"receipt_published\": true, \"receipt_schema\": \"leo-sim-receipt/v5\"}",
+   "why": "越契约行在正式与非正式两条路径都被拒绝（退出码 2 != 0，且不发布回执、不发布 decision 流）。父提交对照显示同一探针能发布回执，说明本轮的收紧是真实生效而非空转。"
+  },
+  {
+   "id": "C8",
+   "result": "PASS",
+   "command": "shasum -a 256 /private/tmp/leo-r2/formal1/d.jsonl /private/tmp/leo-r2/formal1/t.jsonl\npython3 -c \"import json;r=json.load(open('/private/tmp/leo-r2/sb/CODE/Results/EXP-LEO-V2-MATRIX-control-s42/receipt.json'));print(r['decision_log_sha256']);print(r['timeline_log_sha256'])\"\n# 第二个独立正式运行（sb5, 两个 arm）同样比对",
+   "output": "364424795fe8d21cbb0805541c28e534b2ff110eff49123463561de50b112c9d  .../formal1/d.jsonl\n3bd53bc7f633218d865852434ae5e2a095cf03aec6f32a593f654b307fc91fad  .../formal1/t.jsonl\n364424795fe8d21cbb0805541c28e534b2ff110eff49123463561de50b112c9d   # receipt.decision_log_sha256\n3bd53bc7f633218d865852434ae5e2a095cf03aec6f32a593f654b307fc91fad   # receipt.timeline_log_sha256\n# sb5 control: receipt.decision_log_sha256 == actual file == 840d3fc4dfffa5f3fd27f366b651669fb6b93bf58e9d6684421d62021a262c99 ; timeline 同理闭合",
+   "why": "写入时刻回执携带的两个流身份与实际文件 sha256 逐位一致（两次独立正式运行均如此），且只有两条流同时给出时才升 V6。残余（判据外，round1 已记录的第 5 项，本轮未修）：verify 只对这两个字段做 sha256 形状匹配，不重算流文件内容——回执内部无法自证流未被替换，外部绑定靠 sidecar manifest + formal witness + governance witness + fold。"
+  },
+  {
+   "id": "C9",
+   "result": "PASS",
+   "command": "cd /tmp/leo-r2/head && python3 -m CODE.leo_sim receipt verify /private/tmp/leo-r2/sb5/CODE/Results/EXP-LEO-V2-MATRIX-control-s42\n# V6 分支非空转探针（在副本目录上逐项篡改 receipt.json）:\npython3 - <<'PY' … decision_stream_contract->v0 / decision_log_sha256->zz / 删 timeline_log_sha256 / schema->v5(仍31键) … PY",
+   "output": "{\"status\": \"verified\", \"dir\": \".../EXP-LEO-V2-MATRIX-control-s42\"}   EXIT=0\nbaseline           : (0, '{\"status\": \"verified\", ...}')\ncontract -> v0     : (2, '{\"status\": \"FAILED\", \"errors\": [\"v6 decision_stream_contract must be decision-rows/v1\"]}')\nsha -> nothex      : (2, '... [\"v6 decision_log_sha256 must be a lowercase sha256 hex digest\"]')\ndrop timeline key  : (2, '... [\"v6 timeline_log_sha256 must be a lowercase sha256 hex digest\", \"receipt keys mismatch: unknown=[] missing=[timeline_log_sha256]\"]')\nschema -> v5 (31k) : (2, '... [\"receipt keys mismatch: unknown=[decision_log_sha256, decision_stream_contract, timeline_log_sha256] missing=[]]')",
+   "why": "V6 回执可通过 verify，且 V6 专有分支确有实效：对 decision_stream_contract、两个流 sha 字段、键集的每一处篡改都触发 V6 专属报错。"
+  },
+  {
+   "id": "C10",
+   "result": "PASS",
+   "command": "python3 /tmp/leo-r2/legacy_samples.py /tmp/leo-r2/head head > /tmp/leo-r2/verdicts-head.json\npython3 /tmp/leo-r2/legacy_samples.py /tmp/leo-r2/parent parent > /tmp/leo-r2/verdicts-parent.json\ndiff /tmp/leo-r2/verdicts-head.json /tmp/leo-r2/verdicts-parent.json\n# 摘除 local==runtime 门禁后, 同一批父提交样本在两个检出的 verify 逻辑下对比",
+   "output": "$ diff ... && echo IDENTICAL   ->   IDENTICAL VERDICTS (byte-for-byte)\nv3: identical=True  parent=['congestion_metrics schema != receipt contract'] head=[同上]\nv4: identical=True  parent=[]  head=[]\nv5: identical=True  parent=[]  head=[]",
+   "why": "既有 v3/v4 样本（现场重建的真 v1 metrics 工件，非 schema 伪装）在被审 SHA 与父提交上的 verify 裁决逐字相同；把 code-sha 门禁单独摘除后同一批样本的错误列表也完全相同。VERDICT 文字里唯一的差异来自样本绝对路径，已归一化。"
+  },
+  {
+   "id": "C11",
+   "result": "PASS",
+   "command": "cd /tmp/leo-r2/head && python3 -c \"from CODE.leo_sim import receipt as r; print(len(r.LEDGER_KEYS))\"\ngit diff 98f7412..4d5e28b -- CODE/leo_sim/kernel.py | wc -l\ngit diff c8eeca1~1..4d5e28b -- CODE/leo_sim/kernel.py | wc -l\ngit diff c8eeca1~1..4d5e28b -- CODE/leo_sim/receipt.py | grep \"^[+-].*packet_events\\|^[+-].*congestion_metrics\"",
+   "output": "17\n0        # 本提交未动 kernel.py\n0        # 整条 B4 系列（c8eeca1^..4d5e28b）kernel.py 零改动 => packet_events / congestion_metrics 写入点未动\n+        if receipt.get(\"congestion_metrics_contract\") != metrics_contract:\n+            errors.append(\"v6 congestion_metrics_contract must be v2\")   # 唯一相关新增是 V6 的校验行, 非写入",
+   "why": "LEDGER_KEYS 仍为 17 键；kernel.py 在本提交乃至整条 B4 系列都零改动；receipt.py 中与 congestion_metrics 相关的唯一新增是校验（要求 V6 的 metrics 契约是 v2），不触碰写入。"
+  },
+  {
+   "id": "C12",
+   "result": "PASS",
+   "command": "cd /tmp/leo-r2/head && python3 -m CODE.experiment_platform.fold_decision_ledger --decision-log /private/tmp/leo-r2/f5-control/d.jsonl --timeline-log /private/tmp/leo-r2/f5-control/t.jsonl --out /private/tmp/leo-r2/fold5/control-ledger.json\npython3 -c \"…比较 fold.source.decision_log_sha256 / receipt.decision_log_sha256 / sha256(实际文件)…\"",
+   "output": "{\"status\": \"folded\", \"decisions\": 9, \"diagnostics\": {\"decisions\": 9, \"duplicate_decision_ids\": [], \"orphan_redecisions\": [], \"milestones\": 69}}\nreceipt.decision_log_sha256  : 840d3fc4dfffa5f3fd27f366b651669fb6b93bf58e9d6684421d62021a262c99\nfold.source.decision_log_sha256: 840d3fc4dfffa5f3fd27f366b651669fb6b93bf58e9d6684421d62021a262c99\nactual file sha256           : 840d3fc4dfffa5f3fd27f366b651669fb6b93bf58e9d6684421d62021a262c99\nC8 decision closed: True | C8 timeline closed: True | C12 fold/receipt closed: True\nfold decisions: 9 | decision rows: 9 | timeline rows: 69",
+   "why": "折叠件与回执的流身份数值闭合，而且这次是在**正式 V6 运行**产出的两条流上折叠出 11 时刻链（9 个 decision、69 个 milestone），说明 T1 时间账本的入口确实接得上信任链。残余（判据外）：全仓仍没有消费者自动把 fold.source.* 与回执字段对照，闭合目前靠人肉/脚本比对。"
+  },
+  {
+   "id": "C13",
+   "result": "PASS",
+   "command": "cd /tmp/leo-r2/head && python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q\n# 另: python3 -m pytest CODE/leo_sim/tests/test_trust_chain_round2.py -q   (本轮新增 6 个测试)",
+   "output": "932 passed, 1 skipped, 1 warning in 458.51s (0:07:38)\nEXIT=0\n6 passed in 0.52s",
+   "why": "在被审 SHA 的干净检出（git checkout 4d5e28b，工作树无改动）上全量测试 0 failed。"
+  },
+  {
+   "id": "C14",
+   "result": "PASS",
+   "command": "# (a) 用仓库自身机制生成真授权, 跑两个 arm 的正式 V6 运行（实测命令见 C6）\npython3 /tmp/leo-r2/formal_setup.py /tmp/leo-r2/head /private/tmp/leo-r2/sb5 /tmp/leo-r2/small_common.json /tmp/leo-r2/arm_override.json /tmp/leo-r2/arm_paths.json\npython3 -m CODE.leo_sim run … --decision-log … --timeline-log …   # 两个 arm, EXIT=0, V6/31 键\n# (b) 走真实 remote_job 代码构造治理见证（只把 VM 常量 CANONICAL_WORKSPACE 指向被审检出）\npython3 /tmp/leo-r2/e2e_chain.py /private/tmp/leo-r2/sb5\n# (c) 走真实 v2_analysis.analyze() 全链（只把 VM 常量 REMOTE_RESULTS_ROOT 指向沙箱）\npython3 /tmp/leo-r2/e2e_analyze.py /private/tmp/leo-r2/sb5\n# (d) 父提交 A/B: 同一批 V6 工件交给 98f7412 的 v2_analysis\nLEO_HEAD=/tmp/leo-r2/parent python3 /tmp/leo-r2/e2e_analyze_auto.py /private/tmp/leo-r2/sb\n# (e) 负向对照: 见证写入器对 v5/v6/v4/v7 四个 schema 的态度",
+   "output": "(b) {\"EXP-LEO-V2-MATRIX-control-s42\": {\"receipt_schema\": \"leo-sim-receipt/v6\", \"verify_ok\": true, \"governance_ok\": true, \"governance_receipt_schema\": \"leo-sim-receipt/v6\", \"governance_schema\": \"leo-sim-governance-receipt/v2\"}, \"...treatment-s42\": {同上}}\n(c) {\"ok\": true, \"status\": \"VERIFIED\", \"claim_status\": \"READY_FOR_INDEPENDENT_CLAIM_REVIEW\", \"analysis_mode\": \"current_external_witness\", \"authorization_verification\": \"strict_recomputed\", \"verified_run_ids\": [control-s42, treatment-s42], \"evidence_classes\": [\"v2_external_witness\",\"v2_external_witness\"], \"runtime_bindings\": [\"local_exact_match\",\"local_exact_match\"]}\n(d) {\"ok\": false, \"error\": \"V2AnalysisError: EXP-LEO-V2-MATRIX-control-s42 receipt schema is not a supported formal branch\"}\n(e) v6 -> accepted, witness receipt_schema = leo-sim-receipt/v6\n    v5 -> accepted, witness receipt_schema = leo-sim-receipt/v5\n    v4 -> ValueError: leo_sim_v2 formal runs must produce a current receipt schema (one of ['leo-sim-receipt/v5','leo-sim-receipt/v6']); got 'leo-sim-receipt/v4'\n    v7 -> ValueError: (同上) got 'leo-sim-receipt/v7'",
+   "why": "版本家族确实在 receipt.py 之外被遵守，且是端到端而非字面量：真 V6 回执不再被 remote_job 抛 ValueError，v2_analysis 的 receipt_schema 分派接受 V6 并把整条链（授权→formal witness→governance v2→外部 launch witness→工件重算→运行时身份）走完，最终 status=VERIFIED / evidence_class=v2_external_witness。父提交在同一批工件上仍在分派处抛 'not a supported formal branch'，证明修复是承重的。remote_job 是 VM 独立脚本，我只替换了 VM 专属常量 CANONICAL_WORKSPACE（/data/论文/leo-direct-sim），新增的 sys.path.insert + from CODE.leo_sim import receipt 语句原样执行。"
+  },
+  {
+   "id": "C15",
+   "result": "PASS",
+   "command": "grep -n '\"receipt_schema\": receipt_schema,' /tmp/leo-r2/head/CODE/experiment_platform/v2_analysis.py\n# 篡改探针 t1: 见证把 receipt_schema 翻成 v5（回执仍是 v6），并重封 payload_sha256\n# 篡改探针 t2: 回执被降级成 v5，见证仍是 v6\npython3 - <<'PY' … analyze() on the tampered copies … PY",
+   "output": "495:            \"receipt_schema\": receipt_schema,      # receipt_schema = receipt.get(\"schema\")\nt1 witness schema flipped to v5 -> V2AnalysisError : EXP-LEO-V2-MATRIX-control-s42 governance witness binding mismatch\nt2 receipt downgraded to v5   -> V2AnalysisError : EXP-LEO-V2-MATRIX-control-s42 receipt hash is not bound by witnesses",
+   "why": "expected_binding 的 receipt_schema 确实取自被见证回执自身的 schema（不再是常量），而且该绑定非空转：见证与回执的 schema 一旦不一致即被点名拒绝。语义上仍守住'当前证据'边界——v3/v4 走不到 V2 见证分支（C14(e) 亦证 v4 被见证写入器拒绝）。残余（判据外）：本条仍无法发现'回执自降 schema'，那一层由 receipt verify 的精确键集负责（C9 已证 31 键 v5 被拒）。"
+  },
+  {
+   "id": "C16",
+   "result": "PASS",
+   "command": "grep -n \"validate=decision_ledger.validate_decision_row\" /tmp/leo-r2/head/CODE/leo_sim/__main__.py\ngrep -c \"if formal is not None else None\" /tmp/leo-r2/head/CODE/leo_sim/__main__.py\ncd /tmp/leo-r2/head && python3 -m pytest CODE/leo_sim/tests/test_trust_chain_round2.py -q\n# 动态证明（非正式运行注入越契约行）+ 父提交对照, 见 C7\ngrep -rn \"_DecisionLogWriter(\" --include=*.py /tmp/leo-r2/head/CODE | grep -v tests/\ngrep -rn \"decision_log_sha256=\" --include=*.py /tmp/leo-r2/head | grep -v \"^/tmp/leo-r2/head/CODE/leo_sim/\" | grep -v tests/",
+   "output": "472:                validate=decision_ledger.validate_decision_row)      # 无条件, 无 formal 分支\n0        # 全文件已无 'if formal is not None else None'\n6 passed in 0.52s      # 含 test_the_decision_writer_is_always_given_the_row_contract\n非正式 rogue: exit 2, receipt_published=false（父提交同探针: exit 0 且发布回执）\n__main__.py:470 是唯一实例化点（除 484 的 _TimelineLogWriter 子类）\n# 全仓没有 leo_sim 之外的调用方显式传 decision_log_sha256 -> 没有第二条铸造 V6 回执的路径",
+   "why": "行契约的挂载不依赖运行是否正式：validate 参数无条件，命名测试通过；动态上非正式运行的越契约行被拒（父提交会放行并发布回执）。绕过面已排查：_DecisionLogWriter 只在 __main__.py:470 实例化一次；platform_check/acceptance/comparison 三处 write_run 调用均不传任何流身份，因此只能产出 V5，不可能绕过行契约铸出 V6。"
+  },
+  {
+   "id": "C17",
+   "result": "PASS",
+   "command": "grep -n \"row_count == 0\" -B 2 -A 3 /tmp/leo-r2/head/CODE/leo_sim/__main__.py\ngrep -c \"if formal is not None and decision_writer is not None\" /tmp/leo-r2/head/CODE/leo_sim/__main__.py\n# 动态证明: 非正式运行 + 丢弃全部 decision 行（0 字节流）, 分别给/不给 timeline, 并在父提交上做同一实验\npython3 /tmp/leo-r2/empty_run.py /tmp/leo-r2/head /private/tmp/leo-r2/empty/h4 /private/tmp/leo-r2/empty/h4-d.jsonl /private/tmp/leo-r2/empty/h4-t.jsonl\npython3 /tmp/leo-r2/empty_run.py /tmp/leo-r2/parent /private/tmp/leo-r2/empty/p4 /private/tmp/leo-r2/empty/p4-d.jsonl /private/tmp/leo-r2/empty/p4-t.jsonl\ncd /tmp/leo-r2/head && python3 -m pytest CODE/leo_sim/tests/test_trust_chain_round2.py -q",
+   "output": "579:    if decision_writer is not None and decision_writer.row_count == 0:      # 条件里没有 formal\n0\nHEAD 空流(仅 decision 流): RUN REFUSED (decision stream): a decision log must contain at least one contract-valid decision row\n  {\"exit\": 6, \"decision_log_bytes\": 0, \"receipt_published\": false, \"receipt_schema\": null}\nHEAD 空流(两条流): 同上, exit 6, receipt_published=false\nPARENT 空流(两条流): {\"exit\": 0, \"decision_log_bytes\": 0, \"receipt_published\": true, \"receipt_schema\": \"leo-sim-receipt/v6\", \"decision_log_sha256_in_receipt\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}\n6 passed in 0.52s      # 含 test_the_empty_stream_refusal_is_not_formal_only",
+   "why": "空流拒绝条件不含 formal，命名测试通过；动态上非正式运行的 0 字节流被拒（exit 6、无回执），而父提交会把空文件的 sha256（e3b0c442…b855）写进 V6 回执——正是 round1 指出的漏洞，现已堵住。观察（非判据、非阻断）：拒绝发生在仿真结束并已发布 0 字节流之后，会留下一个已占位的空 JSONL（重跑同路径会被 new-destination 前置检查拒绝，需人工清理）；另外'不产生任何 decision 行的配置'（例如仓库自带 1 星 default matrix 配置）附 --decision-log 时会被这一收紧拒绝，但不带 --decision-log 时照常成功（实测 EXIT=0 / V5 28 键），故不是面状回归。"
+  },
+  {
+   "id": "C18",
+   "result": "PASS",
+   "command": "cd /tmp/leo-r2/head && python3 -m CODE.leo_sim run --help | grep -c \"forbidden for formal runs\"\ncd /tmp/leo-r2/head && python3 -m CODE.leo_sim run --help | grep -A 4 \"\\-\\-decision-log\"",
+   "output": "0        # 陈旧文案已清除\n  --decision-log DECISION_LOG\n                        JSONL decision/info audit path (JSONL + sidecar\n                        manifest) at this NEW path; every row must satisfy\n                        decision_ledger.DECISION_ROW_KEYS and the stream must\n                        be non-empty. Together with --timeline-log it upgrades\n                        the receipt to leo-sim-receipt/v6",
+   "why": "run --help 不含 'forbidden for formal runs'，且含 DECISION_ROW_KEYS。残余（判据外）：ANALYSIS/T1-MEASUREMENT-PROTOCOL.md §3.3 第 3 条仍写着 'decision log 工件不在 receipt/ledger 信任链内…没有行键白名单'，那是 V6 之前的设计阶段记录，与现状相反但不在本条 check 范围内；仓库里也没有其它代码消费该句。"
+  }
+ ],
+ "overall": "PASS"
+}

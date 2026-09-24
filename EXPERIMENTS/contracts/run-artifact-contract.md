@@ -34,7 +34,10 @@
 
 （产生范围：`leo_sim` 本身——本地 CLI `python -m CODE.leo_sim run` 与正式运行都会写出；正式证据还需下文治理增量。）
 
-- `receipt.json`（`leo-sim-receipt/v5`）：运行回执，绑定 canonical config hash、trace manifest/identity hash、input hash、code hash 与 seed，并报告 `natural_end`、`conservation_ok`。
+- `receipt.json`：运行回执，绑定 canonical config hash、trace manifest/identity hash、input hash、code hash 与 seed，并报告 `natural_end`、`conservation_ok`。
+  - `leo-sim-receipt/v5`（28 键）：未附 decision/timeline 流时的形态。
+  - `leo-sim-receipt/v6`（31 键）：**两条流都给出**时的形态，额外绑定 `decision_stream_contract`、
+    `decision_log_sha256`、`timeline_log_sha256`。只给一条流仍是 v5。
 - `resolved_config.json`：实际执行的 canonical 配置字节，不从文件名还原。
 - `manifest.json` 与 `trace.csv`：trace/manifest 身份，由 `trace_identity_sha256`、`trace_manifest_sha256` 绑定到回执。
 - `ledgers.json`：按字段权威（recomputed / ledger_consistency / diagnostic）可校验的账本。
