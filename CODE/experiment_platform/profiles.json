@@ -1,0 +1,794 @@
+{
+  "schema": "experiment-profiles/v1",
+  "profiles": {
+    "code-compatibility-v1": {
+      "status": "REFERENCE_ONLY_NOT_A_PAPER_BASELINE",
+      "description": "Matches the retained code-facing defaults as closely as possible. It exists for compatibility and must not be described as a publication baseline.",
+      "known_conflicts": [
+        "Current default and active plans mostly use rewards.w2=20, while a retained guidance statement says baseline and PRD use 200.",
+        "diagnostics.checkpoint_fractions is populated although its comment describes diagnostic checkpoints as default-off."
+      ],
+      "config": {
+        "simulation": {
+          "test_length": 5.0,
+          "time_limit": null,
+          "seed": 42,
+          "fast": false,
+          "run_label": "",
+          "pathing": "Deep Q-Learning",
+          "num_gateways": 4,
+          "tf_threads": 2
+        },
+        "traffic": {
+          "mode": "uniform",
+          "fraction": 0.5,
+          "p": 0.4,
+          "g": 3.0,
+          "alpha": 2.0,
+          "d_floor_km": 100.0,
+          "blend_uniform": 0.0,
+          "p_corridor": 0.0,
+          "csv_path": "",
+          "hourly": false,
+          "config_path": "",
+          "bursts": [],
+          "bursts_config_path": "",
+          "diurnal": {},
+          "diurnal_config_path": ""
+        },
+        "routing": {
+          "mode": "ddqn",
+          "eval_only": false,
+          "true_ddqn": false
+        },
+        "hyperparameters": {
+          "gamma": 0.99,
+          "learning_rate": 0.001,
+          "batch_size": 16,
+          "buffer_size": 1000,
+          "n_train": 2,
+          "max_epsilon": 0.99,
+          "min_epsilon": 0.001,
+          "lambda_decay": 0.0005,
+          "decay_rate": 4.0,
+          "hard_update": true,
+          "update_freq": 1000,
+          "clip_norm": 1.0
+        },
+        "network": {
+          "hidden_units": 32,
+          "diff_last_hop": true
+        },
+        "state": {
+          "mode": "",
+          "vis_k": 2,
+          "stale_steps": 0,
+          "update_interval_s": 0.0,
+          "aoi_scale_s": 0.1,
+          "graph_max_nodes": 32,
+          "graph_hidden_dim": 32,
+          "graph_attention_heads": 2,
+          "graph_layers": 2,
+          "graph_log_every": 500
+        },
+        "temporal": {
+          "mode": "none",
+          "k": 4,
+          "gru_units": 32,
+          "burn_in": 4,
+          "sequence_length": 12,
+          "train_every_k": 20,
+          "batch_size": 16,
+          "min_buffer": 32,
+          "buffer_maxlen": 3000,
+          "learning_rate": 0.001
+        },
+        "rewards": {
+          "w1": 20,
+          "w2": 20
+        },
+        "fixes": {
+          "m1_causal_reward": true,
+          "m2_self_outbound_state": false,
+          "m3_queue_dynamics": false,
+          "reward_linear": false
+        },
+        "reward_shaping": {
+          "potential": false
+        },
+        "credit": {
+          "method": "none",
+          "n": 3,
+          "lambda": 0.9
+        },
+        "path_credit": {
+          "enabled": false,
+          "mode": "attention",
+          "lambda": 0.1,
+          "batch_size": 16,
+          "buffer_maxlen": 2000,
+          "min_buffer": 64,
+          "max_hops": 20,
+          "every_k": 5,
+          "lr": 5e-05,
+          "lost_penalty": -10.0,
+          "d_model": 64,
+          "gru_units": 64,
+          "n_heads": 2,
+          "gpath_clip": 200.0,
+          "use_gru": false,
+          "loss_weights": {
+            "q": 0.3,
+            "alpha": 0.1,
+            "w_prior": 0.05
+          },
+          "predictor": {
+            "d_model": 64,
+            "n_heads": 4,
+            "n_layers": 2,
+            "lr": 0.0001,
+            "warmup_steps": 200,
+            "contribution_mode": "attention"
+          },
+          "force_uniform_alpha": false,
+          "force_unit_w": false
+        },
+        "diagnostics": {
+          "log_level": 0,
+          "buffer_snapshot_interval": 0,
+          "checkpoint_fractions": []
+        },
+        "execution": {
+          "fail_closed": true,
+          "fast_train": false,
+          "inference_backend": "keras",
+          "shadow_infer_interval": 0,
+          "shadow_output": "",
+          "wandb": false
+        },
+        "oracle": {
+          "queue_factor": 1.0,
+          "vis_k": null
+        },
+        "checkpoint": {
+          "q_network": "",
+          "q_target": "",
+          "replay_buffer": "",
+          "path_credit_mixer": "",
+          "path_credit_replay": ""
+        }
+      }
+    },
+    "infrastructure-smoke-v1": {
+      "extends": "code-compatibility-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "VM end-to-end infrastructure smoke only; never a paper baseline or algorithm-performance result.",
+      "known_conflicts": [],
+      "config_overrides": {
+        "simulation": {
+          "test_length": 0.3,
+          "time_limit": null,
+          "fast": true,
+          "pathing": "slant_range",
+          "tf_threads": 1
+        },
+        "traffic": {
+          "mode": "uniform",
+          "fraction": 0.1
+        },
+        "diagnostics": {
+          "log_level": 0,
+          "buffer_snapshot_interval": 0,
+          "checkpoint_fractions": []
+        },
+        "execution": {
+          "fast_train": false,
+          "shadow_infer_interval": 0,
+          "wandb": false
+        }
+      }
+    },
+    "graph-cpu-compile-diagnostic-v1": {
+      "extends": "code-compatibility-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "Short full-simulator C4/C5 CPU execution-equivalence and wall-time diagnostic. It is not algorithm evidence.",
+      "known_conflicts": [],
+      "config_overrides": {
+        "simulation": {
+          "test_length": 0.02,
+          "time_limit": null,
+          "fast": false,
+          "pathing": "Deep Q-Learning",
+          "tf_threads": 4
+        },
+        "traffic": {
+          "mode": "uniform",
+          "fraction": 0.5,
+          "p": 0.5,
+          "g": 2.0
+        },
+        "state": {
+          "mode": "c4",
+          "vis_k": 2,
+          "stale_steps": 0,
+          "graph_max_nodes": 32,
+          "graph_hidden_dim": 32,
+          "graph_attention_heads": 2,
+          "graph_layers": 2,
+          "graph_log_every": 500
+        },
+        "diagnostics": {
+          "log_level": 0,
+          "buffer_snapshot_interval": 0,
+          "checkpoint_fractions": []
+        },
+        "execution": {
+          "fast_train": false,
+          "inference_backend": "keras",
+          "shadow_infer_interval": 0,
+          "wandb": false
+        }
+      }
+    },
+    "graph-c4-cpu-inference-ab-v1": {
+      "extends": "code-compatibility-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "C4/GAT 0.02-second strict keras-versus-tffunc full-simulator diagnostic.",
+      "known_conflicts": [],
+      "config_overrides": {
+        "simulation": {
+          "test_length": 0.02,
+          "time_limit": null,
+          "fast": false,
+          "pathing": "Deep Q-Learning",
+          "tf_threads": 1
+        },
+        "traffic": {
+          "mode": "uniform",
+          "fraction": 0.5,
+          "p": 0.5,
+          "g": 2.0
+        },
+        "state": {
+          "mode": "c4",
+          "vis_k": 2,
+          "stale_steps": 0,
+          "graph_max_nodes": 32,
+          "graph_hidden_dim": 32,
+          "graph_attention_heads": 2,
+          "graph_layers": 2,
+          "graph_log_every": 500
+        },
+        "diagnostics": {
+          "log_level": 0,
+          "buffer_snapshot_interval": 0,
+          "checkpoint_fractions": []
+        },
+        "execution": {
+          "fast_train": false,
+          "inference_backend": "keras",
+          "shadow_infer_interval": 0,
+          "wandb": false
+        }
+      }
+    },
+    "graph-c4-cpu-train-ab-v1": {
+      "extends": "graph-c4-cpu-inference-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "C4/GAT 0.02-second strict eager-versus-compiled train-step diagnostic with tffunc inference fixed.",
+      "known_conflicts": [],
+      "config_overrides": {
+        "execution": {
+          "inference_backend": "tffunc",
+          "fast_train": false
+        }
+      }
+    },
+    "graph-c5-cpu-inference-ab-v1": {
+      "extends": "graph-c4-cpu-inference-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "C5/MPNN 0.02-second strict keras-versus-tffunc full-simulator diagnostic.",
+      "known_conflicts": [],
+      "config_overrides": {
+        "state": {
+          "mode": "c5"
+        }
+      }
+    },
+    "graph-c5-cpu-train-ab-v1": {
+      "extends": "graph-c5-cpu-inference-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "C5/MPNN 0.02-second strict eager-versus-compiled train-step diagnostic with tffunc inference fixed.",
+      "known_conflicts": [],
+      "config_overrides": {
+        "execution": {
+          "inference_backend": "tffunc",
+          "fast_train": false
+        }
+      }
+    },
+    "graph-observation-pilot-020-v1": {
+      "extends": "code-compatibility-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2-second three-seed C4/C5 by vis_k diagnostic pilot under one frozen gravity candidate. It estimates stability, wall time, and memory; it is not a final algorithm ranking or a validated traffic scenario.",
+      "known_conflicts": [
+        "The gravity traffic candidate has not passed traffic calibration.",
+        "C4 and C5 are retained node-only graph baselines, not the planned scene-aware graph methods.",
+        "Three seeds are diagnostic only and cannot support confirmation claims."
+      ],
+      "config_overrides": {
+        "simulation": {
+          "test_length": 0.2,
+          "time_limit": null,
+          "fast": false,
+          "pathing": "Deep Q-Learning",
+          "tf_threads": 1
+        },
+        "traffic": {
+          "mode": "gravity",
+          "fraction": 0.5,
+          "alpha": 1.5,
+          "d_floor_km": 500.0,
+          "blend_uniform": 0.05,
+          "bursts": []
+        },
+        "state": {
+          "mode": "c4",
+          "vis_k": 1,
+          "stale_steps": 0,
+          "graph_max_nodes": 32,
+          "graph_hidden_dim": 32,
+          "graph_attention_heads": 2,
+          "graph_layers": 2,
+          "graph_log_every": 500
+        },
+        "diagnostics": {
+          "log_level": 0,
+          "buffer_snapshot_interval": 0,
+          "checkpoint_fractions": []
+        },
+        "execution": {
+          "fast_train": false,
+          "inference_backend": "keras",
+          "shadow_infer_interval": 0,
+          "wandb": false
+        }
+      }
+    },
+    "raac-graph-smoke-v1": {
+      "extends": "code-compatibility-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.02-second C6/C7 VM structural smoke for RAAC state construction, AoI reliability gating, action masking, graph encoder execution and artifact closure. It is not algorithm evidence.",
+      "known_conflicts": [
+        "The timed-state model uses periodic snapshots plus propagation delay but does not inject control packets into data queues.",
+        "This profile only validates execution plumbing and cannot rank RAAC-MPNN against RAAC-GAT.",
+        "Fixed-weight n-step and TD-lambda credit are blocked until their adapters carry next-action masks."
+      ],
+      "config_overrides": {
+        "simulation": {
+          "test_length": 0.02,
+          "time_limit": null,
+          "fast": false,
+          "pathing": "Deep Q-Learning",
+          "tf_threads": 1
+        },
+        "traffic": {
+          "mode": "gravity",
+          "fraction": 0.5,
+          "alpha": 1.5,
+          "d_floor_km": 500.0,
+          "blend_uniform": 0.05,
+          "bursts": []
+        },
+        "state": {
+          "mode": "c6",
+          "vis_k": 2,
+          "stale_steps": 0,
+          "update_interval_s": 0.1,
+          "aoi_scale_s": 0.1,
+          "graph_max_nodes": 32,
+          "graph_hidden_dim": 32,
+          "graph_attention_heads": 2,
+          "graph_layers": 2,
+          "graph_log_every": 1,
+          "raac_aoi_gate": true
+        },
+        "credit": {
+          "method": "none"
+        },
+        "diagnostics": {
+          "log_level": 0,
+          "buffer_snapshot_interval": 0,
+          "checkpoint_fractions": []
+        },
+        "execution": {
+          "fast_train": false,
+          "inference_backend": "keras",
+          "shadow_infer_interval": 0,
+          "wandb": false
+        }
+      }
+    },
+    "raac-graph-smoke-020-v1": {
+      "extends": "raac-graph-smoke-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2-second C6/C7 VM diagnostic for RAAC execution closure, wall-clock/memory estimation and delivery-cohort emergence. It is not algorithm evidence.",
+      "known_conflicts": [
+        "The timed-state model uses periodic snapshots plus propagation delay but does not inject control packets into data queues.",
+        "This profile only validates execution plumbing and cannot rank RAAC-MPNN against RAAC-GAT.",
+        "Fixed-weight n-step and TD-lambda credit are blocked until their adapters carry next-action masks."
+      ],
+      "config_overrides": {
+        "simulation": {
+          "test_length": 0.2
+        }
+      }
+    },
+    "traffic-calibration-v1": {
+      "extends": "code-compatibility-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "Six-second non-learning traffic calibration. It measures realized arrivals, terminal backlog and drain behavior before any GNN/GAT comparison; it is not algorithm evidence.",
+      "known_conflicts": [
+        "Six seconds gives 1.7 seconds after the registered second burst ends at t=4.3; adequacy of that drain window must be checked from results before promotion."
+      ],
+      "config_overrides": {
+        "simulation": {
+          "test_length": 6.0,
+          "time_limit": null,
+          "fast": false,
+          "pathing": "slant_range",
+          "tf_threads": 1
+        },
+        "traffic": {
+          "mode": "uniform",
+          "fraction": 0.5,
+          "bursts": []
+        },
+        "diagnostics": {
+          "log_level": 0,
+          "buffer_snapshot_interval": 0,
+          "checkpoint_fractions": []
+        },
+        "execution": {
+          "fast_train": false,
+          "shadow_infer_interval": 0,
+          "wandb": false
+        }
+      }
+    },
+    "paper-3s-gravity-v1": {
+      "extends": "code-compatibility-v1",
+      "status": "EXPERIMENTAL_PILOT_NOT_PAPER_EVIDENCE",
+      "description": "3-second gravity f0.50 no-burst k=2 baseline for 12h formal matrix. Pilot designation until warm-up/cohort/drain are measured.",
+      "config_overrides": {
+        "simulation": {
+          "test_length": 3.0,
+          "time_limit": null,
+          "fast": false,
+          "pathing": "Deep Q-Learning",
+          "tf_threads": 1
+        },
+        "traffic": {
+          "mode": "gravity",
+          "fraction": 0.5,
+          "alpha": 1.5,
+          "d_floor_km": 500.0,
+          "blend_uniform": 0.05,
+          "bursts": []
+        },
+        "routing": {
+          "mode": "ddqn",
+          "eval_only": false
+        },
+        "credit": {
+          "method": "none"
+        },
+        "state": {
+          "mode": "c3",
+          "vis_k": 2,
+          "stale_steps": 0,
+          "update_interval_s": 0.1,
+          "graph_max_nodes": 32,
+          "graph_hidden_dim": 32,
+          "graph_attention_heads": 2,
+          "graph_layers": 2,
+          "graph_log_every": 500
+        },
+        "execution": {
+          "fail_closed": true,
+          "inference_backend": "keras",
+          "fast_train": false
+        },
+        "diagnostics": {
+          "log_level": 0,
+          "checkpoint_fractions": []
+        }
+      }
+    },
+    "paper-3s-gravity-raac-v1": {
+      "extends": "paper-3s-gravity-v1",
+      "status": "EXPERIMENTAL_PILOT_NOT_PAPER_EVIDENCE",
+      "description": "3-second gravity f0.50 no-burst k=2 c6 RAAC base for the AoI-gate ablation strict pair. Pilot designation until warm-up/cohort/drain are measured.",
+      "config_overrides": {
+        "state": {
+          "mode": "c6",
+          "raac_aoi_gate": true
+        }
+      }
+    },
+    "paper-020-ab-v1": {
+      "extends": "paper-3s-gravity-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2-second execution-equivalence A/B base (gravity f0.50, k=2, timed observation); pairs eager reference against accelerated execution.",
+      "config_overrides": {
+        "simulation": {
+          "test_length": 0.2
+        }
+      }
+    },
+    "ab-020-c3-keras-v1": {
+      "extends": "paper-020-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2s c3 eager/keras reference for the inference-backend equivalence pair.",
+      "config_overrides": {
+        "state": {
+          "mode": "c3"
+        },
+        "execution": {
+          "inference_backend": "keras",
+          "fast_train": false
+        }
+      }
+    },
+    "ab-020-c3-tffunc-v1": {
+      "extends": "paper-020-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2s c3 tffunc-inference reference for the fast-train equivalence pair.",
+      "config_overrides": {
+        "state": {
+          "mode": "c3"
+        },
+        "execution": {
+          "inference_backend": "tffunc",
+          "fast_train": false
+        }
+      }
+    },
+    "ab-020-c4-keras-v1": {
+      "extends": "paper-020-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2s c4 eager/keras reference for the inference-backend equivalence pair.",
+      "config_overrides": {
+        "state": {
+          "mode": "c4"
+        },
+        "execution": {
+          "inference_backend": "keras",
+          "fast_train": false
+        }
+      }
+    },
+    "ab-020-c4-tffunc-v1": {
+      "extends": "paper-020-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2s c4 tffunc-inference reference for the fast-train equivalence pair.",
+      "config_overrides": {
+        "state": {
+          "mode": "c4"
+        },
+        "execution": {
+          "inference_backend": "tffunc",
+          "fast_train": false
+        }
+      }
+    },
+    "ab-020-c5-keras-v1": {
+      "extends": "paper-020-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2s c5 eager/keras reference for the inference-backend equivalence pair.",
+      "config_overrides": {
+        "state": {
+          "mode": "c5"
+        },
+        "execution": {
+          "inference_backend": "keras",
+          "fast_train": false
+        }
+      }
+    },
+    "ab-020-c5-tffunc-v1": {
+      "extends": "paper-020-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2s c5 tffunc-inference reference for the fast-train equivalence pair.",
+      "config_overrides": {
+        "state": {
+          "mode": "c5"
+        },
+        "execution": {
+          "inference_backend": "tffunc",
+          "fast_train": false
+        }
+      }
+    },
+    "ab-020-c6-keras-v1": {
+      "extends": "paper-020-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2s c6 eager/keras reference for the inference-backend equivalence pair.",
+      "config_overrides": {
+        "state": {
+          "mode": "c6"
+        },
+        "execution": {
+          "inference_backend": "keras",
+          "fast_train": false
+        }
+      }
+    },
+    "ab-020-c6-tffunc-v1": {
+      "extends": "paper-020-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2s c6 tffunc-inference reference for the fast-train equivalence pair.",
+      "config_overrides": {
+        "state": {
+          "mode": "c6"
+        },
+        "execution": {
+          "inference_backend": "tffunc",
+          "fast_train": false
+        }
+      }
+    },
+    "ab-020-c7-keras-v1": {
+      "extends": "paper-020-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2s c7 eager/keras reference for the inference-backend equivalence pair.",
+      "config_overrides": {
+        "state": {
+          "mode": "c7"
+        },
+        "execution": {
+          "inference_backend": "keras",
+          "fast_train": false
+        }
+      }
+    },
+    "ab-020-c7-tffunc-v1": {
+      "extends": "paper-020-ab-v1",
+      "status": "DIAGNOSTIC_ONLY_NOT_PAPER_EVIDENCE",
+      "description": "0.2s c7 tffunc-inference reference for the fast-train equivalence pair.",
+      "config_overrides": {
+        "state": {
+          "mode": "c7"
+        },
+        "execution": {
+          "inference_backend": "tffunc",
+          "fast_train": false
+        }
+      }
+    },
+    "paper-3s-gravity-fast-v1": {
+      "extends": "paper-3s-gravity-v1",
+      "status": "EXPERIMENTAL_PILOT_NOT_PAPER_EVIDENCE",
+      "description": "3-second gravity f0.50 k=2 matrix with the A/B-validated accelerated execution regime (tffunc inference + compiled fast_train), single-CPU affinity and tf_threads=1.",
+      "config_overrides": {
+        "execution": {
+          "inference_backend": "tffunc",
+          "fast_train": true
+        }
+      }
+    },
+    "paper-3s-gravity-raac-fast-v1": {
+      "extends": "paper-3s-gravity-raac-v1",
+      "status": "EXPERIMENTAL_PILOT_NOT_PAPER_EVIDENCE",
+      "description": "3-second RAAC AoI-gate ablation base with the A/B-validated accelerated execution regime.",
+      "config_overrides": {
+        "execution": {
+          "inference_backend": "tffunc",
+          "fast_train": true
+        }
+      }
+    },
+    "paper-3s-eval-s143-v1": {
+      "extends": "paper-3s-gravity-fast-v1",
+      "status": "EXPERIMENTAL_PILOT_NOT_PAPER_EVIDENCE",
+      "description": "3-second eval-only profile for eval seed 143; control c3 checkpoint lineage from train seed 43.",
+      "config_overrides": {
+        "routing": {
+          "eval_only": true
+        },
+        "execution": {
+          "fast_train": false
+        },
+        "checkpoint": {
+          "q_network": "Results/_eval_checkpoints/EXP-20260717-PAPER-12H-MAIN-R01-c3-s43/qNetwork_4GTs.h5",
+          "q_target": "Results/_eval_checkpoints/EXP-20260717-PAPER-12H-MAIN-R01-c3-s43/qTarget_4GTs.h5"
+        }
+      }
+    },
+    "paper-3s-eval-s142-v1": {
+      "extends": "paper-3s-gravity-fast-v1",
+      "status": "EXPERIMENTAL_PILOT_NOT_PAPER_EVIDENCE",
+      "description": "3-second eval-only profile for eval seed 142; control c3 checkpoint lineage from train seed 42.",
+      "config_overrides": {
+        "routing": {
+          "eval_only": true
+        },
+        "execution": {
+          "fast_train": false
+        },
+        "checkpoint": {
+          "q_network": "Results/_eval_checkpoints/EXP-20260717-PAPER-12H-MAIN-R01-c3-s42/qNetwork_4GTs.h5",
+          "q_target": "Results/_eval_checkpoints/EXP-20260717-PAPER-12H-MAIN-R01-c3-s42/qTarget_4GTs.h5"
+        }
+      }
+    },
+    "paper-3s-eval-s144-v1": {
+      "extends": "paper-3s-gravity-fast-v1",
+      "status": "EXPERIMENTAL_PILOT_NOT_PAPER_EVIDENCE",
+      "description": "3-second eval-only profile for eval seed 144; control c3 checkpoint lineage from train seed 44.",
+      "config_overrides": {
+        "routing": {
+          "eval_only": true
+        },
+        "execution": {
+          "fast_train": false
+        },
+        "checkpoint": {
+          "q_network": "Results/_eval_checkpoints/EXP-20260717-PAPER-12H-MAIN-R01-c3-s44/qNetwork_4GTs.h5",
+          "q_target": "Results/_eval_checkpoints/EXP-20260717-PAPER-12H-MAIN-R01-c3-s44/qTarget_4GTs.h5"
+        }
+      }
+    },
+    "paper-3s-cross-eval-t42-v1": {
+      "extends": "paper-3s-gravity-fast-v1",
+      "status": "EXPERIMENTAL_PILOT_NOT_PAPER_EVIDENCE",
+      "description": "3-second eval-only cross-evaluation profile with the c3 checkpoint fixed to training seed 42; simulation seed is supplied by the experiment request.",
+      "config_overrides": {
+        "routing": {
+          "eval_only": true
+        },
+        "execution": {
+          "fast_train": false
+        },
+        "checkpoint": {
+          "q_network": "Results/_eval_checkpoints/EXP-20260717-PAPER-12H-MAIN-R01-c3-s42/qNetwork_4GTs.h5",
+          "q_target": "Results/_eval_checkpoints/EXP-20260717-PAPER-12H-MAIN-R01-c3-s42/qTarget_4GTs.h5"
+        }
+      }
+    },
+    "paper-3s-cross-eval-t43-v1": {
+      "extends": "paper-3s-gravity-fast-v1",
+      "status": "EXPERIMENTAL_PILOT_NOT_PAPER_EVIDENCE",
+      "description": "3-second eval-only cross-evaluation profile with the c3 checkpoint fixed to training seed 43; simulation seed is supplied by the experiment request.",
+      "config_overrides": {
+        "routing": {
+          "eval_only": true
+        },
+        "execution": {
+          "fast_train": false
+        },
+        "checkpoint": {
+          "q_network": "Results/_eval_checkpoints/EXP-20260717-PAPER-12H-MAIN-R01-c3-s43/qNetwork_4GTs.h5",
+          "q_target": "Results/_eval_checkpoints/EXP-20260717-PAPER-12H-MAIN-R01-c3-s43/qTarget_4GTs.h5"
+        }
+      }
+    },
+    "paper-3s-cross-eval-t44-v1": {
+      "extends": "paper-3s-gravity-fast-v1",
+      "status": "EXPERIMENTAL_PILOT_NOT_PAPER_EVIDENCE",
+      "description": "3-second eval-only cross-evaluation profile with the c3 checkpoint fixed to training seed 44; simulation seed is supplied by the experiment request.",
+      "config_overrides": {
+        "routing": {
+          "eval_only": true
+        },
+        "execution": {
+          "fast_train": false
+        },
+        "checkpoint": {
+          "q_network": "Results/_eval_checkpoints/EXP-20260717-PAPER-12H-MAIN-R01-c3-s44/qNetwork_4GTs.h5",
+          "q_target": "Results/_eval_checkpoints/EXP-20260717-PAPER-12H-MAIN-R01-c3-s44/qTarget_4GTs.h5"
+        }
+      }
+    }
+  }
+}

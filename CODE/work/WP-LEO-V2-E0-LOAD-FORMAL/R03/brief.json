@@ -1,0 +1,50 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-E0-LOAD-FORMAL",
+  "revision": 3,
+  "parent_revision": 2,
+  "revision_reason": "Use a schema-valid authorization brief after R02's explanatory metadata was found to be outside the strict work-package schema; no simulation artifact or runtime configuration changes.",
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-e0-load-formal-r03",
+  "objective": "Authorize and execute the already reviewed current-main E0 M-Lab multi-OD burst load scan, then select only a provisional load candidate by the preregistered rule and confirm it with additional trace seeds.",
+  "context": [
+    "This is a non-learning load-contract and duplicate-consistency scan, not an algorithm comparison.",
+    "The executable matrix is EXP-20260822-E0-LOAD-FORMAL-R02 on current main. R02 supersedes the old R01 authorization/results; R01 and R02 artifacts must never be pooled.",
+    "Six cells form three identical control/copy pairs at base offered rates 50, 100 and 200 Mbps. With a 20 s horizon, an 8 s burst starting at 8 s and multiplier 2, integrated averages are 70, 140 and 280 Mbps.",
+    "Validity gate: every cell must end naturally, report conservation=true, pass governance and satisfy the acceptance contract; a failure triggers follow-up rather than silent exclusion.",
+    "Holding-overflow fraction is HOLDING_QUEUE_OVERFLOW fate count divided by the sum of all packet fate counts; a zero denominator invalidates the cell. Aggregate each pair with the lower delivery_rate and higher overflow fraction; any duplicate fate/primary-metric mismatch invalidates the tier.",
+    "Labels are exhaustive after validity: low is delivery_rate >= 0.80 and overflow <= 0.05; medium is delivery_rate >= 0.20 and < 0.80 and overflow <= 0.20; high is every remaining valid tier. Choose the lowest valid medium; if none exists, run a bracket follow-up. A provisional candidate needs at least two additional trace seeds before paper-facing freeze.",
+    "Repository M-Lab data is measurement_proxy traffic with reproducible endpoint selection, not calibrated operator traffic or packet capture."
+  ],
+  "allowed_inputs": [
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02",
+    "CODE/work/WP-LEO-V2-E0-LOAD-FORMAL/R02",
+    "CODE/leo_sim",
+    "CODE/experiment_platform",
+    "CODE/scripts/remote"
+  ],
+  "excluded_inputs": ["CODE/Results", "Unverified historical result claims", "EXP-20260821-E0-LOAD-FORMAL-R01 results"],
+  "deliverables": [
+    "A schema-valid independent review/finalization record bound to the exact current-main R02 matrix",
+    "Receipt-verified VM outputs for all six cells",
+    "A persisted V2 paired analysis and a recomputable provisional load-selection decision"
+  ],
+  "cannot_claim": [
+    "Algorithm superiority",
+    "A causal congestion-control effect",
+    "A universal or final E0 load threshold",
+    "A cross-tier causal load-response claim",
+    "Q0 optimality",
+    "Paper-ready statistical conclusion",
+    "Pooling R01 artifacts with R02 artifacts"
+  ],
+  "acceptance": [
+    "The R02 matrix and this R03 work revision pass independent cold, satellite-DRL and adversarial review.",
+    "All six cells complete naturally on one clean deployed SHA with conservation, governance and declared acceptance true.",
+    "V2 analysis recomputes delivery_rate for all three duplicate pairs and persists VERIFIED analysis artifacts.",
+    "The provisional load label is recomputed from immutable receipts using the exact validity, denominator, pair aggregation and label rules above; no paper-facing freeze occurs before two additional trace seeds."
+  ],
+  "review_roles": ["cold_start", "satellite_drl", "adversarial"],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

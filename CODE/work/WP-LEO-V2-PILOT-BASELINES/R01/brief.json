@@ -1,0 +1,51 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-PILOT-BASELINES",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-pilot-baselines-r01",
+  "objective": "Authorize one bounded formal learning train pilot on the fixed medium M-Lab measurement-proxy burst so every declared learning contract can prove natural completion, checkpoint integrity, and V2 metric recomputation before any algorithm comparison claim.",
+  "context": [
+    "This is an eight-cell training-only pilot: paired duplicates for Q-learning/C3, DDQN/C3, DDQN/GAT, and DDQN/MPNN.",
+    "The duplicate pairs are deterministic consistency checks under the same trace seed, learning seed, configuration, and control signature; they are not superiority comparisons or final paper statistics.",
+    "The pilot is the formal VM gate for the learning paths. Evaluation cells will be compiled and authorized only after these training receipts provide verified checkpoint artifacts."
+  ],
+  "allowed_inputs": [
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01",
+    "CODE/leo_sim",
+    "CODE/experiment_platform/authorize_experiment.py",
+    "CODE/experiment_platform/v2_analysis.py",
+    "CODE/scripts/remote/deployment_guard.py",
+    "CODE/scripts/remote/remote_job.py",
+    "CODE/scripts/remote/run-remote.sh",
+    "The exact clean main commit containing the compiled matrix"
+  ],
+  "excluded_inputs": [
+    "CODE/Results",
+    "Unverified engineering-pilot outputs",
+    "Historical runs with a different code, trace, or configuration SHA",
+    "Any claim that treats this pilot as algorithm superiority, causal congestion evidence, Q0 optimality, or final paper statistics"
+  ],
+  "deliverables": [
+    "A machine-recomputed authorization decision bound to the compiled eight-cell training matrix and this finalization",
+    "One natural-end VM receipt per training cell with conservation, data/control delivery, resource metrics, and verified nonzero training progress",
+    "A checkpoint artifact and metadata SHA for every learning cell, suitable as the declared source for a later evaluation-only matrix",
+    "A V2 analysis artifact that recomputes the four duplicate-consistency contrasts from the raw receipts, plus persisted verification"
+  ],
+  "cannot_claim": [
+    "This pilot does not establish that any algorithm is better than another.",
+    "This pilot does not establish a causal congestion-control mechanism, an E0 final threshold, Q0 optimality, or paper-ready statistical generalization.",
+    "An engineering run, partial run, or receipt without verified checkpoint lineage cannot be counted as a formal learning result."
+  ],
+  "acceptance": [
+    "The authorization binds the exact compiled request, run manifest, analysis request, resolved configs, clean deployed main SHA, and this accepted work finalization.",
+    "All eight cells run serially on the same deployed SHA and immutable M-Lab-derived trace identity, ending naturally without OOM or silent fallback.",
+    "Each cell has conservation=true, the required control/data delivery evidence, learning.effective=true, train_steps>0, a verified checkpoint, checkpoint SHA and metadata SHA, peak RSS, CPU/thread count, wall time, and steps-per-second.",
+    "The four planned duplicate contrasts are recomputed from raw artifacts and persisted verification returns ok=true with no errors.",
+    "If any cell fails a gate, execution stops at that cell and the matrix is not treated as a completed pilot until the failure is repaired and the affected cell is rerun."
+  ],
+  "review_roles": ["cold_start", "satellite_drl", "adversarial"],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

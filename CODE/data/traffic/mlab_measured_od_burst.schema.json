@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "leo-sim-traffic/mlab-measured-od-burst/v1",
+  "title": "leo_sim M-Lab measurement proxy OD snapshot",
+  "type": "object",
+  "required": [
+    "client_lat",
+    "client_lon",
+    "server_lat",
+    "server_lon",
+    "hour_utc",
+    "sample_count",
+    "mean_throughput_mbps"
+  ],
+  "properties": {
+    "client_city": {"type": "string"},
+    "client_lat": {"type": "number", "minimum": -90, "maximum": 90},
+    "client_lon": {"type": "number", "minimum": -180, "maximum": 180},
+    "server_city": {"type": "string"},
+    "server_lat": {"type": "number", "minimum": -90, "maximum": 90},
+    "server_lon": {"type": "number", "minimum": -180, "maximum": 180},
+    "hour_utc": {"type": "integer", "minimum": 0, "maximum": 23},
+    "sample_count": {"type": "integer", "minimum": 1},
+    "mean_throughput_mbps": {"type": "number", "exclusiveMinimum": 0}
+  },
+  "additionalProperties": true
+}

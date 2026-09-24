@@ -1,0 +1,53 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-ISL-BANDWIDTH-PILOT-R02-ADV",
+  "work_id": "WP-LEO-V2-ISL-BANDWIDTH-PILOT",
+  "revision": 2,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-ISL-BANDWIDTH-PILOT/R02/brief.json": "14e33e7f0b95e398acc29cee92871f9598127c37899255320161c8548f065d3d",
+    "CODE/work/WP-LEO-V2-ISL-BANDWIDTH-PILOT/R02/pre-fix-review-history.json": "8cc6c0c471d99bf0f2bd9a7e6736e01fe7663ed9be37fb34eacdf772b5f54eaf",
+    "EXPERIMENTS/request-sources/EXP-20260824-ISL-BANDWIDTH-PILOT-R02.json": "22ecd5e2d3c718802dc10def65bf4c12186a30c5d72736019dbe2da47ed84001",
+    "CODE/experiment_platform/v2_analysis.py": "d82130fcad520df5d4c2c4dd2bf016246b6052b8ee131b6d9966c2c582e54972",
+    "CODE/experiment_platform/tests/test_v2_analysis.py": "4d7b20208489c2112768735a6969c0dd9bd58872bde72f96d0954effa6ea2686",
+    "CODE/experiment_platform/v2_serial_gate.py": "a139f232236acf921874e177817361288f0799f58f78e12a00d4ea3fce7953a3",
+    "CODE/experiment_platform/tests/test_v2_serial_gate.py": "5daeb276baf1288e6f08e339928ef72de33c1d1b1edb0810956e6f9dc191c2e2",
+    "CODE/leo_sim/metrics.py": "b22674f960172d0acb2e37f4057519f44ba6aaf4e2b0fea01ced054f017140b6",
+    "CODE/leo_sim/governance.py": "d5674b548a0bdf283715fea5442d46e45a2c4ea95e88717496a84924752caafe",
+    "CODE/leo_sim/matrix.py": "d416a9d12b6481ad82e7eb9631b59a696da914d875a32d3e657a4a5b4a2ea297",
+    "CODE/leo_sim/tests/test_matrix_contract.py": "1378a54c7f84e04fbecd7d559cd1b168d75cd00427e76b861c3e05319f55a62a",
+    "CODE/scripts/remote/remote_job.py": "e52ac7b16ca6755163a50b21684092bb2812b3c06d13e042628d33a969c53563",
+    "CODE/tests/test_remote_gate.py": "d934151ac1de0c0365bfb400f2c3fd9d98efd999c6be08ff3cc4e21b5ebc4f5c",
+    "CODE/scripts/remote/run-remote.sh": "80ce87186808e83481b6547fdde6a5996d9cd6fe6d926b879352f568e32c84ff",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R02/RUNBOOK.md": "9ece3ed9753143d1c6f961caebcb2af9718996083348fd467e76d761cb7db6fc",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R02/analysis-request.json": "b20c7378634239c428f0e32d65fa62ec2eda9ddb4b48ef618724e95a0ab3cd8c",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R02/compile-report.json": "6c1ddefdabcc574b60b67e45657bdb03c91863a04bbcd91f5d3b4c4434f2e872",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R02/request.json": "4aa1d83bfc5aceca0f26416638c35a1ffd22835d8b0fc7795ea8d6b71629d89a",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R02/resolved/EXP-20260824-ISL-BANDWIDTH-PILOT-R02-b50-s7.leo-sim.yaml": "eed0bc11a273e0ba14ce88c0f78d90f599958faeced1794d28b4bdaa41fce3fc",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R02/resolved/EXP-20260824-ISL-BANDWIDTH-PILOT-R02-b500-s7.leo-sim.yaml": "741f64c6e923398d9f133c6bdccbb1cd9fc7f7ee6a25e61eb3b593c1428c4f36",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R02/run-manifest.json": "97cccc67d6d4e3834c44921ff19cc21be7768c307d3a3b66d3619527ef7c38fa"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-isl-bandwidth-pilot-r02",
+  "reviewer_id": "reviewer:isl-bandwidth-adversarial",
+  "reviewer_session_id": "R-isl-bandwidth-adversarial-r02-final",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "adversarial",
+  "verdict": "PASS",
+  "evidence": [
+    "代码与矩阵基线绑定 exact HEAD 4b007bff3969be10e062bad723bdbae0ffd15040；重点测试 69 passed，全套测试 686 passed, 2 skipped, 3 subtests passed。",
+    "最终窄审单独绑定 brief SHA 14e33e7f0b95e398acc29cee92871f9598127c37899255320161c8548f065d3d；revision_reason 通过 schema 与 provenance 对抗核验，未改变 claim-bearing 字段或引入绕过。",
+    "对 source commit、tree、deployment receipt、execution-chain 与 governance payload 的篡改在重算 witness 后仍被真实 verify_predecessors 分别以 execution-chain、deployment identity 或 payload hash mismatch 阻断。",
+    "错误 root、deployment marker 与 nonce witness 均 fail closed；路径逃逸、部署 commit witness 不符、nonce 缺失或非法均不能通过。",
+    "伪造 nonserial V2 prepared 状态后直接调用 run_formal，远端重新授权失败且 Popen 未被调用；prepare/run 的授权与 predecessor gate 均位于子进程启动之前。",
+    "R02 verify_compiled_matrix 通过，两格 execution-chain 与当前代码链独立重算一致；旧 BLOCK 历史仍保留。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "同权限 VM 恶意写入者在 prepare 到 run 之间的 TOCTOU 属于明确的 VM trust-root 外威胁；应用层门不声称抵御已攻陷的执行主机。",
+    "尚无 authorization、clean-main deployment 或 VM result evidence，实验状态仍未知。"
+  ],
+  "required_revision": []
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-E0-LOAD-FORMAL-R03-COLD",
+  "work_id": "WP-LEO-V2-E0-LOAD-FORMAL",
+  "revision": 3,
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-e0-load-formal-r03",
+  "reviewer_id": "reviewer:e0-load-cold-start-r03",
+  "reviewer_session_id": "R-e0-load-cold-start-r03",
+  "independence": {"producer_and_reviewer_are_distinct": true, "review_started_from_declared_inputs": true},
+  "role": "cold_start",
+  "verdict": "PASS",
+  "evidence": [
+    "The schema-valid R03 brief binds the already compiled R02 matrix, explicitly separates R01/R02 artifacts, and records the complete validity, denominator, pair aggregation, label and additional-seed rules.",
+    "Independent prior review verified six canonical cells, pair identities, current-code/config/trace hashes, M-Lab provenance and compile errors=[]; the post-review main delta is only the one-line JSON syntax repair, now strict-parse verified.",
+    "Authorization is limited to the non-learning load scan; VM natural-end receipts and persisted V2 analysis remain pending."
+  ],
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-E0-LOAD-FORMAL/R03/brief.json": "3c6dd7317f6ad02fa2007344649d821f8f47d9296b743cc0e3d18eda52f9d9b8",
+    "CODE/work/WP-LEO-V2-E0-LOAD-FORMAL/R02/request-source.json": "91b97f057085941616a3f05a25df577960c47807a0aeb54a15cfd872fbb638d8",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/RUNBOOK.md": "6b304a034b84161ed96d1a98ba437e2710498d0f612068a2e9240d96c72a948c",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/analysis-request.json": "d40fa9be4c8b8a43fce1cb9e69339569ec2ddfda7ea45ac12934f88923b51f82",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/compile-report.json": "b9aba9969c22e9a11786576b478c47942698c4ad45280ce2185628c55087ec9f",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/request.json": "98a77bdadd2300a3b261367246009d0426b3e5998e0341d901040acb412d8d49",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/resolved/EXP-20260822-E0-LOAD-FORMAL-R02-high_control-s7.leo-sim.yaml": "3cc854e1782d14e7be1c7ce5ec068d1bedb0d8a46afbfd3557f1e012ed44b994",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/resolved/EXP-20260822-E0-LOAD-FORMAL-R02-high_copy-s7.leo-sim.yaml": "3cc854e1782d14e7be1c7ce5ec068d1bedb0d8a46afbfd3557f1e012ed44b994",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/resolved/EXP-20260822-E0-LOAD-FORMAL-R02-low_control-s7.leo-sim.yaml": "d9c2acfaa36c621439c1711d9565e29ca2feda6b67cfc02a7f7f90ad5b770ea7",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/resolved/EXP-20260822-E0-LOAD-FORMAL-R02-low_copy-s7.leo-sim.yaml": "d9c2acfaa36c621439c1711d9565e29ca2feda6b67cfc02a7f7f90ad5b770ea7",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/resolved/EXP-20260822-E0-LOAD-FORMAL-R02-medium_control-s7.leo-sim.yaml": "8284cc176c61f7fd7d096215f98613fa0a33a72903daa210cf124cacfd551be3",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/resolved/EXP-20260822-E0-LOAD-FORMAL-R02-medium_copy-s7.leo-sim.yaml": "8284cc176c61f7fd7d096215f98613fa0a33a72903daa210cf124cacfd551be3",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/run-manifest.json": "1154cecf814a9afb779b2c0891e009d82916a19dfb9cd90e04189f633368c3ca"
+  },
+  "blocking_findings": [],
+  "unknowns": ["VM execution, persisted paired analysis and additional-seed confirmation are pending."],
+  "required_revision": []
+}

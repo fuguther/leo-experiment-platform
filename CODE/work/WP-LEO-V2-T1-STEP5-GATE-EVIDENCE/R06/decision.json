@@ -1,0 +1,56 @@
+{
+  "applied_review_receipts": [
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/review-cold-start.json",
+      "receipt_id": "RR-T1-STEP5-R06-COLD",
+      "role": "cold_start",
+      "sha256": "72f12a7fd9c69e5b4b8ff9b74d0fa010f0c6fac8e48d357ce1b303111115eacc",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/review-satellite-drl.json",
+      "receipt_id": "RR-T1-STEP5-R06-SATDRL",
+      "role": "satellite_drl",
+      "sha256": "a3341c8bd5b4136abc2204e7218ea176703e17562d584afbeffe7e2534e726eb",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/review-adversarial.json",
+      "receipt_id": "RR-T1-STEP5-R06-ADV",
+      "role": "adversarial",
+      "sha256": "444a07cb9c57cc9d620c7fb2f9c136041e96d1192797992419e003ede59fe454",
+      "verdict": "PASS"
+    }
+  ],
+  "artifact_hashes": {
+    "CODE/data/traffic/t1_step5_micro_ab.csv": "26536d8b3b894a13d74289131653fddfdae8fe095f7c4edb2dc6a1683ec37592",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/PROCEDURE.md": "aa988c08b93fa4aa44244bcbf65bd0aaa6893780cf971ba6dc450cb19e2d93fe",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/check_procedure.py": "f0868caea937958726032306eb9389ad20a3f1a0205a5c4afdc44d8196019dd9",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/procedure_commands.py": "4be38c412a96053a95d649f068d9c7d41bc9859ad8a9d41990dd64f3c6f117c8",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/step5_recompute.py": "756b95478e86d6f2449863cdc2f0bd6578f9aa5059d571ae5a81471ded53fa73",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/RUNBOOK.md": "3faa99eca0cae4a5fbda635f0bef3947d47f9b7f64fa3e2821340812ba712797",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/analysis-request.json": "bf9e45f6a3031f31dda8529b4a4f03f95fc0b5bffeff152ab2bbfe496abc5a91",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/compile-report.json": "0c088e02194af61999b767f0d4945884ce530398a411be2c48a08d7de8598cef",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/request.json": "c14e50e8dda845156e2e1427b7d4b8cc6249407f5e3b20e3ba62f3d3eea23ca0",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/resolved/EXP-20260923-T1-STEP5-MICRO-R06-cd05-s7.leo-sim.yaml": "21a15e74af8a8e743ef9475ae53ea837c66d7607bad4ed029c671bd7bb81a8cc",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/resolved/EXP-20260923-T1-STEP5-MICRO-R06-control-s7.leo-sim.yaml": "4eb001c5a45665a5c941d5e5af9e58f90471e59f430ea26db1281d20ce8b9924",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/run-manifest.json": "1767df6e73154ffce761f48d55791a421b1990e27a2220e490a358bb148475cd",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/RUNBOOK.md": "98e24a79951dc258681eae53450f204c22612a9c9f7348dbaab0be7d2bf6d86b",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/analysis-request.json": "dee420b79ab00a1112165c6bab2a2a7578298593de620e1bb3be1b24ef6835b9",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/compile-report.json": "fff932379d236e8147a9ec25808f3dc93bd0374e6fc3ea539080d727509ef33d",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/request.json": "3e7a43fd20b5325ad63608d5a000fcd1bad2ae9759101736291e1e3f69e54e9e",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/resolved/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7.leo-sim.yaml": "db31faeb008e781c3514c0632f5fa0ccc2dee8eb66b0a605e91a552d294cdbb4",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/resolved/EXP-20260923-T1-STEP5-PRESSURE-R06-control-s7.leo-sim.yaml": "5c0eb53a77f0345086cc9c410d356bfec965d779a03e15baf0e364e80f0a5486",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/run-manifest.json": "edea2961c784bc9f98feb8595e2ffa321be7c038be2a8c9927898e2d95d93e11"
+  },
+  "blocking_findings": [],
+  "decision": "ACCEPT",
+  "decision_maker_id": "decision:step5-batch-producer-gate",
+  "next_revision": null,
+  "producer_id": "producer:step5-batch-deepseek",
+  "rationale": "G0 GUARANTEE BOUNDARY, written into R06/PROCEDURE.md section 3 and repeated here verbatim as the initiator required, precisely so that we do not over-claim again. G0 GUARANTEES that the procedure contains, byte-for-byte, the four commands derived from the compiled run-manifests with no deviation inside that derived block. G0 does NOT guarantee and does NOT claim that command text anywhere else in the document is covered; the initiator boundary sentence, quoted verbatim: \"派生块之外的命令文本不受本保证约束\" (command text outside the derived block is NOT covered by this guarantee). Any statement presenting G0 as no-wrong-command-can-appear-in-the-document is an over-claim and is forbidden. This boundary is stated alongside the demotion of G1a/G1b to HYGIENE checks: they are additional cheap sanity checks, explicitly NOT the structural guarantee, they catch realistic accidental drift only, and they are known to be evadable by line-splitting and re-casing. FINDINGS SELF-DISCOVERED BY THE PRODUCER, both fixed and both recorded as findings rather than hidden. (1) End-to-end single-byte mutation, measured rather than simulated: editing exactly one byte of the generated block in the real procedure file (offset 9719, character 6 changed to 7) made the gate exit 1 with G0 failed, after which the file was restored byte-identically (sha256 e936b2db32d836982f68507536cdb7aa49ea88ff7005095aabe6376ee2fca317) and the gate returned green. (2) A G0 control that could never trigger: the first marker-removal control stripped the markers off the generated BLOCK, but the remaining body is exactly what legitimately appears inside the marked region, so the control could never fire; the gate reported G0 as an UNPROVEN GATE instead of passing, and the control was corrected to strip the marker LINES FROM THE DOCUMENT and require the containment check to fail. The unproven-gate rule is what surfaced the second defect. STRUCTURAL FIX (option A). Revision 5 was BLOCKed because the gate was still evadable: an executable backslash-continued unfenced command whose experiment id was split across lines passed, and an id split across prose lines or written in lower case was not detected at all - the third consecutive round in which a text-scanning patch was evaded. Revision 6 removes the scanner from the guarantee: the reviewed generator tools/procedure_commands.py derives the four run commands from the compiled run-manifests, and gate check G0 requires R06/PROCEDURE.md to contain the derived marked block BYTE-FOR-BYTE. Commands are reproduced, not checked, so fenced, unfenced, line-split, re-cased, variable-built or one-character-edited variants are simply not the generated text. Verified end-to-end by the producer: editing exactly one byte of the generated block in the real procedure (offset 9719, character 6 to 7) made the gate exit 1 with G0 failed; the file was restored byte-identically and the gate returned green. G0 carries controls on every run: a single-character mutation and marker removal must both be detected, otherwise G0 is an UNPROVEN GATE and cannot count as passed. G1a/G1b are explicitly demoted to HYGIENE checks, and the report names G0 in its structural_guarantee field. REVIEWER PROVENANCE, recorded verbatim as required. Codex was used for the revision-1 cold_start review and found real defects, but Codex is UNAVAILABLE because its quota is exhausted; revisions 2 to 6 therefore used z-ai/glm-5.3-flash (Zhipu GLM family) and meta/muse-spark-1.3-contributor (Meta Muse family), none of which shares the executing agent family, and did NOT wait for the quota to recover. Every reviewer re-hashed each bound artifact itself. R05 ADVERSARIAL RECEIPT APPENDED, as the initiator required, rather than dropped. It arrived after the R05 REVISE record was finalised and returned PASS with zero blocking findings. Because the shared gate file has since changed, the R05 finalization can no longer be recomputed, so its content is recorded here instead. It re-ran the R04 defeat and confirmed it closed, caught eight further attacks (a stale id in an HTML comment, a markdown table row, a link target, inline backticks, a four-space indented block, a variable-built command carrying a literal id, a variable-assembled id, and an unfenced one-line invocation), and documented one residual defeat it judged NON-BLOCKING: a shell-function shim plus variable assembly whose invocation line never contains the literal run-remote.sh and whose id never appears as a full token, which evades both lexical checks. It argued that this is only constructible by a procedure author acting deliberately, that the resulting document would be unmistakably obfuscated, that it violates no documented gate claim literally, and that a runtime backstop exists. That residual surface is precisely why revision 6 moved the guarantee from lexical scanning to byte-equality against a derived block: a shimmed or assembled command cannot be the generated text. F2 DISCLOSURE (required): gate check G5 reads each cell resolved config and reports the actual execution.node_process_delay_s; all four R06 cells are 0.0, with a control proving a non-zero value would be flagged. This deployment contains F2 code with F2 DISABLED. PLATFORM-LEVEL DEFECT REGISTERED SEPARATELY and not repaired here: this is the second time a single new config key invalidated every compiled manifest and every existing authorization, and there is no mechanical guard that can detect, before a merge, that existing authorizations will all become unverifiable. Candidate fixes: snapshot the resolved-key set in CI and fail on any change; or attribute this failure explicitly instead of a generic cells-do-not-derive message. OPEN FINDINGS LEFT UNREPAIRED. metrics_independent.py:297-363 does not enforce end-start == served/rate, so time can hide inside a covered transmission span while every uncovered-interval check passes (measured: a 1.5 s window for 1000 bit at 1000 bps, needing 1.0 s, gave zero gap violations, zero closure errors and residual 0.0); it stays open, with PROCEDURE section 6b making three compensating backstops mandatory. The RUNBOOK and v2_analysis metric-whitelist conflict is worked around rather than repaired, because it is a production-contract change outside this authorisation. RUNTIME BACKSTOP, independently verified by the R05 adversarial reviewer and recorded here as corroboration: it ran verify_authorization_for_leo_sim_v2_config against ALL 18 authorization files then present in the repository. Every one was rejected - the four T1-STEP5-R03 cells with matrix manifest cells do not derive from request, because the F2 key change invalidated them - and no R05 or R06 authorization existed at that time. A stale-revision formal run is therefore impossible even if a procedure text were wrong, because the launcher re-derives and re-verifies the authorization before starting. This is a second, independent line of defence behind the procedure gate and it does not depend on any text scanning or byte-equality argument.",
+  "revision": 6,
+  "revision_instructions": [],
+  "schema": "agent-work-decision/v1",
+  "work_id": "WP-LEO-V2-T1-STEP5-GATE-EVIDENCE"
+}

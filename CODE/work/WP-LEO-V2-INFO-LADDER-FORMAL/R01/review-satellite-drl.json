@@ -1,0 +1,44 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-INFO-LADDER-FORMAL-R01-SAT",
+  "work_id": "WP-LEO-V2-INFO-LADDER-FORMAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-INFO-LADDER-FORMAL/R01/brief.json": "0e6fbf9a3eb31c6b303aed5513e43a97b2b49f9ded8b907524cc04df9d913c10",
+    "EXPERIMENTS/request-sources/EXP-20260821-INFO-LADDER-FORMAL-R01.json": "6e52b9a7c42738fbdca05d72e60552f7f24462b73ef9ed2069e9dd1eb2b4ce23",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/RUNBOOK.md": "67baac3b24b67e9832419f51494094bfe0dbb5dcdcf7f5e76d9b83896808f9ab",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/analysis-request.json": "e5434d8b1969e59380f1a084b80a7eb26f2e0643c99fdf5c5330b387c9829270",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/compile-report.json": "368dbfc5f6e6caa81e00ab2d676b9666e59b3940b1cc4be27786ad0228ccd05a",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/request.json": "7c4f404ba06a620564087bb1841bbd918e4437b41c2753a972b5edbf966dbe1d",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/run-manifest.json": "1737d17eb9fdcbbd34c00d539958e623b16c6364be93fa9d1f7462cd9a7f5e8d",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-hop-s11.leo-sim.yaml": "5f5c257968a9ba27a859cffa29be63417c3b8990a579fb63c64313e28316ebc9",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-hop-s7.leo-sim.yaml": "d2bd2dca56b0424f8fc04c94b000cd47f6fcbd82a90c6702107f9f7ed16a27a8",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-info_queue-s11.leo-sim.yaml": "1636391a194c7ddd829b45b9b444be3ece80b4e862780463b3639219b31c7fb2",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-info_queue-s7.leo-sim.yaml": "ad5604a0c3d2adab78050c9dd33b02ae480661f75a43b0b2b82563ded792744a"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-info-ladder-formal-r01",
+  "reviewer_id": "reviewer:info-ladder-formal-satellite-drl",
+  "reviewer_session_id": "R-info-ladder-formal-satellite-drl-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "satellite_drl",
+  "verdict": "PASS",
+  "evidence": [
+    "当前 checkout exact HEAD 为 058e5433ad14b7390028a542e4e86b3dbd2b0d15；独立读取 R01 brief、request-source、compiled package、analysis-request、RUNBOOK 和 4 个 resolved config，未修改其他仓库文件。",
+    "独立运行 verify_compiled_matrix 成功解析 EXP-20260821-INFO-LADDER-FORMAL-R01 的 4 个 non_learning cells 和 9 个 compiled artifacts；compile-report.errors=[]、runtime_kind=leo_sim_v2、execution_authorized=false。独立运行矩阵授权器校验同样通过 4 rows/9 artifacts。",
+    "brief、request-source、compiled request 和 analysis-request 均明确为 F0 hop vs info_queue、两 seed（7/11）、4 cells、单一 info_queue_minus_hop paired contrast，并明确将 info_physical 延后到独立 follow-up；claim boundary 禁止算法 superiority、因果 information-value、learner observation equivalence、Q0、E0 和论文统计结论。",
+    "两个 arm 的 intervention_paths 都只有 routing.policy；每个 seed 的 hop/info_queue pair 除 policy 外配置一致，4 个 manifest cells 的 controlled_signature 相同。resolved configs 均为 routing.contract=C3、learning.algorithm=none、routing.learning_enabled=false、phase=non_learning。",
+    "所有 resolved configs 固定 200 Mbps M-Lab multi-OD measurement-proxy、8 秒 burst starting at 8 秒、20 秒 horizon、MCS、Markovian topology/1 秒 recompute、control plane enabled/vis_k=12、140 satellites/7 planes、max_entities=2000、max_events=20000000、max_packets=20000；pair 内 trace identity 和 input SHA 一致。",
+    "request-source 与 compiled request 的 JSON 语义完全一致；work_finalization 在两者中均指向 CODE/work/WP-LEO-V2-INFO-LADDER-FORMAL/R01/finalization.json。当前 receipt 绑定 brief、source request 与最新 9 个 compiled artifacts 的实际 SHA-256。",
+    "定向测试通过：74 passed。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "当前 package 仍处于 compilation/review 阶段，尚未覆盖 formal finalization、authorization.json、clean-main VM deployment、4 个 natural-end VM receipts、conservation_ok、research_eligible、packet/latency/capacity ledgers 或 persisted V2 analysis。",
+    "request-source 与 compiled request 的 JSON 字节排列不同，但独立语义比较完全一致；当前 compiled request SHA、manifest SHA 和 analysis SHA 绑定均通过，未将该格式差异视为执行阻塞。"
+  ],
+  "required_revision": []
+}

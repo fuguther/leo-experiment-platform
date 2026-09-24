@@ -1,0 +1,32 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-EXP1-CAPACITY-R01-SAT",
+  "work_id": "WP-LEO-V2-EXP1-CAPACITY",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-EXP1-CAPACITY/R01/brief.json": "163b2ebc22297777946d4fa6e7165b117f51ab660862f5b5e1870fa5aab3d39f",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/request-source.json": "3e9f3b0e89b7054f728cd39bcb6c0a27066de102b0a8bcd85a839c9de442e64c",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/RUNBOOK.md": "0dc4491bf99463aa40c21e5d2cf67daf88f82204a44d4d457d8ad9965a73d5a4",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/analysis-request.json": "16ec2d00a8027e5c12bfc7d6a0ea2ca259538a0bcc6366b440a1cb815fd095c7",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/compile-report.json": "60ffdb1a7d898ba94e2bc53e96800b3d305aa972fb3bc5ae18dc1d8a2b82a0d4",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/request.json": "ddcfaedecccdba72f65501bb6656eb541ad6e5ddf28df904216a5b2c5107187e",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/run-manifest.json": "f1d7a13648ae5edd5a676b4a39d8799b93e43e8c0750a9c52a191e40514281d6",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/resolved/EXP-20260821-EXP1-CAPACITY-R01-capacity-s7.leo-sim.yaml": "4f498c67ae27918b4c140eaefbeb68c1910a3e6ba78457e15370d902e8e70e75",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/resolved/EXP-20260821-EXP1-CAPACITY-R01-control-s7.leo-sim.yaml": "1038e634130af6ad27b0095fa18307cf2a27540a6b1700c1392d8789f996e2fa"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-exp1-capacity-r01",
+  "reviewer_id": "reviewer:satellite-drl-exp1-capacity-r01",
+  "reviewer_session_id": "R-satellite-drl-exp1-capacity-r01",
+  "independence": {"producer_and_reviewer_are_distinct": true, "review_started_from_declared_inputs": true},
+  "role": "satellite_drl",
+  "verdict": "PASS",
+  "evidence": [
+    "The control arm uses hop-shortest routing and the treatment arm uses the existing capacity-aware cost (observed propagation plus queue/rate term), with no learning enabled.",
+    "Both arms use the same M-Lab measured multi-OD endpoints, 100 Mbps offered load, 8–16 second burst, MCS and 1-second topology cadence.",
+    "The design is appropriate for a first descriptive congestion-routing diagnostic; it does not call the capacity arm a learned or globally optimal policy."
+  ],
+  "blocking_findings": [],
+  "unknowns": ["The actual capacity-policy effect and utilization metrics must be measured from VM receipts and ledgers."],
+  "required_revision": []
+}

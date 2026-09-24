@@ -1,0 +1,43 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-INFO-LADDER-FORMAL-R01-COLD",
+  "work_id": "WP-LEO-V2-INFO-LADDER-FORMAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-INFO-LADDER-FORMAL/R01/brief.json": "0e6fbf9a3eb31c6b303aed5513e43a97b2b49f9ded8b907524cc04df9d913c10",
+    "EXPERIMENTS/request-sources/EXP-20260821-INFO-LADDER-FORMAL-R01.json": "6e52b9a7c42738fbdca05d72e60552f7f24462b73ef9ed2069e9dd1eb2b4ce23",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/RUNBOOK.md": "67baac3b24b67e9832419f51494094bfe0dbb5dcdcf7f5e76d9b83896808f9ab",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/analysis-request.json": "e5434d8b1969e59380f1a084b80a7eb26f2e0643c99fdf5c5330b387c9829270",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/compile-report.json": "368dbfc5f6e6caa81e00ab2d676b9666e59b3940b1cc4be27786ad0228ccd05a",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/request.json": "7c4f404ba06a620564087bb1841bbd918e4437b41c2753a972b5edbf966dbe1d",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/run-manifest.json": "1737d17eb9fdcbbd34c00d539958e623b16c6364be93fa9d1f7462cd9a7f5e8d",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-hop-s11.leo-sim.yaml": "5f5c257968a9ba27a859cffa29be63417c3b8990a579fb63c64313e28316ebc9",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-hop-s7.leo-sim.yaml": "d2bd2dca56b0424f8fc04c94b000cd47f6fcbd82a90c6702107f9f7ed16a27a8",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-info_queue-s11.leo-sim.yaml": "1636391a194c7ddd829b45b9b444be3ece80b4e862780463b3639219b31c7fb2",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-info_queue-s7.leo-sim.yaml": "ad5604a0c3d2adab78050c9dd33b02ae480661f75a43b0b2b82563ded792744a"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-info-ladder-formal-r01",
+  "reviewer_id": "reviewer:info-ladder-formal-cold-start",
+  "reviewer_session_id": "R-info-ladder-formal-r01-cold-start-058e543",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "cold_start",
+  "verdict": "PASS",
+  "evidence": [
+    "Exact detached checkout HEAD is 058e5433ad14b7390028a542e4e86b3dbd2b0d15; the fresh compiled package was verified without modifying its experiment artifacts.",
+    "The brief, source request, compiled request, run manifest and analysis request consistently define two F0 arms (hop and info_queue), four cells at trace seeds 7 and 11, and one descriptive info_queue-minus-hop contrast; info_physical is explicitly deferred.",
+    "Each seed-specific pair has identical input and trace identity hashes, and the complete resolved-config comparison differs only at routing.policy. All cells are non_learning with learning disabled and algorithm none.",
+    "The matrix verifier recomputed the compiled identities successfully for 4 rows and 9 matrix artifact hashes. The compile report has no errors and remains review-only.",
+    "Full CODE/leo_sim/tests plus CODE/tests completed with 555 passed and 1 skipped."
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "The package has not been authorized: authorization.json is absent and compile-report.execution_authorized is false.",
+    "No clean-main deployment, VM natural-end receipts, conservation/research_eligible receipts or persisted V2 analysis were produced by this review.",
+    "This receipt reviews only the F0 hop-versus-info_queue matrix; info_physical remains a separately reviewed follow-up scope."
+  ],
+  "required_revision": []
+}

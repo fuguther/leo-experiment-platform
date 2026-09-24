@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "experiment-request/v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["identity", "research", "design", "execution", "outputs", "analysis"],
+  "properties": {
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["experiment_id", "title", "owner"],
+      "properties": {
+        "experiment_id": {"type": "string", "pattern": "^EXP-[A-Za-z0-9_-]+$"},
+        "title": {"type": "string", "minLength": 3},
+        "owner": {"type": "string", "minLength": 1}
+      }
+    },
+    "research": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question", "hypothesis", "falsification_condition", "cannot_conclude"],
+      "properties": {
+        "question": {"type": "string", "minLength": 10},
+        "hypothesis": {"type": "string", "minLength": 10},
+        "falsification_condition": {"type": "string", "minLength": 10},
+        "cannot_conclude": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 3}},
+        "target_claim_ids": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intended_role", "base_profile", "one_change_policy", "factor_changed", "arms", "primary_metric", "planned_seeds"],
+      "properties": {
+        "intended_role": {"enum": ["exploratory", "diagnostic", "confirmatory", "upper_bound"]},
+        "base_profile": {"type": "string", "minLength": 1},
+        "one_change_policy": {"enum": ["strict", "exploratory_multi_factor"]},
+        "factor_changed": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "coupled_parameters": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "coupling_reason": {"type": "string"},
+        "primary_metric": {"type": "string", "minLength": 1},
+        "secondary_metrics": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "planned_seeds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "integer"}},
+        "arms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "label", "role", "method_family", "execution_kind", "information_contract", "training_budget", "evaluation_budget", "execution_budget", "checkpoint_lineage", "changes"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+              "label": {"type": "string", "minLength": 1},
+              "role": {"enum": ["control", "treatment", "ablation", "negative_control", "upper_bound"]},
+              "method_family": {"type": "string", "minLength": 1},
+              "execution_kind": {"enum": ["learning", "non_learning"]},
+              "information_contract": {"$ref": "#/$defs/information_contract"},
+              "training_budget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["simulated_seconds"],
+                "properties": {"simulated_seconds": {"type": "number", "minimum": 0}}
+              },
+              "evaluation_budget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["simulated_seconds"],
+                "properties": {"simulated_seconds": {"type": "number", "minimum": 0}}
+              },
+              "execution_budget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["simulated_seconds"],
+                "properties": {"simulated_seconds": {"type": "number", "minimum": 0}}
+              },
+              "checkpoint_lineage": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["mode", "source_run_id", "source_sha256"],
+                "properties": {
+                  "mode": {"enum": ["new_training", "evaluation_only", "not_applicable"]},
+                  "source_run_id": {"type": ["string", "null"]},
+                  "source_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}
+                }
+              },
+              "changes": {"type": "object"}
+            }
+          }
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resume_mode", "resource_budget"],
+      "properties": {
+        "resume_mode": {"enum": ["none", "warm_start", "exact_resume"]},
+        "resource_budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cpu_per_job", "max_parallel_jobs", "expected_wall_minutes"],
+          "properties": {
+            "cpu_per_job": {"type": "integer", "minimum": 1},
+            "max_parallel_jobs": {"type": "integer", "minimum": 1},
+            "expected_wall_minutes": {"type": ["number", "null"], "minimum": 0}
+          }
+        },
+        "orchestration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "driver", "plan", "cpu_list"],
+          "properties": {
+            "mode": {"const": "cross_experiment_master"},
+            "driver": {"type": "string", "pattern": "^[A-Za-z0-9_./-]+$"},
+            "plan": {"type": "string", "pattern": "^[A-Za-z0-9_./-]+$"},
+            "cpu_list": {"type": "string", "pattern": "^[0-9,-]+$"}
+          }
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_artifacts", "completion_contract"],
+      "properties": {
+        "required_artifacts": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "completion_contract": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estimand", "unit_of_analysis", "aggregation_level", "paired_by", "inclusion_rules", "exclusion_rules", "missing_data_policy", "estimator", "uncertainty_method", "alpha", "minimum_effect", "multiple_comparisons", "planned_contrasts", "stopping_rule", "negative_control", "target_ablation"],
+      "properties": {
+        "estimand": {"type": "string", "minLength": 10},
+        "unit_of_analysis": {"type": "string", "minLength": 3},
+        "aggregation_level": {"type": "string", "minLength": 3},
+        "paired_by": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "inclusion_rules": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 3}},
+        "exclusion_rules": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 3}},
+        "missing_data_policy": {"type": "string", "minLength": 10},
+        "estimator": {"type": "string", "minLength": 3},
+        "uncertainty_method": {"type": "string", "minLength": 3},
+        "alpha": {"type": "number", "minimum": 0, "maximum": 1},
+        "minimum_effect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["metric", "direction", "absolute_difference"],
+          "properties": {
+            "metric": {"type": "string", "minLength": 1},
+            "direction": {"enum": ["increase", "decrease", "two_sided"]},
+            "absolute_difference": {"type": "number", "minimum": 0}
+          }
+        },
+        "multiple_comparisons": {"type": "string", "minLength": 3},
+        "planned_contrasts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "left_arm", "right_arm", "estimand"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "left_arm": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+              "right_arm": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+              "estimand": {"type": "string", "minLength": 3}
+            }
+          }
+        },
+        "stopping_rule": {"type": "string", "minLength": 10},
+        "negative_control": {"$ref": "#/$defs/planned_control"},
+        "target_ablation": {"$ref": "#/$defs/planned_control"},
+        "calibration_decision": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "candidate_arms",
+            "arm_statistic",
+            "burst_reference_arm",
+            "near_empty_max_offered_load_mbps",
+            "min_completion_ratio",
+            "max_in_flight_ratio",
+            "min_received_goodput_mbps",
+            "max_terminal_backlog_slope_fraction_of_arrival_rate",
+            "max_terminal_backlog_slope_floor_blocks_per_s",
+            "negative_control_max_abs_difference_mbps",
+            "burst_effect_min_paired_difference_mbps",
+            "adjacent_load_min_paired_difference_mbps",
+            "min_seed_agreement",
+            "decision_policy"
+          ],
+          "properties": {
+            "candidate_arms": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}},
+            "arm_statistic": {"const": "median_across_seeds"},
+            "burst_reference_arm": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+            "near_empty_max_offered_load_mbps": {"type": "number", "minimum": 0},
+            "min_completion_ratio": {"type": "number", "minimum": 0, "maximum": 1},
+            "max_in_flight_ratio": {"type": "number", "minimum": 0, "maximum": 1},
+            "min_received_goodput_mbps": {"type": "number", "minimum": 0},
+            "max_terminal_backlog_slope_fraction_of_arrival_rate": {"type": "number", "minimum": 0},
+            "max_terminal_backlog_slope_floor_blocks_per_s": {"type": "number", "minimum": 0},
+            "negative_control_max_abs_difference_mbps": {"type": "number", "minimum": 0},
+            "burst_effect_min_paired_difference_mbps": {"type": "number", "minimum": 0},
+            "adjacent_load_min_paired_difference_mbps": {"type": "number", "minimum": 0},
+            "min_seed_agreement": {"type": "integer", "minimum": 1},
+            "decision_policy": {"type": "string", "minLength": 20}
+            }
+          }
+        }
+      }
+  },
+  "$defs": {
+    "information_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["train", "evaluation", "deployment"],
+      "properties": {
+        "train": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "evaluation": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "deployment": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "planned_control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "arm_id", "limitation"],
+      "properties": {
+        "status": {"enum": ["included", "not_included"]},
+        "arm_id": {"type": ["string", "null"]},
+        "limitation": {"type": "string", "minLength": 10}
+      }
+    }
+  }
+}

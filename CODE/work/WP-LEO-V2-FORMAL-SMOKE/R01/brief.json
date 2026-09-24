@@ -1,0 +1,43 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-FORMAL-SMOKE",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-formal-smoke-r01",
+  "objective": "Review the immutable leo_sim_v2 formal smoke package and its dedicated governance-to-remote execution path before any VM launch.",
+  "context": [
+    "The smoke is an integration gate for direct endpoint-to-satellite access, finite K=1 access, control-plane propagation, GE evaluation, non-oracle hop routing, natural completion, receipts and conservation.",
+    "The smoke uses BBM. It does not claim MBB effectiveness, outage occurrence, algorithm superiority, calibrated operator realism, or production readiness."
+  ],
+  "allowed_inputs": [
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01",
+    "CODE/leo_sim",
+    "CODE/experiment_platform/authorize_experiment.py",
+    "CODE/scripts/remote/remote_job.py",
+    "CODE/scripts/remote/run-remote.sh"
+  ],
+  "excluded_inputs": [
+    "CODE/Results",
+    "ARCHIVE-20260803",
+    "Prior agent completion claims without direct source evidence"
+  ],
+  "deliverables": [
+    "Three independent review receipts bound to every compiled experiment artifact",
+    "A decision and finalization that either accept or block authorization"
+  ],
+  "cannot_claim": [
+    "No VM execution has occurred before authorization.",
+    "No mechanism effect, speedup, DDQN result, MBB effectiveness, outage frequency, or operator-calibrated realism is established by this package."
+  ],
+  "acceptance": [
+    "The experiment request, resolved config, manifest, analysis request and runbook form one internally consistent immutable build.",
+    "The V2 path cannot silently invoke or fall back to the legacy Gateway runtime.",
+    "Authorization binds exact artifact, code, config, trace-input and run identities.",
+    "The formal remote runner invokes only CODE.leo_sim and requires natural-end receipt verification plus requested-mechanism effectiveness before research_eligible=true.",
+    "Any blocking correctness, simulation-validity or governance finding causes REVISE rather than authorization."
+  ],
+  "review_roles": ["cold_start", "satellite_drl", "adversarial"],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

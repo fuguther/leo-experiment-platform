@@ -1,0 +1,59 @@
+{
+  "applied_reviews": [
+    {
+      "path": "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R02/review-cold-start.json",
+      "receipt_id": "RR-CONGESTION-PRESSURE-EVAL-R02-COLD",
+      "reviewer_id": "reviewer:congestion-pressure-cold-start",
+      "reviewer_session_id": "R-congestion-pressure-cold-start-r02",
+      "role": "cold_start",
+      "sha256": "eeb409a05c21f252eb8aba23fe9411321f385b4335ffc1157c82cad195576317",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R02/review-satellite-drl.json",
+      "receipt_id": "RR-CONGESTION-PRESSURE-EVAL-R02-SAT",
+      "reviewer_id": "reviewer:congestion-pressure-eval-r02-satellite-drl",
+      "reviewer_session_id": "R-congestion-pressure-eval-r02-satellite-drl",
+      "role": "satellite_drl",
+      "sha256": "91bb9071fcdf8c46897a7de8d1ad9beb2c4ddddef01f789f5e5e97c09f3ffc84",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R02/review-adversarial.json",
+      "receipt_id": "RR-CONGESTION-PRESSURE-EVAL-R02-ADV-R2",
+      "reviewer_id": "reviewer:congestion-pressure-eval-r02-adversarial-r2",
+      "reviewer_session_id": "R-congestion-pressure-eval-r02-adversarial-r2",
+      "role": "adversarial",
+      "sha256": "acc1bae734cf8e8fc44c085a100f834b577a9c50f6bac72c83d3b743eabb44e1",
+      "verdict": "PASS"
+    }
+  ],
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R02/brief.json": "b0972c88ed4780c1c2aafa52f43916644a071a7ce9e5dc83881b0c4ee6f8acaa",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/RUNBOOK.md": "2205399c0d1cdf90268cc02e4af7ff8322d30aad9f114af06a900834677b7abf",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/analysis-request.json": "31094bb5596a870ac492d97179d2363772187b40471c763d895c567c24df099c",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/compile-report.json": "c75a660c32056d6f3271208eff89654f482d23a46c13a4ab30fd1691923ad118",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/request.json": "3fb555cd6460aa2afc93052210dabf10e0d42e7d5ee1480334599dc04f2f9a3a",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-ddqn_c3_pressure-s7-l7.leo-sim.yaml": "fbaa2b7469ccdd1fd0596bc11f7194264e7710f1a3ab0cfe7dddb1cb92d779d3",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-gat_pressure-s7-l7.leo-sim.yaml": "5a99e2dfa5eeff97535039612ce434dd8b8dc822a64332e11807ad785171ddb2",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-mpnn_pressure-s7-l7.leo-sim.yaml": "c56e1d44d72b23b7af3bef5b776d76de1b7251e0462a49c1d2e9d1284ad78641",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-qlearning_pressure_ddqn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-qlearning_pressure_gat-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-qlearning_pressure_mpnn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/run-manifest.json": "33e129ed011e1e3fc9dab8e531899a3b4ddefa2b6ffae47e7876cd11a10186a1",
+    "EXPERIMENTS/request-sources/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02.json": "96dc109882911bca3fc45b9a72585578553ea779e992742d1c8cf09b984b3a76"
+  },
+  "brief_path": "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R02/brief.json",
+  "brief_sha256": "b0972c88ed4780c1c2aafa52f43916644a071a7ce9e5dc83881b0c4ee6f8acaa",
+  "decision_path": "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R02/decision.json",
+  "decision_sha256": "8b60f416cb8bd5e3a2567b02ae7c136a85611b48aadf94ff479bcd3f2cd5eaa7",
+  "required_review_roles": [
+    "adversarial",
+    "cold_start",
+    "satellite_drl"
+  ],
+  "revision": 1,
+  "schema": "agent-work-finalization/v1",
+  "status": "ACCEPTED",
+  "work_id": "WP-LEO-V2-CONGESTION-PRESSURE-EVAL"
+}

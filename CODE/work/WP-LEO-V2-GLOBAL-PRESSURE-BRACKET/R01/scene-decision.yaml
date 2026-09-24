@@ -1,0 +1,31 @@
+schema: leo-sim-scene-decision/v1
+scope: global_populated_land
+population:
+  source_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
+  aggregation_deg: 1.0
+  candidate_regions: 16988
+coverage:
+  horizon_s: 3600.0
+  step_s: 60.0
+  require_never_visible: 0
+traffic:
+  provenance: population_proxy
+  temporal_model: local_diurnal_cosine
+  require_isl_exposed_packets: 1
+access_clean:
+  min_admission_rate: 0.95
+  max_access_rejected_fraction_of_offered: 0.05
+  max_uplink_queue_overflow_fraction_of_offered: 0.05
+route_clean:
+  max_no_route_fraction_of_admitted: 0.05
+  max_route_stalled_fraction_of_admitted: 0.05
+downlink_clean:
+  max_downlink_queue_overflow_fraction_of_admitted: 0.05
+isl_pressure:
+  window_s: 1.0
+  min_consecutive_windows_same_directed_link: 2
+  min_window_utilization: 0.8
+  require_positive_p95_queue_delay_same_link: true
+observation:
+  emission_end_s: 20.0
+  observation_end_s: 30.0

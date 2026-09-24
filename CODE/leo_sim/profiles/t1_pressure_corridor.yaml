@@ -1,0 +1,77 @@
+config_version: leo-sim-config/v1
+# T1-PRESSURE-WINDOW: a deliberately ANALYTIC ISL pressure scenario.
+#
+# Why the existing R02 bracket cannot serve this purpose: at 10/20/40/80 Mbps
+# over the global population proxy no directed ISL saturates and there is no
+# sustained hotspot (load80 1 s active-window p99 utilisation about 0.5%).
+#
+# Construction, per the 2026-09-23 review:
+#   * fixed OD corridor / hotspot -- exactly two sites, so the whole offered
+#     load is ONE OD pair rather than spread over a global population;
+#   * access is NOT the bottleneck -- uplink/downlink rates far above the ISL
+#     rate, so any saturation is attributable to the ISL;
+#   * constant PHY -- rate_model constant with a fixed isl_rate_mbps, so the
+#     service time per packet is exact.
+#
+# The geometry, sites and control plane are taken from the known-good "smoke"
+# profile so the corridor is reachable; only load, PHY rate and access rates
+# differ.  That is what makes the window analytic rather than merely stressful:
+# every link on the single OD path carries the offered rate F, so the expected
+# directed ISL utilisation is min(1, F / isl_rate_mbps) in closed form.
+scenario:
+  name: t1-pressure-corridor
+  duration_s: 600.0
+  time_step_s: 0.1
+  # 24 sats / 3 planes: intra-plane ISL spacing ~5300 km < max_isl_km (6000),
+  # so the N-chain sat0 -> sat1 -> sat2 is physically available
+  num_satellites: 24
+  num_planes: 3
+  seed: 7
+endpoints:
+  sites:
+    - {name: equator, lat: 0.1, lon: 0.1, demand_weight: 1.0}
+    - {name: north, lat: 52.6, lon: 90.4, demand_weight: 1.0}
+demand:
+  mode: uniform
+  # 0.8 of the corridor capacity: the analytic prediction is utilisation 0.8,
+  # the platform's ISL pressure gate.  Sweep this ONE field to move the
+  # window (see the validation harness).
+  offered_mbps: 8.0
+  packet_bits: 1000000
+access:
+  # Access must never be the bottleneck: rates far above isl_rate_mbps, and
+  # an explicit finite source queue instead of the historical reject policy,
+  # so a packet with no visible satellite WAITS rather than being dropped.
+  # With the default reject policy this scenario silently loses its own load
+  # at the edge (ACCESS_REJECTED), which would make the measured ISL
+  # utilisation reflect the edge, not the corridor.
+  unavailable_policy: queue
+  uplink_rate_mbps: 1000.0
+  downlink_rate_mbps: 1000.0
+  association: bbm
+links:
+  rate_model: constant
+  # The corridor capacity.  The window is set by offered_mbps / isl_rate_mbps.
+  isl_rate_mbps: 10.0
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 2.0
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  max_events: 20000000
+  max_entities: 20000
+  max_packets: 200000
+  # REQUIRED for this scenario to mean anything.  Without availability
+  # sampling the per-link "utilisation" denominator is the sum of the service
+  # windows themselves, so it reads ~1.0 for any constant-rate service and
+  # says nothing about how busy the link actually was.  Sampling the
+  # physical-capacity windows turns it into a real duty cycle.
+  available_capacity_interval_s: 1.0
+outputs:
+  out_dir: leo_sim_out/t1-pressure-corridor
+  plotting: false

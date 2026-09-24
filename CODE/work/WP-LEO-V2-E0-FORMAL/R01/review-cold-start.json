@@ -1,0 +1,35 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-E0-FORMAL-R01-COLD",
+  "work_id": "WP-LEO-V2-E0-FORMAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-E0-FORMAL/R01/brief.json": "87c3e2a8de7030c5b22d2e50aae68a0dcdd0fb41e4e945263178b80a40791830",
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01/RUNBOOK.md": "b364d0d1921042c75aa16fdbb8abfe118e3f28e44d4a73911ef0bc7b23813335",
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01/analysis-request.json": "60ebb601346e80a4090e740979a6923e071cdfb829fc86bd747d0613357a4175",
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01/compile-report.json": "6961a923f49503ba2edeb2f58aa7957a518025c686a84a55668b103319b9fd11",
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01/request.json": "6e1979c17064b6b85d70eac9b70222f02a69b83faf9ab5ec3c0c1684e67fa447",
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01/resolved/EXP-20260821-E0-FORMAL-R01-main-s7.leo-sim.yaml": "393e3a95e167b22413115341dfb99a2f39d9451133c60f5a43de8e8c4f4980c5",
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01/run-manifest.json": "a4327abdeff3d9003671d332ffff48b5d2678ab319e0a68f5f6f8a2de37293a2"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-e0-formal-r01",
+  "reviewer_id": "reviewer:cold-start-e0-formal-r01",
+  "reviewer_session_id": "R-cold-start-e0-formal-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "cold_start",
+  "verdict": "PASS",
+  "evidence": [
+    "在 worktree /private/tmp/leo-doc-t0、commit 6ea2895 上重新核对 V2 artifact identity；request、compile-report、run-manifest、analysis-request 的 request SHA、manifest SHA、config SHA、trace identity、M-Lab input SHA、code SHA 与 execution-chain SHA 一致。",
+    "授权器内部 V2 artifact verification 返回 PASS；编译状态为 COMPILED_REVIEW_REQUIRED，未授权、未生成 launcher。",
+    "配置语义为 20 秒、140 星、7 轨、seed 7、M-Lab measurement-proxy 多 OD、50 Mbps、8–16 秒 burst、MCS、1 秒拓扑重匹配、control plane 开启的非学习 hop 基线。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "本回执只证明编译合同和身份绑定，不代表 VM 已运行或论文结果已成立。"
+  ],
+  "required_revision": []
+}

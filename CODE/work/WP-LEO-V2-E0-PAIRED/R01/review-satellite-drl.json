@@ -1,0 +1,32 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-E0-PAIRED-R01-SAT",
+  "work_id": "WP-LEO-V2-E0-PAIRED",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-E0-PAIRED/R01/brief.json": "3b2de42756fc0dd3a8fd86fa3aa9443f7dfec15b887d237702b9f21e968c2e1c",
+    "EXPERIMENTS/EXP-20260821-E0-PAIRED-R01/request-source.json": "d596d6f31451996068d77f421552ddd4fc3522e92e166406d0802087d6ec995c",
+    "EXPERIMENTS/EXP-20260821-E0-PAIRED-R01/RUNBOOK.md": "3f0be8a9c7fb18ceb7e8790e75ee08f2a8e37ac1489a7c4a2ffe78843e239a8e",
+    "EXPERIMENTS/EXP-20260821-E0-PAIRED-R01/analysis-request.json": "12997029b831be7e97d96eebee010c1134db741658386712bcddae8d24e48082",
+    "EXPERIMENTS/EXP-20260821-E0-PAIRED-R01/compile-report.json": "8ea60959a02d1bc3bdcb3b9013288280e0b4a165a3ea535770c419071344e548",
+    "EXPERIMENTS/EXP-20260821-E0-PAIRED-R01/request.json": "b116e4a53074dad9ef8880e64f340b6c9474367eb9a553f0e0270cc801585829",
+    "EXPERIMENTS/EXP-20260821-E0-PAIRED-R01/run-manifest.json": "0753fbf48581a01639d63446704fe57e0575768fdf3754aee291a3946fefbef8",
+    "EXPERIMENTS/EXP-20260821-E0-PAIRED-R01/resolved/EXP-20260821-E0-PAIRED-R01-baseline_copy-s7.leo-sim.yaml": "86a2e8b5930113a4ee346eff5451d20e3918c1fdd66528da24e4be5d447cd624",
+    "EXPERIMENTS/EXP-20260821-E0-PAIRED-R01/resolved/EXP-20260821-E0-PAIRED-R01-control-s7.leo-sim.yaml": "86a2e8b5930113a4ee346eff5451d20e3918c1fdd66528da24e4be5d447cd624"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-e0-paired-r01",
+  "reviewer_id": "reviewer:satellite-drl-e0-paired-r01",
+  "reviewer_session_id": "R-satellite-drl-e0-paired-r01",
+  "independence": {"producer_and_reviewer_are_distinct": true, "review_started_from_declared_inputs": true},
+  "role": "satellite_drl",
+  "verdict": "PASS",
+  "evidence": [
+    "Both cells are non-learning hop baselines over the same 140-satellite M-Lab multi-OD burst, MCS and 1-second topology cadence configuration.",
+    "The acceptance contract requires delivered data, a multi-satellite delivery, data ISL forwarding and control-plane delivery; the pair cannot be interpreted as a treatment effect.",
+    "The planned contrast is explicitly an identical-baseline consistency check, with algorithm superiority and congestion-control claims excluded."
+  ],
+  "blocking_findings": [],
+  "unknowns": ["The contract binds trace identity/input identity; actual run receipts must still be checked after VM execution."],
+  "required_revision": []
+}

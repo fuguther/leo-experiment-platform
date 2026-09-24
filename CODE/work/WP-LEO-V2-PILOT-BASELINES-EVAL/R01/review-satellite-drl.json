@@ -1,0 +1,46 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-PILOT-BASELINES-EVAL-R01-SAT",
+  "work_id": "WP-LEO-V2-PILOT-BASELINES-EVAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-PILOT-BASELINES-EVAL/R01/brief.json": "da9d09e587651ad62ab4d047a70145d492010f189e12156a8877f2a86f52fa47",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/request-source.json": "230d2d19f3bf497efdc85bca443a3b9202566c6067b054660c17a33b812b0df6",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/RUNBOOK.md": "8785e0ee061bdb0b74ac7b8639ce20a9af0078bc34dd243321b3120b120f86f3",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/analysis-request.json": "aeb5862cf9da941efd2b9130725f59f6e1db2259fe25227be4a3c95730c6633f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/compile-report.json": "39a8b5387327a1f4d217c1103eb1148c33f5d778c5c3b7e9ab42a027f33f483b",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/request.json": "230d2d19f3bf497efdc85bca443a3b9202566c6067b054660c17a33b812b0df6",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/run-manifest.json": "21f1ebd8f069493cf3d6cd057676e9828e12979144a0724cace6f17634ec0d19",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-ddqn_c3_a_eval-s7-l7.leo-sim.yaml": "b6e7ddb299c04813307442cfd3b1058648945cd35b13bf2eefb95a151afcdac6",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-ddqn_c3_b_eval-s7-l7.leo-sim.yaml": "9bd36c7c896eb3526a5b01926bc9800ed47a7794d8be25854fab045c58daba20",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-gat_a_eval-s7-l7.leo-sim.yaml": "0225484181b5f543217b53be0086e5120452db7cf8ba087d918794bae32ca308",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-gat_b_eval-s7-l7.leo-sim.yaml": "4d8639271c8f52cb6abcbd4bf68e2583cf5825c1b69c05ed84ee5b49968de925",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-mpnn_a_eval-s7-l7.leo-sim.yaml": "9ef19e85b7553d3d215cc327e9cdba4cd7af6c222967bb9e8f0238a0d2c65727",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-mpnn_b_eval-s7-l7.leo-sim.yaml": "2b7741adb3a0bad4d84ab8642d410a03484332293da6234fc929f1c9da1624ff",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-qlearning_a_eval-s7-l7.leo-sim.yaml": "3cf9d3dfcc488384ff3a39c28af2c3dada4b2e65905732dd24b36c432dcb384a",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-qlearning_b_eval-s7-l7.leo-sim.yaml": "32512647ab4dcaaadb30cf4202aa43cf22fa36dc205da8d3a139d8fb31b65947"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-pilot-baselines-eval-r01",
+  "reviewer_id": "reviewer:pilot-baselines-eval-satellite-drl",
+  "reviewer_session_id": "R-pilot-baselines-eval-satellite-drl-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "satellite_drl",
+  "verdict": "PASS",
+  "evidence": [
+    "独立运行 verify_compiled_matrix 成功解析 evaluation matrix 的 8 个 cells；compile-report.json 的 errors 为空、runtime_kind=leo_sim_v2，且 execution_authorized=false，明确仍处于授权前边界。",
+    "resolved runtime contract 对齐：Q-learning/C3 使用 TabularQLearning；DDQN/C3 使用 TensorflowDDQN；DDQN/GAT 与 DDQN/MPNN 使用 TensorflowDDQN 的对应图 contract。8 个 cell 均为 learning.mode=eval、phase=evaluation、routing.learning_enabled=true，且 resume_path=null。",
+    "每个 cell 的 checkpoint_lineage 均为 evaluation_only，source_run_id=external-<checkpoint_sha256> 且 source_sha256 与 resolved checkpoint_sha256 一致；当前 clone 中 8 个 checkpoint bytes 与 8 个 sibling metadata.json 的实际 SHA 均与 resolved pins 匹配。runtime governance/loader 对 checkpoint、metadata 的存在性、非符号链接、SHA、算法/contract/文件名及加载形状执行 fail-closed 校验。",
+    "四个 pairing_key 均恰好包含一对 evaluation cells；每对共享 trace_identity_sha256、input_sha256、controlled_signature、trace_seed=7、learning_seed=7 和 phase=evaluation。config_sha256 在 cell 间有意不同，仅承载各自 checkpoint/metadata identity；公共 M-Lab 100 Mbps、8–16 s 乘二 burst、MCS、Markovian topology、control plane/vis_k=12 保持一致。",
+    "analysis/request/brief 将 estimand 限定为固定 trace 下的 paired evaluation duplicate consistency，并明确禁止 algorithm superiority、causal congestion-control effect、final E0 threshold、Q0 optimality 和 paper-ready statistical conclusion；RUNBOOK 也要求 review、authorization、clean deployment 后才运行。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "当前 compile 产物未授权；本审阅未覆盖 authorization.json、evaluation finalization、clean deployed main SHA 或授权决策回执。",
+    "本审阅未覆盖 VM evaluation natural-end receipts：尚无 natural_end、conservation、research_eligible、zero train_steps、loaded checkpoint/metadata SHA、control/data delivery、资源指标及 persisted V2 analysis 的运行证据。"
+  ],
+  "required_revision": []
+}

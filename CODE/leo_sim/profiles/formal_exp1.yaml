@@ -1,0 +1,62 @@
+config_version: leo-sim-config/v1
+scenario:
+  name: formal-exp1-140-cross-ocean
+  duration_s: 120
+  time_step_s: 0.1
+  num_satellites: 140
+  num_planes: 7
+  altitude_km: 600
+  inclination_deg: 98.6
+  min_elevation_deg: 30
+  seed: 101
+endpoints:
+  sites:
+    - {name: Malaga, lat: 36.72, lon: -4.41, demand_weight: 1}
+    - {name: Tokyo, lat: 35.68, lon: 139.75, demand_weight: 1}
+demand:
+  mode: uniform
+  offered_mbps: 130
+  packet_bits: 8000000
+  deadline_s: null
+access:
+  slots_per_satellite: 4
+  uplink_rate_mbps: 100
+  downlink_rate_mbps: 100
+  uplink_queue_bits: 64000000
+  downlink_queue_bits: 64000000
+  association: bbm
+links:
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 1.0
+  ttl_s: 10
+  vis_k: 12
+  packet_bits: 8000
+  priority: nonpreemptive_priority
+routing:
+  policy: hop
+  max_hops: 64
+  learning_enabled: true
+  contract: GAT
+learning:
+  algorithm: ddqn
+  mode: train
+  seed: 41
+  obs_hops: 2
+  gamma: 0.99
+  lr: 0.001
+  batch_size: 64
+  replay_size: 50000
+  target_update_interval: 500
+  reward: queue
+  epsilon_start: 1.0
+  epsilon_end: 0.05
+  epsilon_decay_s: 30.0
+execution:
+  max_events: 20000000
+  max_entities: 2000
+  max_packets: 100000
+outputs:
+  out_dir: leo_sim_out/formal-exp1
+  plotting: false

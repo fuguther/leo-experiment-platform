@@ -1,0 +1,23 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-EXAMPLE-ADVERSARIAL-BLOCK",
+  "work_id": "WP-EXAMPLE-EXPERIMENT-DESIGN",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/work-package.example.json": "2e8bb9544f884614b24afe21386a34e28170d31213939456460be1e9bd67b074"
+  },
+  "producer_id": "producer:experiment-designer",
+  "producer_session_id": "P-example-r01",
+  "reviewer_id": "reviewer:adversarial-01",
+  "reviewer_session_id": "R-example-adversarial-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "adversarial",
+  "verdict": "BLOCK",
+  "evidence": ["验收条件只要求存在 falsification condition，未要求数值阈值和判决方法。"],
+  "blocking_findings": ["可证伪条件仍可以用模糊文字满足，不足以支撑确认性判决。"],
+  "unknowns": [],
+  "required_revision": ["在下一版验收标准中增加最小有意义差异、估计方法和明确判决规则。"]
+}

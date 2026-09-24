@@ -1,0 +1,54 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-GLOBAL-PRESSURE-BRACKET",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:codex-global-pressure",
+  "producer_session_id": "P-global-pressure-r01",
+  "objective": "Run the first bounded global population-proxy load cell through the formal VM chain and classify it with independent access, route, egress, and ISL-pressure gates before registering a higher load.",
+  "context": [
+    "The traffic source is a checked-in population raster proxy, not measured subscriber traffic.",
+    "The load10 pair is a deterministic duplicate integrity check, not a load-response contrast.",
+    "The scene decision contract is frozen separately from the simulator configuration and must be hash-bound before authorization."
+  ],
+  "allowed_inputs": [
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/",
+    "EXPERIMENTS/request-sources/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01.json",
+    "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/scene-decision.yaml",
+    "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/scene-check-contract.json",
+    "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/coverage-audit.json",
+    "CODE/leo_sim/scene_check.py",
+    "CODE/experiment_platform/authorize_experiment.py",
+    "CODE/experiment_platform/v2_analysis.py",
+    "CODE/scripts/remote/run-remote.sh"
+  ],
+  "excluded_inputs": [
+    "historical M-Lab load results",
+    "algorithm comparison results",
+    "information-ablation results",
+    "reinforcement-learning checkpoints",
+    "unverified worker completion claims"
+  ],
+  "deliverables": [
+    "a clean compiled matrix with two identical load10 cells",
+    "natural-end, conservation-verified external-witness receipts for each cell",
+    "a scene_check report using the full population coverage ledger and the frozen scene decision contract",
+    "a finalization artifact hash map that includes the scene decision, coverage audit, and scene-check contract before authorization",
+    "one closed classification: ACCESS_LIMITED, ROUTE_LIMITED, NO_ISL_PRESSURE, or ISL_PRESSURE_CANDIDATE"
+  ],
+  "cannot_claim": [
+    "a global ISL pressure threshold or load-response curve",
+    "that load10 is the first pressure point before higher registered loads are checked",
+    "real subscriber traffic, universal global service, algorithm superiority, information value, reinforcement-learning value, or a new-algorithm contribution"
+  ],
+  "acceptance": [
+    "population-gravity formal intent accepts an empty explicit sites list because the raster is the endpoint universe",
+    "matrix compile and receipt/authorization gates remain fail-closed",
+    "scene-decision.yaml, coverage-audit.json, and scene-check-contract.json are included in the finalization artifact hash map and a tamper check fails before authorization",
+    "coverage L1, access L3, route L4, egress L5, and ISL L6 are reported separately",
+    "no VM run starts before exact-SHA independent review, accepted finalization, clean-main deployment, and external-witness gates"
+  ],
+  "review_roles": ["cold_start", "satellite_drl", "adversarial"],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

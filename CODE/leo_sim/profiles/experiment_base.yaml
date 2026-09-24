@@ -1,0 +1,51 @@
+config_version: leo-sim-config/v1
+scenario:
+  name: experiment-base-140sats
+  duration_s: 30
+  time_step_s: 0.5
+  num_satellites: 140
+  num_planes: 7
+  altitude_km: 600
+  inclination_deg: 98.6
+  min_elevation_deg: 30
+  seed: 7
+endpoints:
+  sites:
+    - {name: Malaga, lat: 36.72, lon: -4.41, demand_weight: 1}
+    - {name: Tokyo, lat: 35.68, lon: 139.75, demand_weight: 1}
+demand:
+  mode: uniform
+  offered_mbps: 4
+  packet_bits: 1000000
+  deadline_s: null
+access:
+  # 接入侧放大：槽位/速率/队列都不再是瓶颈，让高载压力落在星间链路
+  # 与路由选择上（否则全部损失都是 ACCESS_QUEUE_OVERFLOW，路由无发挥空间）。
+  slots_per_satellite: 16
+  uplink_rate_mbps: 1000.0
+  downlink_rate_mbps: 1000.0
+  uplink_queue_bits: 1000000000
+  downlink_queue_bits: 1000000000
+  association: bbm
+  hysteresis_deg: 0
+  min_dwell_s: 0
+  acquisition_delay_s: 0.1
+links:
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 2
+  ttl_s: 60
+  vis_k: 12
+routing:
+  policy: hop
+  max_hops: 64
+learning:
+  algorithm: none
+execution:
+  max_events: 4000000
+  max_entities: 2000
+  max_packets: 30000
+outputs:
+  out_dir: leo_sim_out/experiment-base
+  plotting: false

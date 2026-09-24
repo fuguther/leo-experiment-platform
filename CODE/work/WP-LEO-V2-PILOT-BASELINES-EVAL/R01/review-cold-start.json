@@ -1,0 +1,47 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-PILOT-BASELINES-EVAL-R01-COLD",
+  "work_id": "WP-LEO-V2-PILOT-BASELINES-EVAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-PILOT-BASELINES-EVAL/R01/brief.json": "da9d09e587651ad62ab4d047a70145d492010f189e12156a8877f2a86f52fa47",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/request-source.json": "230d2d19f3bf497efdc85bca443a3b9202566c6067b054660c17a33b812b0df6",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/RUNBOOK.md": "8785e0ee061bdb0b74ac7b8639ce20a9af0078bc34dd243321b3120b120f86f3",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/analysis-request.json": "aeb5862cf9da941efd2b9130725f59f6e1db2259fe25227be4a3c95730c6633f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/compile-report.json": "39a8b5387327a1f4d217c1103eb1148c33f5d778c5c3b7e9ab42a027f33f483b",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/request.json": "230d2d19f3bf497efdc85bca443a3b9202566c6067b054660c17a33b812b0df6",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/run-manifest.json": "21f1ebd8f069493cf3d6cd057676e9828e12979144a0724cace6f17634ec0d19",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-ddqn_c3_a_eval-s7-l7.leo-sim.yaml": "b6e7ddb299c04813307442cfd3b1058648945cd35b13bf2eefb95a151afcdac6",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-ddqn_c3_b_eval-s7-l7.leo-sim.yaml": "9bd36c7c896eb3526a5b01926bc9800ed47a7794d8be25854fab045c58daba20",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-gat_a_eval-s7-l7.leo-sim.yaml": "0225484181b5f543217b53be0086e5120452db7cf8ba087d918794bae32ca308",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-gat_b_eval-s7-l7.leo-sim.yaml": "4d8639271c8f52cb6abcbd4bf68e2583cf5825c1b69c05ed84ee5b49968de925",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-mpnn_a_eval-s7-l7.leo-sim.yaml": "9ef19e85b7553d3d215cc327e9cdba4cd7af6c222967bb9e8f0238a0d2c65727",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-mpnn_b_eval-s7-l7.leo-sim.yaml": "2b7741adb3a0bad4d84ab8642d410a03484332293da6234fc929f1c9da1624ff",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-qlearning_a_eval-s7-l7.leo-sim.yaml": "3cf9d3dfcc488384ff3a39c28af2c3dada4b2e65905732dd24b36c432dcb384a",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01/resolved/EXP-20260821-PILOT-BASELINES-EVAL-R01-qlearning_b_eval-s7-l7.leo-sim.yaml": "32512647ab4dcaaadb30cf4202aa43cf22fa36dc205da8d3a139d8fb31b65947"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-pilot-baselines-eval-r01",
+  "reviewer_id": "reviewer:pilot-baselines-eval-cold-start",
+  "reviewer_session_id": "R-pilot-baselines-eval-cold-start-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "cold_start",
+  "verdict": "PASS",
+  "evidence": [
+    "当前分支 codex/20260821-pilot-eval-authorization 的 exact HEAD 为 6c696552720d42d2573fac91b5d1aceb47c3c877；brief 的 work_id、revision=1、producer_id=producer:codex、producer_session_id=P-leo-v2-pilot-baselines-eval-r01 与本 receipt 一致。",
+    "独立运行 verify_compiled_matrix 通过：experiment_id=EXP-20260821-PILOT-BASELINES-EVAL-R01，8 个 canonical evaluation cells，13 个编译矩阵 artifact，compile-report errors 为空；授权器的 _verified_experiment 矩阵分支也通过 8 rows/13 hashes。request-source.json 与 request.json 字节相同，request SHA、manifest SHA 和 analysis matrix-manifest SHA 均按实际文件重算一致。",
+    "8 个 resolved YAML 均可由 load_config_file 独立解析，phase 全为 evaluation、learning.mode 全为 eval、resume_path 全为 null；算法/路由合同为 qlearning/C3（2 cells）、DDQN/C3（2）、DDQN/GAT（2）、DDQN/MPNN（2）。run_id 与文件名一致，全部 trace_seed=7、learning_seed=7，pairing_key 为 eval-qlearning、eval-ddqn_c3、eval-gat、eval-mpnn 且各自恰有两个 cell。",
+    "8 个 cell 的 checkpoint_path 均指向项目内现有 regular file；独立计算的 checkpoint SHA 与配置 checkpoint_sha256 一致，sibling metadata.json 的实际 SHA 与 checkpoint_metadata_sha256 一致；checkpoint_lineage 全为 evaluation_only，且 source_run_id 精确为 external-<checkpoint SHA>、source_sha256 精确等于 checkpoint SHA。",
+    "四个 pair 内 trace_identity_sha256=4b726ee1370d1762d15275bd8f4965925b840548d2880db37296ebb4b32ac281、input_sha256=f15cf8b9845c195046a4566d31ab9eb0137e16270ea98ee6a06b871a6f578437、controlled_signature=63e2b16a72d7d62e93de20a4493b75ab442de996aec26d625a90fd989f72657f，且 trace/learning seed 相同；配置明确 demand.mode=mlab、offered_mbps=100、20 s horizon、8 s 起始的 8 s burst、burst_multiplier=2，最小交付/控制/数据验收由 request/source 和 manifest 绑定。",
+    "brief、analysis-request 与 request 的 claim boundary 将结果限定为声明 checkpoint/metadata 的 evaluation 加载、natural-end/conservation/指标可重算和四个 paired duplicate-consistency 对比；明确排除 algorithm superiority、causal congestion-control effect、final E0 threshold、Q0 optimality 和 paper-ready statistical conclusion。定向 matrix、analysis、learning、learning-semantics、Q-learning migration、config 测试结果为 96 passed, 1 skipped。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "本 cold-start review 未覆盖 formal authorization/finalization 或 clean main deployment；当前 compile-report 和 run-manifest 仍为 execution_authorized=false。",
+    "本 review 未覆盖 VM evaluation、natural-end governance receipts、实际 loaded checkpoint/metadata receipt、zero training steps、conservation/data-control delivery、资源指标或后续 V2 paired analysis；这些必须在授权后的 VM eval 中独立核验。"
+  ],
+  "required_revision": []
+}

@@ -1,0 +1,53 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-CONGESTION-PRESSURE-EVAL",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-congestion-pressure-eval-r01",
+  "objective": "Authorize one bounded formal evaluation-only pressure diagnostic at 200 Mbps, loading one already verified checkpoint per learning path, to measure descriptive congestion, backlog, directional link utilization, and packet latency under the fixed M-Lab measurement-proxy burst.",
+  "context": [
+    "This matrix changes only the offered load from the verified 100 Mbps medium pilot to the previously calibrated 200 Mbps pressure candidate; topology, cadence, star configuration, MCS, control plane, seed, checkpoint bytes, and measurement-proxy endpoint selection remain fixed.",
+    "The six cells form three exact two-cell pairs: pressure-ddqn, pressure-gat, and pressure-mpnn. Each pair contains one independently named Q-learning copy arm and one comparison arm, while all cells share the same trace identity; the three planned contrasts are descriptive single-seed pressure differences, not superiority tests.",
+    "The purpose is to identify whether the pressure trace exposes a measurable congestion regime before Q0 attribution and new-scheme design. It is not a final E0 threshold or paper result."
+  ],
+  "allowed_inputs": [
+    "EXPERIMENTS/request-sources/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01.json",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01",
+    "CODE/Results/EXP-20260821-PILOT-BASELINES-R01-* checkpoint and metadata artifacts",
+    "CODE/leo_sim",
+    "CODE/experiment_platform/authorize_experiment.py",
+    "CODE/experiment_platform/v2_analysis.py",
+    "CODE/scripts/remote/deployment_guard.py",
+    "CODE/scripts/remote/remote_job.py",
+    "CODE/scripts/remote/run-remote.sh",
+    "The exact clean main commit containing this matrix and its accepted finalization"
+  ],
+  "excluded_inputs": [
+    "Any modified, renamed, or unbound checkpoint file",
+    "Any trace other than the compiled 200 Mbps M-Lab measurement-proxy trace",
+    "Post-hoc load, seed, endpoint, topology, or resource changes",
+    "Any claim of algorithm superiority, causal congestion-control effect, final E0 threshold, Q0 optimality, or paper-ready statistical generalization"
+  ],
+  "deliverables": [
+    "A machine-recomputed authorization decision bound to six pressure evaluation cells in three exact pairs, exact checkpoint artifacts, immutable trace identity, and accepted review finalization",
+    "One serial natural-end VM receipt per pressure cell with exact checkpoint-loaded evidence, conservation, packet fates, directional capacity ledgers, and latency fields",
+    "A V2 analysis artifact that recomputes the three descriptive pressure contrasts from raw receipts, plus persisted verification",
+    "A short evidence note recording whether the pressure trace is suitable for the next Q0/congestion-design stage"
+  ],
+  "cannot_claim": [
+    "This single-seed pressure diagnostic does not establish that any algorithm is better than another.",
+    "It does not establish a causal congestion-control mechanism, a final E0 threshold, Q0 optimality, or paper-ready statistical significance.",
+    "A run that retrains, silently falls back, loses conservation, or loads a checkpoint without the declared source SHA cannot be counted."
+  ],
+  "acceptance": [
+    "The authorization binds the exact compiled request, run manifest, analysis request, resolved configs, checkpoint bytes, sibling metadata, clean deployed main SHA, and this finalization.",
+    "All six cells run serially on the same deployed SHA and compiled 200 Mbps M-Lab trace identity, with learning.mode=eval and zero training steps.",
+    "Each cell has natural_end=true, conservation_ok=true, research_eligible=true, receipt verification success, exact loaded checkpoint SHA/metadata SHA, and the required physical ledger fields.",
+    "The three planned pressure contrasts are recomputed from raw artifacts and persisted verification returns ok=true with no errors.",
+    "If any cell fails, execution stops at that cell and the matrix is not treated as complete until the failure is repaired and the affected cell is rerun."
+  ],
+  "review_roles": ["cold_start", "satellite_drl", "adversarial"],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

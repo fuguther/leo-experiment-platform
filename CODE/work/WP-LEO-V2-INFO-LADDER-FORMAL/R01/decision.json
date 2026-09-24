@@ -1,0 +1,30 @@
+{
+  "schema": "agent-work-decision/v1",
+  "work_id": "WP-LEO-V2-INFO-LADDER-FORMAL",
+  "revision": 1,
+  "producer_id": "producer:codex",
+  "decision_maker_id": "decision:research-lead-codex",
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-INFO-LADDER-FORMAL/R01/brief.json": "0e6fbf9a3eb31c6b303aed5513e43a97b2b49f9ded8b907524cc04df9d913c10",
+    "EXPERIMENTS/request-sources/EXP-20260821-INFO-LADDER-FORMAL-R01.json": "6e52b9a7c42738fbdca05d72e60552f7f24462b73ef9ed2069e9dd1eb2b4ce23",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/request.json": "7c4f404ba06a620564087bb1841bbd918e4437b41c2753a972b5edbf966dbe1d",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/compile-report.json": "368dbfc5f6e6caa81e00ab2d676b9666e59b3940b1cc4be27786ad0228ccd05a",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/run-manifest.json": "1737d17eb9fdcbbd34c00d539958e623b16c6364be93fa9d1f7462cd9a7f5e8d",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/analysis-request.json": "e5434d8b1969e59380f1a084b80a7eb26f2e0643c99fdf5c5330b387c9829270",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/RUNBOOK.md": "67baac3b24b67e9832419f51494094bfe0dbb5dcdcf7f5e76d9b83896808f9ab",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-hop-s7.leo-sim.yaml": "d2bd2dca56b0424f8fc04c94b000cd47f6fcbd82a90c6702107f9f7ed16a27a8",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-hop-s11.leo-sim.yaml": "5f5c257968a9ba27a859cffa29be63417c3b8990a579fb63c64313e28316ebc9",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-info_queue-s7.leo-sim.yaml": "ad5604a0c3d2adab78050c9dd33b02ae480661f75a43b0b2b82563ded792744a",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-info_queue-s11.leo-sim.yaml": "1636391a194c7ddd829b45b9b444be3ece80b4e862780463b3639219b31c7fb2"
+  },
+  "applied_review_receipts": [
+    {"receipt_id": "RR-INFO-LADDER-FORMAL-R01-COLD", "path": "CODE/work/WP-LEO-V2-INFO-LADDER-FORMAL/R01/review-cold-start.json", "sha256": "3c66c8748275e6372e0b9ce68f9c2c7cf5e69b21dd399f402a8a062ef8c0e465", "role": "cold_start", "verdict": "PASS"},
+    {"receipt_id": "RR-INFO-LADDER-FORMAL-R01-SAT", "path": "CODE/work/WP-LEO-V2-INFO-LADDER-FORMAL/R01/review-satellite-drl.json", "sha256": "c5f5e98acf34dc116b4c9913ab0ce26f562240d0c0be45dd5fc6ae7fc238c94c", "role": "satellite_drl", "verdict": "PASS"},
+    {"receipt_id": "RR-INFO-LADDER-FORMAL-R01-ADVERSARIAL", "path": "CODE/work/WP-LEO-V2-INFO-LADDER-FORMAL/R01/review-adversarial.json", "sha256": "835326e8e5d1b39bf799d2f5ff121831d14af13ff618480d0f373b8262f722b1", "role": "adversarial", "verdict": "PASS"}
+  ],
+  "decision": "ACCEPT",
+  "rationale": "三方独立复核均绑定 exact commit 058e543 与同一组 11 个正式 artifact，确认本轮合同已统一为 hop 与 info_queue 两个 F0 deterministic routing anchors、两个 trace seed、四个 non-learning cells 和一个 policy-only paired contrast。该接受只允许进入 finalization/authorization，不代表已经部署、运行或产生论文结果。",
+  "blocking_findings": [],
+  "revision_instructions": [],
+  "next_revision": null
+}

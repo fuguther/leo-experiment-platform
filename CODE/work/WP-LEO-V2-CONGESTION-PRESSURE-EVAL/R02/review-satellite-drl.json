@@ -1,0 +1,45 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-CONGESTION-PRESSURE-EVAL-R02-SAT",
+  "work_id": "WP-LEO-V2-CONGESTION-PRESSURE-EVAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R02/brief.json": "b0972c88ed4780c1c2aafa52f43916644a071a7ce9e5dc83881b0c4ee6f8acaa",
+    "EXPERIMENTS/request-sources/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02.json": "96dc109882911bca3fc45b9a72585578553ea779e992742d1c8cf09b984b3a76",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/RUNBOOK.md": "2205399c0d1cdf90268cc02e4af7ff8322d30aad9f114af06a900834677b7abf",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/analysis-request.json": "31094bb5596a870ac492d97179d2363772187b40471c763d895c567c24df099c",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/compile-report.json": "c75a660c32056d6f3271208eff89654f482d23a46c13a4ab30fd1691923ad118",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/request.json": "3fb555cd6460aa2afc93052210dabf10e0d42e7d5ee1480334599dc04f2f9a3a",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/run-manifest.json": "33e129ed011e1e3fc9dab8e531899a3b4ddefa2b6ffae47e7876cd11a10186a1",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-ddqn_c3_pressure-s7-l7.leo-sim.yaml": "fbaa2b7469ccdd1fd0596bc11f7194264e7710f1a3ab0cfe7dddb1cb92d779d3",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-gat_pressure-s7-l7.leo-sim.yaml": "5a99e2dfa5eeff97535039612ce434dd8b8dc822a64332e11807ad785171ddb2",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-mpnn_pressure-s7-l7.leo-sim.yaml": "c56e1d44d72b23b7af3bef5b776d76de1b7251e0462a49c1d2e9d1284ad78641",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-qlearning_pressure_ddqn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-qlearning_pressure_gat-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-qlearning_pressure_mpnn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-congestion-pressure-eval-r02",
+  "reviewer_id": "reviewer:congestion-pressure-eval-r02-satellite-drl",
+  "reviewer_session_id": "R-congestion-pressure-eval-r02-satellite-drl",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "satellite_drl",
+  "verdict": "PASS",
+  "evidence": [
+    "当前 checkout exact HEAD 为 40bc27bcd2097bc64a77ea0ffc70970ff295ca2d，符合任务指定 SHA。",
+    "独立运行 verify_compiled_matrix 成功解析 EXP-20260821-CONGESTION-PRESSURE-EVAL-R02 的 6 个 evaluation cells；compile report errors 为空、runtime_kind=leo_sim_v2、execution_authorized=false。",
+    "六个 cells 形成三个 exact pairs：pressure-ddqn、pressure-gat、pressure-mpnn；每 pair 一条 Q-learning/C3 copy arm 与一条 DDQN/C3、DDQN/GAT 或 DDQN/MPNN comparison arm。所有 pair 共享 trace identity、M-Lab input SHA、controlled signature、trace_seed=7、learning_seed=7，且 phase=evaluation。",
+    "resolved configs 固定 200 Mbps base、8–16 s 2x burst、20 s、M-Lab measurement-proxy、MCS、Markovian topology/1 s recompute、control plane/vis_k=12；六个 checkpoint bytes 与 sibling metadata.json 的实际 SHA 均匹配 resolved pins，evaluation_only lineage 的 source SHA 也与 checkpoint SHA 一致。",
+    "定向测试通过：CODE/leo_sim/tests/test_matrix_contract.py、CODE/experiment_platform/tests/test_v2_analysis.py、CODE/experiment_platform/tests/test_authorize_experiment.py 共 26 passed。claim boundary 明确禁止算法优越性、因果拥塞控制、最终 E0/Q0 和论文统计外推。",
+    "修订后的 source request、compiled request 和 analysis-request.json 均为 analysis_id=AN-CONGESTION-PRESSURE-EVAL-R02，且 source request 与 compiled request 语义一致。",
+    "重新计算 receipt 绑定的 13 个 artifact SHA-256 全部匹配当前文件；6 个 checkpoint 与 sibling metadata.json 共 12 个 SHA 校验全部通过。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "VM evaluation 尚未运行；未覆盖 authorization/finalization、clean deployment、natural-end/conservation/research_eligible receipts、loaded checkpoint evidence、packet/latency/capacity ledgers 或 persisted V2 analysis。"
+  ],
+  "required_revision": []
+}

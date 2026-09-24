@@ -1,0 +1,64 @@
+{
+  "applied_review_receipts": [
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R04/review-cold-start.json",
+      "receipt_id": "RR-T1-STEP5-R04-COLD",
+      "role": "cold_start",
+      "sha256": "cfe22d10bf78736966ffeed028d2b70be916c9a738c5296ea4305010ccdcf58e",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R04/review-satellite-drl.json",
+      "receipt_id": "RR-T1-STEP5-R04-SATDRL",
+      "role": "satellite_drl",
+      "sha256": "f43f0a1d2143d3a33e5395f6dc5d1943cd3890471da27c82530aa7553e16e2a9",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R04/review-adversarial.json",
+      "receipt_id": "RR-T1-STEP5-R04-ADV",
+      "role": "adversarial",
+      "sha256": "eb8cc06ee02680b22966c5ef69d81cdd2ebc6882c4204201c72485a55b491201",
+      "verdict": "BLOCK"
+    }
+  ],
+  "artifact_hashes": {
+    "CODE/data/traffic/t1_step5_micro_ab.csv": "26536d8b3b894a13d74289131653fddfdae8fe095f7c4edb2dc6a1683ec37592",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R04/PROCEDURE.md": "7e89f95fae4e7dadb6be55413eab65a7e6cec616158f6c2f0cb6c579c36a78a4",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/check_procedure.py": "e5eb73c978ad902711999632fb14c6732615bce4a358585ef198d4abb99f23ec",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/step5_recompute.py": "756b95478e86d6f2449863cdc2f0bd6578f9aa5059d571ae5a81471ded53fa73",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/RUNBOOK.md": "abfa4488987fc20cfdf455582011bf0bc3a2fb9ac99cd6a686f156dc461a0e31",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/analysis-request.json": "ef1d3c278e39e7fa8fc86dab97c7f7e7293f14beb6559c8bc1dff135df5259f6",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/compile-report.json": "7a3d106d359d57d87b7cef8aa174fb9e699942d17729ecab57c4f69ac468e81a",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/request.json": "0b79041e129128ebf38ce3aa54375a30cb1f90cc9c31e366e17b15a9d9bd3162",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/resolved/EXP-20260923-T1-STEP5-MICRO-R04-cd05-s7.leo-sim.yaml": "21a15e74af8a8e743ef9475ae53ea837c66d7607bad4ed029c671bd7bb81a8cc",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/resolved/EXP-20260923-T1-STEP5-MICRO-R04-control-s7.leo-sim.yaml": "4eb001c5a45665a5c941d5e5af9e58f90471e59f430ea26db1281d20ce8b9924",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/run-manifest.json": "bef90ade430c9aaae4152ceb246283766e1c6df6b03b26804cfe953702204cda",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/RUNBOOK.md": "595c1d33e66151b936f805c189708951e6b1f1339bc64f5640eaac0de98d7308",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/analysis-request.json": "67a4e7370f558619c3fce8dc645666e77c37f89ca2d4f8f995d89190e70110d1",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/compile-report.json": "9d29b8bcd243bdbd64ecaced42c79a771adf63f63184be286e554389baee9abd",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/request.json": "33d2b920062dbe5786fdd75204008ec8e260bdada360520b9d04658793002483",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/resolved/EXP-20260923-T1-STEP5-PRESSURE-R04-cd05-s7.leo-sim.yaml": "db31faeb008e781c3514c0632f5fa0ccc2dee8eb66b0a605e91a552d294cdbb4",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/resolved/EXP-20260923-T1-STEP5-PRESSURE-R04-control-s7.leo-sim.yaml": "5c0eb53a77f0345086cc9c410d356bfec965d779a03e15baf0e364e80f0a5486",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/run-manifest.json": "7298e5cfe0cccb348ecaef3b41771a90a4a1fcfe2ef0c216c501b3533c5bf8d6"
+  },
+  "blocking_findings": [
+    "[adversarial] GATE DEFEATED (demonstrated, reproducible): G1a/G1b mechanically inspect ONLY backtick-fenced bash blocks (check_procedure.py:67-82 bash_blocks; :107-109 _scan_revision_ids; :140-171 _compare_run_commands). A mutated PROCEDURE (built in /tmp sandbox, artifact-set.json re-bound to the mutated bytes) carrying one UNFENCED run-remote.sh command referencing the earlier revision EXP-20260923-T1-STEP5-M",
+    "[adversarial] brief.json:42 (context) claims the corridor profile equivalence resolves to config_sha256 d45c6a50580958c3d14bc7ff576cb36f0f57c91953e12c8c80478842277fd27f and that this value 'equals the compiled control-arm config_sha256'. False on the current main: the compiled EXP-20260923-T1-STEP5-PRESSURE-R04 control cell config_sha256 is 52dfe3d92c1e0e6cbd7281c8b4725d9889c5c2376848a22a5b25a980ed4c47a3 (run-m",
+    "[adversarial] F2-disclosure evidence pointers do not exist: PROCEDURE.md:30-31 says the evidence 'is printed by the mechanical gate (section 3, check G2 detail)' and brief.json:54 says 'the gate reports the actual resolved value as evidence', but grep finds no node_process reference anywhere in tools/check_procedure.py or tools/step5_recompute.py, and neither compile-report.json nor run-manifest.json records th"
+  ],
+  "decision": "REVISE",
+  "decision_maker_id": "decision:step5-batch-producer-gate",
+  "next_revision": 5,
+  "producer_id": "producer:step5-batch-deepseek",
+  "rationale": "Revision 4 was reviewed by three independent cold-start sessions (cold_start and adversarial on z-ai/glm-5.3-flash / Zhipu GLM family; satellite_drl on meta/muse-spark-1.3-contributor / Meta Muse family). Codex was UNAVAILABLE because its quota is exhausted, so this round substituted GLM/Muse and did NOT wait for the quota to recover; two non-DeepSeek families satisfy the different-model branch of AGENTS.md rule 20. cold_start and satellite_drl returned PASS; adversarial returned BLOCK with three findings, all re-verified by the producer as real. The revision therefore cannot proceed to authorization.",
+  "revision": 4,
+  "revision_instructions": [
+    "Widen the gate: G1a must scan ALL non-comment lines of the procedure (fenced and unfenced), not only fenced bash blocks, and G1b must fail loud on any run-remote.sh line that is not part of a complete fenced invocation matching a compiled cell; add a negative control that injects a foreign revision id OUTSIDE any fence and requires detection; re-run both phases and rebind",
+    "Fix brief.json stale claims: the corridor equivalence value must be the F2-era 52dfe3d9... (the pre-F2 d45c6a50... claim is false on current main), and sweep the inherited R02-era texts",
+    "Make the F2 disclosure mechanically backed: either have the gate report each cell resolved execution.node_process_delay_s (with a control proving it flags a non-zero value), or correct the disclosure wording so it does not claim reporting that does not exist",
+    "Also fix the G4 crash when the gate is run from outside the repository root (report a problem instead of raising)"
+  ],
+  "schema": "agent-work-decision/v1",
+  "work_id": "WP-LEO-V2-T1-STEP5-GATE-EVIDENCE"
+}

@@ -1,0 +1,51 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-PILOT-BASELINES-EVAL",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-pilot-baselines-eval-r01",
+  "objective": "Authorize one bounded formal evaluation-only pilot that loads the eight declared checkpoints produced by the verified training pilot and proves the four learning paths can execute, verify, and reproduce V2 metrics without retraining.",
+  "context": [
+    "This is an eight-cell evaluation matrix: paired evaluation cells for Q-learning/C3, DDQN/C3, DDQN/GAT, and DDQN/MPNN.",
+    "Every checkpoint path, checkpoint SHA, sibling metadata SHA, source lineage identity, code SHA, configuration SHA, and immutable M-Lab trace is bound before launch.",
+    "The paired cells are checkpoint/execution consistency checks. They do not authorize algorithm superiority, causal congestion claims, or final paper statistics."
+  ],
+  "allowed_inputs": [
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-EVAL-R01",
+    "CODE/Results/EXP-20260821-PILOT-BASELINES-R01-* checkpoint and metadata artifacts",
+    "CODE/leo_sim",
+    "CODE/experiment_platform/authorize_experiment.py",
+    "CODE/experiment_platform/v2_analysis.py",
+    "CODE/scripts/remote/deployment_guard.py",
+    "CODE/scripts/remote/remote_job.py",
+    "CODE/scripts/remote/run-remote.sh",
+    "The exact clean main commit containing this matrix and its accepted finalization"
+  ],
+  "excluded_inputs": [
+    "Unverified or renamed checkpoint files",
+    "Training outputs whose checkpoint or metadata SHA is not bound by this matrix",
+    "Unverified engineering-pilot outputs",
+    "Any claim that treats this evaluation pilot as algorithm superiority, causal congestion evidence, Q0 optimality, or final paper statistics"
+  ],
+  "deliverables": [
+    "A machine-recomputed authorization decision bound to the eight evaluation cells, exact checkpoint artifacts, and this accepted work finalization",
+    "One natural-end VM receipt per evaluation cell with checkpoint-loaded evidence, conservation, data/control delivery, and resource metrics",
+    "A V2 analysis artifact that recomputes the four paired evaluation contrasts from raw receipts, plus persisted verification"
+  ],
+  "cannot_claim": [
+    "This pilot does not establish that any algorithm is better than another.",
+    "This pilot does not establish a causal congestion-control mechanism, a final E0 threshold, Q0 optimality, or paper-ready statistical generalization.",
+    "A run that retrains, silently falls back, or loads a checkpoint without the declared source SHA cannot be counted as an evaluation result."
+  ],
+  "acceptance": [
+    "The authorization binds the exact compiled request, run manifest, analysis request, resolved configs, checkpoint bytes, sibling metadata, clean deployed main SHA, and this finalization.",
+    "All eight cells run serially on the same deployed SHA and immutable M-Lab-derived trace identity, with learning.mode=eval and zero training steps.",
+    "Each cell has natural_end=true, conservation=true, research_eligible=true in the governance receipt, exact loaded checkpoint SHA/metadata SHA, required control/data delivery, peak RSS, CPU/thread count, and wall time.",
+    "The four planned paired evaluation contrasts are recomputed from raw artifacts and persisted verification returns ok=true with no errors.",
+    "If any cell fails a gate, execution stops at that cell and the matrix is not treated as complete until the failure is repaired and the affected cell is rerun."
+  ],
+  "review_roles": ["cold_start", "satellite_drl", "adversarial"],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

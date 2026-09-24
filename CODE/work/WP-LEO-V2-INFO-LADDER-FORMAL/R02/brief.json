@@ -1,0 +1,22 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-INFO-LADDER-FORMAL-R02",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-info-ladder-formal-r02",
+  "objective": "Run a bounded formal F1 information-ladder diagnostic comparing info_physical with the already executed F0 info_queue anchor under the fixed 200 Mbps M-Lab multi-OD burst at trace seeds 7 and 11; keep the result descriptive and defer learner/Q0 claims.",
+  "context": [
+    "The preceding F0 matrix completed four natural-end VM runs and showed zero aggregate delivery-rate difference while a small route-event audit found path changes.",
+    "This R02 matrix changes only routing.policy from info_queue to info_physical; topology, demand, link model, control plane, seeds and execution limits remain fixed.",
+    "info_physical is a deterministic routing diagnostic anchor, not a learner observation tensor and not an oracle policy."
+  ],
+  "allowed_inputs": ["EXPERIMENTS/request-sources/EXP-20260822-INFO-LADDER-FORMAL-R02.json", "CODE/leo_sim", "CODE/experiment_platform", "CODE/scripts/remote"],
+  "excluded_inputs": ["Any post-review load, topology, seed, endpoint or policy change", "Future geometry, remote queue or oracle state not declared by the arm policy", "Any claim of learner information value, superiority, Q0 optimality or paper-ready significance"],
+  "deliverables": ["A compiled and independently reviewed four-cell matrix with policy-only intervention paths", "Four serial natural-end VM receipts on the exact deployed main SHA", "A persisted V2 analysis with one paired descriptive delivery/backlog/utilization/latency contrast and independent verification", "An evidence note stating whether first-hop physical information changes this bounded routing diagnostic"],
+  "acceptance": ["All four cells use phase=non_learning, identical fixed 200 Mbps M-Lab multi-OD burst settings and paired trace seeds 7/11.", "Every receipt verifies natural_end, conservation_ok, research_eligible and the required physical/packet ledgers.", "The V2 analysis recomputes the single declared info_physical-minus-info_queue contrast from raw receipts; persisted verification returns ok=true with no errors.", "If any cell fails, the matrix is not complete until the failure is diagnosed and the affected cell is rerun under the same authorization."],
+  "cannot_claim": ["This four-cell F1 diagnostic does not establish algorithm superiority, causal information value, learner observation equivalence, Q0 optimality, a final E0 threshold or paper-ready statistical significance.", "A failed, non-natural-end, non-conservative or unauthorized run cannot be counted as an experiment result."],
+  "review_roles": ["cold_start", "satellite_drl", "adversarial"],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

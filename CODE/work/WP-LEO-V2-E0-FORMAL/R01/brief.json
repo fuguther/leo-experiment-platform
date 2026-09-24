@@ -1,0 +1,35 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-E0-FORMAL",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-e0-formal-r01",
+  "objective": "Authorize one narrow leo_sim_v2 E0 run on the measurement-proxy multi-OD burst profile so the formal receipt and V2 analysis chain can be exercised without claiming algorithm effects.",
+  "context": [
+    "This is a single non-learning engineering-to-formal bridge run.",
+    "It tests exact config/trace/code/deployment binding, natural completion, conservation, data ISL forwarding and control-plane delivery.",
+    "It does not claim congestion superiority, Q0 optimality, calibrated operator traffic, or paper results."
+  ],
+  "allowed_inputs": [
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01",
+    "CODE/leo_sim",
+    "CODE/experiment_platform/authorize_experiment.py",
+    "CODE/scripts/remote/deployment_guard.py",
+    "CODE/scripts/remote/remote_job.py",
+    "CODE/scripts/remote/run-remote.sh"
+  ],
+  "excluded_inputs": ["CODE/Results", "Unverified historical result claims"],
+  "deliverables": ["A machine-recomputed authorization decision", "One formal V2 receipt suitable for the analysis-chain fixture"],
+  "cannot_claim": [
+    "This run does not prove algorithm superiority, Q0 optimality, long-run statistics, or paper-ready congestion conclusions."
+  ],
+  "acceptance": [
+    "The request, compiled manifest, resolved config and analysis request bind one exact leo_sim_v2 run.",
+    "The clean deployed main SHA and execution-chain hashes are checked by authorization and remote launch.",
+    "The run ends naturally with conservation true, at least one delivery, at least one multi-satellite delivery, positive data ISL forwarding and delivered control traffic."
+  ],
+  "review_roles": ["cold_start", "satellite_drl", "adversarial"],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

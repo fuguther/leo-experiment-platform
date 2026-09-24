@@ -1,0 +1,24 @@
+{
+  "schema": "agent-work-decision/v1",
+  "work_id": "WP-EXAMPLE-EXPERIMENT-DESIGN",
+  "revision": 1,
+  "producer_id": "producer:experiment-designer",
+  "artifact_hashes": {
+    "CODE/work/work-package.example.json": "2e8bb9544f884614b24afe21386a34e28170d31213939456460be1e9bd67b074"
+  },
+  "decision_maker_id": "decision:research-lead",
+  "applied_review_receipts": [
+    {
+      "receipt_id": "RR-EXAMPLE-ADVERSARIAL-BLOCK",
+      "path": "CODE/work/review-receipt.block.example.json",
+      "sha256": "061f4d72f01f533fb683bdace9ec66ba6bb99f4f4497e2b5812331c48a06b051",
+      "role": "adversarial",
+      "verdict": "BLOCK"
+    }
+  ],
+  "decision": "REVISE",
+  "rationale": "对抗审阅发现验收条件无法排除模糊的可证伪表述，当前版本不得接受。",
+  "blocking_findings": ["缺少定量的最小有意义差异和判决方法。"],
+  "revision_instructions": ["创建 revision=2 且 parent_revision=1 的新版 brief，保留 r01 的产物、回执和决定不变。"],
+  "next_revision": 2
+}

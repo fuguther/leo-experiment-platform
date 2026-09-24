@@ -1,0 +1,51 @@
+{
+  "schema": "agent-work-decision/v1",
+  "work_id": "WP-LEO-V2-PILOT-BASELINES",
+  "revision": 1,
+  "producer_id": "producer:codex",
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/brief.json": "d47e08859772d3a9d28b946244398bc975a9f638607d3366ad8e4f780f91253f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/RUNBOOK.md": "562a4ffdd69e640c29bd506f1567f0688f8cf8702c0b471e20b4a350e2dae63e",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/analysis-request.json": "44f0db2b297b4a774004a1ecf1542299c28a5d5bbd447b4c75ea09c315a2e97e",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/compile-report.json": "b7a558c1c4349e0a9f5da28d98973c29428ff4b9e4fc93edc38565da64f520a2",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/request.json": "1f17ef6c0ebc79df15c9577772843cac192d1b25e1e068cf01d5b98036aeb46a",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/run-manifest.json": "466026df2bd394a94d09bc7a86f690661cd793cd12620193b3a956ae6f447dfe",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-ddqn_c3_a-s7-l7.leo-sim.yaml": "edc9c16e44e0a85696b317a865f5ff22562b0c6dcd19e4ee1937ef592e582b0f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-ddqn_c3_b-s7-l7.leo-sim.yaml": "edc9c16e44e0a85696b317a865f5ff22562b0c6dcd19e4ee1937ef592e582b0f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-gat_a-s7-l7.leo-sim.yaml": "1571228412c690fc57bd96ffb20db05a34e2a53cfc16920e3a44a57e55220c78",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-gat_b-s7-l7.leo-sim.yaml": "1571228412c690fc57bd96ffb20db05a34e2a53cfc16920e3a44a57e55220c78",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-mpnn_a-s7-l7.leo-sim.yaml": "84b9aec609dd1fc2d32c45db4619a2b3244733518416c4ed761d74bbfef28214",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-mpnn_b-s7-l7.leo-sim.yaml": "84b9aec609dd1fc2d32c45db4619a2b3244733518416c4ed761d74bbfef28214",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-qlearning_a-s7-l7.leo-sim.yaml": "65b0858417753f5dd183375608a6f908361db7f295b00c64e272bd1c0c89a023",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-qlearning_b-s7-l7.leo-sim.yaml": "65b0858417753f5dd183375608a6f908361db7f295b00c64e272bd1c0c89a023"
+  },
+  "decision_maker_id": "decision:research-lead-codex",
+  "applied_review_receipts": [
+    {
+      "receipt_id": "RR-PILOT-BASELINES-R01-COLD",
+      "path": "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/review-cold-start.json",
+      "sha256": "6cf29bc5d1822370350047f84a9999a20f727c08a44ae0d9b1125a0780647832",
+      "role": "cold_start",
+      "verdict": "PASS"
+    },
+    {
+      "receipt_id": "RR-PILOT-BASELINES-R01-SAT",
+      "path": "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/review-satellite-drl.json",
+      "sha256": "0eb052ae7439ede91441d055eee19639028f904df24c6bc690bf2371e7d4afc0",
+      "role": "satellite_drl",
+      "verdict": "PASS"
+    },
+    {
+      "receipt_id": "RR-PILOT-BASELINES-R01-ADV",
+      "path": "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/review-adversarial.json",
+      "sha256": "531f9ed1a6841464b681c16b32ecd0470b467c349c605d4353208053c315e29e",
+      "role": "adversarial",
+      "verdict": "PASS"
+    }
+  ],
+  "decision": "ACCEPT",
+  "rationale": "三类独立审阅均以当前编译产物为输入通过。该接受仅允许进入精确 SHA 的授权、部署和八 cell 训练 pilot；它不把编译审阅误称为已运行结果，也不授予算法优越性或论文结论。",
+  "blocking_findings": [],
+  "revision_instructions": [],
+  "next_revision": null
+}

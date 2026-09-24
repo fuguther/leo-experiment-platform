@@ -1,0 +1,65 @@
+config_version: leo-sim-config/v1
+scenario:
+  name: mlab-measured-od-burst-t0
+  duration_s: 10
+  time_step_s: 0.1
+  num_satellites: 66
+  num_planes: 6
+  altitude_km: 550
+  inclination_deg: 53
+  min_elevation_deg: 25
+  seed: 7
+endpoints:
+  grid_deg: 0.25
+  aggregation_deg: 1.0
+  # These three nearby cells form a directed measurement-supported cycle in
+  # the checked-in snapshot: Seattle -> Beavercreek -> Vancouver -> Seattle.
+  sites:
+    - {name: Seattle, lat: 47.449, lon: -122.309, demand_weight: 1}
+    - {name: Beavercreek, lat: 45.288, lon: -122.536, demand_weight: 1}
+    - {name: Vancouver, lat: 49.194, lon: -123.184, demand_weight: 1}
+demand:
+  mode: mlab
+  offered_mbps: 2
+  packet_bits: 1000000
+  deadline_s: null
+  burst_start_s: 3
+  burst_duration_s: 2
+  burst_multiplier: 2
+access:
+  slots_per_satellite: 8
+  uplink_rate_mbps: 1000
+  downlink_rate_mbps: 1000
+  uplink_queue_bits: 1000000000
+  downlink_queue_bits: 1000000000
+  association: bbm
+  hysteresis_deg: 0
+  min_dwell_s: 0
+  acquisition_delay_s: 0.1
+links:
+  rate_model: constant
+  ge_enabled: false
+  isl_rate_mbps: 1000
+  isl_queue_bits: 256000000
+topology:
+  recompute_interval_s: 1.0
+  matching: markovian
+control_plane:
+  enabled: true
+  advertise_interval_s: 1.0
+  ttl_s: 10
+  vis_k: 2
+  packet_bits: 8000
+routing:
+  policy: hop
+  max_hops: 32
+  learning_enabled: false
+learning:
+  algorithm: none
+execution:
+  max_events: 1000000
+  max_entities: 3000
+  max_packets: 10000
+outputs:
+  out_dir: leo_sim_out/mlab-measured-od-burst-t0
+  plotting: false

@@ -1,0 +1,30 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-EXAMPLE-EXPERIMENT-DESIGN",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:experiment-designer",
+  "producer_session_id": "P-example-r01",
+  "objective": "为一个可证伪的单因素卫星路由问题生成候选实验请求，不启动实验。",
+  "context": ["用户担任导师/决策者；Agent 负责具体设计和材料化。"],
+  "allowed_inputs": [
+    "ARCHIVE-20260803/GUIDANCE/CODE_FACTS.md",
+    "CODE/experiment_platform/parameter-catalog.json",
+    "ANALYSIS/claims/RESEARCH_CLAIMS.yaml"
+  ],
+  "excluded_inputs": ["历史 Agent 对话", "未核验的旧性能结论", "外部 Results 目录"],
+  "deliverables": [
+    "一个 experiment-request/v2 JSON",
+    "一段说明关键假设和最弱证据环节的短报告"
+  ],
+  "cannot_claim": ["不能声称实验已经运行", "不能声称候选机制有效", "不能把旧 claim 当事实"],
+  "acceptance": [
+    "请求可被编译器接受",
+    "只有声明的因素跨 arm 变化",
+    "train/eval/deploy 信息条件明确",
+    "包含 falsification condition"
+  ],
+  "review_roles": ["cold_start", "satellite_drl", "adversarial"],
+  "cost_tier": "standard",
+  "status": "REVIEW"
+}

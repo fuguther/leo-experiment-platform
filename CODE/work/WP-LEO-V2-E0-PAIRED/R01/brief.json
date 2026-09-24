@@ -1,0 +1,39 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-E0-PAIRED",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-e0-paired-r01",
+  "objective": "Authorize two identical non-learning baseline cells so the V2 receipt-to-metric-to-paired-analysis chain is exercised before algorithm comparisons.",
+  "context": [
+    "This is a chain-validation pair, not an algorithm treatment.",
+    "Both arms intentionally use the same resolved configuration, trace seed and acceptance contract.",
+    "A zero paired difference is an internal consistency check, not evidence of algorithm quality."
+  ],
+  "allowed_inputs": [
+    "EXPERIMENTS/EXP-20260821-E0-PAIRED-R01",
+    "CODE/leo_sim",
+    "CODE/experiment_platform",
+    "CODE/scripts/remote"
+  ],
+  "excluded_inputs": ["CODE/Results", "Unverified historical result claims"],
+  "deliverables": [
+    "A machine-recomputed matrix authorization",
+    "Two natural-end V2 receipts bound to the same trace",
+    "A persisted V2 paired-analysis manifest and claim gate"
+  ],
+  "cannot_claim": [
+    "No algorithm superiority or congestion-control effect",
+    "No Q0 optimality or paper-ready statistical conclusion",
+    "No generalization beyond this exact baseline pair"
+  ],
+  "acceptance": [
+    "Matrix verifier accepts both cells and exact pairing contract.",
+    "Both VM runs use the same clean deployed main SHA and pass natural-end, conservation and acceptance gates.",
+    "v2_analysis recomputes delivery_rate from both receipts and persists a VERIFIED analysis whose paired difference is zero."
+  ],
+  "review_roles": ["cold_start", "satellite_drl", "adversarial"],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

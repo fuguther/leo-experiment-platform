@@ -1,0 +1,46 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-PILOT-BASELINES-R01-ADV",
+  "work_id": "WP-LEO-V2-PILOT-BASELINES",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/brief.json": "d47e08859772d3a9d28b946244398bc975a9f638607d3366ad8e4f780f91253f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/RUNBOOK.md": "562a4ffdd69e640c29bd506f1567f0688f8cf8702c0b471e20b4a350e2dae63e",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/analysis-request.json": "44f0db2b297b4a774004a1ecf1542299c28a5d5bbd447b4c75ea09c315a2e97e",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/compile-report.json": "b7a558c1c4349e0a9f5da28d98973c29428ff4b9e4fc93edc38565da64f520a2",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/request.json": "1f17ef6c0ebc79df15c9577772843cac192d1b25e1e068cf01d5b98036aeb46a",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/run-manifest.json": "466026df2bd394a94d09bc7a86f690661cd793cd12620193b3a956ae6f447dfe",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-ddqn_c3_a-s7-l7.leo-sim.yaml": "edc9c16e44e0a85696b317a865f5ff22562b0c6dcd19e4ee1937ef592e582b0f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-ddqn_c3_b-s7-l7.leo-sim.yaml": "edc9c16e44e0a85696b317a865f5ff22562b0c6dcd19e4ee1937ef592e582b0f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-gat_a-s7-l7.leo-sim.yaml": "1571228412c690fc57bd96ffb20db05a34e2a53cfc16920e3a44a57e55220c78",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-gat_b-s7-l7.leo-sim.yaml": "1571228412c690fc57bd96ffb20db05a34e2a53cfc16920e3a44a57e55220c78",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-mpnn_a-s7-l7.leo-sim.yaml": "84b9aec609dd1fc2d32c45db4619a2b3244733518416c4ed761d74bbfef28214",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-mpnn_b-s7-l7.leo-sim.yaml": "84b9aec609dd1fc2d32c45db4619a2b3244733518416c4ed761d74bbfef28214",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-qlearning_a-s7-l7.leo-sim.yaml": "65b0858417753f5dd183375608a6f908361db7f295b00c64e272bd1c0c89a023",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-qlearning_b-s7-l7.leo-sim.yaml": "65b0858417753f5dd183375608a6f908361db7f295b00c64e272bd1c0c89a023"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-pilot-baselines-r01",
+  "reviewer_id": "reviewer:pilot-baselines-adversarial",
+  "reviewer_session_id": "R-pilot-baselines-adversarial-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "adversarial",
+  "verdict": "PASS",
+  "evidence": [
+    "在授权分支当前工作区重新计算 brief、RUNBOOK、analysis-request、compile-report、request、run-manifest 和全部 8 个 resolved YAML 的 SHA-256；artifact_hashes 与实际字节逐一一致，并与之前独立审阅的 aa9b319 矩阵 artifact 集合一致。",
+    "独立运行 verify_compiled_matrix 通过：8 个 canonical training cells、13 个绑定矩阵 artifact，compile-report errors 为空；request-source.json 与 request.json 字节内容一致，manifest request SHA 和 analysis matrix-manifest SHA 均与实际文件重算值一致。",
+    "对 8 个 cell 做边界断言：全部为 training、learning_seed=7、trace_seed=7，checkpoint lineage 均为 new_training 且无 source_run_id/source_sha256；四个 pairing_key（qlearning、ddqn_c3、gat、mpnn）均各有两个 cell。",
+    "对四个 duplicate pair 做对抗一致性检查：pair 内 config_sha256、trace_identity_sha256、input_sha256 和 controlled_signature 均完全一致；因此 pair 不能通过不同 trace、配置或控制投影制造伪重复。固定 M-Lab trace identity 为 4b726ee1370d1762d15275bd8f4965925b840548d2880db37296ebb4b32ac281。",
+    "brief 与 request 的验收和 claim boundary 明确把该包限定为自然结束、守恒、控制/数据交付、checkpoint/指标重算及 duplicate consistency；没有把它写成算法优越性、拥塞因果、最终 E0 阈值、Q0 最优性或论文统计结论。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "本审阅未覆盖 formal authorization/finalization 是否已生成并绑定当前 commit；当前包仍必须经过授权器的最终门禁。",
+    "本审阅未覆盖 VM 部署、8 个 cell 的 natural-end receipt、守恒/控制数据交付、OOM、learning.effective/train_steps>0、checkpoint 与 metadata SHA、CPU/RSS/wall-time 等运行验收。",
+    "本地审阅环境未覆盖 TensorFlow 的 DDQN/GAT/MPNN 实际训练；这些算法仍需在 VM 依赖环境完成 preflight 和正式 receipt 验证。"
+  ],
+  "required_revision": []
+}

@@ -1,0 +1,7 @@
+{
+  "_comment": "Phase 4 smoke fixture for SIM_TRAFFIC_DIURNAL. Pure sinusoidal so no M-Lab CSV needed. amplitude 0.4 = WetLinks (TMA 2024 arXiv 2402.16448) Starlink-measured swing; peak_hour_local 20.0 = ISP primetime. sim_duration_s left null so SimulationRL falls back to Test length / SIM_TIME_LIMIT.",
+  "mode": "sinusoidal",
+  "amplitude": 0.4,
+  "peak_hour_local": 20.0,
+  "min_floor": 0.1
+}

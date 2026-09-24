@@ -1,0 +1,47 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-LEO-V2-FORMAL-SMOKE-R01-SATELLITE-DRL-BLOCK",
+  "work_id": "WP-LEO-V2-FORMAL-SMOKE",
+  "revision": 1,
+  "artifact_hashes": {
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01/RUNBOOK.md": "df2bf06f89cc2fbbc2791a26a46b16b0234dd3fc0723a46f1f44629c12297e25",
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01/analysis-request.json": "792b99d68525046916118b4a34599517cfc2ff03e10e3b1e40985ac4ca01c317",
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01/compile-report.json": "df65f7f1b9552a749034211cba2bfef03631c679c6f0df44fb640c37d3111e33",
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01/request.json": "512093551a9ead50e6bd3e810e466360f8d7c071b9cf8db23575ab79fb499d2e",
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01/resolved/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01-main-s7.leo-sim.yaml": "9f5184877efa0da4989b16884ff5a1cfe99d21e1c9cd0bf20d594ae97881ee5c",
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01/run-manifest.json": "85aa32c157ea3794a93a778f12fd2054d8403b1f69c1ac69c8bd71f2fdf8214c"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-formal-smoke-r01",
+  "reviewer_id": "reviewer:codex-satellite-drl-01",
+  "reviewer_session_id": "R-40ec445-satellite-drl-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "satellite_drl",
+  "verdict": "BLOCK",
+  "evidence": [
+    "Commit 40ec4455073d1a33fb6990b914d1cbc6c3c3eed9 requests BBM, one access slot per satellite, control-plane propagation, Gilbert-Elliott evaluation, non-oracle hop routing, no learning, and explicitly disclaims MBB effectiveness, outage occurrence, calibrated operator realism, speed, and DDQN.",
+    "Source tracing shows trace-active aggregate grid cells instantiate TrafficEndpoint objects rather than Gateway objects; association candidates use current simulation geometry; and hop routing obtains remote legal egress targets only from arrived, non-expired control-cache serve_cells.",
+    "Control packets share finite directional ISL queue capacity and service rate with data, receive non-preemptive priority, incur serialization and propagation delay, and are subject to TTL, geometry-loss, and Gilbert-Elliott transmission races.",
+    "A fresh local execution of the exact resolved config reached the 120 second horizon and delivered all 109 offered data packets over paths 0-1-2 or 2-1-0; data and control bit conservation verified. It admitted 14496 control instances to ISL queues, delivered 5760, expired 8064 by TTL, and left 672 in system at stop.",
+    "The same execution recorded only two pre-position associations at time zero on different satellites, with zero access requests, zero ordinary grants, zero releases, zero wait time, zero BBM events, and zero MBB events."
+  ],
+  "blocking_findings": [
+    "The receipt semantics report mechanisms.effective.mbb=true whenever association is not mbb, so this BBM smoke reports MBB effective despite requesting no MBB and observing zero MBB events. That is incompatible with the package's explicit no-MBB-effectiveness claim.",
+    "The exact smoke does not exercise finite K=1 contention or a BBM switch: its two endpoints occupy different satellites through pre-position grants and never request, wait, release, or hand over. It therefore cannot serve as the declared integration gate for finite K=1 access and BBM semantics.",
+    "Formal V2 governance gates only requested control queue entry, any Gilbert-Elliott query, and requested MBB events. It does not require evidence of K=1 contention, current-geometry association legality, BBM switching, non-oracle cache use by a data decision, or data ISL forwarding, so research_eligible=true can be issued without exercising several mechanisms named by this smoke's acceptance objective."
+  ],
+  "unknowns": [
+    "No authorized VM execution was reviewed, so deployed exact-commit behavior and formal remote receipt closure remain unverified.",
+    "The local run queried Gilbert-Elliott channels but observed no GE wait or failure; actual outage occurrence is not established.",
+    "Operator-calibrated orbital, traffic, and outage realism is not established."
+  ],
+  "required_revision": [
+    "Represent MBB effectiveness as false or explicitly not_requested when MBB is not requested; never emit effective.mbb=true without an observed MBB event.",
+    "Revise the smoke so at least two simultaneously demanding endpoints contend for one satellite's single access slot and a current-geometry crossover produces an observed BBM break-and-acquire sequence.",
+    "Add independently verified effectiveness gates for maximum concurrent slot occupancy, contention and grant activity, BBM events, current-geometry legality, non-oracle cache-based route decisions, control arrival and cache installation, and data ISL forwarding.",
+    "Recompile and rebind all six experiment artifacts, then repeat all independent reviews before authorization."
+  ]
+}

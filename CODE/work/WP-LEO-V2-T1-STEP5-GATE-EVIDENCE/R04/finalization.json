@@ -1,0 +1,64 @@
+{
+  "applied_reviews": [
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R04/review-cold-start.json",
+      "receipt_id": "RR-T1-STEP5-R04-COLD",
+      "reviewer_id": "reviewer:glm-step5-r04b-cold",
+      "reviewer_session_id": "R-glm-step5-r04b-cold-3c58a2f1",
+      "role": "cold_start",
+      "sha256": "cfe22d10bf78736966ffeed028d2b70be916c9a738c5296ea4305010ccdcf58e",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R04/review-satellite-drl.json",
+      "receipt_id": "RR-T1-STEP5-R04-SATDRL",
+      "reviewer_id": "reviewer:muse-step5-r04b-satdrl",
+      "reviewer_session_id": "R-muse-step5-r04b-satdrl-7e14d6b8",
+      "role": "satellite_drl",
+      "sha256": "f43f0a1d2143d3a33e5395f6dc5d1943cd3890471da27c82530aa7553e16e2a9",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R04/review-adversarial.json",
+      "receipt_id": "RR-T1-STEP5-R04-ADV",
+      "reviewer_id": "reviewer:glm-step5-r04b-adv",
+      "reviewer_session_id": "R-glm-step5-r04b-adv-9b27f4e0",
+      "role": "adversarial",
+      "sha256": "eb8cc06ee02680b22966c5ef69d81cdd2ebc6882c4204201c72485a55b491201",
+      "verdict": "BLOCK"
+    }
+  ],
+  "artifact_hashes": {
+    "CODE/data/traffic/t1_step5_micro_ab.csv": "26536d8b3b894a13d74289131653fddfdae8fe095f7c4edb2dc6a1683ec37592",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R04/PROCEDURE.md": "7e89f95fae4e7dadb6be55413eab65a7e6cec616158f6c2f0cb6c579c36a78a4",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/check_procedure.py": "e5eb73c978ad902711999632fb14c6732615bce4a358585ef198d4abb99f23ec",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/step5_recompute.py": "756b95478e86d6f2449863cdc2f0bd6578f9aa5059d571ae5a81471ded53fa73",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/RUNBOOK.md": "abfa4488987fc20cfdf455582011bf0bc3a2fb9ac99cd6a686f156dc461a0e31",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/analysis-request.json": "ef1d3c278e39e7fa8fc86dab97c7f7e7293f14beb6559c8bc1dff135df5259f6",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/compile-report.json": "7a3d106d359d57d87b7cef8aa174fb9e699942d17729ecab57c4f69ac468e81a",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/request.json": "0b79041e129128ebf38ce3aa54375a30cb1f90cc9c31e366e17b15a9d9bd3162",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/resolved/EXP-20260923-T1-STEP5-MICRO-R04-cd05-s7.leo-sim.yaml": "21a15e74af8a8e743ef9475ae53ea837c66d7607bad4ed029c671bd7bb81a8cc",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/resolved/EXP-20260923-T1-STEP5-MICRO-R04-control-s7.leo-sim.yaml": "4eb001c5a45665a5c941d5e5af9e58f90471e59f430ea26db1281d20ce8b9924",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/run-manifest.json": "bef90ade430c9aaae4152ceb246283766e1c6df6b03b26804cfe953702204cda",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/RUNBOOK.md": "595c1d33e66151b936f805c189708951e6b1f1339bc64f5640eaac0de98d7308",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/analysis-request.json": "67a4e7370f558619c3fce8dc645666e77c37f89ca2d4f8f995d89190e70110d1",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/compile-report.json": "9d29b8bcd243bdbd64ecaced42c79a771adf63f63184be286e554389baee9abd",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/request.json": "33d2b920062dbe5786fdd75204008ec8e260bdada360520b9d04658793002483",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/resolved/EXP-20260923-T1-STEP5-PRESSURE-R04-cd05-s7.leo-sim.yaml": "db31faeb008e781c3514c0632f5fa0ccc2dee8eb66b0a605e91a552d294cdbb4",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/resolved/EXP-20260923-T1-STEP5-PRESSURE-R04-control-s7.leo-sim.yaml": "5c0eb53a77f0345086cc9c410d356bfec965d779a03e15baf0e364e80f0a5486",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/run-manifest.json": "7298e5cfe0cccb348ecaef3b41771a90a4a1fcfe2ef0c216c501b3533c5bf8d6"
+  },
+  "brief_path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R04/brief.json",
+  "brief_sha256": "23dc73613bc659799faffd0004c6ac9ce8cad9d3abaa29b3219ecda60f0bbd92",
+  "decision_path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R04/decision.json",
+  "decision_sha256": "baf5c831529e82c40b5a4b0de35b831c6f988f4a4a8b48838e0ec812889e433f",
+  "required_review_roles": [
+    "adversarial",
+    "cold_start",
+    "satellite_drl"
+  ],
+  "revision": 4,
+  "schema": "agent-work-finalization/v1",
+  "status": "REVISION_REQUIRED",
+  "work_id": "WP-LEO-V2-T1-STEP5-GATE-EVIDENCE"
+}

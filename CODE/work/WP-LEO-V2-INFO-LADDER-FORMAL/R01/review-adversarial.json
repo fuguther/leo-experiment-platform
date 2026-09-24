@@ -1,0 +1,44 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-INFO-LADDER-FORMAL-R01-ADVERSARIAL",
+  "work_id": "WP-LEO-V2-INFO-LADDER-FORMAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-INFO-LADDER-FORMAL/R01/brief.json": "0e6fbf9a3eb31c6b303aed5513e43a97b2b49f9ded8b907524cc04df9d913c10",
+    "EXPERIMENTS/request-sources/EXP-20260821-INFO-LADDER-FORMAL-R01.json": "6e52b9a7c42738fbdca05d72e60552f7f24462b73ef9ed2069e9dd1eb2b4ce23",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/compile-report.json": "368dbfc5f6e6caa81e00ab2d676b9666e59b3940b1cc4be27786ad0228ccd05a",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/request.json": "7c4f404ba06a620564087bb1841bbd918e4437b41c2753a972b5edbf966dbe1d",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/run-manifest.json": "1737d17eb9fdcbbd34c00d539958e623b16c6364be93fa9d1f7462cd9a7f5e8d",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/analysis-request.json": "e5434d8b1969e59380f1a084b80a7eb26f2e0643c99fdf5c5330b387c9829270",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/RUNBOOK.md": "67baac3b24b67e9832419f51494094bfe0dbb5dcdcf7f5e76d9b83896808f9ab",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-hop-s11.leo-sim.yaml": "5f5c257968a9ba27a859cffa29be63417c3b8990a579fb63c64313e28316ebc9",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-hop-s7.leo-sim.yaml": "d2bd2dca56b0424f8fc04c94b000cd47f6fcbd82a90c6702107f9f7ed16a27a8",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-info_queue-s11.leo-sim.yaml": "1636391a194c7ddd829b45b9b444be3ece80b4e862780463b3639219b31c7fb2",
+    "EXPERIMENTS/EXP-20260821-INFO-LADDER-FORMAL-R01/resolved/EXP-20260821-INFO-LADDER-FORMAL-R01-info_queue-s7.leo-sim.yaml": "ad5604a0c3d2adab78050c9dd33b02ae480661f75a43b0b2b82563ded792744a"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-info-ladder-formal-r01",
+  "reviewer_id": "reviewer:info-ladder-adversarial",
+  "reviewer_session_id": "R-info-ladder-adversarial-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "adversarial",
+  "verdict": "PASS",
+  "evidence": [
+    "本复核从 exact candidate main HEAD 058e5433ad14b7390028a542e4e86b3dbd2b0d15 冷启动；manifest 的四个 cells code_sha256 与当前 CODE.leo_sim receipt.code_sha256() 均为 b4fd87adf3213ea5c734d708c114bd0c5096ab1f2cffb1ee8823cea31c29c285。",
+    "brief、request-source、compiled request、run-manifest、analysis-request 与 RUNBOOK 的实验范围一致：两个 deterministic routing anchors（hop/info_queue）、两个 trace seeds（7/11）、四个 non-learning cells、两个 exact pairing（queue-s7/queue-s11）和一个 info_queue-minus-hop contrast；info_physical 已明确延后到单独复核矩阵；更新后的 brief 已包含必需的 cannot_claim 字段。",
+    "source request 与 compiled request 的 JSON 内容完全一致；experiment_id=EXP-20260821-INFO-LADDER-FORMAL-R01、analysis_id=AN-INFO-LADDER-FORMAL-R01、request SHA 和 matrix-manifest SHA 均按当前文件重算一致；RUNBOOK 的四个 run_id/config_path 与 manifest 完全对应。",
+    "同一 trace seed 下 hop 与 info_queue 的 resolved config 唯一差异为 routing.policy；两臂均为 demand.mode=mlab、offered_mbps=200、8 s 起始的 8 s burst、20 s horizon、topology.recompute_interval_s=1.0、learning.algorithm=none、routing.learning_enabled=false、phase=non_learning。",
+    "info_queue 信息边界通过代码和定向测试核验：routing.choose_next_hop 使用与 hop 相同的已到达且未过期目的地服务广告和真实拓扑可达性，只在第一跳成本中加入当前卫星自身方向队列；不读取远端当前队列、未来几何、oracle serving-satellite 真值。test_info_queue_policy_uses_only_local_first_hop_queue 及 info_physical 边界回归均通过。",
+    "独立运行 CODE.leo_sim.matrix.verify_compiled_matrix 通过：4 个 canonical non-learning cells、9 个 compiled matrix artifacts；独立运行 authorize_experiment._verified_leo_sim_v2_matrix_experiment 通过：4 rows、9 hashes；compile-report.errors=[] 且 execution_authorized=false。",
+    "相关定向测试为 95 passed；当前 exact candidate 全量 pytest 为 603 passed、2 skipped、3 subtests passed。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "当前 package 仍处于 COMPILED_REVIEW_REQUIRED；R01 accepted finalization.json、authorization.json、clean VM deployment、四个自然结束 VM receipts、conservation/research_eligible 和 V2 paired analysis 尚未生成或验证。",
+    "本复核证明信息边界和授权前结构合同，不产生任何真实压力实验数值，也不支持 learner information value、算法 superiority、Q0 optimality 或 paper-ready statistical conclusion。"
+  ],
+  "required_revision": []
+}

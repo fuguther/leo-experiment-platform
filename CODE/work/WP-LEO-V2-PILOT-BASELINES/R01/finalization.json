@@ -1,0 +1,60 @@
+{
+  "applied_reviews": [
+    {
+      "path": "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/review-cold-start.json",
+      "receipt_id": "RR-PILOT-BASELINES-R01-COLD",
+      "reviewer_id": "reviewer:pilot-baselines-cold-start",
+      "reviewer_session_id": "R-pilot-baselines-cold-start-r01",
+      "role": "cold_start",
+      "sha256": "6cf29bc5d1822370350047f84a9999a20f727c08a44ae0d9b1125a0780647832",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/review-satellite-drl.json",
+      "receipt_id": "RR-PILOT-BASELINES-R01-SAT",
+      "reviewer_id": "reviewer:pilot-baselines-satellite-drl",
+      "reviewer_session_id": "R-pilot-baselines-satellite-drl-r01",
+      "role": "satellite_drl",
+      "sha256": "0eb052ae7439ede91441d055eee19639028f904df24c6bc690bf2371e7d4afc0",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/review-adversarial.json",
+      "receipt_id": "RR-PILOT-BASELINES-R01-ADV",
+      "reviewer_id": "reviewer:pilot-baselines-adversarial",
+      "reviewer_session_id": "R-pilot-baselines-adversarial-r01",
+      "role": "adversarial",
+      "sha256": "531f9ed1a6841464b681c16b32ecd0470b467c349c605d4353208053c315e29e",
+      "verdict": "PASS"
+    }
+  ],
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/brief.json": "d47e08859772d3a9d28b946244398bc975a9f638607d3366ad8e4f780f91253f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/RUNBOOK.md": "562a4ffdd69e640c29bd506f1567f0688f8cf8702c0b471e20b4a350e2dae63e",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/analysis-request.json": "44f0db2b297b4a774004a1ecf1542299c28a5d5bbd447b4c75ea09c315a2e97e",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/compile-report.json": "b7a558c1c4349e0a9f5da28d98973c29428ff4b9e4fc93edc38565da64f520a2",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/request.json": "1f17ef6c0ebc79df15c9577772843cac192d1b25e1e068cf01d5b98036aeb46a",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-ddqn_c3_a-s7-l7.leo-sim.yaml": "edc9c16e44e0a85696b317a865f5ff22562b0c6dcd19e4ee1937ef592e582b0f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-ddqn_c3_b-s7-l7.leo-sim.yaml": "edc9c16e44e0a85696b317a865f5ff22562b0c6dcd19e4ee1937ef592e582b0f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-gat_a-s7-l7.leo-sim.yaml": "1571228412c690fc57bd96ffb20db05a34e2a53cfc16920e3a44a57e55220c78",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-gat_b-s7-l7.leo-sim.yaml": "1571228412c690fc57bd96ffb20db05a34e2a53cfc16920e3a44a57e55220c78",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-mpnn_a-s7-l7.leo-sim.yaml": "84b9aec609dd1fc2d32c45db4619a2b3244733518416c4ed761d74bbfef28214",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-mpnn_b-s7-l7.leo-sim.yaml": "84b9aec609dd1fc2d32c45db4619a2b3244733518416c4ed761d74bbfef28214",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-qlearning_a-s7-l7.leo-sim.yaml": "65b0858417753f5dd183375608a6f908361db7f295b00c64e272bd1c0c89a023",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-qlearning_b-s7-l7.leo-sim.yaml": "65b0858417753f5dd183375608a6f908361db7f295b00c64e272bd1c0c89a023",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/run-manifest.json": "466026df2bd394a94d09bc7a86f690661cd793cd12620193b3a956ae6f447dfe"
+  },
+  "brief_path": "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/brief.json",
+  "brief_sha256": "d47e08859772d3a9d28b946244398bc975a9f638607d3366ad8e4f780f91253f",
+  "decision_path": "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/decision.json",
+  "decision_sha256": "02bdd5351cf3cc4492d97224fc2f1ab4e81a7eadef188dc7895477441dc4f1a4",
+  "required_review_roles": [
+    "adversarial",
+    "cold_start",
+    "satellite_drl"
+  ],
+  "revision": 1,
+  "schema": "agent-work-finalization/v1",
+  "status": "ACCEPTED",
+  "work_id": "WP-LEO-V2-PILOT-BASELINES"
+}
