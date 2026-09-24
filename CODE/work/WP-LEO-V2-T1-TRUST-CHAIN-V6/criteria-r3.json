@@ -1,45 +1,54 @@
 {
  "work_id": "WP-LEO-V2-T1-TRUST-CHAIN-V6",
  "round": 3,
- "frozen_at_sha": "3aa2890ba9fee31ed24222e5eb46bf17796b3215",
+ "frozen_at_sha": "c2e18a8f34aca5e4c7b7a54e7bcc58dbb9474689",
  "frozen_at": "2026-09-24",
- "scope": "解掉四个阻塞核心目的的残留：S-8 正式路线拿不到 T1 证据 / S-2 编译期接受分析期必炸 / S-3 流绑定只是声明 / S-1 报错说的是症状",
- "not_in_scope": "S-5（__main__.py 注释，按用户指示不做）/ S-9（历史记录，改了就是篡改）/ nested 契约 / timeline 行契约",
+ "scope": "解掉阻塞核心目的的残留：S-8 正式路线拿不到 T1 证据 / S-2 编译期接受分析期必炸 / S-3 流绑定只是声明；S-1 尝试后回退",
+ "not_in_scope": "S-5（__main__.py 注释）/ S-9（历史记录，改了就是篡改）/ nested 契约 / timeline 行契约 / 拒绝路径残留",
+ "context": "本批的三个改动都经过全量闸门拦截：首跑 26 failed（S-1 不成立 18 + fixture 无效 8），二跑 2 failed（回退不彻底 1 + 参数化假设过时 1），三跑 940 passed / 0 failed。",
  "criteria": [
   {
    "id": "T1",
    "statement": "leo_sim_v2 的每次正式运行都请求 decision 与 timeline 两条流",
-   "check": "remote_job.formal_command 对 runtime_kind=leo_sim_v2 的返回同时含 --decision-log 与 --timeline-log",
+   "check": "remote_job.formal_command 对 runtime_kind=leo_sim_v2 的返回同时含 --decision-log 与 --timeline-log 及其路径",
    "touches": [
     "CODE/scripts/remote/remote_job.py"
    ]
   },
   {
    "id": "T2",
-   "statement": "两条流位于 run 目录内，且 run 目录被创建为「存在且空」（正式输出要求）",
-   "check": "命令里的两个流路径的父目录 == --out 的值；该目录 is_dir() 且无子项",
+   "statement": "两条流位于 run 目录内；formal_command 把 run 目录创建为「存在且空」",
+   "check": "命令中两个流路径的父目录 == --out 的值；调用后该目录 is_dir() 且无子项；已存在的非空目录仍会被 CLI 拒绝",
    "touches": [
     "CODE/scripts/remote/remote_job.py"
    ]
   },
   {
    "id": "T3",
-   "statement": "编译器要求共享的字段集覆盖分析器要求的所有非派生字段",
-   "check": "对照 matrix._validate_pairing_contract 的字段集与 v2_analysis 的 paired-identity 字段集，差值只能是 {trace_sha256, seed}（前者由 trace_identity+input 派生，后者由 trace_seed 写入）",
+   "statement": "编译器要求共享的字段覆盖分析器要求的所有非派生字段",
+   "check": "对照 matrix._validate_pairing_contract 的字段集与 v2_analysis 的 paired-identity 字段集，差集只能是 {trace_sha256, seed}（前者由 trace_identity+input 派生，后者由 trace_seed 写入）",
    "touches": [
     "CODE/leo_sim/matrix.py"
    ]
   },
   {
    "id": "T4",
-   "statement": "arms 间 trace 身份不同的 matrix 请求在编译期被拒绝（不是留到分析期）",
-   "check": "构造两个只有 trace-affecting 覆写不同的 cell -> MatrixError，且消息来自配对契约",
+   "statement": "trace-affecting 的 treatment 在编译期被拒绝（不是留到分析期）",
+   "check": "把 fixture 的 treatment 换成覆写 demand.offered_mbps 并声明该路径 -> MatrixError 且消息含 'trace identity'",
    "touches": [
     "CODE/leo_sim/matrix.py"
    ]
   },
   {
    "id": "T5",
+   "statement": "修正后的 fixture 既是 trace-neutral 的、也仍然可以编译（反向守卫：不是靠全拒通过）",
+   "check": "matrix._resolve_cells(fixture) 不抛错；且实测 routing.policy 的 hop/oracle/delay 三者 trace_identity 相同（3c8d3443…）而 demand.offered_mbps=2.0 不同（7d5b339d…）",
+   "touches": [
+    "CODE/leo_sim/tests/test_matrix_contract.py"
+   ]
+  },
+  {
+   "id": "T6",
    "statement": "提供流路径时 V6 的流摘要被重算，篡改被捕获",
    "check": "verify_receipt_dir(dir, decision_log=<被追加一行的文件>) -> 非空错误且含摘要不一致",
    "touches": [
@@ -47,16 +56,16 @@
    ]
   },
   {
-   "id": "T6",
-   "statement": "不提供流时验证行为与改动前完全一致（既有调用方不受影响）",
-   "check": "verify_receipt_dir(dir) 与改动前的裁决逐字相同；V5 与 V6 目录都通过",
+   "id": "T7",
+   "statement": "不提供流时验证行为与改动前逐字相同（既有调用方不受影响）",
+   "check": "verify_receipt_dir(dir) 对 V5 与 V6 目录的裁决与改动前一致；全量测试中所有既有验证用例不变",
    "touches": [
     "CODE/leo_sim/receipt.py"
    ]
   },
   {
-   "id": "T7",
-   "statement": "对 V5 回执提供流路径时明确拒绝（不静默忽略）",
+   "id": "T8",
+   "statement": "对 V5 回执提供流路径时明确拒绝，不静默忽略",
    "check": "verify_receipt_dir(v5dir, decision_log=<任意文件>) -> 含 'carries no stream binding'",
    "touches": [
     "CODE/leo_sim/receipt.py",
@@ -64,16 +73,15 @@
    ]
   },
   {
-   "id": "T8",
-   "statement": "未启用容量采样的运行交给 isl_pressure 时，报错点名配置键而非症状",
-   "check": "对 link_available_windows 为空的 ledgers 调 analyze_windows -> PressureAnalysisError 且消息含 available_capacity_interval_s；且 t1_pressure_corridor.yaml 确实设了非 null 值",
+   "id": "T9",
+   "statement": "S-1 的回退是完整的：isl_pressure 不含新增的早抛，其新增测试已删除",
+   "check": "isl_pressure.py 中无 'no available-capacity windows'；test_capacity_sampling_diagnostic.py 不存在；那三个原有 isl_pressure 用例恢复通过",
    "touches": [
-    "CODE/experiment_platform/isl_pressure.py",
-    "CODE/leo_sim/profiles/t1_pressure_corridor.yaml"
+    "CODE/experiment_platform/isl_pressure.py"
    ]
   },
   {
-   "id": "T9",
+   "id": "T10",
    "statement": "全量测试通过",
    "check": "python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q -> 0 failed",
    "touches": [
@@ -81,9 +89,9 @@
    ]
   },
   {
-   "id": "T10",
+   "id": "T11",
    "statement": "未引入回归：receipt schema 家族判定、V5/V6 签发条件、v2_analysis 与 remote_job 的家族接受度均不变",
-   "check": "RECEIPT_SCHEMAS_V5_FAMILY 仍是 {v5,v6}；无流->V5/28 键，双流->V6/31 键；v2_analysis 与 remote_job 对 v3/v4/v7 仍拒绝",
+   "check": "RECEIPT_SCHEMAS_V5_FAMILY 仍是 {v5,v6}；无流->V5/28 键，双流->V6/31 键；v3/v4/v7 仍被拒",
    "touches": [
     "CODE/leo_sim/receipt.py",
     "CODE/experiment_platform/v2_analysis.py",
@@ -91,9 +99,9 @@
    ]
   },
   {
-   "id": "T11",
-   "statement": "身份影响如实：本批改动了 CODE/ 下的代码，code_sha256 必然变化；且未引入任何新 config key（config_sha256 不变）",
-   "check": "smoke.yaml 的 config_sha256 仍为 934315391f9572ca2f03a641a3b2a800889330e8f0579fccbb7ee29379c68816；code_sha256 与 6ed13d75 不同",
+   "id": "T12",
+   "statement": "身份影响如实：本批改了 CODE/ 下的代码，code_sha256 变化；未引入任何新 config key",
+   "check": "smoke.yaml 的 config_sha256 仍为 934315391f9572ca2f03a641a3b2a800889330e8f0579fccbb7ee29379c68816；code_sha256 为 2a114890e8b11e429fec45a6…",
    "touches": [
     "CODE/leo_sim/config.py"
    ]
