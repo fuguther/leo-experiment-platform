@@ -96,4 +96,29 @@ python3 -m CODE.leo_sim receipt verify out/smoke
   → {"status":"verified"}
 ```
 
-回执中的 `code_sha256` = `ffcad9fc…`,与源仓库 `2416278` 一致 —— **既有运行回执的证据链在本仓库可复现。**
+回执中的 `code_sha256` 由 `receipt.code_sha256()` 决定,覆盖 `CODE/leo_sim/*.py`
+(**非递归**,不含 `tests/`)。它与源仓库 `2416278` 的一致性是**历史事实,不是不变式**:
+退役旧线(删 `q0_tiny.py` / `info_ladder_tiny.py`)之后本仓库的代码身份已分叉为
+`4402081f…`,不再等于源仓库。运行回执的证据链在**本仓库内部**仍然自洽可复现。
+
+### 能力入口(T1 证据链)
+
+研究主线的「可归因」与「可干预」两条不变式,此前只有实现、没有生产入口
+(`decision_ledger.build_ledger` 的 13 处调用全在测试里;`counterfactual` 无非测试调用者)。
+以下两个入口补上了这一步:
+
+```
+# 可归因:把决策流与时间线折叠成每决策的十一时刻账本
+python3 -m CODE.experiment_platform.fold_decision_ledger \
+  --decision-log out/run-decisions.jsonl \
+  --timeline-log out/run-timeline.jsonl \
+  --out out/run-ledger.json
+
+# 可干预:严格配对的反事实重放(同一 trace/config/seed,只改一个动作)
+python3 -m CODE.experiment_platform.replay_counterfactual \
+  --config CODE/leo_sim/profiles/smoke.yaml \
+  --decision-id 18 --forced-action S --out out/replay.json
+```
+
+两者都**不修改引擎**,且都要求 `--out` 指向不存在的路径(拒绝静默覆盖)。
+反事实重放要求 `learning.algorithm = none`(确定性路由器)。

@@ -78,6 +78,8 @@ ANALYZER_FILES = (
     "CODE/experiment_platform/v2_analysis.py",
     "CODE/experiment_platform/isl_pressure.py",
     "CODE/experiment_platform/isl_pressure_decision.py",
+    "CODE/experiment_platform/fold_decision_ledger.py",
+    "CODE/experiment_platform/replay_counterfactual.py",
     "CODE/leo_sim/coverage.py",
     "CODE/leo_sim/counterfactual.py",
     "CODE/leo_sim/decision_ledger.py",
