@@ -44,14 +44,42 @@ t_peer_target_egress_enter                 t_peer_target_egress_service_start
 
 ## 状态处理方式
 
-| 处理方式 | 平台机制 | 状态 |
+| 处理方式 | 平台现状 | 状态 |
 |---|---|---|
-| 原始状态 | `observation_mode=frozen`(决策开始冻结观测,提交仅做合法性校验) | 已实现,producer-verified |
-| 补偿到当前 | `observation_mode=refresh`(提交时刻重新观测;**默认**) | 已实现 |
-| 候选到达时刻 | `decision_ledger.truth_at_target`(记录该包到达时目标出口的真实竞争) | 已实现(事后真值) |
-| 共同未来时刻 | 未找到对应机制 | **待确认** |
+| 原始状态 | `observation_mode=frozen` —— 观测冻结于决策开始,提交只做合法性校验 | ✅ 已实现 |
+| 补偿到当前 | `observation_mode=refresh` —— 提交时刻重新观测(默认) | ✅ 已实现 |
+| 候选到达时刻 | 只有**事后真值** `truth_at_target`;作为**决策输入**不存在 | ❌ 需新增 |
+| 共同未来时刻 | 把各候选对齐到同一未来时刻再比较 —— 无对应机制 | ❌ 需新增 |
 
 `VALID_OBSERVATION_MODES = {"refresh", "frozen"}`(`leo_sim/config.py:247`)。`frozen` 要求 `compute_delay > 0`。
+
+### 平台没有向未来投影的能力
+
+平台现有的**全部**预测都在"决策时刻"取值:
+
+| 对象 | `prediction_method` |
+|---|---|
+| `estimate_at_start` | `same_policy_on_advertised_peer_state` |
+| 候选级审计预测 | `same_policy_full_cache_at_decision_time` |
+
+**没有任何机制把状态推进到未来时刻。**
+
+`decision_ledger.py` 对此有明确声明:`truth_at_target` 折叠自到达快照,**MISSING while the target instant has not happened** —— 它在决策时刻**结构上不可得**,只能用于事后评分,不能作为决策依据。
+
+而"候选到达时刻"与"共同未来时刻"作为决策输入,**本质上都要求同一种前向投影**。
+
+> **因此 RQ2 的四路对照目前只能做两路。第 3、4 项共享同一个缺失能力,不是两个独立缺口。**
+
+### 必须先设计、不能由平台自行发明的部分
+
+前向投影的语义决定了 RQ2/RQ3 究竟在测什么,属于**研究设计**而非实现细节:
+
+- 用什么模型把状态推进到未来时刻
+- "共同"时刻取什么(固定前瞻 Δ?各候选到达时刻的最大值?决策周期边界?)
+
+平台侧可以做的是提供机制、把时刻作为参数。**但参数语义必须先定** —— 否则四路对照测的不是同一个东西,差异也无法归因。
+
+平台不自行发明这套语义:猜错会直接改变实验测到的东西。
 
 ---
 
