@@ -19,6 +19,10 @@ LEO 路由研究的**受控实验环境**。
 ## 结构
 
 ```
+CHARTER.md                # 平台本体与五条不变式
+WORKING-MODEL.md          # 提交、复核、版本
+lines/                    # 研究主线登记与各线文档
+
 CODE/                     # 导入根,不可改名
 ├── leo_sim/              # 仿真核心 —— 与源仓库字节级一致
 ├── experiment_platform/  # 编译 / 授权 / 指标重算
@@ -27,6 +31,12 @@ CODE/                     # 导入根,不可改名
 ├── work/                 # 工具模块(被测试导入)
 ├── data/                 # geoip / traffic
 └── population_map/       # 场景生成数据
+
+ANALYSIS/                 # 指标分析 + claim schema(模块名不可改)
+EXPERIMENTS/              # 契约与模板(不含实验实例)
+├── templates/            #   请求模板
+├── contracts/            #   运行工件合同
+└── experiment-program.yaml
 ```
 
 **`CODE/` 这一层不能去掉。** 源码中:
@@ -49,6 +59,24 @@ CODE/                     # 导入根,不可改名
 
 ## 未包含
 
-`CODE/Results/`(运行结果)、`remote.env`(凭据)、遗留结果整理器及其测试、`work/` 中的审计 work package。
+| 排除项 | 理由 |
+|---|---|
+| `CODE/Results/` | 运行结果,不是平台 |
+| `remote.env` | 机器凭据 |
+| `*_legacy_results.py` 及其测试 | 遗留结果整理器 |
+| `EXPERIMENTS/EXP-*/` | 实验实例(仅保留被测试引用的一个 RUNBOOK fixture) |
+| `ANALYSIS/claims/RESEARCH_CLAIMS.yaml` | claim 实例 |
+| `PAPER/` | 依赖方向为 PAPER → 平台,属研究侧 |
 
-运行结果与实验实例不属于平台 —— 见 `CHARTER.md` 第三节。
+判定规则:**契约进,实例不进。** 见 `CHARTER.md` 第三节。
+
+---
+
+## 验收
+
+```
+python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q
+→ 906 passed, 1 skipped
+```
+
+`CODE/leo_sim/` 的 `code_sha256()` 与源仓库 `549acd8` 一致 —— 既有运行回执的证据链可复现。
