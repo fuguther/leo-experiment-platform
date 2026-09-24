@@ -1,0 +1,28 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 故意不取消进行中的运行。
+# WORKING-MODEL 第三节:合并门要求「CI 对 exact head SHA 真实跑完且 success」。
+# cancelled 不等于绿 —— 取消进行中的运行会让这道门永远无法满足。
+# 若 CI 时长成为问题,应先减少提交频率,而不是把 cancelled 当成绿。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies (VM-aligned versions)
+        run: pip install pytest simpy==4.0.1 numpy==1.24.3 pyyaml pillow==12.0.0
+      - name: Run test suite
+        run: python -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q
