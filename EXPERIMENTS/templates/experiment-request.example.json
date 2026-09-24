@@ -1,0 +1,108 @@
+{
+  "identity": {
+    "experiment_id": "EXP-EXAMPLE-LOAD",
+    "title": "负载变化的基础设施示例",
+    "owner": "agent-producer"
+  },
+  "research": {
+    "question": "当且仅当流量负载变化时，主指标如何变化？",
+    "hypothesis": "更高负载会降低校正投递率，但本诊断不把该变化归因于算法机制。",
+    "falsification_condition": "配对 seed 的校正投递率差异未达到预注册最小效应，或方向与假设相反。",
+    "cannot_conclude": [
+      "不能从一次诊断声称方法优于强 baseline。",
+      "不能把负载效应解释为某个算法机制的因果贡献。",
+      "这些 run 是训练阶段诊断，不能据此声称部署阶段策略性能。"
+    ],
+    "target_claim_ids": []
+  },
+  "design": {
+    "intended_role": "diagnostic",
+    "base_profile": "code-compatibility-v1",
+    "one_change_policy": "strict",
+    "factor_changed": ["traffic.fraction"],
+    "coupled_parameters": [],
+    "coupling_reason": "",
+    "primary_metric": "delivery_rate",
+    "secondary_metrics": ["mean_e2e_latency", "p95_e2e_latency"],
+    "planned_seeds": [41, 42, 43],
+    "arms": [
+      {
+        "id": "control",
+        "label": "兼容配置负载",
+        "role": "control",
+        "method_family": "ddqn",
+        "execution_kind": "learning",
+        "information_contract": {
+          "train": ["local_observation", "local_queue", "neighbor_link_state"],
+          "evaluation": ["local_observation", "local_queue", "neighbor_link_state"],
+          "deployment": ["local_observation", "local_queue", "neighbor_link_state"]
+        },
+        "training_budget": {"simulated_seconds": 5.0},
+        "evaluation_budget": {"simulated_seconds": 0},
+        "execution_budget": {"simulated_seconds": 0},
+        "checkpoint_lineage": {"mode": "new_training", "source_run_id": null, "source_sha256": null},
+        "changes": {}
+      },
+      {
+        "id": "higher_load",
+        "label": "更高负载",
+        "role": "treatment",
+        "method_family": "ddqn",
+        "execution_kind": "learning",
+        "information_contract": {
+          "train": ["local_observation", "local_queue", "neighbor_link_state"],
+          "evaluation": ["local_observation", "local_queue", "neighbor_link_state"],
+          "deployment": ["local_observation", "local_queue", "neighbor_link_state"]
+        },
+        "training_budget": {"simulated_seconds": 5.0},
+        "evaluation_budget": {"simulated_seconds": 0},
+        "execution_budget": {"simulated_seconds": 0},
+        "checkpoint_lineage": {"mode": "new_training", "source_run_id": null, "source_sha256": null},
+        "changes": {"traffic.fraction": 0.65}
+      }
+    ]
+  },
+  "execution": {
+    "resume_mode": "none",
+    "resource_budget": {
+      "cpu_per_job": 2,
+      "max_parallel_jobs": 2,
+      "expected_wall_minutes": null
+    }
+  },
+  "outputs": {
+    "required_artifacts": [
+      "run_trace/run_meta.json",
+      "config_used.json",
+      "artifact_manifest.json",
+      "experiment_bundle/summary_metrics.csv"
+    ],
+    "completion_contract": [
+      "natural_end=true",
+      "interrupted=false",
+      "run identity and config hash match the manifest",
+      "all required artifacts exist",
+      "artifact_manifest hashes every required artifact except itself"
+    ]
+  },
+  "analysis": {
+    "estimand": "同一 seed 下 higher_load 相对 control 的 delivery_rate 平均差",
+    "unit_of_analysis": "seed-arm run",
+    "aggregation_level": "先按 run 汇总，再对配对 seed 的臂间差求均值",
+    "paired_by": ["seed", "scenario_identity", "controlled_signature"],
+    "inclusion_rules": ["仅纳入 VERIFIED 且自然结束、身份和产物哈希均匹配的 run"],
+    "exclusion_rules": ["排除中断、身份不匹配、主指标缺失或 effective receipt 不合格的 run"],
+    "missing_data_policy": "不把缺失值填零；任一配对成员缺失则该 seed 对不进入主分析并单独报告。",
+    "estimator": "paired mean difference",
+    "uncertainty_method": "paired bootstrap 95% confidence interval",
+    "alpha": 0.05,
+    "minimum_effect": {"metric": "delivery_rate", "direction": "decrease", "absolute_difference": 0.02},
+    "multiple_comparisons": "主指标单一比较不校正；次指标仅描述，不用于主结论。",
+    "planned_contrasts": [
+      {"name": "higher_load_minus_control", "left_arm": "higher_load", "right_arm": "control", "estimand": "paired mean difference in delivery_rate"}
+    ],
+    "stopping_rule": "仅运行预注册的 3 个 seed；不得依据中间结果追加或删除 seed。",
+    "negative_control": {"status": "not_included", "arm_id": null, "limitation": "未设置负对照，因此不能声称排除所有实现伪差异。"},
+    "target_ablation": {"status": "not_included", "arm_id": null, "limitation": "本诊断不涉及算法消融，因此不得声称机制贡献。"}
+  }
+}
