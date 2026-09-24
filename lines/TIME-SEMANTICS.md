@@ -20,12 +20,31 @@
 
 | 不变式 | 平台机制 | 状态 |
 |---|---|---|
-| 可反溯 | `decision_id` 每决策唯一;同一包的重决策可区分(`_next_decision_id` `kernel.py:1497`) | ✅ 已落地 |
-| 可归因 | 十一字段链可从事后工件重建;缺项标 `MISSING` 而非填 0(`decision_ledger.build_ledger`) | ✅ 已落地 |
-| 可干预 | `refresh` / `frozen` 两种观测模式;候选动作级反事实重放(`counterfactual.py`) | ✅ 已落地 |
-| 代价可量化 | F2 节点处理/调度开销与 PHY 带宽可分离 | ✅ 已落地 |
+| 不变式 | 平台机制 | 在正式运行路径上 |
+|---|---|---|
+| 可反溯 | `decision_id` 每决策唯一;重决策可区分(`_next_decision_id` `kernel.py:1497`) | ✅ 引擎内 |
+| 可归因 | 十一字段链折叠(`decision_ledger.build_ledger`) | ❌ **折叠无生产入口;源工件在信任链外** |
+| 可干预 | `refresh` / `frozen` 两种观测模式 | ✅ 引擎内 |
+| 可干预 | 候选动作级反事实重放(`counterfactual.py`) | ❌ **harness 无生产入口** |
+| 代价可量化 | F2 节点处理/调度开销与 PHY 带宽可分离 | ✅ 引擎内 |
 
-**"已落地"的含义是 producer-verified。** 它说明测量与反事实能力存在,**不代表** T1 的科学问题已被回答。
+### ⚠️ 两处「能力存在、链路不闭合」
+
+实测:
+
+```
+decision_ledger.build_ledger    def 1 处 + 测试调用 13 处 + 生产调用 0 处
+counterfactual.py               forced_actions 的唯一非测试传入者是它自己;
+                                而它自己没有任何非测试调用者
+```
+
+且 `ANALYSIS/T1-MEASUREMENT-PROTOCOL.md:45` 明载:decision log 工件**不在 receipt / ledger 信任链内**。程序化核验:`RECEIPT_KEYS_V5` 与 `LEDGER_KEYS` **均不含**十一时刻字段。
+
+**→ 正式运行里,T1 的核心证据既没有折叠入口,也无法被 `receipt verify` 校验。**
+
+这不是疏忽:协议 §3.3-3 明确知道该工件在链外,**未被权衡的是它的后果**。
+
+> **本表更早的版本把这四项一律标为 ✅ 已落地,是错的。** 判据只看了"能力是否存在",没看"生产路径是否可达"。同一张表此前还犯过反向的错(把已落地写成待落地)——两次都源于同一个习惯:**用存在性代替可达性**。
 
 ---
 
