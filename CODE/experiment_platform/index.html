@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LEO Research Control Plane</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">LEO ROUTING · RESEARCH CONTROL PLANE</p>
+        <h1>实验参数不是表单，<br><em>是 Agent 的可执行边界。</em></h1>
+      </div>
+      <div class="mast-meta">
+        <span id="catalog-count">— parameters</span>
+        <span>schema v1</span>
+        <span class="signal">agent-first</span>
+      </div>
+    </header>
+
+    <aside class="tree-panel">
+      <div class="panel-label">参数树</div>
+      <nav id="group-tree" aria-label="参数分类"></nav>
+      <div class="legend">
+        <div><i class="dot wired"></i> 已接线</div>
+        <div><i class="dot conditional"></i> 条件生效</div>
+        <div><i class="dot blocked"></i> 禁止修改</div>
+      </div>
+    </aside>
+
+    <main class="main-panel">
+      <section class="toolbar">
+        <label class="search-wrap">
+          <span>检索路径 / 含义 / 来源</span>
+          <input id="search" type="search" placeholder="例如 path_credit、线程、带宽…">
+        </label>
+        <label>
+          <span>接线状态</span>
+          <select id="status-filter">
+            <option value="all">全部</option>
+            <option value="wired">wired</option>
+            <option value="conditional">conditional</option>
+            <option value="declared_unwired">declared_unwired</option>
+            <option value="env_only">env_only</option>
+            <option value="locked_constant">locked_constant</option>
+            <option value="sealed">sealed</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="section-head">
+        <div>
+          <p class="kicker" id="active-group-id">ALL PARAMETERS</p>
+          <h2 id="active-group-label">全量参数面</h2>
+        </div>
+        <p id="result-count">—</p>
+      </section>
+      <section id="parameter-grid" class="parameter-grid" aria-live="polite"></section>
+    </main>
+
+    <aside class="agent-panel">
+      <div class="panel-label">Agent 主入口</div>
+      <p class="agent-note">Agent 不复制整份配置。只提交研究意图、允许变化的因子与实验臂，编译层负责补全和阻断。</p>
+      <ol>
+        <li><b>request</b><span>研究问题 + factor_changed</span></li>
+        <li><b>compile</b><span>补全配置 + 约束检查</span></li>
+        <li><b>review</b><span>领域 / 对抗审阅</span></li>
+        <li><b>authorize</b><span>全部必需角色 PASS + hash 绑定</span></li>
+        <li><b>run</b><span>运行前重算授权证据链</span></li>
+      </ol>
+      <div class="command-card">
+        <span>COMPILE</span>
+        <code>python3 CODE/experiment_platform/compile_experiment.py request.json --out EXPERIMENTS/EXP-…</code>
+      </div>
+      <a href="AGENT_EXPERIMENT_PROTOCOL.md" class="protocol-link">打开 Agent 协议 ↗</a>
+      <div class="integrity-note">
+        <strong>Fail closed</strong>
+        <p>未接线、硬编码和封存参数在正常请求中不可修改；已接线加速项仍须用 effective receipt 证明实际生效。</p>
+      </div>
+    </aside>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

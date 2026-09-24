@@ -1,0 +1,46 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-CONGESTION-PRESSURE-EVAL-R02-COLD",
+  "work_id": "WP-LEO-V2-CONGESTION-PRESSURE-EVAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R02/brief.json": "b0972c88ed4780c1c2aafa52f43916644a071a7ce9e5dc83881b0c4ee6f8acaa",
+    "EXPERIMENTS/request-sources/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02.json": "96dc109882911bca3fc45b9a72585578553ea779e992742d1c8cf09b984b3a76",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/compile-report.json": "c75a660c32056d6f3271208eff89654f482d23a46c13a4ab30fd1691923ad118",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/request.json": "3fb555cd6460aa2afc93052210dabf10e0d42e7d5ee1480334599dc04f2f9a3a",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/run-manifest.json": "33e129ed011e1e3fc9dab8e531899a3b4ddefa2b6ffae47e7876cd11a10186a1",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/analysis-request.json": "31094bb5596a870ac492d97179d2363772187b40471c763d895c567c24df099c",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/RUNBOOK.md": "2205399c0d1cdf90268cc02e4af7ff8322d30aad9f114af06a900834677b7abf",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-ddqn_c3_pressure-s7-l7.leo-sim.yaml": "fbaa2b7469ccdd1fd0596bc11f7194264e7710f1a3ab0cfe7dddb1cb92d779d3",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-gat_pressure-s7-l7.leo-sim.yaml": "5a99e2dfa5eeff97535039612ce434dd8b8dc822a64332e11807ad785171ddb2",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-mpnn_pressure-s7-l7.leo-sim.yaml": "c56e1d44d72b23b7af3bef5b776d76de1b7251e0462a49c1d2e9d1284ad78641",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-qlearning_pressure_ddqn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-qlearning_pressure_gat-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-qlearning_pressure_mpnn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-congestion-pressure-eval-r02",
+  "reviewer_id": "reviewer:congestion-pressure-cold-start",
+  "reviewer_session_id": "R-congestion-pressure-cold-start-r02",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "cold_start",
+  "verdict": "PASS",
+  "evidence": [
+    "本复核从 exact main HEAD 40bc27bcd2097bc64a77ea0ffc70970ff295ca2d 冷启动；该 checkout 的 receipt.code_sha256() 与所有六个 manifest cells 的 code_sha256 均为 eed8ce3dccd23b9871fcb307ccbd0f883379362aab20bcaec1fa1b70341beff5。",
+    "R02 brief 的 work_id、revision=1、producer_id=producer:codex、producer_session_id=P-leo-v2-congestion-pressure-eval-r02 与本 receipt 对齐；brief 的目标、三组 exact pairs、200 Mbps pressure、eval-only、单 seed 描述性边界与 source/request/manifest/analysis 一致。",
+    "request-source.json 与 compiled request.json 的 JSON 内容完全一致；四份 identity 均为 R02，analysis_id 均为 AN-CONGESTION-PRESSURE-EVAL-R02；claim_boundary 在 source、request、analysis-request 之间完全一致。request、manifest、analysis 的 SHA 绑定按当前文件重算一致，RUNBOOK 的六个 run_id/config_path 与 manifest 全部对应，且运行命令明确处于 compilation-only、待 review/authorization 边界。",
+    "独立运行 CODE.leo_sim.matrix.verify_compiled_matrix 通过：experiment_id=EXP-20260821-CONGESTION-PRESSURE-EVAL-R02，6 个 canonical evaluation cells，11 个编译矩阵 artifact，compile-report.errors=[]、execution_authorized=false；随后独立运行 authorize_experiment._verified_leo_sim_v2_matrix_experiment 通过 6 rows/11 hashes。",
+    "六个 resolved config 均由当前 main 的配置/治理路径解析成功，均为 demand.mode=mlab、offered_mbps=200、8 s 起始的 8 s burst、burst_multiplier=2、20 s horizon、scenario seed=7、learning seed=7、learning.mode=eval、topology.recompute_interval_s=1.0；三组 pairing_key 恰各有两个 cell，trace_identity/input/controlled signature 在 cohort 内固定。",
+    "六个 evaluation-only checkpoint lineage 均使用 external-<checkpoint_sha256>，checkpoint 与 sibling metadata.json 都是当前 checkout 内的 regular non-symlink 文件，实际 SHA 与 resolved config 声明一致；manifest 的六个 config_sha256/code_sha256/trace_identity/input/lineage 字段由独立解析结果核验。",
+    "相关定向测试为 105 passed, 1 skipped；当前 exact main 全量 pytest 为 598 passed, 2 skipped, 3 subtests passed。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "当前包没有合法 finalization.json 或 authorization.json；因此尚未、也不能据此声称已完成正式授权、clean VM deployment、六个自然结束 VM receipt、conservation/research_eligible、zero training steps 的运行证据或 V2 paired analysis。",
+    "200 Mbps pressure 运行是否产生足够拥塞以及各算法的描述性指标，必须在授权后按 RUNBOOK 串行 VM 实跑并由原始 receipt/ledger 重算；本冷审不把编译通过当作实验结果。"
+  ],
+  "required_revision": []
+}

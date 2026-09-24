@@ -1,0 +1,37 @@
+config_version: leo-sim-config/v1
+profile: smoke
+scenario:
+  name: smoke
+  duration_s: 60.0
+  # 24 sats / 3 planes: intra-plane ISL spacing ~5300 km < max_isl_km (6000),
+  # so the N-chain sat0 -> sat1 -> sat2 is physically available
+  num_satellites: 24
+  num_planes: 3
+  seed: 7
+endpoints:
+  sites:
+    - {name: equator, lat: 0.1, lon: 0.1, demand_weight: 1.0}
+    - {name: north, lat: 52.6, lon: 90.4, demand_weight: 1.0}
+demand:
+  mode: uniform
+  offered_mbps: 0.5
+  packet_bits: 8000000
+access:
+  association: bbm
+links:
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 2.0
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  max_events: 200000
+  max_entities: 1000
+  max_packets: 20000
+outputs:
+  out_dir: leo_sim_out/smoke
+  plotting: false

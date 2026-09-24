@@ -1,0 +1,68 @@
+config_version: leo-sim-config/v1
+scenario:
+  name: population-global-1deg-diagnostic
+  duration_s: 30
+  time_step_s: 0.1
+  num_satellites: 280
+  num_planes: 14
+  altitude_km: 600
+  inclination_deg: 98.6
+  min_elevation_deg: 25
+  geometry_epoch_s: 0
+  seed: 7
+endpoints:
+  grid_deg: 0.25
+  aggregation_deg: 1
+demand:
+  mode: population_gravity
+  population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
+  offered_mbps: 5
+  nested_master_offered_mbps: 80
+  emission_end_s: 20
+  packet_bits: 1000000
+  source_population_exponent: 1
+  destination_population_exponent: 1
+  gravity_alpha: 1.25
+  gravity_d_floor_km: 100
+  temporal_model: local_diurnal_cosine
+  utc_start_hour: 0
+  diurnal_amplitude: 0.5
+  diurnal_phase_h: 12
+  population_destination_sampler: alias_rejection
+  destination_rejection_max_draws: 10000
+access:
+  unavailable_policy: queue
+  slots_per_satellite: 4
+  uplink_rate_mbps: 100
+  downlink_rate_mbps: 100
+  uplink_queue_bits: 64000000
+  downlink_queue_bits: 64000000
+  association: bbm
+  hysteresis_deg: 0
+  min_dwell_s: 0
+  acquisition_delay_s: 0.1
+links:
+  rate_model: mcs
+  ge_enabled: false
+topology:
+  recompute_interval_s: 1
+  matching: markovian
+control_plane:
+  enabled: true
+  advertise_interval_s: 1
+  ttl_s: 10
+  vis_k: 17
+  packet_bits: 8000
+routing:
+  policy: hop
+  max_hops: 64
+learning:
+  algorithm: none
+execution:
+  max_events: 20000000
+  max_entities: 2000
+  max_packets: 5000
+  available_capacity_interval_s: 1
+outputs:
+  out_dir: leo_sim_out/population-global-1deg-diagnostic
+  plotting: false

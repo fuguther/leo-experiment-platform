@@ -1,0 +1,48 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-CONGESTION-PRESSURE-EVAL-R02-ADV-R2",
+  "work_id": "WP-LEO-V2-CONGESTION-PRESSURE-EVAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R02/brief.json": "b0972c88ed4780c1c2aafa52f43916644a071a7ce9e5dc83881b0c4ee6f8acaa",
+    "EXPERIMENTS/request-sources/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02.json": "96dc109882911bca3fc45b9a72585578553ea779e992742d1c8cf09b984b3a76",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/RUNBOOK.md": "2205399c0d1cdf90268cc02e4af7ff8322d30aad9f114af06a900834677b7abf",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/analysis-request.json": "31094bb5596a870ac492d97179d2363772187b40471c763d895c567c24df099c",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/compile-report.json": "c75a660c32056d6f3271208eff89654f482d23a46c13a4ab30fd1691923ad118",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/request.json": "3fb555cd6460aa2afc93052210dabf10e0d42e7d5ee1480334599dc04f2f9a3a",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/run-manifest.json": "33e129ed011e1e3fc9dab8e531899a3b4ddefa2b6ffae47e7876cd11a10186a1",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-ddqn_c3_pressure-s7-l7.leo-sim.yaml": "fbaa2b7469ccdd1fd0596bc11f7194264e7710f1a3ab0cfe7dddb1cb92d779d3",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-gat_pressure-s7-l7.leo-sim.yaml": "5a99e2dfa5eeff97535039612ce434dd8b8dc822a64332e11807ad785171ddb2",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-mpnn_pressure-s7-l7.leo-sim.yaml": "c56e1d44d72b23b7af3bef5b776d76de1b7251e0462a49c1d2e9d1284ad78641",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-qlearning_pressure_ddqn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-qlearning_pressure_gat-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R02-qlearning_pressure_mpnn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-congestion-pressure-eval-r02",
+  "reviewer_id": "reviewer:congestion-pressure-eval-r02-adversarial-r2",
+  "reviewer_session_id": "R-congestion-pressure-eval-r02-adversarial-r2",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "adversarial",
+  "verdict": "PASS",
+  "evidence": [
+    "在 exact main SHA 40bc27bcd2097bc64a77ea0ffc70970ff295ca2d 上独立读取 R02 brief、request-source、compiled request、manifest、analysis、compile report、RUNBOOK 和 6 个 resolved config；未修改仓库文件。",
+    "复核修正后的嵌套 analysis.analysis_id：request-source、compiled request 和 analysis-request 均为 AN-CONGESTION-PRESSURE-EVAL-R02，未发现错误的顶层替代字段；verify_compiled_matrix 通过：6 个 evaluation cells、11 个矩阵 verifier artifacts；compile-report errors 为空且 execution_authorized=false。",
+    "request-source.json 与 request.json 字节一致，request SHA、manifest SHA 和 analysis manifest SHA 相互绑定；本 receipt 绑定的是修正后重新编译的最新 13 个 artifact SHA，而非旧 receipt 的 hashes。",
+    "R02 common_config 与已验证 100 Mbps medium pilot common_config 逐字段比较，只有 demand.offered_mbps 从 100 改为 200，以及不参与物理语义的 scenario.name 标签变化；topology、cadence、星座、MCS、控制面、端点、队列和执行上限没有隐藏变化。6 个 resolved config 的 demand.offered_mbps 均为 200。",
+    "6 个 cell 恰好组成 pressure-ddqn、pressure-gat、pressure-mpnn 三个二元 pair；每个 pair 有两个不同 run_id/arm_id，trace_seed、trace_identity_sha256、input_sha256 和 controlled_signature 在 pair 内一致，三项 planned contrasts 分别绑定对应 comparison arm 与 Q-learning copy arm。",
+    "三个 Q-learning cells 使用同一个 checkpoint path、checkpoint SHA 943fda8cd60817040b7af9dd0e6680cfaf66e904344eb1a7a680c7145d7fd8b1 和同一个 metadata SHA，同时保持三个不同 run_id、arm_id 和 pairing_key；矩阵合同允许这种内容绑定的独立运行身份。",
+    "逐 cell 验证 phase=evaluation、learning.mode=eval、resume_path/resume_sha256=null、checkpoint_lineage.mode=evaluation_only，且 source_run_id 严格为 external-<source_sha256>；实际 checkpoint 和 sibling metadata SHA 均匹配，路径解析后均在项目根内且无 symlink component。",
+    "定向测试通过：74 passed；自定义 R02 capacity/pair/path/lineage 断言通过。brief 和 claim boundary 明确将结果限制为单 seed 的 200 Mbps 压力描述性诊断，不声称算法 superiority、拥塞因果、最终 E0、Q0 或论文统计结论。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "尚未覆盖 R02 的 formal finalization、authorization.json 和 clean main VM deployment；当前 compile-report 仍为 execution_authorized=false。",
+    "尚未覆盖 6 个 pressure cell 的 VM natural-end receipt、conservation、research_eligible、exact loaded checkpoint/metadata SHA、train_steps=0、资源指标和 V2 analysis 重算。",
+    "本 receipt 绑定 R02 brief、request-source、编译产物和 6 个 resolved config；正式授权仍必须另外绑定实际 checkpoint bytes、sibling metadata bytes 和部署 SHA，不能仅凭配置 hash 视为运行证据。"
+  ],
+  "required_revision": []
+}

@@ -1,0 +1,49 @@
+{
+  "artifact_hashes": {
+    "CODE/data/traffic/t1_step5_micro_ab.csv": "26536d8b3b894a13d74289131653fddfdae8fe095f7c4edb2dc6a1683ec37592",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R04/PROCEDURE.md": "7e89f95fae4e7dadb6be55413eab65a7e6cec616158f6c2f0cb6c579c36a78a4",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/check_procedure.py": "e5eb73c978ad902711999632fb14c6732615bce4a358585ef198d4abb99f23ec",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/step5_recompute.py": "756b95478e86d6f2449863cdc2f0bd6578f9aa5059d571ae5a81471ded53fa73",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/RUNBOOK.md": "abfa4488987fc20cfdf455582011bf0bc3a2fb9ac99cd6a686f156dc461a0e31",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/analysis-request.json": "ef1d3c278e39e7fa8fc86dab97c7f7e7293f14beb6559c8bc1dff135df5259f6",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/compile-report.json": "7a3d106d359d57d87b7cef8aa174fb9e699942d17729ecab57c4f69ac468e81a",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/request.json": "0b79041e129128ebf38ce3aa54375a30cb1f90cc9c31e366e17b15a9d9bd3162",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/resolved/EXP-20260923-T1-STEP5-MICRO-R04-cd05-s7.leo-sim.yaml": "21a15e74af8a8e743ef9475ae53ea837c66d7607bad4ed029c671bd7bb81a8cc",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/resolved/EXP-20260923-T1-STEP5-MICRO-R04-control-s7.leo-sim.yaml": "4eb001c5a45665a5c941d5e5af9e58f90471e59f430ea26db1281d20ce8b9924",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/run-manifest.json": "bef90ade430c9aaae4152ceb246283766e1c6df6b03b26804cfe953702204cda",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/RUNBOOK.md": "595c1d33e66151b936f805c189708951e6b1f1339bc64f5640eaac0de98d7308",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/analysis-request.json": "67a4e7370f558619c3fce8dc645666e77c37f89ca2d4f8f995d89190e70110d1",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/compile-report.json": "9d29b8bcd243bdbd64ecaced42c79a771adf63f63184be286e554389baee9abd",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/request.json": "33d2b920062dbe5786fdd75204008ec8e260bdada360520b9d04658793002483",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/resolved/EXP-20260923-T1-STEP5-PRESSURE-R04-cd05-s7.leo-sim.yaml": "db31faeb008e781c3514c0632f5fa0ccc2dee8eb66b0a605e91a552d294cdbb4",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/resolved/EXP-20260923-T1-STEP5-PRESSURE-R04-control-s7.leo-sim.yaml": "5c0eb53a77f0345086cc9c410d356bfec965d779a03e15baf0e364e80f0a5486",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R04/run-manifest.json": "7298e5cfe0cccb348ecaef3b41771a90a4a1fcfe2ef0c216c501b3533c5bf8d6"
+  },
+  "blocking_findings": [],
+  "evidence": [
+    "MICRO SCENARIO VALID (files read, not trusted prose): EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R04/resolved/EXP-20260923-T1-STEP5-MICRO-R04-control-s7.leo-sim.yaml scenario = name t1-step5-micro-ab, num_satellites 8, num_planes 1, altitude_km 550, inclination_deg 53, seed 7, duration_s 40; demand.mode=csv with csv_path CODE/data/traffic/t1_step5_micro_ab.csv; control plane enabled vis_k=2; routing policy hop, contract C3; isl_rate 10 Mbps, uplink/downlink 1000 Mbps; execution.available_capacity_interval_s=0.1 (non-null, non-degenerate). CSV has exactly 6 rows: packet 99 warm-up at t=0.0 plus burst packets 1-5 at t=3.00..3.20, all 8000000 bits A=(0.1N,0.1E)->B=(52.6N,90.4E). Real Walker geometry holds because the kernel falls back to model.Constellation when no geometry object is injected (CODE/leo_sim/kernel.py geometry-is-None branch) and the formal CLI never injects one.",
+    "F2 KEY 0.0 ON ALL FOUR CELLS (grep, not prose): node_process_delay_s appears once per resolved config, value 0.0 in all four R04 cells (2x MICRO-R04, 2x PRESSURE-R04); all four R04 request.json and request-sources files contain zero occurrences of node_process, so F2 code is deployed but F2 is disabled and nothing physical changed except the added F2 key at 0.0.",
+    "CORRIDOR APPROPRIATE + HASH EQUALITY (ran with /opt/homebrew/bin/python3): load_config_file CODE/leo_sim/profiles/t1_pressure_corridor.yaml sha256 = 52dfe3d92c1e0e6cbd7281c8b4725d9889c5c2376848a22a5b25a980ed4c47a3, exactly equal to the compiled corridor control-arm config_sha256 in run-manifest.json; resolve_config of the inlined common_config from PRESSURE-R04/request.json independently resolves to the same value (three-leg equivalence). Profile file sha256 = 60bcb666160e72159018feaf2f93c7f2f01888cc06cd4655c04ed5b5aab2dc4e (matches). PROFILES registry in CODE/leo_sim/config.py:421-426 holds only smoke, so t1_pressure_corridor is a config file, not a named profile. execution.available_capacity_interval_s=1.0 preserved in corridor configs (profile line 74). Corridor scenario: 24 satellites / 3 planes, t1-pressure-corridor, duration 600 s, seed 7.",
+    "PAIRING CONTRACT FAIR (diff, not prose): diff of micro control vs cd05 resolved configs shows exactly one differing line (execution.compute_delay_s 0.0 vs 0.05); same for the pressure pair. Both run-manifest.json files: arms control (no overrides) vs cd05 with intervention_paths=[execution.compute_delay_s]; within each pair trace_identity_sha256 is shared (micro a101e0d5..., corridor 4e28833c...), controlled_signature shared, trace_seed 7 shared, code_sha256 shared, config_sha256 differs. Trace, seed, endpoints, PHY, routing and control plane fixed; only compute_delay_s varies.",
+    "ADMISSION CRITERIA ACHIEVABLE AND DISCLOSED: micro acceptance min_delivered_packets=6/min_multisat_deliveries=6 with require_control_delivery and require_data_isl (run-manifest.json); corridor 1/1. brief.json acceptance plus context disclose the corridor gate is deliberately low because it is a diagnostic-scale recomputation batch that legitimately drops load at the edge with ACCESS_QUEUE_OVERFLOW, and that the aggregate e2e-delay difference is NOT required to equal decisions x compute_delay_s because compute delay changes event ordering. Achievability judged on disclosed design (reviewers must not run the simulation); the micro load (6 small packets, reachable site pair) is proportionate to 6/6 and corridor 1/1 to a lossy pressure profile.",
+    "GATE RUN MYSELF (pre-review): check_procedure.py --phase pre-review exited 0 with all_checks_ok=true, failed_checks=[], unproven_gates=[], G3 correctly in skipped_checks (no authorization exists yet). Report shows real ids seen=[EXP-20260923-T1-STEP5-MICRO-R04, EXP-20260923-T1-STEP5-PRESSURE-R04] (non-vacuous; the disclosed hyphen-regex defect cannot repeat). All executed negative controls triggered: G1a injected R99 detected, G1b corrupted session detected, G2 unsupported metric rejected, G4 zeroed gate hash detected.",
+    "DEFEAT ATTEMPT (in-memory, via the gate own functions): replacing one config token with EXP-20260923-T1-STEP5-MICRO-R03 makes G1a ok=false with foreign=[EXP-20260923-T1-STEP5-MICRO-R03] and G1b report not-a-compiled-cell plus missing/extra; clean text passes both. Note: pointing the gate CLI at a /tmp copy crashes in G4 path binding (ValueError, no report) rather than reporting G1a cleanly -- fail-loud, not a false pass, and outside the documented in-tree contract; non-blocking observation only.",
+    "COMPILE CLEANLINESS + HONESTY + BACKSTOPS (read/ran): both compile-report.json show COMPILED_REVIEW_REQUIRED, errors=[], execution_authorized=false; cmp shows request-sources byte-equal to compiled request.json (MICRO-EQUAL, PRESSURE-EQUAL). step5_recompute.py selftest exits 0 (merged 2x compute_delay_s interval REPORTED as violation). All 18 artifact-set.json entries re-hashed OK. brief.json plus analysis-request.json cannot_claim explicitly disclaim #212/M1/M2/M3 reproduction; StaticGeometry exists only in tests/helpers.py:72; __main__.py refuses --decision-log on formal runs and formal_command never passes it; PROCEDURE.md section 6b mandates the three chain-2 blind-spot backstops."
+  ],
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "producer_id": "producer:step5-batch-deepseek",
+  "producer_session_id": "P-step5-batch-r01",
+  "receipt_id": "RR-T1-STEP5-R04-SATDRL",
+  "required_revision": [],
+  "reviewer_id": "reviewer:muse-step5-r04b-satdrl",
+  "reviewer_session_id": "R-muse-step5-r04b-satdrl-7e14d6b8",
+  "revision": 4,
+  "role": "satellite_drl",
+  "schema": "agent-review-receipt/v2",
+  "unknowns": [],
+  "verdict": "PASS",
+  "work_id": "WP-LEO-V2-T1-STEP5-GATE-EVIDENCE"
+}

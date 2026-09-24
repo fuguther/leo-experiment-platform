@@ -1,0 +1,6 @@
+{
+  "_comment": "Phase 2 'Upgrade B' (feat/mlab-real-traffic, 2026-05-29): per-GT diurnal modulation derived from real M-Lab hour_utc data instead of synthetic sin. DiurnalSchedule.from_mlab_csv() aggregates (client_city -> nearest GT, hour_utc) -> sample-count-weighted throughput, normalized per-GT mean=1.0. GTs with <4 distinct hour buckets fall back to the sinusoidal default (current dataset covers UTC 0-13, so GTs sourcing only off-hours data fall back). min_floor 0.1 guards against zero packet rates. (2026-05-29: dataset now covers full UTC 0-23 after the fetcher list-cap fix, so per-GT hour buckets are complete; empirical_gts=12, fallback_gts=0.)",
+  "mode": "mlab",
+  "csv_path": "data/traffic/mlab_2026-05-27.csv",
+  "min_floor": 0.1
+}

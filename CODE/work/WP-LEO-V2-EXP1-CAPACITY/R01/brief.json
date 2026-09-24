@@ -1,0 +1,26 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-EXP1-CAPACITY",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-exp1-capacity-r01",
+  "objective": "Measure the first real routing treatment: capacity-aware next-hop selection versus hop-shortest routing under the fixed 100 Mbps M-Lab burst profile.",
+  "context": [
+    "This is a descriptive congestion and link-utilization diagnostic, not a final algorithm claim.",
+    "Both cells share the same trace seed and measured endpoint input; only routing.policy changes from hop to capacity.",
+    "The run is intended to expose whether queue/rate-aware routing changes delivery and utilization before learning experiments."
+  ],
+  "allowed_inputs": ["EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01", "CODE/leo_sim", "CODE/experiment_platform", "CODE/scripts/remote"],
+  "excluded_inputs": ["CODE/Results", "Unverified historical result claims"],
+  "deliverables": ["An authorized two-cell matrix run", "Receipt-verified VM outputs", "A persisted V2 paired analysis for delivery_rate"],
+  "cannot_claim": ["Algorithm superiority", "Causal congestion-control effect", "Q0 optimality", "Paper-ready statistical conclusion from one seed"],
+  "acceptance": [
+    "Matrix identity and exact intervention path pass independent review.",
+    "Both cells complete naturally on one clean deployed SHA with conservation and acceptance true.",
+    "V2 analysis recomputes the paired delivery_rate difference from raw receipts; any utilization interpretation remains diagnostic until separately reviewed."
+  ],
+  "review_roles": ["cold_start", "satellite_drl", "adversarial"],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

@@ -1,0 +1,52 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-CONGESTION-PRESSURE-EVAL-R03-SAT",
+  "work_id": "WP-LEO-V2-CONGESTION-PRESSURE-EVAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R03/brief.json": "4e40273a8d79564da43dbf61b1e9d80dec56b541a839ccaea19fc66652d1a25c",
+    "EXPERIMENTS/request-sources/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03.json": "864dc389fdaceb84fa2b35e24f8cfe66ec4c0ed77ffb48bd6b28b748fef25b58",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/RUNBOOK.md": "be797fa926f53a0d397d2e907aecf2474c62728d6881260fec3345290341a0d2",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/analysis-request.json": "e333f7d78a5e6530a778d6139fa30f5cce04dc0fac5d140373e6cb1d36e68028",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/compile-report.json": "5c02cc0a5cb514cd1deb5f8deca6b44d3e36828a737a76f167f39d3d048fa637",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/request.json": "53b4fe8fdbcac305c32d9151cbcc38a7539174bd685e5041c623bb8db40563c1",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/run-manifest.json": "095341b87549dcd0e1ad26f1a03e04b5910e932698e1b307b89fb5327cdbeff0",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-ddqn_c3_pressure-s11-l11.leo-sim.yaml": "a3c4d1878133c0f4504200f98d8572e19f2a079fd1ba0c2377e06c69877b16dd",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-ddqn_c3_pressure-s7-l7.leo-sim.yaml": "fbaa2b7469ccdd1fd0596bc11f7194264e7710f1a3ab0cfe7dddb1cb92d779d3",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-gat_pressure-s11-l11.leo-sim.yaml": "887f4535ab31be83c36b6a09166dd06441cf7938d42c948ac7f810efc8e3a034",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-gat_pressure-s7-l7.leo-sim.yaml": "5a99e2dfa5eeff97535039612ce434dd8b8dc822a64332e11807ad785171ddb2",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-mpnn_pressure-s11-l11.leo-sim.yaml": "c521745f753c7a4ddd0693d943f4108f3ce1b3dc50e8e507ad4512947cbf08d9",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-mpnn_pressure-s7-l7.leo-sim.yaml": "c56e1d44d72b23b7af3bef5b776d76de1b7251e0462a49c1d2e9d1284ad78641",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-qlearning_pressure_ddqn-s11-l11.leo-sim.yaml": "31c1d244cd347d4ab31d097d979d91873a8a76bd3c4cc29b75298925a54866c5",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-qlearning_pressure_ddqn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-qlearning_pressure_gat-s11-l11.leo-sim.yaml": "31c1d244cd347d4ab31d097d979d91873a8a76bd3c4cc29b75298925a54866c5",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-qlearning_pressure_gat-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-qlearning_pressure_mpnn-s11-l11.leo-sim.yaml": "31c1d244cd347d4ab31d097d979d91873a8a76bd3c4cc29b75298925a54866c5",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-qlearning_pressure_mpnn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-congestion-pressure-eval-r03",
+  "reviewer_id": "reviewer:congestion-pressure-eval-r03-satellite-drl",
+  "reviewer_session_id": "R-congestion-pressure-eval-r03-satellite-drl",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "satellite_drl",
+  "verdict": "PASS",
+  "evidence": [
+    "当前 checkout exact HEAD 为 3fa26956da44d03c8b94c3ec2dfed5afc1615eb5，符合任务指定 SHA。",
+    "独立运行 verify_compiled_matrix 成功解析 EXP-20260821-CONGESTION-PRESSURE-EVAL-R03 的 12 个 evaluation cells；compile report errors 为空、runtime_kind=leo_sim_v2、execution_authorized=false，绑定 16 个 compiled artifacts。",
+    "source request、compiled request 与 analysis-request.json 的 experiment_id 均为 EXP-20260821-CONGESTION-PRESSURE-EVAL-R03，嵌套 analysis_id 均为 AN-CONGESTION-PRESSURE-EVAL-R03；source request 与 compiled request 语义一致。",
+    "12 个 cells 构成六个 seed-specific exact pairs：pressure-ddqn、pressure-gat、pressure-mpnn 各在 seed 7/11 一对；每 pair 两 arm 共享 seed、M-Lab input SHA、controlled signature 与对应 seed 的 trace identity。",
+    "12 个 resolved configs 均为 200 Mbps、M-Lab measurement-proxy、8+8 s 2x burst、20 s、MCS、Markovian topology/1 s recompute、control plane vis_k=12、learning.mode=eval；四类 declared policy contract 与 evaluation_only checkpoint lineage 均解析一致。",
+    "6 个唯一 checkpoint bytes 与 sibling metadata.json 的 SHA 在 12 个 cells 中全部重算匹配，且 lineage source_sha256 与 loaded checkpoint SHA 一致；定向测试 CODE/leo_sim/tests/test_matrix_contract.py、CODE/experiment_platform/tests/test_v2_analysis.py、CODE/experiment_platform/tests/test_authorize_experiment.py 共 26 passed。",
+    "request source 与 compiled request 现均声明 CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R03/finalization.json；该 finalization 尚未在当前 review-stage working tree 生成，属于后续 authorization/finalization gate，而非本次矩阵 contract 的静默回退。",
+    "R03 brief 的 claim boundary 已改为 two-seed pressure repeat，并继续禁止 algorithm superiority、causal congestion-control effect、final E0 threshold、Q0 optimality 和 paper-ready statistical conclusion。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "R03 finalization.json 尚未在当前 review-stage working tree 生成；VM evaluation 尚未运行，未覆盖 accepted authorization/finalization closure、clean deployment、natural-end/conservation/research_eligible receipts、loaded checkpoint evidence、packet/latency/capacity ledgers 或 persisted two-seed V2 analysis。"
+  ],
+  "required_revision": []
+}

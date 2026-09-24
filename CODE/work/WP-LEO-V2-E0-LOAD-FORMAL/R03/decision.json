@@ -1,0 +1,32 @@
+{
+  "schema": "agent-work-decision/v1",
+  "work_id": "WP-LEO-V2-E0-LOAD-FORMAL",
+  "revision": 3,
+  "producer_id": "producer:codex",
+  "decision_maker_id": "decision:research-lead-codex",
+  "decision": "ACCEPT",
+  "applied_review_receipts": [
+    {"receipt_id": "RR-E0-LOAD-FORMAL-R03-COLD", "path": "CODE/work/WP-LEO-V2-E0-LOAD-FORMAL/R03/review-cold-start.json", "sha256": "8e69d5e4b25805edd9141c885431ab29abb3ecfdc17ac193ce03b73106c115b6", "role": "cold_start", "verdict": "PASS"},
+    {"receipt_id": "RR-E0-LOAD-FORMAL-R03-SAT", "path": "CODE/work/WP-LEO-V2-E0-LOAD-FORMAL/R03/review-satellite-drl.json", "sha256": "23d3ef6a538813a95a68dfae37732eb1048d04ea43712d1f6d6210ae0d80aefb", "role": "satellite_drl", "verdict": "PASS"},
+    {"receipt_id": "RR-E0-LOAD-FORMAL-R03-ADV", "path": "CODE/work/WP-LEO-V2-E0-LOAD-FORMAL/R03/review-adversarial.json", "sha256": "90509893394d3acc018af9f9e8b888152519423122e112fd35c3f562b5d49c3b", "role": "adversarial", "verdict": "PASS"}
+  ],
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-E0-LOAD-FORMAL/R03/brief.json": "3c6dd7317f6ad02fa2007344649d821f8f47d9296b743cc0e3d18eda52f9d9b8",
+    "CODE/work/WP-LEO-V2-E0-LOAD-FORMAL/R02/request-source.json": "91b97f057085941616a3f05a25df577960c47807a0aeb54a15cfd872fbb638d8",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/RUNBOOK.md": "6b304a034b84161ed96d1a98ba437e2710498d0f612068a2e9240d96c72a948c",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/analysis-request.json": "d40fa9be4c8b8a43fce1cb9e69339569ec2ddfda7ea45ac12934f88923b51f82",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/compile-report.json": "b9aba9969c22e9a11786576b478c47942698c4ad45280ce2185628c55087ec9f",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/request.json": "98a77bdadd2300a3b261367246009d0426b3e5998e0341d901040acb412d8d49",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/resolved/EXP-20260822-E0-LOAD-FORMAL-R02-high_control-s7.leo-sim.yaml": "3cc854e1782d14e7be1c7ce5ec068d1bedb0d8a46afbfd3557f1e012ed44b994",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/resolved/EXP-20260822-E0-LOAD-FORMAL-R02-high_copy-s7.leo-sim.yaml": "3cc854e1782d14e7be1c7ce5ec068d1bedb0d8a46afbfd3557f1e012ed44b994",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/resolved/EXP-20260822-E0-LOAD-FORMAL-R02-low_control-s7.leo-sim.yaml": "d9c2acfaa36c621439c1711d9565e29ca2feda6b67cfc02a7f7f90ad5b770ea7",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/resolved/EXP-20260822-E0-LOAD-FORMAL-R02-low_copy-s7.leo-sim.yaml": "d9c2acfaa36c621439c1711d9565e29ca2feda6b67cfc02a7f7f90ad5b770ea7",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/resolved/EXP-20260822-E0-LOAD-FORMAL-R02-medium_control-s7.leo-sim.yaml": "8284cc176c61f7fd7d096215f98613fa0a33a72903daa210cf124cacfd551be3",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/resolved/EXP-20260822-E0-LOAD-FORMAL-R02-medium_copy-s7.leo-sim.yaml": "8284cc176c61f7fd7d096215f98613fa0a33a72903daa210cf124cacfd551be3",
+    "EXPERIMENTS/EXP-20260822-E0-LOAD-FORMAL-R02/run-manifest.json": "1154cecf814a9afb779b2c0891e009d82916a19dfb9cd90e04189f633368c3ca"
+  },
+  "rationale": "三角色独立审阅确认 schema-valid R03 工作包和已合入的 R02 六 cell 矩阵边界、配对设计、M-Lab measurement_proxy、D1/D2 配置、负载分档及 R01 no-mixing 规则均可进入授权。接受范围仅是一次种子负载扫描和重复一致性证据；不提前宣称最终 E0、因果、算法优越性或论文结论。",
+  "blocking_findings": [],
+  "revision_instructions": [],
+  "next_revision": null
+}

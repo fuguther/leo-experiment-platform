@@ -1,0 +1,48 @@
+{
+  "artifact_hashes": {
+    "CODE/data/traffic/t1_step5_micro_ab.csv": "26536d8b3b894a13d74289131653fddfdae8fe095f7c4edb2dc6a1683ec37592",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R05/PROCEDURE.md": "50f96cf018c1264d5d55efc4c89173a0c2d05b80c849ad85f828cf82bffc57ed",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/check_procedure.py": "e905621e4778cb5e8c0e2dc4e90fd066e43027fdb1c838346b2321b7298f5330",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/step5_recompute.py": "756b95478e86d6f2449863cdc2f0bd6578f9aa5059d571ae5a81471ded53fa73",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/RUNBOOK.md": "54a36378446c3c8cb8e3542fcd56c3af82146d93ea695e52ce445e67d1f6def4",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/analysis-request.json": "af1e3a1c3dd6cedf3d51294d2b173bfdc178d4336a70bb0741b8dc937e27ca3f",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/compile-report.json": "4eac585a3c3ada5a6ca380660c5d782e0cf31f72a01d86b32a5cf148a95a2a40",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/request.json": "f319a6e8a893472451a34290ea72ea3f94e97ed672bad709cf25591b04260d12",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/resolved/EXP-20260923-T1-STEP5-MICRO-R05-cd05-s7.leo-sim.yaml": "21a15e74af8a8e743ef9475ae53ea837c66d7607bad4ed029c671bd7bb81a8cc",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/resolved/EXP-20260923-T1-STEP5-MICRO-R05-control-s7.leo-sim.yaml": "4eb001c5a45665a5c941d5e5af9e58f90471e59f430ea26db1281d20ce8b9924",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/run-manifest.json": "eb5352634c9d173af1b5502e288afcc152e7931cd858fcb17b613e4b3d926b4e",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/RUNBOOK.md": "4f6cd540a1734efffc8e94012659e9001e490917727f47077b6a7dfeddc41239",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/analysis-request.json": "0f4f61e02452fb714eaeb811ce9f92557136965db215422c6b4e237dee8b2d87",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/compile-report.json": "143762e37e49d964863656920b55d4f5b720b68751db42dee3264a0c52f7e7cd",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/request.json": "d635ccbf287a49595d98df8ae0a90012fb59969aaf4f26771078fd4069738fb2",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/resolved/EXP-20260923-T1-STEP5-PRESSURE-R05-cd05-s7.leo-sim.yaml": "db31faeb008e781c3514c0632f5fa0ccc2dee8eb66b0a605e91a552d294cdbb4",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/resolved/EXP-20260923-T1-STEP5-PRESSURE-R05-control-s7.leo-sim.yaml": "5c0eb53a77f0345086cc9c410d356bfec965d779a03e15baf0e364e80f0a5486",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/run-manifest.json": "302efa7338e6a13e4084eb35fad8e83ea627748ac2918811b6793983fdf32cca"
+  },
+  "blocking_findings": [],
+  "evidence": [
+    "MICRO SCENARIO LEGITIMATE: CODE/data/traffic/t1_step5_micro_ab.csv has exactly 6 rows (packet 99 warm-up t=0.0 + packets 1-5 burst t=3.00..3.20, 8e6 bits each, A=(0.1N,0.1E)->B=(52.6N,90.4E)); EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/request.json common_config: scenario 8 sats/1 plane/seed 7/duration 40 s, demand.mode=csv, isl_rate 10 Mbps, uplink/downlink 1000 Mbps, control_plane enabled vis_k=2, routing hop, execution.available_capacity_interval_s=0.1. Real Walker geometry via kernel.py geometry-is-None fallback (model.Constellation); formal CLI injects no scripted geometry. Non-degenerate: 6 distinct packets over a multi-satellite path with capacity sampling on.",
+    "F2-ERA PHYSICAL INVARIANCE: diff of resolved control vs cd05 (micro and pressure) shows exactly one differing line: execution.compute_delay_s 0.0 vs 0.05; grep over all 4 resolved yamls shows execution.node_process_delay_s=0.0 in every cell. CODE/leo_sim/config.py:416 defaults node_process_delay_s to 0.0 and :881-885 validates finite>=0; CODE/leo_sim/kernel.py:1144 reads it, :1145-1152 fail-loud if >0 without timeline_sink, :4009-4020 generator returns before touching the clock when <=0 (bit-identical historical runs). Deployment contains F2 code with F2 disabled.",
+    "CORRIDOR APPROPRIATE AND PRESERVED: corridor control-arm config_sha256 in run-manifest.json = 52dfe3d92c1e0e6cbd7281c8b4725d9889c5c2376848a22a5b25a980ed4c47a3, exactly equal to load_config_file('CODE/leo_sim/profiles/t1_pressure_corridor.yaml')['sha256'] which I ran (load_sha256=52dfe3...4c47a3); profile file sha256 I ran = 60bcb666160e72159018feaf2f93c7f2f01888cc06cd4655c04ed5b5aab2dc4e, matching brief.json. execution.available_capacity_interval_s=1.0 preserved in profile, pressure request common_config, and both pressure resolved yamls. config.py PROFILES registers only 'smoke', so t1_pressure_corridor is a config file, not a named profile, as disclosed. 24 sats/3 planes, uniform 8 Mbps vs 10 Mbps ISL, queue policy: analytic pressure window, appropriate as gate-evidence load case.",
+    "PAIRED DESIGN FAIR: run-manifest.json cells share trace_identity_sha256 within each pair (micro a101e0d5..., pressure 4e28833c...) and controlled_signature (micro 92e45cb0..., pressure 8e0e8253...), differ in config_sha256; trace_seed=7 in both cells; arms differ only via intervention_paths=['execution.compute_delay_s'] (control overrides {} vs cd05 {execution:{compute_delay_s:0.05}}). Endpoints/PHY/routing/control-plane all in shared common_config. Only execution.compute_delay_s varies: FAIR pairing contract holds.",
+    "ADMISSION CRITERIA ACHIEVABLE AND DISCLOSED: request.json acceptance micro min_delivered_packets=6/min_multisat_deliveries=6 (+require_control_delivery, require_data_isl); pressure 1/1 with same requires. brief.json discloses the 6/6 micro gate and the deliberately low 1/1 corridor gate with rationale (diagnostic-scale recomputation batch; corridor legitimately drops edge load with ACCESS_QUEUE_OVERFLOW). 6 small packets over 40 s on a reachable site pair is an achievable bar; 1/1 is a floor, not a performance claim. cannot_claim explicitly forbids superiority/effect-size/causal/#212-reproduction claims.",
+    "GATE CORROBORATION (pre-review, read-only run): PYTHONPATH=. python3 tools/check_procedure.py --phase pre-review for both R05 experiment ids exited 0 with all_checks_ok=true, 5 checks executed, G3 skipped (phase-gated). G5 detail lists node_process_delay_s=0.0 for all 4 cells with f2_disabled=true, matching my direct grep. Negative controls all triggered: G1a unfenced R99 id, G1b unfenced run-remote line, G2 bogus metric, G4 zeroed-hash set, G5 0.5 probe. R04 defeat re-test from /tmp copy exited 1 on a G4 path-binding technicality (procedure outside repo root), so I verified G1a/G1b defeat-catching by code read (check_g1a scans whole procedure_text; _g1b_evaluate flags any command-like run-remote line outside fences) plus a programmatic check that the R04 unfenced id line is both foreign-detectable and command-like: True/True.",
+    "NON-BLOCKING PROSE NIT: brief.json F2 DISCLOSURE says 'No R04 request sets ... every R04 cell resolves ...' inside the R05 brief; context shows it means this revision requests/cells, and G5 plus my direct grep of the 4 R05 resolved configs confirm 0.0. Typo only, no domain impact; flagged for cleanup, not blocking."
+  ],
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "producer_id": "producer:step5-batch-deepseek",
+  "producer_session_id": "P-step5-batch-r01",
+  "receipt_id": "RR-T1-STEP5-R05-SATDRL",
+  "required_revision": [],
+  "reviewer_id": "reviewer:muse-step5-r05-satdrl",
+  "reviewer_session_id": "R-muse-step5-r05-satdrl-2b64c9f3",
+  "revision": 5,
+  "role": "satellite_drl",
+  "schema": "agent-review-receipt/v2",
+  "unknowns": [],
+  "verdict": "PASS",
+  "work_id": "WP-LEO-V2-T1-STEP5-GATE-EVIDENCE"
+}

@@ -1,0 +1,44 @@
+{
+  "schema": "agent-work-decision/v1",
+  "work_id": "WP-LEO-V2-E0-FORMAL",
+  "revision": 1,
+  "producer_id": "producer:codex",
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-E0-FORMAL/R01/brief.json": "87c3e2a8de7030c5b22d2e50aae68a0dcdd0fb41e4e945263178b80a40791830",
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01/RUNBOOK.md": "b364d0d1921042c75aa16fdbb8abfe118e3f28e44d4a73911ef0bc7b23813335",
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01/analysis-request.json": "60ebb601346e80a4090e740979a6923e071cdfb829fc86bd747d0613357a4175",
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01/compile-report.json": "6961a923f49503ba2edeb2f58aa7957a518025c686a84a55668b103319b9fd11",
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01/request.json": "6e1979c17064b6b85d70eac9b70222f02a69b83faf9ab5ec3c0c1684e67fa447",
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01/resolved/EXP-20260821-E0-FORMAL-R01-main-s7.leo-sim.yaml": "393e3a95e167b22413115341dfb99a2f39d9451133c60f5a43de8e8c4f4980c5",
+    "EXPERIMENTS/EXP-20260821-E0-FORMAL-R01/run-manifest.json": "a4327abdeff3d9003671d332ffff48b5d2678ab319e0a68f5f6f8a2de37293a2"
+  },
+  "decision_maker_id": "decision:research-lead-codex",
+  "applied_review_receipts": [
+    {
+      "receipt_id": "RR-E0-FORMAL-R01-COLD",
+      "path": "CODE/work/WP-LEO-V2-E0-FORMAL/R01/review-cold-start.json",
+      "sha256": "ade176ddc80dab68f88bcb82bba7271ef604421416a3d1fb3a2089a25beec36d",
+      "role": "cold_start",
+      "verdict": "PASS"
+    },
+    {
+      "receipt_id": "RR-E0-FORMAL-R01-SAT",
+      "path": "CODE/work/WP-LEO-V2-E0-FORMAL/R01/review-satellite-drl.json",
+      "sha256": "7b5999a6debead15c29096332f8a911298b422c0b8fbba52f762cf96ed22d3ad",
+      "role": "satellite_drl",
+      "verdict": "PASS"
+    },
+    {
+      "receipt_id": "RR-E0-FORMAL-R01-ADV",
+      "path": "CODE/work/WP-LEO-V2-E0-FORMAL/R01/review-adversarial.json",
+      "sha256": "999b561a2ddd5973881d3a2e405f90832cc36509e5e7f0cdb95c5fb158916c9e",
+      "role": "adversarial",
+      "verdict": "PASS"
+    }
+  ],
+  "decision": "ACCEPT",
+  "rationale": "三个要求角色均以当前编译产物和提交 6ea2895 为边界通过；该接受只允许进入 clean deploy、正式授权和一次窄范围 E0 桥接运行，不把运行前合同误称为论文结果。",
+  "blocking_findings": [],
+  "revision_instructions": [],
+  "next_revision": null
+}

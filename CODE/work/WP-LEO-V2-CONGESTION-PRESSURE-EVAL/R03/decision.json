@@ -1,0 +1,56 @@
+{
+  "schema": "agent-work-decision/v1",
+  "work_id": "WP-LEO-V2-CONGESTION-PRESSURE-EVAL",
+  "revision": 1,
+  "producer_id": "producer:codex",
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R03/brief.json": "4e40273a8d79564da43dbf61b1e9d80dec56b541a839ccaea19fc66652d1a25c",
+    "EXPERIMENTS/request-sources/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03.json": "864dc389fdaceb84fa2b35e24f8cfe66ec4c0ed77ffb48bd6b28b748fef25b58",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/RUNBOOK.md": "be797fa926f53a0d397d2e907aecf2474c62728d6881260fec3345290341a0d2",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/analysis-request.json": "e333f7d78a5e6530a778d6139fa30f5cce04dc0fac5d140373e6cb1d36e68028",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/compile-report.json": "5c02cc0a5cb514cd1deb5f8deca6b44d3e36828a737a76f167f39d3d048fa637",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/request.json": "53b4fe8fdbcac305c32d9151cbcc38a7539174bd685e5041c623bb8db40563c1",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/run-manifest.json": "095341b87549dcd0e1ad26f1a03e04b5910e932698e1b307b89fb5327cdbeff0",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-ddqn_c3_pressure-s11-l11.leo-sim.yaml": "a3c4d1878133c0f4504200f98d8572e19f2a079fd1ba0c2377e06c69877b16dd",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-ddqn_c3_pressure-s7-l7.leo-sim.yaml": "fbaa2b7469ccdd1fd0596bc11f7194264e7710f1a3ab0cfe7dddb1cb92d779d3",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-gat_pressure-s11-l11.leo-sim.yaml": "887f4535ab31be83c36b6a09166dd06441cf7938d42c948ac7f810efc8e3a034",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-gat_pressure-s7-l7.leo-sim.yaml": "5a99e2dfa5eeff97535039612ce434dd8b8dc822a64332e11807ad785171ddb2",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-mpnn_pressure-s11-l11.leo-sim.yaml": "c521745f753c7a4ddd0693d943f4108f3ce1b3dc50e8e507ad4512947cbf08d9",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-mpnn_pressure-s7-l7.leo-sim.yaml": "c56e1d44d72b23b7af3bef5b776d76de1b7251e0462a49c1d2e9d1284ad78641",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-qlearning_pressure_ddqn-s11-l11.leo-sim.yaml": "31c1d244cd347d4ab31d097d979d91873a8a76bd3c4cc29b75298925a54866c5",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-qlearning_pressure_ddqn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-qlearning_pressure_gat-s11-l11.leo-sim.yaml": "31c1d244cd347d4ab31d097d979d91873a8a76bd3c4cc29b75298925a54866c5",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-qlearning_pressure_gat-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-qlearning_pressure_mpnn-s11-l11.leo-sim.yaml": "31c1d244cd347d4ab31d097d979d91873a8a76bd3c4cc29b75298925a54866c5",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R03-qlearning_pressure_mpnn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35"
+  },
+  "decision_maker_id": "decision:research-lead-codex",
+  "applied_review_receipts": [
+    {
+      "receipt_id": "RR-CONGESTION-PRESSURE-EVAL-R03-COLD",
+      "path": "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R03/review-cold-start.json",
+      "sha256": "0e4eb66944268f0b4e5009e94840926d783b9ace303855e54cc69affa7eb0592",
+      "role": "cold_start",
+      "verdict": "PASS"
+    },
+    {
+      "receipt_id": "RR-CONGESTION-PRESSURE-EVAL-R03-SAT",
+      "path": "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R03/review-satellite-drl.json",
+      "sha256": "8ea089ad8792b3150a28c59316079ebfac8734ce96ec77e9410b40974b9b6c42",
+      "role": "satellite_drl",
+      "verdict": "PASS"
+    },
+    {
+      "receipt_id": "RR-CONGESTION-PRESSURE-EVAL-R03-ADV-R2",
+      "path": "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R03/review-adversarial.json",
+      "sha256": "14183f1d2139694e0b3579422102074573fc7a9dbcd5cbb4783f33d50ae67cc3",
+      "role": "adversarial",
+      "verdict": "PASS"
+    }
+  ],
+  "decision": "ACCEPT",
+  "rationale": "三类独立冷审均绑定当前 main exact SHA 与同一组 19 个 R03 artifact hashes，确认 12 个 evaluation-only cells 在 seed 7/11 下组成六个合法 seed-specific 二元配对；唯一物理压力干预仍为 offered_mbps=200。该接受只授权在干净、已部署的同一 SHA 上执行两 seed 的压力重复，不等同于算法优越性、拥塞因果、最终 E0、Q0 或论文统计结论。",
+  "blocking_findings": [],
+  "revision_instructions": [],
+  "next_revision": null
+}

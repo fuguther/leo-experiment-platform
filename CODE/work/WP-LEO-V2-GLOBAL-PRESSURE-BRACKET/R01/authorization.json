@@ -1,0 +1,177 @@
+{
+  "authorized_cells": [
+    {
+      "acceptance": {
+        "min_delivered_packets": 0,
+        "min_multisat_deliveries": 0,
+        "require_control_delivery": false,
+        "require_data_isl": false
+      },
+      "arm_id": "load10_a",
+      "checkpoint_lineage": {
+        "mode": "not_applicable",
+        "source_run_id": null,
+        "source_sha256": null
+      },
+      "code_sha256": "daf695aff5ab443002e8969a89b6ca6948d343ed5fde1be790f247e7e65849ff",
+      "config_path": "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/resolved/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01-load10_a-s7.leo-sim.yaml",
+      "config_sha256": "7f9cca0eca6c409169852e19d28b3d2c5b716c317ad5d1d4f23c2384d0136233",
+      "controlled_signature": "dce7e1d73ffa50dadb41ca795aefbae794b257bde252962ff24aefe738c573d6",
+      "execution_chain_sha256": {
+        "CODE/experiment_platform/authorize_experiment.py": "14f6d5ebc8f913764045c112b0b10ba3c3871f8820b7e2d3c1fa47ac9a72aebb",
+        "CODE/experiment_platform/v2_analysis.py": "7b5e8418fc699aff10357e4c496696083840cb5503a346e2b6ed580fed7e6a18",
+        "CODE/experiment_platform/v2_serial_gate.py": "a139f232236acf921874e177817361288f0799f58f78e12a00d4ea3fce7953a3",
+        "CODE/scripts/remote/deployment_guard.py": "c1580fdc42c3fdd5c650304998688d8ccdf69825c0070c65ba5b8c59c063973b",
+        "CODE/scripts/remote/remote_job.py": "e52ac7b16ca6755163a50b21684092bb2812b3c06d13e042628d33a969c53563",
+        "CODE/scripts/remote/run-remote.sh": "9cbed45e0e7f3b35036a53b9c3c29dcd1c59f3b587ba538f138f8cdce20eccfa"
+      },
+      "input_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+      "learning_seed": null,
+      "pairing_key": "load10-s7",
+      "phase": "non_learning",
+      "run_id": "EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01-load10_a-s7",
+      "runtime_kind": "leo_sim_v2",
+      "trace_identity_sha256": "0fdbe914aa9d7cdde44a84276b93d6b55b13ac3bc95a673e1f96b52399f6f761",
+      "trace_seed": 7
+    },
+    {
+      "acceptance": {
+        "min_delivered_packets": 0,
+        "min_multisat_deliveries": 0,
+        "require_control_delivery": false,
+        "require_data_isl": false
+      },
+      "arm_id": "load10_b",
+      "checkpoint_lineage": {
+        "mode": "not_applicable",
+        "source_run_id": null,
+        "source_sha256": null
+      },
+      "code_sha256": "daf695aff5ab443002e8969a89b6ca6948d343ed5fde1be790f247e7e65849ff",
+      "config_path": "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/resolved/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01-load10_b-s7.leo-sim.yaml",
+      "config_sha256": "7f9cca0eca6c409169852e19d28b3d2c5b716c317ad5d1d4f23c2384d0136233",
+      "controlled_signature": "dce7e1d73ffa50dadb41ca795aefbae794b257bde252962ff24aefe738c573d6",
+      "execution_chain_sha256": {
+        "CODE/experiment_platform/authorize_experiment.py": "14f6d5ebc8f913764045c112b0b10ba3c3871f8820b7e2d3c1fa47ac9a72aebb",
+        "CODE/experiment_platform/v2_analysis.py": "7b5e8418fc699aff10357e4c496696083840cb5503a346e2b6ed580fed7e6a18",
+        "CODE/experiment_platform/v2_serial_gate.py": "a139f232236acf921874e177817361288f0799f58f78e12a00d4ea3fce7953a3",
+        "CODE/scripts/remote/deployment_guard.py": "c1580fdc42c3fdd5c650304998688d8ccdf69825c0070c65ba5b8c59c063973b",
+        "CODE/scripts/remote/remote_job.py": "e52ac7b16ca6755163a50b21684092bb2812b3c06d13e042628d33a969c53563",
+        "CODE/scripts/remote/run-remote.sh": "9cbed45e0e7f3b35036a53b9c3c29dcd1c59f3b587ba538f138f8cdce20eccfa"
+      },
+      "input_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+      "learning_seed": null,
+      "pairing_key": "load10-s7",
+      "phase": "non_learning",
+      "run_id": "EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01-load10_b-s7",
+      "runtime_kind": "leo_sim_v2",
+      "trace_identity_sha256": "0fdbe914aa9d7cdde44a84276b93d6b55b13ac3bc95a673e1f96b52399f6f761",
+      "trace_seed": 7
+    }
+  ],
+  "authorized_runs": [
+    {
+      "acceptance": {
+        "min_delivered_packets": 0,
+        "min_multisat_deliveries": 0,
+        "require_control_delivery": false,
+        "require_data_isl": false
+      },
+      "arm_id": "load10_a",
+      "checkpoint_lineage": {
+        "mode": "not_applicable",
+        "source_run_id": null,
+        "source_sha256": null
+      },
+      "code_sha256": "daf695aff5ab443002e8969a89b6ca6948d343ed5fde1be790f247e7e65849ff",
+      "config_path": "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/resolved/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01-load10_a-s7.leo-sim.yaml",
+      "config_sha256": "7f9cca0eca6c409169852e19d28b3d2c5b716c317ad5d1d4f23c2384d0136233",
+      "controlled_signature": "dce7e1d73ffa50dadb41ca795aefbae794b257bde252962ff24aefe738c573d6",
+      "execution_chain_sha256": {
+        "CODE/experiment_platform/authorize_experiment.py": "14f6d5ebc8f913764045c112b0b10ba3c3871f8820b7e2d3c1fa47ac9a72aebb",
+        "CODE/experiment_platform/v2_analysis.py": "7b5e8418fc699aff10357e4c496696083840cb5503a346e2b6ed580fed7e6a18",
+        "CODE/experiment_platform/v2_serial_gate.py": "a139f232236acf921874e177817361288f0799f58f78e12a00d4ea3fce7953a3",
+        "CODE/scripts/remote/deployment_guard.py": "c1580fdc42c3fdd5c650304998688d8ccdf69825c0070c65ba5b8c59c063973b",
+        "CODE/scripts/remote/remote_job.py": "e52ac7b16ca6755163a50b21684092bb2812b3c06d13e042628d33a969c53563",
+        "CODE/scripts/remote/run-remote.sh": "9cbed45e0e7f3b35036a53b9c3c29dcd1c59f3b587ba538f138f8cdce20eccfa"
+      },
+      "input_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+      "learning_seed": null,
+      "pairing_key": "load10-s7",
+      "phase": "non_learning",
+      "run_id": "EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01-load10_a-s7",
+      "runtime_kind": "leo_sim_v2",
+      "trace_identity_sha256": "0fdbe914aa9d7cdde44a84276b93d6b55b13ac3bc95a673e1f96b52399f6f761",
+      "trace_seed": 7
+    },
+    {
+      "acceptance": {
+        "min_delivered_packets": 0,
+        "min_multisat_deliveries": 0,
+        "require_control_delivery": false,
+        "require_data_isl": false
+      },
+      "arm_id": "load10_b",
+      "checkpoint_lineage": {
+        "mode": "not_applicable",
+        "source_run_id": null,
+        "source_sha256": null
+      },
+      "code_sha256": "daf695aff5ab443002e8969a89b6ca6948d343ed5fde1be790f247e7e65849ff",
+      "config_path": "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/resolved/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01-load10_b-s7.leo-sim.yaml",
+      "config_sha256": "7f9cca0eca6c409169852e19d28b3d2c5b716c317ad5d1d4f23c2384d0136233",
+      "controlled_signature": "dce7e1d73ffa50dadb41ca795aefbae794b257bde252962ff24aefe738c573d6",
+      "execution_chain_sha256": {
+        "CODE/experiment_platform/authorize_experiment.py": "14f6d5ebc8f913764045c112b0b10ba3c3871f8820b7e2d3c1fa47ac9a72aebb",
+        "CODE/experiment_platform/v2_analysis.py": "7b5e8418fc699aff10357e4c496696083840cb5503a346e2b6ed580fed7e6a18",
+        "CODE/experiment_platform/v2_serial_gate.py": "a139f232236acf921874e177817361288f0799f58f78e12a00d4ea3fce7953a3",
+        "CODE/scripts/remote/deployment_guard.py": "c1580fdc42c3fdd5c650304998688d8ccdf69825c0070c65ba5b8c59c063973b",
+        "CODE/scripts/remote/remote_job.py": "e52ac7b16ca6755163a50b21684092bb2812b3c06d13e042628d33a969c53563",
+        "CODE/scripts/remote/run-remote.sh": "9cbed45e0e7f3b35036a53b9c3c29dcd1c59f3b587ba538f138f8cdce20eccfa"
+      },
+      "input_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+      "learning_seed": null,
+      "pairing_key": "load10-s7",
+      "phase": "non_learning",
+      "run_id": "EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01-load10_b-s7",
+      "runtime_kind": "leo_sim_v2",
+      "trace_identity_sha256": "0fdbe914aa9d7cdde44a84276b93d6b55b13ac3bc95a673e1f96b52399f6f761",
+      "trace_seed": 7
+    }
+  ],
+  "experiment_artifact_hashes": {
+    "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/coverage-audit.json": "b5631b2d4e40bc96b77e69459ae50b44b467d08b22373fcd4e63e7ebbe8912ae",
+    "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/scene-check-contract.json": "574880a791f9f3276642caebed8f4329e3cd77f59d5fc528ef629fa774102ec5",
+    "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/scene-decision.yaml": "9ad82a9ac4c4f86c13e38881236f8a438c2750140b7a6a8d49f7929e98b17d9b",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/RUNBOOK.md": "06ec33060a383f8be9ebd9d73db17d441036db0863003a064c9d347fe19d437c",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/analysis-request.json": "7a0ec0d9aa5560b66481f408a7c931e5e7a4e8435b7f6e539f6fbc701f3b0f1c",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/compile-report.json": "38653f2d74d99e6778da7f3fc2e18790c99a0bc58c626c092ce9385667ff486c",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/request.json": "1db1953de69d9e8f94eadbdb79760cf76801ddb97f51aa94c986fcc4a72fee53",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/resolved/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01-load10_a-s7.leo-sim.yaml": "bae0c72dfe8b86f687993027fbdfaf1f3e8d1d353f6eb11a9068c5bc19d3a7b4",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/resolved/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01-load10_b-s7.leo-sim.yaml": "bae0c72dfe8b86f687993027fbdfaf1f3e8d1d353f6eb11a9068c5bc19d3a7b4",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/run-manifest.json": "a33c8b63cb17d88b787a1437b27f5a4051711aca7601fcd88fab74e14c67c545"
+  },
+  "experiment_dir": "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01",
+  "experiment_id": "EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01",
+  "payload_sha256": "5e3fb511c289f5c321e463767d6842876c5fdb8ee3ebed96c8a910345ffb2de8",
+  "schema": "experiment-execution-authorization/v1",
+  "status": "AUTHORIZED",
+  "verification_policy": {
+    "recompute_work_finalization": true,
+    "require_all_bound_artifact_hashes": true,
+    "require_current_scenario_source_hashes": true,
+    "require_current_trace_input_hashes": true,
+    "require_exact_matrix_cohort": true,
+    "require_exact_run_config_hash": true
+  },
+  "work_finalization": {
+    "brief_path": "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/brief.json",
+    "brief_sha256": "906b7a25042f229eafcbe7b03213c1277afefe6b201376a92d17d4b94bac3739",
+    "decision_path": "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/decision.json",
+    "decision_sha256": "d5916c54b531448c77f3f2119de0650f5a6139ced97093f6737b590b3730df80",
+    "path": "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/finalization.json",
+    "revision": 1,
+    "sha256": "51e6da52d3b1a630032fd0aac26b71574d74b1bbc49fa1a0ff1fb046243380cd",
+    "work_id": "WP-LEO-V2-GLOBAL-PRESSURE-BRACKET"
+  }
+}

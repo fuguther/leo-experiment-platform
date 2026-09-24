@@ -1,0 +1,142 @@
+{
+  "schema": "isl-bandwidth-pre-fix-review-history/v1",
+  "work_id": "WP-LEO-V2-ISL-BANDWIDTH-PILOT",
+  "revision": 2,
+  "reviewed_revision": 1,
+  "reviewed_git_commit": "2f4848a42db503d0b12e577e6307309a06b97232",
+  "authorization_state_at_review": "NOT_AUTHORIZED",
+  "reviews": [
+    {
+      "reviewer": "codex-adversarial-agent",
+      "verdict": "BLOCK",
+      "blocking_findings": [
+        "persisted analysis did not bind the analyzer Git commit or analyzer file hashes",
+        "paired analysis did not require equal actual trace_sha256 values",
+        "result artifacts were not completely compared with the authorized matrix row",
+        "mcs_zero_rate_holds was not an explicit analysis stop gate"
+      ]
+    },
+    {
+      "reviewer": "kimi_acp",
+      "operation_id": "offload-operation:534d63d78c292dc00582367592738cea",
+      "result_class": "RESULT_CANDIDATE",
+      "verdict": "BLOCK",
+      "blocking_findings": [
+        "persisted analysis did not bind the analyzer Git commit or analyzer file hashes",
+        "paired analysis did not require equal actual trace_sha256 values"
+      ],
+      "major_findings": [
+        "a saturated utilization value needs an explicit diagnostic flag",
+        "pre-fix BLOCK reviews must remain visible rather than being silently replaced by later PASS receipts"
+      ]
+    }
+  ],
+  "codex_adjudication": {
+    "confirmed": [
+      "analyzer identity binding was absent",
+      "actual cross-cell trace equality was absent",
+      "authorized-row identity checks were incomplete",
+      "zero-rate holds were not an explicit stop gate",
+      "saturation and raw per-link numerator/denominator diagnostics were absent"
+    ],
+    "rejected_or_narrowed": [
+      "Kimi described ISL served_bits as including control traffic; kernel.py records service windows only for DataPacket, so control traffic is excluded from the numerator and is reported separately",
+      "a repository-wide review-receipt registry is a broader governance change; this revision instead preserves both BLOCK reviews in this bound history artifact"
+    ]
+  },
+  "rereview_rounds": [
+    {
+      "reviewed_git_commit": "3fe7616f7906a4f6499ed79a11da1954704885da",
+      "authorization_state_at_review": "NOT_AUTHORIZED",
+      "verdicts": {
+        "cold_start": "PASS",
+        "satellite_drl": "BLOCK",
+        "adversarial": "BLOCK"
+      },
+      "confirmed_blocking_findings": [
+        "the revision-2 brief incorrectly named revision-1 experiment paths as allowed inputs",
+        "the execution contract did not explicitly forbid launching b50 before every b500 validity gate passed",
+        "the default analyzer accepted legacy v3/v4 receipts without the external witness required by this work package",
+        "persisted verification did not bind claim_status or require claim-gate status equality"
+      ]
+    },
+    {
+      "reviewed_git_commit": "ba4835d999b9f31f9eeac45d197712358bf094ca",
+      "authorization_state_at_review": "NOT_AUTHORIZED",
+      "verdicts": {
+        "cold_start": "PASS",
+        "satellite_drl": "PASS",
+        "adversarial": "BLOCK"
+      },
+      "confirmed_blocking_findings": [
+        "the brief declared a b500-before-b50 receipt gate, but the canonical execution entrypoint still allowed b50 to reach SSH without machine-verifying b500 evidence"
+      ],
+      "external_candidate_review": {
+        "reviewer": "kimi_acp",
+        "operation_id": "offload-operation:3038563187a1561d8ea00574ac864df7",
+        "result_class": "RESULT_CANDIDATE",
+        "verdict": "PASS_WITH_MINOR_FINDINGS",
+        "codex_adjudication": [
+          "confirmed and fixed: output_hashes and output_artifacts must be mandatory and exact",
+          "confirmed and fixed: claim-gate cannot_claim must equal the recomputed manifest boundary",
+          "rejected as already fail-closed in the authorized path: an empty cohort is rejected because authorization has no authorized V2 cohort; an explicit regression test now preserves this behavior"
+        ]
+      }
+    },
+    {
+      "reviewed_git_commit": "9e9c5758a740d47e45f71237f2c1be8277927d79",
+      "authorization_state_at_review": "NOT_AUTHORIZED",
+      "verdicts": {
+        "cold_start": "PASS",
+        "satellite_drl": "PASS",
+        "adversarial": "BLOCK"
+      },
+      "confirmed_blocking_findings": [
+        "the serial predecessor gate was enforced only by the local launcher, so post-authorization local launcher or gate tampering could still reach the deployed remote prepare/run path and start b50 without verified b500 evidence"
+      ],
+      "external_candidate_review": {
+        "reviewer": "kimi_code_cli",
+        "session_id": "session_193f5baf-6652-4053-bdb4-6e95dd62bf99",
+        "result_class": "RESULT_CANDIDATE",
+        "verdict": "BLOCK",
+        "codex_adjudication": [
+          "confirmed: the deployed remote trust boundary did not reapply the predecessor gate",
+          "confirmed: VM witnesses are nonce-named and the deployment intentionally excludes .git, so direct reuse required explicit witness and analyzer-identity adaptations",
+          "confirmed and fixed: prepare and run both recheck predecessor evidence before child launch",
+          "confirmed and fixed: a behavioral regression now bypasses the local launcher and proves that missing predecessor evidence returns exit code 2 without invoking Popen"
+        ]
+      }
+    },
+    {
+      "reviewed_git_commit": "4eac75b01ea60e7d5f843e288514ee079a181fc4",
+      "authorization_state_at_review": "NOT_AUTHORIZED",
+      "verdicts": {
+        "cold_start": "PASS",
+        "satellite_drl": "PASS",
+        "adversarial": "BLOCK"
+      },
+      "confirmed_blocking_findings": [
+        "the predecessor governance receipt was not required to match the current source commit, source tree, deployment receipt and execution chain, so a re-bound witness could admit evidence from another deployment",
+        "the V2 run process did not independently recompute authorization for a non-serial request after reading its prepared status"
+      ],
+      "external_candidate_review": {
+        "reviewer": "kimi_code_cli",
+        "session_id": "session_193f5baf-6652-4053-bdb4-6e95dd62bf99",
+        "result_class": "RESULT_CANDIDATE",
+        "verdict": "PASS_WITH_MINOR_FINDINGS",
+        "codex_adjudication": [
+          "confirmed Kimi's positive findings for remote direct-run blocking, nonce witnesses, no-git deployment identity and R02 recompilation",
+          "accepted Kimi's VM/OS trust-root boundary for the theoretical gate-to-Popen race; an application lock cannot defend against a malicious same-privilege VM writer",
+          "superseded by later adversarial evidence: Kimi did not detect that predecessor deployment identity and governance payload hashes were not validated",
+          "confirmed and fixed after the later BLOCK: predecessor governance now matches current commit, tree, deployment receipt and execution chain, and every V2 run process recomputes authorization"
+        ]
+      }
+    }
+  ],
+  "resolution_status": "IMPLEMENTED_AWAITING_INDEPENDENT_REREVIEW",
+  "required_rereview_roles": [
+    "cold_start",
+    "satellite_drl",
+    "adversarial"
+  ]
+}

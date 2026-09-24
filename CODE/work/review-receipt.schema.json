@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-review-receipt/v2",
+  "title": "Independent review receipt bound to one work revision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "receipt_id",
+    "work_id",
+    "revision",
+    "artifact_hashes",
+    "producer_id",
+    "producer_session_id",
+    "reviewer_id",
+    "reviewer_session_id",
+    "independence",
+    "role",
+    "verdict",
+    "evidence",
+    "blocking_findings",
+    "unknowns",
+    "required_revision"
+  ],
+  "properties": {
+    "schema": {"const": "agent-review-receipt/v2"},
+    "receipt_id": {"type": "string", "pattern": "^RR-[A-Za-z0-9_-]+$"},
+    "work_id": {"type": "string", "pattern": "^WP-[A-Za-z0-9_-]+$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "artifact_hashes": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^(?!/)(?!.*\\.\\.)[^\\n]+$"},
+      "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    },
+    "producer_id": {"type": "string", "pattern": "^producer:[A-Za-z0-9._-]+$"},
+    "producer_session_id": {"type": "string", "pattern": "^P-[A-Za-z0-9._-]+$"},
+    "reviewer_id": {"type": "string", "pattern": "^reviewer:[A-Za-z0-9._-]+$"},
+    "reviewer_session_id": {"type": "string", "pattern": "^R-[A-Za-z0-9._-]+$"},
+    "independence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["producer_and_reviewer_are_distinct", "review_started_from_declared_inputs"],
+      "properties": {
+        "producer_and_reviewer_are_distinct": {"const": true},
+        "review_started_from_declared_inputs": {"const": true}
+      }
+    },
+    "role": {
+      "enum": [
+        "cold_start",
+        "satellite_drl",
+        "research_governance",
+        "adversarial",
+        "paper_value",
+        "claim_support",
+        "claim_value"
+      ]
+    },
+    "verdict": {"enum": ["PASS", "BLOCK", "UNKNOWN"]},
+    "subject_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Claim reviews bind the canonical claim payload; other review roles may omit this field."
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "blocking_findings": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "unknowns": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "required_revision": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "PASS"}}},
+      "then": {"properties": {"blocking_findings": {"maxItems": 0}}}
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "BLOCK"}}},
+      "then": {
+        "properties": {
+          "blocking_findings": {"minItems": 1},
+          "required_revision": {"minItems": 1}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "UNKNOWN"}}},
+      "then": {"properties": {"unknowns": {"minItems": 1}}}
+    }
+  ]
+}

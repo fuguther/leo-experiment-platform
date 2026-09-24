@@ -1,0 +1,43 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-CONGESTION-PRESSURE-EVAL-R01-SAT",
+  "work_id": "WP-LEO-V2-CONGESTION-PRESSURE-EVAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R01/brief.json": "42bdf71560cfda83189121b79b9ffbb724c403b8488c00653a1165c0e9188e3e",
+    "EXPERIMENTS/request-sources/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01.json": "7a2e7db6987d7c8b68d313b32344fbe350291b823af37a2af15b73290db950a0",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/RUNBOOK.md": "a1b5773bc44379101d29ed054c6813c08916be3244bc56c61097923dc1707978",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/analysis-request.json": "d6084d12075e9322fdc90768f82b600783f56803a6e203b1a7390c8ecb405fa1",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/compile-report.json": "26cba117d572ee0f2a58d1686dc8d7d7e153dd46be5d291f24ef2f2730a0c089",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/request.json": "7ec125073bb209263b14b734f11dbd190744ce4d6556a3942f18cd579ee7c894",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/run-manifest.json": "ffe5c081961222caa18638fc3a38e8db7eb68bba4dd770a65ec920660910aa7e",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01-ddqn_c3_pressure-s7-l7.leo-sim.yaml": "fbaa2b7469ccdd1fd0596bc11f7194264e7710f1a3ab0cfe7dddb1cb92d779d3",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01-gat_pressure-s7-l7.leo-sim.yaml": "5a99e2dfa5eeff97535039612ce434dd8b8dc822a64332e11807ad785171ddb2",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01-mpnn_pressure-s7-l7.leo-sim.yaml": "c56e1d44d72b23b7af3bef5b776d76de1b7251e0462a49c1d2e9d1284ad78641",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01-qlearning_pressure_ddqn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01-qlearning_pressure_gat-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01-qlearning_pressure_mpnn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-congestion-pressure-eval-r01",
+  "reviewer_id": "reviewer:congestion-pressure-eval-satellite-drl",
+  "reviewer_session_id": "R-congestion-pressure-eval-satellite-drl-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "satellite_drl",
+  "verdict": "PASS",
+  "evidence": [
+    "独立运行 verify_compiled_matrix 成功解析 compiled matrix 的 6 个 evaluation cells；compile-report.json 的 errors 为空、runtime_kind=leo_sim_v2、execution_authorized=false，说明编译结构本身可解析但尚未授权。",
+    "6 个 resolved configs 的 runtime contract 对齐：qlearning/C3 使用 Q-learning eval；ddqn/C3、ddqn/GAT、ddqn/MPNN 使用 DDQN eval；均为 learning.mode=eval、phase=evaluation、learning_enabled=true、seed=7。当前 clone 中 6 个 declared checkpoint bytes 与 sibling metadata.json 的实际 SHA 均匹配 resolved pins，且 lineage 为 evaluation_only、source_sha256 与 checkpoint SHA 一致。",
+    "压力负载合同明确为 200 Mbps base、8–16 s、2x burst、20 s、M-Lab measurement-proxy、MCS、Markovian topology/1 s recompute、control plane/vis_k=12；三个 pairing key 各有两 cell，pair 内 trace identity、input SHA、controlled signature 和 seeds 均一致。",
+    "request/source/analysis 的 estimand 明确限定为固定高负载 trace 下的 descriptive pressure differences，并明确禁止 algorithm superiority、causal congestion-control effect、final E0 threshold、Q0 optimality 和 paper-ready statistical conclusion。",
+    "当前复核 exact HEAD 为 517049570a40f7360064981f1d5475741bc2dfc2；brief、source、compiled matrix 与该审阅范围一致。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "VM evaluation 尚未运行；未覆盖 authorization/finalization、clean deployment、natural-end/conservation/research_eligible receipts、loaded checkpoint evidence、packet/latency/capacity ledgers 或 persisted V2 analysis。"
+  ],
+  "required_revision": []
+}

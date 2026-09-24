@@ -1,0 +1,72 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-ISL-BANDWIDTH-PILOT",
+  "revision": 3,
+  "parent_revision": 2,
+  "revision_reason": "R02 verified that 50 MHz remains low on the horizon aggregate and that horizon aggregation alone cannot support the next branch decision. R03 adds receipt-bound one-second directed-ISL and episode-coincident matched queue-wait diagnostics, freezes a five-way adaptive decision tree, and narrows execution to 5 MHz versus 2 MHz instead of expanding the matrix contract or duplicating a deterministic 2 MHz cell.",
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-isl-bandwidth-pilot-r03",
+  "objective": "Execute one reviewed 5 MHz versus 2 MHz fixed-scenario bracket and classify the pair using preregistered one-second directed-ISL utilization, episode-coincident same-link queue waiting, physical-validity and drain-validity evidence.",
+  "context": [
+    "R02 formally verified 500 MHz and 50 MHz at maximum horizon-aggregate directed-ISL utilization 0.005871255030063291 and 0.020761875237929505 with identical served bits, packet fate, zero-rate holds and natural drain; 50 MHz is not pressure.",
+    "The existing matrix v1 contract permits exactly two cells per pairing key. R03 therefore uses a preregistered adaptive bracket: 5 MHz versus 2 MHz now, and 2 MHz versus 1 MHz only in R04 if R03 is physically valid, fully drained and still below pressure.",
+    "The pressure decision is frozen in pressure-decision.json before execution. It has five outcomes: PHYS_INVALID, DRAIN_INCOMPLETE, CONTROL_PRESSURE_UNBRACKETED, PRESSURE_CANDIDATE and NO_PRESSURE_PHYS_VALID.",
+    "The new window analyzer rebins raw link_service_windows and link_available_windows by exact interval overlap. It reports numerator and denominator separately and rejects overlapping service, service without availability and malformed time evidence.",
+    "queue_area_bits_s remains a five-category horizon integral and is not misrepresented as per-link or per-window evidence. Same-link queue waiting is reconstructed only from exact queue_enter to service_start identities; unmatched entries are censored and separately reported. A pressure episode requires queue waiting to overlap the same sustained high-utilization episode, so disjoint times cannot be stitched into congestion.",
+    "The 5 MHz control is tested by the same pressure rule. If it is already pressured, R03 cannot locate a 5-to-2 MHz onset and must stop for an upper no-pressure bracket rather than pretending the candidate alone establishes an interval.",
+    "This remains a one-seed engineering calibration. A pressure candidate must later be confirmed with preregistered adjacent seeds before a paper-facing statement or algorithm comparison."
+  ],
+  "allowed_inputs": [
+    "ANALYSIS/EXP-20260824-ISL-BANDWIDTH-PILOT-R02/RESULT-REVIEW.md",
+    "CODE/experiment_platform/isl_pressure.py",
+    "CODE/experiment_platform/isl_pressure_decision.py",
+    "CODE/experiment_platform/tests/test_isl_pressure.py",
+    "CODE/experiment_platform/tests/test_isl_pressure_decision.py",
+    "CODE/experiment_platform/v2_analysis.py",
+    "CODE/experiment_platform/tests/test_v2_analysis.py",
+    "CODE/work/WP-LEO-V2-ISL-BANDWIDTH-PILOT/R03/pressure-decision.json",
+    "CODE/work/WP-LEO-V2-ISL-BANDWIDTH-PILOT/R03/candidate-review-history.json",
+    "EXPERIMENTS/request-sources/EXP-20260824-ISL-BANDWIDTH-PILOT-R03.json",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R03",
+    "CODE/leo_sim",
+    "CODE/scripts/remote"
+  ],
+  "excluded_inputs": [
+    "CODE/Results",
+    "Any result observed before pressure-decision.json is frozen",
+    "Any dynamically edited or locally launched formal simulation config",
+    "Any simultaneous bandwidth and traffic change",
+    "Any RL training or large matrix"
+  ],
+  "deliverables": [
+    "A tested one-second directed-ISL window diagnostic integrated into the evidence-bound V2 analysis",
+    "A structured five-way pressure decision frozen before execution and a tested deterministic classifier over the persisted pair diagnostics",
+    "A compiled two-cell 5 MHz versus 2 MHz matrix with serial fail-closed execution",
+    "Three independent exact-revision reviews and an accepted finalization before authorization",
+    "Two receipt-verified VM outputs and a persisted V2 analysis if all gates pass"
+  ],
+  "cannot_claim": [
+    "Algorithm superiority or a causal information-value effect",
+    "A universal ISL congestion threshold",
+    "A pure bandwidth-to-capacity multiplier effect",
+    "A 1 MHz result when R04 was not executed",
+    "Paper-ready statistical evidence from one seed",
+    "Q0 optimality or a new algorithm contribution",
+    "Congestion when physical validity or drain validity fails"
+  ],
+  "acceptance": [
+    "The exact R03 analyzer, tests, decision contract, request and compiled artifacts pass independent cold-start, satellite-DRL and adversarial review with no unresolved blocker.",
+    "Synthetic tests prove that a two-second saturated burst remains visible when its horizon aggregate is low, interval boundaries are apportioned exactly, service without availability fails, overlapping directed-link service fails, unmatched queue entries are not imputed and queue waiting at a disjoint time cannot qualify a high-utilization episode.",
+    "The two cells share actual trace, seed, deterministic routing, topology, access, demand, emission, observation and drain contracts; the only declared intervention is links.rf_isl.bandwidth_hz.",
+    "The b2 cell is not launched until the b5 predecessor passes natural-end, conservation, receipt, governance, external-witness, identity, ISL-metric and zero-rate gates.",
+    "The final classification is computed by the bound deterministic pair classifier in pressure-decision.json order and reports served bits, available capacity, available time, utilization, episode-coincident same-link matched queue wait, censored queue entries, ISL overflow as a supplementary congestion outcome, other fate and access diagnostics without post-hoc threshold changes.",
+    "PHYS_INVALID, DRAIN_INCOMPLETE or CONTROL_PRESSURE_UNBRACKETED stops this bracket and blocks algorithm comparison; PRESSURE_CANDIDATE requires a no-pressure 5 MHz control and stops before 1 MHz; only NO_PRESSURE_PHYS_VALID permits a separately preregistered R04."
+  ],
+  "review_roles": [
+    "cold_start",
+    "satellite_drl",
+    "adversarial"
+  ],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

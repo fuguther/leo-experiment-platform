@@ -1,0 +1,47 @@
+{
+  "schema": "agent-work-decision/v1",
+  "work_id": "WP-LEO-V2-GLOBAL-PRESSURE-BRACKET",
+  "revision": 1,
+  "producer_id": "producer:codex-global-pressure",
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/coverage-audit.json": "b5631b2d4e40bc96b77e69459ae50b44b467d08b22373fcd4e63e7ebbe8912ae",
+    "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/scene-check-contract.json": "574880a791f9f3276642caebed8f4329e3cd77f59d5fc528ef629fa774102ec5",
+    "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/scene-decision.yaml": "9ad82a9ac4c4f86c13e38881236f8a438c2750140b7a6a8d49f7929e98b17d9b",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/RUNBOOK.md": "06ec33060a383f8be9ebd9d73db17d441036db0863003a064c9d347fe19d437c",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/analysis-request.json": "7a0ec0d9aa5560b66481f408a7c931e5e7a4e8435b7f6e539f6fbc701f3b0f1c",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/compile-report.json": "38653f2d74d99e6778da7f3fc2e18790c99a0bc58c626c092ce9385667ff486c",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/request.json": "1db1953de69d9e8f94eadbdb79760cf76801ddb97f51aa94c986fcc4a72fee53",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/resolved/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01-load10_a-s7.leo-sim.yaml": "bae0c72dfe8b86f687993027fbdfaf1f3e8d1d353f6eb11a9068c5bc19d3a7b4",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/resolved/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01-load10_b-s7.leo-sim.yaml": "bae0c72dfe8b86f687993027fbdfaf1f3e8d1d353f6eb11a9068c5bc19d3a7b4",
+    "EXPERIMENTS/EXP-20260826-GLOBAL-PRESSURE-BRACKET-R01/run-manifest.json": "a33c8b63cb17d88b787a1437b27f5a4051711aca7601fcd88fab74e14c67c545"
+  },
+  "decision_maker_id": "decision:codex-global-pressure-r01",
+  "applied_review_receipts": [
+    {
+      "receipt_id": "RR-GLOBAL-PRESSURE-R01-COLD",
+      "path": "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/review-cold-start.json",
+      "sha256": "c93c8d2afdab0c333111e90f4bd6b7306511820a9b98471c004ad0b11a5e5a14",
+      "role": "cold_start",
+      "verdict": "PASS"
+    },
+    {
+      "receipt_id": "RR-GLOBAL-PRESSURE-R01-SAT",
+      "path": "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/review-satellite-drl.json",
+      "sha256": "33138bf636dc065559ff7b25ea1203ad27ac67bc30bd30a21bb589d9df2eb882",
+      "role": "satellite_drl",
+      "verdict": "PASS"
+    },
+    {
+      "receipt_id": "RR-GLOBAL-PRESSURE-R01-ADV",
+      "path": "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/review-adversarial.json",
+      "sha256": "e31f63c7a326eb97401bd0c40bcb3aada6785a0f62a74f84284a879c4f5137c1",
+      "role": "adversarial",
+      "verdict": "PASS"
+    }
+  ],
+  "decision": "ACCEPT",
+  "rationale": "All three required independent review roles returned PASS at the exact reviewed commit. Local targeted and full tests, byte-level contract hashes, coverage ledger counts, matrix verification, and authorization prechecks independently pass. Remaining findings are non-blocking follow-ups: they do not permit access/route/downlink failures to become ISL pressure claims, and no VM result or scientific pressure claim is being made.",
+  "blocking_findings": [],
+  "revision_instructions": [],
+  "next_revision": null
+}

@@ -1,0 +1,44 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-PILOT-BASELINES-R01-COLD",
+  "work_id": "WP-LEO-V2-PILOT-BASELINES",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/brief.json": "d47e08859772d3a9d28b946244398bc975a9f638607d3366ad8e4f780f91253f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/RUNBOOK.md": "562a4ffdd69e640c29bd506f1567f0688f8cf8702c0b471e20b4a350e2dae63e",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/analysis-request.json": "44f0db2b297b4a774004a1ecf1542299c28a5d5bbd447b4c75ea09c315a2e97e",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/compile-report.json": "b7a558c1c4349e0a9f5da28d98973c29428ff4b9e4fc93edc38565da64f520a2",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/request.json": "1f17ef6c0ebc79df15c9577772843cac192d1b25e1e068cf01d5b98036aeb46a",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/run-manifest.json": "466026df2bd394a94d09bc7a86f690661cd793cd12620193b3a956ae6f447dfe",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-ddqn_c3_a-s7-l7.leo-sim.yaml": "edc9c16e44e0a85696b317a865f5ff22562b0c6dcd19e4ee1937ef592e582b0f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-ddqn_c3_b-s7-l7.leo-sim.yaml": "edc9c16e44e0a85696b317a865f5ff22562b0c6dcd19e4ee1937ef592e582b0f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-gat_a-s7-l7.leo-sim.yaml": "1571228412c690fc57bd96ffb20db05a34e2a53cfc16920e3a44a57e55220c78",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-gat_b-s7-l7.leo-sim.yaml": "1571228412c690fc57bd96ffb20db05a34e2a53cfc16920e3a44a57e55220c78",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-mpnn_a-s7-l7.leo-sim.yaml": "84b9aec609dd1fc2d32c45db4619a2b3244733518416c4ed761d74bbfef28214",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-mpnn_b-s7-l7.leo-sim.yaml": "84b9aec609dd1fc2d32c45db4619a2b3244733518416c4ed761d74bbfef28214",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-qlearning_a-s7-l7.leo-sim.yaml": "65b0858417753f5dd183375608a6f908361db7f295b00c64e272bd1c0c89a023",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-qlearning_b-s7-l7.leo-sim.yaml": "65b0858417753f5dd183375608a6f908361db7f295b00c64e272bd1c0c89a023"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-pilot-baselines-r01",
+  "reviewer_id": "reviewer:pilot-baselines-cold-start",
+  "reviewer_session_id": "R-pilot-baselines-cold-start-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "cold_start",
+  "verdict": "PASS",
+  "evidence": [
+    "verify_compiled_matrix passes for eight canonical training cells and thirteen bound matrix artifacts at exact matrix SHA aa9b31902e39a7f0c9269547cbe1bfd989b89b26.",
+    "Resolved configurations independently match qlearning/C3, DDQN/C3, DDQN/GAT, and DDQN/MPNN contracts; all cells are training mode with learning seed 7, trace seed 7, and new_training checkpoint lineage without source artifacts.",
+    "The four duplicate pairs have canonical run IDs, shared pairing keys, identical config and trace identities within each pair, and a shared controlled signature; the fixed M-Lab input is bound by SHA f15cf8b9845c195046a4566d31ab9eb0137e16270ea98ee6a06b871a6f578437.",
+    "The demand contract is fixed at 100 Mbps base rate, 20 s horizon, and an 8 s burst starting at 8 s with multiplier 2; the claim boundary limits the pilot to receipt/checkpoint/metric and duplicate-consistency evidence and excludes superiority, causal effect, final threshold, Q0, and paper-statistical claims.",
+    "Targeted matrix, V2-analysis, learning, learning-semantics, Q-learning migration, and config tests pass: 96 passed, 1 skipped."
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "VM execution, natural-end receipts, formal authorization/finalization, verified checkpoints, and the subsequent evaluation matrix were not covered by this compiled cold review."
+  ],
+  "required_revision": []
+}

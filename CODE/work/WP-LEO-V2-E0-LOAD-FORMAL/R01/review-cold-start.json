@@ -1,0 +1,36 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-E0-LOAD-FORMAL-R01-COLD",
+  "work_id": "WP-LEO-V2-E0-LOAD-FORMAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-E0-LOAD-FORMAL/R01/brief.json": "3a3735ceae6802d4b84f26c6d8440c53ebaed852d3f044421598be2a24f7ae59",
+    "CODE/work/WP-LEO-V2-E0-LOAD-FORMAL/R01/request-source.json": "b32ff405068c50c0f56ccf748c2ce6603111d762654316d5ccb52e0212ed98b6",
+    "EXPERIMENTS/EXP-20260821-E0-LOAD-FORMAL-R01/request.json": "134942135fee7e0c7ece331c8b0b843422346ef85567ca6c6518789a019f1b15",
+    "EXPERIMENTS/EXP-20260821-E0-LOAD-FORMAL-R01/run-manifest.json": "cdb03d7c71cbd7c665b295cb91722933131e5484b19cf1601cb85a9ef5a2b7dd",
+    "EXPERIMENTS/EXP-20260821-E0-LOAD-FORMAL-R01/analysis-request.json": "5164d0d160dca4bf326cd6ad66c759f5cc4735729547e5746f24d589703e6a5f",
+    "EXPERIMENTS/EXP-20260821-E0-LOAD-FORMAL-R01/compile-report.json": "c867aacebac0f3f804b28d8cc1aec3d795d480435a7cc667de8d5b661eb9f2d3",
+    "EXPERIMENTS/EXP-20260821-E0-LOAD-FORMAL-R01/RUNBOOK.md": "2151d7c681ffe78e07f2cbd71aa72e2027d5a32a9c4bc6493630278056cd0f3a",
+    "EXPERIMENTS/EXP-20260821-E0-LOAD-FORMAL-R01/resolved/EXP-20260821-E0-LOAD-FORMAL-R01-high_control-s7.leo-sim.yaml": "dbd8246c6d7ae1c5f0ad05a38f366996faa10e9ea87d43be92217d13b33db55b",
+    "EXPERIMENTS/EXP-20260821-E0-LOAD-FORMAL-R01/resolved/EXP-20260821-E0-LOAD-FORMAL-R01-high_copy-s7.leo-sim.yaml": "dbd8246c6d7ae1c5f0ad05a38f366996faa10e9ea87d43be92217d13b33db55b",
+    "EXPERIMENTS/EXP-20260821-E0-LOAD-FORMAL-R01/resolved/EXP-20260821-E0-LOAD-FORMAL-R01-low_control-s7.leo-sim.yaml": "8a75485cd1596702f3c7485c77cbe2e85bb00abd0b0375254c3e5797ff47a2bf",
+    "EXPERIMENTS/EXP-20260821-E0-LOAD-FORMAL-R01/resolved/EXP-20260821-E0-LOAD-FORMAL-R01-low_copy-s7.leo-sim.yaml": "8a75485cd1596702f3c7485c77cbe2e85bb00abd0b0375254c3e5797ff47a2bf",
+    "EXPERIMENTS/EXP-20260821-E0-LOAD-FORMAL-R01/resolved/EXP-20260821-E0-LOAD-FORMAL-R01-medium_control-s7.leo-sim.yaml": "0da19bb085e691542a0ee1efd1973c34c9dc5f2b60f98eedbc9ac801927b6bad",
+    "EXPERIMENTS/EXP-20260821-E0-LOAD-FORMAL-R01/resolved/EXP-20260821-E0-LOAD-FORMAL-R01-medium_copy-s7.leo-sim.yaml": "0da19bb085e691542a0ee1efd1973c34c9dc5f2b60f98eedbc9ac801927b6bad"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-e0-load-formal-r01",
+  "reviewer_id": "reviewer:e0-load-cold-start",
+  "reviewer_session_id": "R-e0-load-cold-start-r01",
+  "independence": {"producer_and_reviewer_are_distinct": true, "review_started_from_declared_inputs": true},
+  "role": "cold_start",
+  "verdict": "PASS",
+  "evidence": [
+    "verify_compiled_matrix passes for six canonical cells and eleven bound artifacts at exact commit d490415cd79ddf8608ef3d6bfbe9e04cabc0bc38.",
+    "Each load pair has canonical run IDs, the same seed/config/trace identity, and a distinct pairing key from the other tiers.",
+    "The burst contract is explicit: base rates 50/100/200 Mbps and integrated 20-second targets 70/140/280 Mbps; claim boundary excludes final thresholds and paper conclusions."
+  ],
+  "blocking_findings": [],
+  "unknowns": ["VM natural-end receipts, raw offered-bit recomputation and persisted paired analysis are pending formal execution."],
+  "required_revision": []
+}

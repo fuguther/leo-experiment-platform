@@ -1,0 +1,48 @@
+config_version: leo-sim-config/v1
+scenario:
+  name: e0-load-scan-140-cross-ocean
+  duration_s: 60
+  time_step_s: 0.1
+  num_satellites: 140
+  num_planes: 7
+  altitude_km: 600
+  inclination_deg: 98.6
+  min_elevation_deg: 30
+  seed: 7
+endpoints:
+  sites:
+    - {name: Malaga, lat: 36.72, lon: -4.41, demand_weight: 1}
+    - {name: Tokyo, lat: 35.68, lon: 139.75, demand_weight: 1}
+demand:
+  mode: uniform
+  offered_mbps: 50
+  packet_bits: 8000000
+  deadline_s: null
+access:
+  slots_per_satellite: 4
+  uplink_rate_mbps: 100
+  downlink_rate_mbps: 100
+  uplink_queue_bits: 64000000
+  downlink_queue_bits: 64000000
+  association: bbm
+links:
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 1.0
+  ttl_s: 10
+  vis_k: 12
+  packet_bits: 8000
+  priority: nonpreemptive_priority
+routing:
+  policy: hop
+  max_hops: 64
+learning:
+  algorithm: none
+execution:
+  max_events: 20000000
+  max_entities: 2000
+  max_packets: 100000
+outputs:
+  out_dir: leo_sim_out/e0-load-scan
+  plotting: false

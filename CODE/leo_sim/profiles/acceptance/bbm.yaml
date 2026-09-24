@@ -1,0 +1,40 @@
+config_version: leo-sim-config/v1
+scenario:
+  name: acceptance-bbm
+  duration_s: 220
+  time_step_s: 0.1
+  num_satellites: 66
+  num_planes: 6
+  altitude_km: 550
+  inclination_deg: 53
+  min_elevation_deg: 10
+  seed: 23
+endpoints:
+  sites:
+    - {name: west, lat: 0.1, lon: 0.1, demand_weight: 1}
+    - {name: east, lat: 0.1, lon: 10.1, demand_weight: 1}
+demand:
+  mode: uniform
+  offered_mbps: 2
+  packet_bits: 1000000
+access:
+  slots_per_satellite: 4
+  uplink_rate_mbps: 10
+  uplink_queue_bits: 256000000
+  association: bbm
+  hysteresis_deg: 0
+  min_dwell_s: 1
+  acquisition_delay_s: 0.1
+links:
+  ge_enabled: false
+control_plane:
+  enabled: false
+routing:
+  policy: oracle
+execution:
+  max_events: 1000000
+  max_entities: 2000
+  max_packets: 2000
+outputs:
+  out_dir: leo_sim_out/acceptance-bbm
+  plotting: false

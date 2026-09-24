@@ -1,0 +1,48 @@
+config_version: leo-sim-config/v1
+scenario:
+  name: population-gravity-direct
+  duration_s: 30
+  time_step_s: 0.5
+  num_satellites: 140
+  num_planes: 7
+  altitude_km: 600
+  inclination_deg: 98.6
+  min_elevation_deg: 10
+  seed: 7
+endpoints:
+  grid_deg: 0.25
+  aggregation_deg: 5
+demand:
+  mode: population_gravity
+  population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
+  offered_mbps: 4
+  packet_bits: 1000000
+  source_population_exponent: 1
+  destination_population_exponent: 1
+  gravity_alpha: 1.25
+  gravity_d_floor_km: 100
+access:
+  slots_per_satellite: 1
+  association: bbm
+  hysteresis_deg: 0
+  min_dwell_s: 0
+  acquisition_delay_s: 0.1
+links:
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 10
+  ttl_s: 60
+  vis_k: 16
+routing:
+  policy: hop
+  max_hops: 64
+learning:
+  algorithm: none
+execution:
+  max_events: 1000000
+  max_entities: 3000
+  max_packets: 2000
+outputs:
+  out_dir: leo_sim_out/population-gravity
+  plotting: false

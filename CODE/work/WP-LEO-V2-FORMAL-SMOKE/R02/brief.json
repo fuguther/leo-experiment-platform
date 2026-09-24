@@ -1,0 +1,36 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-FORMAL-SMOKE",
+  "revision": 2,
+  "parent_revision": 1,
+  "revision_reason": "R01 was blocked because its runbook was not directly executable, its execution chain was not hash-bound, it mislabeled unobserved MBB as effective, and it overclaimed K=1 contention and BBM switching that the event ledger did not exercise.",
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-formal-smoke-r02",
+  "objective": "Review a narrow immutable formal smoke proving the governed leo_sim_v2 endpoint-to-satellite multi-satellite data path can execute without any legacy Gateway fallback.",
+  "context": [
+    "R02 validates direct TrafficEndpoint access, arrived control information, non-oracle hop routing, actual data ISL service, GE evaluation on service paths, natural completion and data/control conservation.",
+    "K=1 contention, BBM switching, MBB switching, outage occurrence, DDQN and performance effects are separate matrix gates and are not claimed by this smoke."
+  ],
+  "allowed_inputs": [
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R02",
+    "CODE/leo_sim",
+    "CODE/experiment_platform/authorize_experiment.py",
+    "CODE/scripts/remote/deployment_guard.py",
+    "CODE/scripts/remote/remote_job.py",
+    "CODE/scripts/remote/run-remote.sh"
+  ],
+  "excluded_inputs": ["CODE/Results", "ARCHIVE-20260803", "Unverified prior completion claims"],
+  "deliverables": ["Three independent review receipts binding every R02 experiment artifact", "A machine-recomputed authorization decision"],
+  "cannot_claim": [
+    "This smoke does not prove K=1 contention, BBM or MBB switching, outage occurrence, DDQN, speedup, algorithm superiority, operator-calibrated physics, or VM success before the authorized run ends naturally."
+  ],
+  "acceptance": [
+    "The generated runbook contains complete project-relative authorization and explicit leo_sim_v2 remote-launch commands.",
+    "The manifest and authorization bind the leo_sim package and the authorization/deployment/remote-launch file hashes, exact config, trace/input identity and acceptance contract.",
+    "Formal eligibility requires natural end, valid receipt, conservation, at least one delivery, at least one multi-satellite delivery, positive data ISL occupancy, arrived control traffic, effective control plane and effective GE evaluation.",
+    "The runtime invokes CODE.leo_sim only and cannot silently fall back to the legacy Gateway path."
+  ],
+  "review_roles": ["cold_start", "satellite_drl", "adversarial"],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

@@ -1,0 +1,61 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-ISL-BANDWIDTH-PILOT",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-isl-bandwidth-pilot-r01",
+  "objective": "Authorize and execute the reviewed 500 MHz versus 50 MHz ISL RF bandwidth sensitivity pair, then recompute the preregistered horizon-aggregate directed-ISL link-utilization contrast from verified receipts.",
+  "context": [
+    "This is a one-seed engineering sensitivity diagnosis, not an algorithm comparison or paper-facing effect estimate.",
+    "Both cells share trace seed, trace identity, deterministic hop routing, topology, access, demand and stopping contract; the only declared intervention is links.rf_isl.bandwidth_hz.",
+    "Bandwidth changes noise, SNR, discrete MCS selection, data service time and control service time; it is not a pure capacity multiplier.",
+    "The primary metric isl_link_utilization_max is the maximum across directed ISL links after each link aggregates served_bits divided by sampled available_capacity_bits over the full run horizon; it is not a one-second-window maximum.",
+    "Acceptance fields are zero/false and do not filter unfavorable outcomes. Validity instead requires exact identity binding, clean-main deployment, natural end, conservation, governance receipt, external witness and analyzer-commit binding.",
+    "The existing 25M/50M E0VIS17 runs are research_eligible=false diagnostics with different trace hashes and must not be pooled with this pair."
+  ],
+  "allowed_inputs": [
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R01",
+    "EXPERIMENTS/request-sources/EXP-20260824-ISL-BANDWIDTH-PILOT-R01.json",
+    "CODE/experiment_platform/v2_analysis.py",
+    "CODE/leo_sim/metrics.py",
+    "CODE/leo_sim",
+    "CODE/scripts/remote"
+  ],
+  "excluded_inputs": [
+    "CODE/Results",
+    "E0VIS17-20260822-25M-34c68b4",
+    "E0VIS17-20260822-50M-34c68b4",
+    "Unverified historical result claims",
+    "Any dynamically edited or locally launched simulation config"
+  ],
+  "deliverables": [
+    "A schema-valid three-role review and finalization bound to the exact two-cell matrix and analyzer implementation",
+    "One generated authorization bound to the finalization and exact compiled artifacts",
+    "Receipt-verified natural-end VM outputs for b500-s7 and b50-s7 on one clean deployed main SHA",
+    "A persisted V2 paired analysis for isl_link_utilization_max with raw receipt and ledger provenance"
+  ],
+  "cannot_claim": [
+    "Algorithm superiority",
+    "A causal information-value or routing-policy effect",
+    "A universal low, onset or pressure threshold",
+    "A pure capacity multiplier effect",
+    "Paper-ready statistical evidence from one seed",
+    "Q0 optimality",
+    "Any conclusion that silently excludes a failed or unfavorable arm"
+  ],
+  "acceptance": [
+    "The exact matrix, analyzer semantics and this brief pass independent cold-start, satellite-DRL and adversarial review with no unresolved blocker.",
+    "Both cells are launched only through the canonical remote runner from the same clean main deployment and complete naturally with conservation, governance identity and external witness checks passing.",
+    "The two actual trace_sha256 values match; a mismatch invalidates the paired interpretation even if trace_identity_sha256 was equal before execution.",
+    "V2 analysis recomputes isl_link_utilization_max from raw ledgers, persists VERIFIED artifacts, and binds the analyzer's exact Git commit; no one-second-window or paper-facing claim is inferred.",
+    "Any zero-rate hold, interruption, event-limit stop, missing ISL link metrics, receipt mismatch or research_eligible=false result stops analysis rather than being silently excluded."
+  ],
+  "review_roles": [
+    "cold_start",
+    "satellite_drl",
+    "adversarial"
+  ],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW"
+}

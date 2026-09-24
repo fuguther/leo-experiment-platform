@@ -1,0 +1,23 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-EXAMPLE-COLD-PASS",
+  "work_id": "WP-EXAMPLE-EXPERIMENT-DESIGN",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/work-package.example.json": "2e8bb9544f884614b24afe21386a34e28170d31213939456460be1e9bd67b074"
+  },
+  "producer_id": "producer:experiment-designer",
+  "producer_session_id": "P-example-r01",
+  "reviewer_id": "reviewer:cold-start-01",
+  "reviewer_session_id": "R-example-cold-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "cold_start",
+  "verdict": "PASS",
+  "evidence": ["工作包明确声明了输入、输出、禁止声称和验收标准。"],
+  "blocking_findings": [],
+  "unknowns": ["本回执只评审工作包合同，不代表实验设计产物已通过。"],
+  "required_revision": []
+}

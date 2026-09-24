@@ -1,0 +1,55 @@
+{
+  "applied_reviews": [
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R05/review-cold-start.json",
+      "receipt_id": "RR-T1-STEP5-R05-COLD",
+      "reviewer_id": "reviewer:glm-step5-r05-cold",
+      "reviewer_session_id": "R-glm-step5-r05-cold-5e83b1a7",
+      "role": "cold_start",
+      "sha256": "d96da10c75fc7ebf9cc488cfba9cef4b8cb2ed189aa80f53634278cfa8d3d44b",
+      "verdict": "BLOCK"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R05/review-satellite-drl.json",
+      "receipt_id": "RR-T1-STEP5-R05-SATDRL",
+      "reviewer_id": "reviewer:muse-step5-r05-satdrl",
+      "reviewer_session_id": "R-muse-step5-r05-satdrl-2b64c9f3",
+      "role": "satellite_drl",
+      "sha256": "b3d05f781ca77b0f19d98b29377b1f1fb37f341dcb239681919905bdc15cc5ec",
+      "verdict": "PASS"
+    }
+  ],
+  "artifact_hashes": {
+    "CODE/data/traffic/t1_step5_micro_ab.csv": "26536d8b3b894a13d74289131653fddfdae8fe095f7c4edb2dc6a1683ec37592",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R05/PROCEDURE.md": "50f96cf018c1264d5d55efc4c89173a0c2d05b80c849ad85f828cf82bffc57ed",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/check_procedure.py": "e905621e4778cb5e8c0e2dc4e90fd066e43027fdb1c838346b2321b7298f5330",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/step5_recompute.py": "756b95478e86d6f2449863cdc2f0bd6578f9aa5059d571ae5a81471ded53fa73",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/RUNBOOK.md": "54a36378446c3c8cb8e3542fcd56c3af82146d93ea695e52ce445e67d1f6def4",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/analysis-request.json": "af1e3a1c3dd6cedf3d51294d2b173bfdc178d4336a70bb0741b8dc937e27ca3f",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/compile-report.json": "4eac585a3c3ada5a6ca380660c5d782e0cf31f72a01d86b32a5cf148a95a2a40",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/request.json": "f319a6e8a893472451a34290ea72ea3f94e97ed672bad709cf25591b04260d12",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/resolved/EXP-20260923-T1-STEP5-MICRO-R05-cd05-s7.leo-sim.yaml": "21a15e74af8a8e743ef9475ae53ea837c66d7607bad4ed029c671bd7bb81a8cc",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/resolved/EXP-20260923-T1-STEP5-MICRO-R05-control-s7.leo-sim.yaml": "4eb001c5a45665a5c941d5e5af9e58f90471e59f430ea26db1281d20ce8b9924",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R05/run-manifest.json": "eb5352634c9d173af1b5502e288afcc152e7931cd858fcb17b613e4b3d926b4e",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/RUNBOOK.md": "4f6cd540a1734efffc8e94012659e9001e490917727f47077b6a7dfeddc41239",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/analysis-request.json": "0f4f61e02452fb714eaeb811ce9f92557136965db215422c6b4e237dee8b2d87",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/compile-report.json": "143762e37e49d964863656920b55d4f5b720b68751db42dee3264a0c52f7e7cd",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/request.json": "d635ccbf287a49595d98df8ae0a90012fb59969aaf4f26771078fd4069738fb2",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/resolved/EXP-20260923-T1-STEP5-PRESSURE-R05-cd05-s7.leo-sim.yaml": "db31faeb008e781c3514c0632f5fa0ccc2dee8eb66b0a605e91a552d294cdbb4",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/resolved/EXP-20260923-T1-STEP5-PRESSURE-R05-control-s7.leo-sim.yaml": "5c0eb53a77f0345086cc9c410d356bfec965d779a03e15baf0e364e80f0a5486",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R05/run-manifest.json": "302efa7338e6a13e4084eb35fad8e83ea627748ac2918811b6793983fdf32cca"
+  },
+  "brief_path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R05/brief.json",
+  "brief_sha256": "1963d0ec5dde5874559e492d958b913425029a779d8fb6f0fc955204ef10e350",
+  "decision_path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R05/decision.json",
+  "decision_sha256": "65e544b355f3d24dba7234b3813ee1c68bbfffe9c1617a230d188bc047e0e94c",
+  "required_review_roles": [
+    "adversarial",
+    "cold_start",
+    "satellite_drl"
+  ],
+  "revision": 5,
+  "schema": "agent-work-finalization/v1",
+  "status": "REVISION_REQUIRED",
+  "work_id": "WP-LEO-V2-T1-STEP5-GATE-EVIDENCE"
+}

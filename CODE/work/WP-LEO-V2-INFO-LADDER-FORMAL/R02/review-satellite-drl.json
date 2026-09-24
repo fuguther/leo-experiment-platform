@@ -1,0 +1,30 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-INFO-LADDER-FORMAL-R02-SAT",
+  "work_id": "WP-LEO-V2-INFO-LADDER-FORMAL-R02",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-INFO-LADDER-FORMAL/R02/brief.json": "c312e87af0886ffb3825cd6a406abb0dd80ec23a78866de42e1a6f7b4d57a6cc",
+    "EXPERIMENTS/EXP-20260822-INFO-LADDER-FORMAL-R02/RUNBOOK.md": "c45e4fd4af7896b105ee9c005f476c637ae15b57b31fdaba9cb5acbcbc64d4ab",
+    "EXPERIMENTS/EXP-20260822-INFO-LADDER-FORMAL-R02/analysis-request.json": "171089fefc423496848352e861dde3563d14c09ba063c363e38cf18b39cace35",
+    "EXPERIMENTS/EXP-20260822-INFO-LADDER-FORMAL-R02/compile-report.json": "af6c02b91bd794fc6b0d6f26deb5f8d9ecc88d7025288176984ff3a29dfae96a",
+    "EXPERIMENTS/EXP-20260822-INFO-LADDER-FORMAL-R02/request.json": "a03295525783d13d583856c402d7cc37c181c35e9ec874487b4f227335c6e192",
+    "EXPERIMENTS/EXP-20260822-INFO-LADDER-FORMAL-R02/run-manifest.json": "8eb381a78be8484079358fdd65ddb79f505cc8d7aa8fd57352f539f61e642052",
+    "EXPERIMENTS/EXP-20260822-INFO-LADDER-FORMAL-R02/resolved/EXP-20260822-INFO-LADDER-FORMAL-R02-info_physical-s7.leo-sim.yaml": "4b549dac0c092aaa5ebffb67290b45ddf51b071e4811ff1f1401548716db78c4",
+    "EXPERIMENTS/EXP-20260822-INFO-LADDER-FORMAL-R02/resolved/EXP-20260822-INFO-LADDER-FORMAL-R02-info_physical-s11.leo-sim.yaml": "bab963939f8e2bb8ad8948e19becaf7942ac75de3804c5488cd77d443b26eb8c",
+    "EXPERIMENTS/EXP-20260822-INFO-LADDER-FORMAL-R02/resolved/EXP-20260822-INFO-LADDER-FORMAL-R02-info_queue-s7.leo-sim.yaml": "2e352223e231fc59c91f7a87aee8ac95dc819ce753039ceb7da6602372e368c6",
+    "EXPERIMENTS/EXP-20260822-INFO-LADDER-FORMAL-R02/resolved/EXP-20260822-INFO-LADDER-FORMAL-R02-info_queue-s11.leo-sim.yaml": "cf4783977fac563498495e18080e4475e76e8301ea20bb98c13f71831752c29f",
+    "EXPERIMENTS/request-sources/EXP-20260822-INFO-LADDER-FORMAL-R02.json": "efb1b0b033011864cfe651080460574ebe24518d4381e532c29158fdfb0ddceb"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-info-ladder-formal-r02",
+  "reviewer_id": "reviewer:f1-satellite-drl",
+  "reviewer_session_id": "R-f1-satellite-drl-f04cd28",
+  "independence": {"producer_and_reviewer_are_distinct": true, "review_started_from_declared_inputs": true},
+  "role": "satellite_drl",
+  "verdict": "PASS",
+  "evidence": ["routing.py:293-307 restricts F1 to current first-hop distance, availability and MCS-derived rate", "kernel.py and model.py update dynamic topology every 1.0 s and rebuild the route graph after matching", "trace.py records M-Lab source hash, OD mapping, burst parameters and realized load as measurement-proxy provenance", "clean-archive targeted review reported 603 passed, 2 skipped and 3 subtests passed"],
+  "blocking_findings": [],
+  "unknowns": ["The arm is a deterministic routing diagnostic, not a DRL observation tensor.", "No claim about causal information value, learner fairness, Q0 or paper statistics is authorized.", "A future geometry_loss boundary test and route/queue result audit remain useful follow-up checks."],
+  "required_revision": []
+}

@@ -1,0 +1,101 @@
+{
+  "schema": "isl-pressure-candidate-review-history/v1",
+  "work_id": "WP-LEO-V2-ISL-BANDWIDTH-PILOT",
+  "revision": 3,
+  "reviewed_git_commit": "f6cbf4e91c702ed0982b6dcc16b2a22c19da5183",
+  "authorization_state_at_review": "NOT_AUTHORIZED",
+  "projectpilot_operation_id": "offload-operation:b399df03400584f1fc3116b8778e1bd9",
+  "primary_review": {
+    "reviewer": "kimi_acp",
+    "session_id": "session_6314ac57-842f-4d5e-a133-a2eb549a83c6",
+    "result_class": "RESULT_CANDIDATE",
+    "verdict": "PASS_WITH_LIMITS",
+    "findings": [
+      "the drain branch lacked an explicit compact in-system-at-stop field",
+      "same-link queue waiting and high utilization could occur at disjoint times",
+      "the frozen decision was not implemented as tested deterministic code",
+      "packet-event times were not explicitly bounded by stop_time_s",
+      "several adversarial branches lacked direct regression tests",
+      "the reviewer proposed that a nonzero low MCS rate could be physical denominator collapse rather than pressure"
+    ]
+  },
+  "independent_review": {
+    "reviewer": "kimi_acp",
+    "session_id": "session_b5547f6f-768b-4c91-ae06-f7ffc7322e2d",
+    "result_class": "RESULT_CANDIDATE",
+    "verdict": "PASS_WITH_LIMITS",
+    "findings": [
+      "packet-event times were not bounded by stop_time_s",
+      "matched queue-wait service_start was not cross-checked against the same packet and link service window",
+      "the drain branch lacked an explicit in-system-at-stop diagnostic",
+      "zero-rate or malformed evidence blocks analysis without a VERIFIED classification record",
+      "window and queue thresholds were duplicated between code defaults and the decision document"
+    ]
+  },
+  "updated_commit_cold_start_review": {
+    "reviewed_git_commit": "d1844f23829f25b264261850b046959abd1a1dd9",
+    "projectpilot_operation_id": "offload-operation:9e9464b3939a70b1091de6ef6c3f4c67",
+    "reviewer": "kimi_acp",
+    "session_id": "session_cbc4235e-5df0-4e81-ae9e-4f441b393896",
+    "result_class": "CANDIDATE_CONTENT_ENVELOPE_REJECTED",
+    "verdict": "PASS_WITH_LIMITS",
+    "envelope_rejection": "one evidence item used a placeholder reference; no formal review receipt was accepted",
+    "findings": [
+      "a missing required control-failure counter was silently interpreted as zero by the direct pair classifier",
+      "the frozen persisted pair classifier lacked a documented canonical command"
+    ],
+    "codex_disposition": [
+      "accepted the fail-loud finding and required every declared control-failure counter before classification",
+      "accepted the cold-start usability finding and added a verified command that persists the bound classification",
+      "canceled the remaining stale-commit review lanes because their findings could not authorize the corrected revision"
+    ]
+  },
+  "exact_commit_e110_reviews": {
+    "reviewed_git_commit": "e1106c883b16d03eb3ee8ae49c5c50404d0d1176",
+    "satellite_drl": {
+      "projectpilot_operation_id": "offload-operation:a57979a9cd41c8c11923e4e2bba26cb5",
+      "reviewer": "kimi_acp",
+      "session_id": "session_f2357440-f09d-4729-86a5-a4ce33cf6c3b",
+      "verdict": "PASS_WITH_LIMITS",
+      "codex_disposition": "accepted as non-blocking after 55 exact-commit pressure tests passed; separate packets may jointly establish episode-wide queue area and maximum wait because both witnesses remain on the same directed link and overlap the same episode"
+    },
+    "cold_start": {
+      "projectpilot_operation_id": "offload-operation:2ac439a4852c3d8c213fbe134bde734d",
+      "reviewer": "kimi_acp",
+      "session_id": "session_bb15acea-f115-439b-8f64-fde484d87896",
+      "verdict": "PASS_WITH_LIMITS",
+      "accepted_findings": [
+        "the RUNBOOK stopped after V2 analysis and omitted the persisted pressure-classification command",
+        "the contract did not explicitly state that an already localized 5 MHz control-pressure stop precedes candidate-arm unlocalized overflow",
+        "the control-pressure plus candidate unlocalized-overflow branch lacked a direct regression test",
+        "the persisted classifier verification-failure connection lacked a direct regression test"
+      ],
+      "codex_disposition": "accepted all four narrow findings for documentation and regression closure without changing thresholds, branch behavior or matrix scope"
+    }
+  },
+  "post_e110_codex_adversarial_audit": {
+    "stale_review_operation_canceled": "offload-operation:f8b9410bfc87707acb9e60fcb3b17bf7",
+    "finding": "the verifier trusted a self-consistent RUNBOOK hash in compile-report.json and did not re-render RUNBOOK from the request, so a simultaneous RUNBOOK and report-hash edit could preserve formal matrix verification",
+    "disposition": "accepted and fixed by using one deterministic RUNBOOK renderer in both compilation and verification, with a regression that updates the forged RUNBOOK hash and still requires rejection",
+    "scope_boundary": "no classifier behavior, decision threshold, experiment cell or scenario changed"
+  },
+  "codex_adjudication": {
+    "confirmed_and_fixed": [
+      "persist an explicit per-arm in_system_at_stop_packets drain field",
+      "require queue waiting to overlap the same sustained high-utilization episode",
+      "apply the same pressure rule to the 5 MHz control before claiming a 5-to-2 MHz bracket",
+      "add a tested deterministic five-way pair classifier",
+      "reject packet events outside the declared stop time",
+      "cross-check every matched ISL service_start against the same pid, directed link, start time, rate and packet size in the service-window ledger",
+      "bind decision thresholds and classifier field lists to analyzer constants with a regression test",
+      "add regression checks for ineligible saturated windows and per-window queue-area allocation"
+    ],
+    "rejected_or_narrowed": [
+      "min_rate_bps is not a positive rate floor: link_budget.mcs_rate_bps returns zero below it, which enters the zero-rate fail-closed path",
+      "a valid nonzero MCS rate with episode-coincident saturation, queueing and complete drain is real available-capacity pressure under the declared bandwidth intervention, not a disconnection masquerading as congestion",
+      "ISL service-window numerator records DataPacket service only; control packets can consume service opportunity but are not counted as served data bits",
+      "zero-rate analysis failure already blocks the formal cohort; it must be recorded as invalid evidence but does not need a fabricated VERIFIED manifest"
+    ]
+  },
+  "resolution_status": "RUNBOOK_REDERIVATION_FIXED_AWAITING_NEW_EXACT_COMMIT_REVIEW"
+}

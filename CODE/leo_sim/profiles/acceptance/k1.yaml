@@ -1,0 +1,43 @@
+config_version: leo-sim-config/v1
+scenario:
+  name: acceptance-k1
+  duration_s: 35
+  time_step_s: 0.1
+  num_satellites: 1
+  num_planes: 1
+  altitude_km: 550
+  inclination_deg: 53
+  min_elevation_deg: 25
+  seed: 17
+endpoints:
+  sites:
+    - {name: a, lat: 0.1, lon: 0.1, demand_weight: 1}
+    - {name: b, lat: 0.1, lon: 1.1, demand_weight: 1}
+    - {name: c, lat: 0.1, lon: 2.1, demand_weight: 1}
+    - {name: d, lat: 0.1, lon: 3.1, demand_weight: 1}
+demand:
+  mode: uniform
+  offered_mbps: 2
+  packet_bits: 1000000
+access:
+  slots_per_satellite: 1
+  association: bbm
+  hysteresis_deg: 0
+  min_dwell_s: 0
+  acquisition_delay_s: 0.1
+  slot_lease_s: 2
+  idle_release_s: 0.5
+  retirement_deadline_s: 2
+links:
+  ge_enabled: false
+control_plane:
+  enabled: false
+routing:
+  policy: oracle
+execution:
+  max_events: 300000
+  max_entities: 100
+  max_packets: 1000
+outputs:
+  out_dir: leo_sim_out/acceptance-k1
+  plotting: false

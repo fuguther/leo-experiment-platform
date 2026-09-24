@@ -1,0 +1,38 @@
+config_version: leo-sim-config/v1
+scenario:
+  name: acceptance-ge
+  duration_s: 15
+  time_step_s: 0.05
+  num_satellites: 1
+  num_planes: 1
+  altitude_km: 550
+  inclination_deg: 53
+  min_elevation_deg: 10
+  seed: 29
+endpoints:
+  sites:
+    - {name: a, lat: 0.1, lon: 0.1, demand_weight: 1}
+    - {name: b, lat: 0.1, lon: 1.1, demand_weight: 1}
+demand:
+  mode: uniform
+  offered_mbps: 20
+  packet_bits: 1000000
+access:
+  slots_per_satellite: 2
+  association: bbm
+  acquisition_delay_s: 0
+links:
+  ge_enabled: true
+  ge_gsl: {mean_good_s: 0.05, mean_bad_s: 0.05}
+  ge_isl: {mean_good_s: 0.05, mean_bad_s: 0.05}
+control_plane:
+  enabled: false
+routing:
+  policy: oracle
+execution:
+  max_events: 300000
+  max_entities: 100
+  max_packets: 1000
+outputs:
+  out_dir: leo_sim_out/acceptance-ge
+  plotting: false

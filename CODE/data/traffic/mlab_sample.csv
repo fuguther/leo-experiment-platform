@@ -1,0 +1,44 @@
+# M-Lab Speedtest sample fixture for traffic_mlab.py unit tests.
+# Schema: client_city, client_lat, client_lon, server_city, server_lat, server_lon, hour_utc, sample_count, mean_throughput_mbps
+# This is hand-crafted to be small (4 src cities × 4 dst cities × 4 hour buckets = 64 rows)
+# and to exercise:
+#   - duplicate (src, dst) at different hours -> diurnal aggregation
+#   - same-city src=dst -> must be filtered to 0
+#   - cities far from any GT -> nearest-GT projection edge case
+# The throughput values are illustrative, not from real M-Lab data. See Phase 3
+# (scripts/data/fetch_mlab.py, not in this PR) for the real BigQuery fetcher.
+client_city,client_lat,client_lon,server_city,server_lat,server_lon,hour_utc,sample_count,mean_throughput_mbps
+Madrid,40.42,-3.70,Los Angeles,34.05,-118.24,0,120,85.3
+Madrid,40.42,-3.70,Los Angeles,34.05,-118.24,6,310,142.7
+Madrid,40.42,-3.70,Los Angeles,34.05,-118.24,12,520,180.2
+Madrid,40.42,-3.70,Los Angeles,34.05,-118.24,18,640,165.4
+Madrid,40.42,-3.70,Tokyo,35.68,139.75,0,40,60.1
+Madrid,40.42,-3.70,Tokyo,35.68,139.75,6,80,78.5
+Madrid,40.42,-3.70,Tokyo,35.68,139.75,12,150,92.3
+Madrid,40.42,-3.70,Tokyo,35.68,139.75,18,180,88.7
+Madrid,40.42,-3.70,Mauritius,-20.27,57.57,0,5,30.0
+Madrid,40.42,-3.70,Mauritius,-20.27,57.57,6,12,42.1
+Madrid,40.42,-3.70,Mauritius,-20.27,57.57,12,20,50.6
+Madrid,40.42,-3.70,Mauritius,-20.27,57.57,18,18,48.2
+Madrid,40.42,-3.70,Madrid,40.42,-3.70,12,9999,500.0
+San Francisco,37.77,-122.42,Madrid,40.42,-3.70,0,210,95.5
+San Francisco,37.77,-122.42,Madrid,40.42,-3.70,6,540,160.3
+San Francisco,37.77,-122.42,Madrid,40.42,-3.70,12,890,205.1
+San Francisco,37.77,-122.42,Madrid,40.42,-3.70,18,720,185.6
+San Francisco,37.77,-122.42,Tokyo,35.68,139.75,0,150,72.4
+San Francisco,37.77,-122.42,Tokyo,35.68,139.75,6,380,105.8
+San Francisco,37.77,-122.42,Tokyo,35.68,139.75,12,610,135.2
+San Francisco,37.77,-122.42,Tokyo,35.68,139.75,18,490,128.7
+San Francisco,37.77,-122.42,Mauritius,-20.27,57.57,12,8,38.5
+Yokohama,35.44,139.64,Madrid,40.42,-3.70,0,90,68.2
+Yokohama,35.44,139.64,Madrid,40.42,-3.70,6,170,82.6
+Yokohama,35.44,139.64,Madrid,40.42,-3.70,12,250,95.1
+Yokohama,35.44,139.64,Madrid,40.42,-3.70,18,310,102.4
+Yokohama,35.44,139.64,Los Angeles,34.05,-118.24,0,180,88.3
+Yokohama,35.44,139.64,Los Angeles,34.05,-118.24,6,420,118.5
+Yokohama,35.44,139.64,Los Angeles,34.05,-118.24,12,680,145.7
+Yokohama,35.44,139.64,Los Angeles,34.05,-118.24,18,540,135.2
+Yokohama,35.44,139.64,Mauritius,-20.27,57.57,12,25,55.4
+Reduit,-20.23,57.49,Madrid,40.42,-3.70,12,7,28.6
+Reduit,-20.23,57.49,Los Angeles,34.05,-118.24,12,4,22.3
+Reduit,-20.23,57.49,Tokyo,35.68,139.75,12,6,26.8

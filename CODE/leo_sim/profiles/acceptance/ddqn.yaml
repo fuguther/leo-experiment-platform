@@ -1,0 +1,48 @@
+config_version: leo-sim-config/v1
+scenario:
+  name: acceptance-ddqn
+  duration_s: 120
+  time_step_s: 0.1
+  num_satellites: 24
+  num_planes: 3
+  altitude_km: 550
+  inclination_deg: 53
+  min_elevation_deg: 25
+  seed: 7
+endpoints:
+  sites:
+    - {name: equator, lat: 0.1, lon: 0.1, demand_weight: 1}
+    - {name: north, lat: 52.6, lon: 90.4, demand_weight: 1}
+demand:
+  mode: uniform
+  offered_mbps: 1
+  packet_bits: 1000000
+access:
+  slots_per_satellite: 4
+  association: bbm
+links:
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 2
+  vis_k: 2
+routing:
+  policy: hop
+  max_hops: 32
+  learning_enabled: true
+  contract: C3
+learning:
+  algorithm: ddqn
+  batch_size: 8
+  replay_size: 2000
+  target_update_interval: 10
+  epsilon_start: 0.2
+  epsilon_end: 0.05
+  epsilon_decay_s: 60
+execution:
+  max_events: 500000
+  max_entities: 2000
+  max_packets: 20000
+outputs:
+  out_dir: leo_sim_out/acceptance-ddqn
+  plotting: false

@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-work-decision/v1",
+  "title": "Decision over one immutable work revision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "work_id",
+    "revision",
+    "producer_id",
+    "artifact_hashes",
+    "decision_maker_id",
+    "applied_review_receipts",
+    "decision",
+    "rationale",
+    "blocking_findings",
+    "revision_instructions",
+    "next_revision"
+  ],
+  "properties": {
+    "schema": {"const": "agent-work-decision/v1"},
+    "work_id": {"type": "string", "pattern": "^WP-[A-Za-z0-9_-]+$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "producer_id": {"type": "string", "pattern": "^producer:[A-Za-z0-9._-]+$"},
+    "artifact_hashes": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^(?!/)(?!.*\\.\\.)[^\\n]+$"},
+      "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    },
+    "decision_maker_id": {"type": "string", "pattern": "^decision:[A-Za-z0-9._-]+$"},
+    "applied_review_receipts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/reviewReference"}
+    },
+    "decision": {"enum": ["ACCEPT", "REVISE", "STOP"]},
+    "rationale": {"type": "string", "minLength": 10},
+    "blocking_findings": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "revision_instructions": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "next_revision": {"type": ["integer", "null"], "minimum": 2}
+  },
+  "$defs": {
+    "reviewReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receipt_id", "path", "sha256", "role", "verdict"],
+      "properties": {
+        "receipt_id": {"type": "string", "pattern": "^RR-[A-Za-z0-9_-]+$"},
+        "path": {"type": "string", "pattern": "^(?!/)(?!.*\\.\\.)[^\\n]+\\.json$"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "role": {
+          "enum": [
+            "cold_start",
+            "satellite_drl",
+            "research_governance",
+            "adversarial",
+            "paper_value",
+            "claim_support",
+            "claim_value"
+          ]
+        },
+        "verdict": {"enum": ["PASS", "BLOCK", "UNKNOWN"]}
+      }
+    },
+    "passReviewReference": {
+      "allOf": [
+        {"$ref": "#/$defs/reviewReference"},
+        {"properties": {"verdict": {"const": "PASS"}}}
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"decision": {"const": "ACCEPT"}}},
+      "then": {
+        "properties": {
+          "applied_review_receipts": {"items": {"$ref": "#/$defs/passReviewReference"}},
+          "blocking_findings": {"maxItems": 0},
+          "revision_instructions": {"maxItems": 0},
+          "next_revision": {"const": null}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"decision": {"const": "REVISE"}}},
+      "then": {
+        "properties": {
+          "applied_review_receipts": {
+            "contains": {"properties": {"verdict": {"const": "BLOCK"}}, "required": ["verdict"]}
+          },
+          "blocking_findings": {"minItems": 1},
+          "revision_instructions": {"minItems": 1},
+          "next_revision": {"type": "integer", "minimum": 2}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"decision": {"const": "STOP"}}},
+      "then": {
+        "properties": {
+          "blocking_findings": {"minItems": 1},
+          "next_revision": {"const": null}
+        }
+      }
+    }
+  ]
+}

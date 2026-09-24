@@ -1,0 +1,55 @@
+{
+  "applied_reviews": [
+    {
+      "path": "CODE/work/WP-LEO-V2-EXP1-CAPACITY/R01/review-cold-start.json",
+      "receipt_id": "RR-EXP1-CAPACITY-R01-COLD",
+      "reviewer_id": "reviewer:cold-start-exp1-capacity-r01",
+      "reviewer_session_id": "R-cold-start-exp1-capacity-r01",
+      "role": "cold_start",
+      "sha256": "28ee0e64773d061dcb61db26576433bbc0b62b7d86400446c6f7aa036a15f543",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-EXP1-CAPACITY/R01/review-satellite-drl.json",
+      "receipt_id": "RR-EXP1-CAPACITY-R01-SAT",
+      "reviewer_id": "reviewer:satellite-drl-exp1-capacity-r01",
+      "reviewer_session_id": "R-satellite-drl-exp1-capacity-r01",
+      "role": "satellite_drl",
+      "sha256": "6e32c34b01c4b228e72c148f387256673491f3e359deb9d88f2e6188dea744cf",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-EXP1-CAPACITY/R01/review-adversarial.json",
+      "receipt_id": "RR-EXP1-CAPACITY-R01-ADV",
+      "reviewer_id": "reviewer:adversarial-exp1-capacity-r01",
+      "reviewer_session_id": "R-adversarial-exp1-capacity-r01",
+      "role": "adversarial",
+      "sha256": "135bab4fdeedf9bf568d9fc88463162cadc0cc060dbf41ea2a6d5bed7d8dc16b",
+      "verdict": "PASS"
+    }
+  ],
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-EXP1-CAPACITY/R01/brief.json": "163b2ebc22297777946d4fa6e7165b117f51ab660862f5b5e1870fa5aab3d39f",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/RUNBOOK.md": "0dc4491bf99463aa40c21e5d2cf67daf88f82204a44d4d457d8ad9965a73d5a4",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/analysis-request.json": "16ec2d00a8027e5c12bfc7d6a0ea2ca259538a0bcc6366b440a1cb815fd095c7",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/compile-report.json": "60ffdb1a7d898ba94e2bc53e96800b3d305aa972fb3bc5ae18dc1d8a2b82a0d4",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/request-source.json": "3e9f3b0e89b7054f728cd39bcb6c0a27066de102b0a8bcd85a839c9de442e64c",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/request.json": "ddcfaedecccdba72f65501bb6656eb541ad6e5ddf28df904216a5b2c5107187e",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/resolved/EXP-20260821-EXP1-CAPACITY-R01-capacity-s7.leo-sim.yaml": "4f498c67ae27918b4c140eaefbeb68c1910a3e6ba78457e15370d902e8e70e75",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/resolved/EXP-20260821-EXP1-CAPACITY-R01-control-s7.leo-sim.yaml": "1038e634130af6ad27b0095fa18307cf2a27540a6b1700c1392d8789f996e2fa",
+    "EXPERIMENTS/EXP-20260821-EXP1-CAPACITY-R01/run-manifest.json": "f1d7a13648ae5edd5a676b4a39d8799b93e43e8c0750a9c52a191e40514281d6"
+  },
+  "brief_path": "CODE/work/WP-LEO-V2-EXP1-CAPACITY/R01/brief.json",
+  "brief_sha256": "163b2ebc22297777946d4fa6e7165b117f51ab660862f5b5e1870fa5aab3d39f",
+  "decision_path": "CODE/work/WP-LEO-V2-EXP1-CAPACITY/R01/decision.json",
+  "decision_sha256": "cee4c5ed7c2d965764fc49f27318ad27e8271a475283942135749b33a6001108",
+  "required_review_roles": [
+    "adversarial",
+    "cold_start",
+    "satellite_drl"
+  ],
+  "revision": 1,
+  "schema": "agent-work-finalization/v1",
+  "status": "ACCEPTED",
+  "work_id": "WP-LEO-V2-EXP1-CAPACITY"
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "leo-sim-scene-check-contract/v1",
+  "decision_path": "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/scene-decision.yaml",
+  "decision_sha256": "9ad82a9ac4c4f86c13e38881236f8a438c2750140b7a6a8d49f7929e98b17d9b",
+  "coverage_path": "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/coverage-audit.json",
+  "coverage_sha256": "b5631b2d4e40bc96b77e69459ae50b44b467d08b22373fcd4e63e7ebbe8912ae",
+  "canonical_invocation": [
+    "python3",
+    "-m",
+    "CODE.leo_sim.scene_check",
+    "--root",
+    ".",
+    "--contract",
+    "CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/scene-check-contract.json"
+  ]
+}

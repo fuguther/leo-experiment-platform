@@ -1,0 +1,67 @@
+config_version: leo-sim-config/v1
+scenario:
+  name: mlab-multiod-burst-t0-140
+  duration_s: 20
+  time_step_s: 0.1
+  num_satellites: 140
+  num_planes: 7
+  altitude_km: 600
+  inclination_deg: 98.6
+  min_elevation_deg: 30
+  seed: 7
+endpoints:
+  grid_deg: 0.25
+  aggregation_deg: 1.0
+  # Explicitly derive a bounded endpoint set from the complete checked-in
+  # M-Lab snapshot. The compiler records the selected cells and rule in the
+  # immutable trace manifest; it does not pretend to model every raw row as a
+  # satellite gateway.
+  sites: []
+  mlab_auto: true
+  mlab_max_sites: 64
+demand:
+  mode: mlab
+  offered_mbps: 50
+  # One-megabit packets keep the 20 s T0 large enough to exercise multiple
+  # OD sources without turning the first VM run into an hours-long batch.
+  packet_bits: 1000000
+  deadline_s: null
+  burst_start_s: 8
+  burst_duration_s: 8
+  burst_multiplier: 2
+access:
+  slots_per_satellite: 4
+  uplink_rate_mbps: 100
+  downlink_rate_mbps: 100
+  uplink_queue_bits: 64000000
+  downlink_queue_bits: 64000000
+  association: bbm
+  hysteresis_deg: 0
+  min_dwell_s: 0
+  acquisition_delay_s: 0.1
+links:
+  rate_model: mcs
+  ge_enabled: false
+topology:
+  recompute_interval_s: 1.0
+  matching: markovian
+control_plane:
+  enabled: true
+  advertise_interval_s: 1.0
+  ttl_s: 10
+  vis_k: 12
+  packet_bits: 8000
+routing:
+  policy: hop
+  max_hops: 64
+  learning_enabled: false
+learning:
+  algorithm: none
+execution:
+  max_events: 20000000
+  max_entities: 2000
+  max_packets: 20000
+  available_capacity_interval_s: 1.0
+outputs:
+  out_dir: leo_sim_out/mlab-multiod-burst-t0
+  plotting: false

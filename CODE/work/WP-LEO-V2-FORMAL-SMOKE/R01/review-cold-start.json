@@ -1,0 +1,49 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-WP-LEO-V2-FORMAL-SMOKE-R01-cold-start",
+  "work_id": "WP-LEO-V2-FORMAL-SMOKE",
+  "revision": 1,
+  "artifact_hashes": {
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01/RUNBOOK.md": "df2bf06f89cc2fbbc2791a26a46b16b0234dd3fc0723a46f1f44629c12297e25",
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01/analysis-request.json": "792b99d68525046916118b4a34599517cfc2ff03e10e3b1e40985ac4ca01c317",
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01/compile-report.json": "df65f7f1b9552a749034211cba2bfef03631c679c6f0df44fb640c37d3111e33",
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01/request.json": "512093551a9ead50e6bd3e810e466360f8d7c071b9cf8db23575ab79fb499d2e",
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01/resolved/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01-main-s7.leo-sim.yaml": "9f5184877efa0da4989b16884ff5a1cfe99d21e1c9cd0bf20d594ae97881ee5c",
+    "EXPERIMENTS/EXP-20260813-LEO-V2-FORMAL-SMOKE-R01/run-manifest.json": "85aa32c157ea3794a93a778f12fd2054d8403b1f69c1ac69c8bd71f2fdf8214c"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-formal-smoke-r01",
+  "reviewer_id": "reviewer:codex-cold-start",
+  "reviewer_session_id": "R-leo-v2-formal-smoke-r01-cold-start",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "cold_start",
+  "verdict": "BLOCK",
+  "evidence": [
+    "At git commit 40ec4455073d1a33fb6990b914d1cbc6c3c3eed9, the six compiled experiment artifact byte hashes were independently recomputed from the Git objects and are bound above.",
+    "The request, manifest and analysis identities align: request SHA256 is 512093551a9ead50e6bd3e810e466360f8d7c071b9cf8db23575ab79fb499d2e and run-manifest SHA256 is 85aa32c157ea3794a93a778f12fd2054d8403b1f69c1ac69c8bd71f2fdf8214c.",
+    "The resolved config validated locally; its canonical config SHA256 f664b85057f04a5340d5e66602b3945e2421b323153e652651a709734ea50362, trace identity 7f784093682b952626fd2ae161f7ee81e469c173e09cfbcf396ccfc47093a871 and leo_sim code SHA256 03dbe6746309b227667e7c3e8b73bb9bb247c69bbd930a952393a69d73e6fb72 match the run manifest.",
+    "A bounded local CLI dry-run succeeded and compiled 109 packets, 109000000 offered bits and two active endpoints for the 120-second horizon with hop routing, BBM access, control-plane enabled, GE enabled and learning disabled.",
+    "For explicit runtime_kind leo_sim_v2, the remote job constructs python -m CODE.leo_sim and the post-run path verifies the formal witness and local receipt before producing the governance receipt.",
+    "RUNBOOK.md names only the config path relative to the experiment directory, while run-remote.sh accepts only an absolute canonical experiment path or a project-root-relative EXPERIMENTS/... path.",
+    "run-remote.sh defaults runtime_kind to legacy_gateway, and RUNBOOK.md does not provide the required --runtime-kind leo_sim_v2 launch argument; the default path rejects the compiled .leo-sim.yaml as a legacy config.",
+    "The runbook requires an exact-commit deployment, but the compiled artifacts and authorization payload do not bind commit 40ec4455073d1a33fb6990b914d1cbc6c3c3eed9 or tree e17dd15ec16ee0eb241e736182a633c40301207f; remote_job.py records deployment identity without comparing it to the reviewed commit or tree."
+  ],
+  "blocking_findings": [
+    "The package is not runnable as documented by a fresh operator: the documented config path is not accepted directly by run-remote.sh, and the omitted --runtime-kind leo_sim_v2 selector causes deterministic legacy-mode rejection.",
+    "The governance chain does not enforce the stated exact-commit deployment: a verified deployment receipt is recorded, but its commit and tree are not required to equal the reviewed commit 40ec4455073d1a33fb6990b914d1cbc6c3c3eed9 and tree e17dd15ec16ee0eb241e736182a633c40301207f."
+  ],
+  "unknowns": [
+    "No VM execution was performed; remote path availability, dependencies, deployment receipt state, tmux launch, natural completion, conservation and requested-mechanism effectiveness remain VM-unverified.",
+    "No full local simulation was run; local execution evidence is limited to config validation and dry-run trace compilation.",
+    "Transitive files outside the brief's declared allowed inputs, including common.sh, deployment_guard.py, finalization logic and deployment tooling, were not inspected.",
+    "Review finalization and authorization.json did not yet exist during this pre-authorization review, so successful authorization issuance remains unverified."
+  ],
+  "required_revision": [
+    "Make RUNBOOK.md operationally complete with copy-paste authorization and launch commands using the full project-root-relative EXPERIMENTS/... config and authorization paths and explicit --runtime-kind leo_sim_v2.",
+    "Bind the full reviewed commit 40ec4455073d1a33fb6990b914d1cbc6c3c3eed9 and preferably tree e17dd15ec16ee0eb241e736182a633c40301207f into the compiled manifest and authorization; fail closed unless the clean remote deployment receipt matches, and carry the verified deployment identity into the governance witness.",
+    "Recompile the package, refresh all artifact hashes and obtain new independent reviews and finalization after revision."
+  ]
+}

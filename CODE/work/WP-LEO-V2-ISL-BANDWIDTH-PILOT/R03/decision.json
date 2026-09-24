@@ -1,0 +1,63 @@
+{
+  "schema": "agent-work-decision/v1",
+  "work_id": "WP-LEO-V2-ISL-BANDWIDTH-PILOT",
+  "revision": 3,
+  "producer_id": "producer:codex",
+  "artifact_hashes": {
+    "CODE/experiment_platform/isl_pressure.py": "86cea31c67e48d3de9cfb326a2d96a26751d89800c012755b20cd31805df7070",
+    "CODE/experiment_platform/isl_pressure_decision.py": "92536c305c5ee0fa9ebce4c125f4cf266d0ce6fe78464d3bc7131639598d4e1c",
+    "CODE/experiment_platform/tests/test_isl_pressure.py": "c2fe4689fcef0b8cda38d9c9e45a8f403a6422cb0fadf49367d8cf5ae309189b",
+    "CODE/experiment_platform/tests/test_isl_pressure_decision.py": "a2574de8ee87b7d74e06934bce81ed8cb4ce544e610eed1a8332b8075e68dd20",
+    "CODE/experiment_platform/v2_analysis.py": "aa180e5ee33d00a6e05deda36e7a97da9c633f2e685c8ea191962002edebf654",
+    "CODE/experiment_platform/tests/test_v2_analysis.py": "1ccd83f9da04a27e1cb2903174302de779bc724ad627207b624c8e2f692d8dc9",
+    "CODE/experiment_platform/v2_serial_gate.py": "a139f232236acf921874e177817361288f0799f58f78e12a00d4ea3fce7953a3",
+    "CODE/experiment_platform/tests/test_v2_serial_gate.py": "5daeb276baf1288e6f08e339928ef72de33c1d1b1edb0810956e6f9dc191c2e2",
+    "CODE/leo_sim/metrics.py": "b22674f960172d0acb2e37f4057519f44ba6aaf4e2b0fea01ced054f017140b6",
+    "CODE/leo_sim/governance.py": "d5674b548a0bdf283715fea5442d46e45a2c4ea95e88717496a84924752caafe",
+    "CODE/leo_sim/matrix.py": "a8826c9a10c273b14b800715fdd63894b2a85d3eb356adef11c4e4c6bb5ffd6a",
+    "CODE/leo_sim/tests/test_matrix_contract.py": "082e1c6d520d768435c320c40fa51fce33253c5983fa957fb37b2a6a09bd5baf",
+    "CODE/scripts/remote/remote_job.py": "e52ac7b16ca6755163a50b21684092bb2812b3c06d13e042628d33a969c53563",
+    "CODE/tests/test_remote_gate.py": "d934151ac1de0c0365bfb400f2c3fd9d98efd999c6be08ff3cc4e21b5ebc4f5c",
+    "CODE/scripts/remote/run-remote.sh": "80ce87186808e83481b6547fdde6a5996d9cd6fe6d926b879352f568e32c84ff",
+    "CODE/work/WP-LEO-V2-ISL-BANDWIDTH-PILOT/R03/brief.json": "35771f95a5b2a372724cb4ed57587f6cd682430107249bf5d0e77d893ab2c5b6",
+    "CODE/work/WP-LEO-V2-ISL-BANDWIDTH-PILOT/R03/candidate-review-history.json": "b199629abe369a0bd384bb8e5e0c44d15635ba5f8529e69d9fc686d59b15d526",
+    "CODE/work/WP-LEO-V2-ISL-BANDWIDTH-PILOT/R03/pressure-decision.json": "fa0493b722e3bd119ed516543e4429b2bbc30986d3e5479f24f4d81f5194460e",
+    "EXPERIMENTS/request-sources/EXP-20260824-ISL-BANDWIDTH-PILOT-R03.json": "ee30774923a776599e6bb18cfd4f01eb100c5f1d35bcb2fd154b20a5c935d5a5",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R03/RUNBOOK.md": "1f4468bcbb70ca93ae6388d8c4181906164dd845f2c21cc775f5732681e061a6",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R03/analysis-request.json": "39337807c5bccbdb13f15a4f1cae4a8a731a53c842dd6d694e10563a7f451c47",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R03/compile-report.json": "ccf580df721eb90f6aeab3c6f0e0e687650b67bb8da29136a2bf5eb2c4f0bfd8",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R03/request.json": "345ae063d37352c693e4f1c619b19acb792f6c9ef298038e2e03c46c9c04bf8f",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R03/resolved/EXP-20260824-ISL-BANDWIDTH-PILOT-R03-b2-s7.leo-sim.yaml": "9713440c46c07d828da012f8133a4814ff1252768eb5551ee08980062282d45b",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R03/resolved/EXP-20260824-ISL-BANDWIDTH-PILOT-R03-b5-s7.leo-sim.yaml": "123b82c51f81b13c3de02bf1424a32188ab8446f6650483d5ec84109c16b64e5",
+    "EXPERIMENTS/EXP-20260824-ISL-BANDWIDTH-PILOT-R03/run-manifest.json": "a1251c79d3ee336a0fa7d26eac023a2b03ddf7ef90c4e9f744ef5581434f8508"
+  },
+  "decision_maker_id": "decision:research-lead-codex",
+  "applied_review_receipts": [
+    {
+      "receipt_id": "RR-ISL-BANDWIDTH-PILOT-R03-COLD",
+      "path": "CODE/work/WP-LEO-V2-ISL-BANDWIDTH-PILOT/R03/review-cold-start.json",
+      "sha256": "6621b43ca1649892805d3932a022db8ab579225e88e6e5c99fe93d751a77c7bf",
+      "role": "cold_start",
+      "verdict": "PASS"
+    },
+    {
+      "receipt_id": "RR-ISL-BANDWIDTH-PILOT-R03-SAT",
+      "path": "CODE/work/WP-LEO-V2-ISL-BANDWIDTH-PILOT/R03/review-satellite-drl.json",
+      "sha256": "051c820e198a43b4d08c1c95f4eac58c347f359067ea526a3b40f5b46f64c056",
+      "role": "satellite_drl",
+      "verdict": "PASS"
+    },
+    {
+      "receipt_id": "RR-ISL-BANDWIDTH-PILOT-R03-ADV",
+      "path": "CODE/work/WP-LEO-V2-ISL-BANDWIDTH-PILOT/R03/review-adversarial.json",
+      "sha256": "9a29c1df83ab01761f1d5702dfbd5c03f612ad04bcd397e855b645388ad2d663",
+      "role": "adversarial",
+      "verdict": "PASS"
+    }
+  ],
+  "decision": "ACCEPT",
+  "rationale": "三类独立审阅均绑定精确提交 95d28051696ccaa6e75a46bb552e60874f5da256 和同一组 R03 冻结工件；本地 712 项测试及单独矩阵验证确认两臂唯一干预是 ISL 带宽，持久化分析、决策合同与确定性 RUNBOOK 不能通过已知篡改路径绕过。审阅记录的 minor 限制都保持 fail-closed，不会把畸形、错配、未排空、物理无效或未定位 overflow 证据变成压力类别。该接受只允许后续在 CI 绿色、clean main 部署和匹配授权后串行执行 5 MHz 再 2 MHz 的单种子工程标定；它不代表已有压力结果，不支持 1 MHz、强化学习、算法优越性、通用阈值或论文统计结论。",
+  "blocking_findings": [],
+  "revision_instructions": [],
+  "next_revision": null
+}

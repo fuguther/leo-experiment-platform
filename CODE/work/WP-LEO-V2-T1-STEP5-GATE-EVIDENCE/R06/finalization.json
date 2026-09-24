@@ -1,0 +1,65 @@
+{
+  "applied_reviews": [
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/review-cold-start.json",
+      "receipt_id": "RR-T1-STEP5-R06-COLD",
+      "reviewer_id": "reviewer:glm-step5-r06b-cold",
+      "reviewer_session_id": "R-glm-step5-r06b-cold-4f81c25d",
+      "role": "cold_start",
+      "sha256": "72f12a7fd9c69e5b4b8ff9b74d0fa010f0c6fac8e48d357ce1b303111115eacc",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/review-satellite-drl.json",
+      "receipt_id": "RR-T1-STEP5-R06-SATDRL",
+      "reviewer_id": "reviewer:muse-step5-r06b-satdrl",
+      "reviewer_session_id": "R-muse-step5-r06b-satdrl-8a3e71f4",
+      "role": "satellite_drl",
+      "sha256": "a3341c8bd5b4136abc2204e7218ea176703e17562d584afbeffe7e2534e726eb",
+      "verdict": "PASS"
+    },
+    {
+      "path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/review-adversarial.json",
+      "receipt_id": "RR-T1-STEP5-R06-ADV",
+      "reviewer_id": "reviewer:glm-step5-r06b-adv",
+      "reviewer_session_id": "R-glm-step5-r06b-adv-2b60d9e7",
+      "role": "adversarial",
+      "sha256": "444a07cb9c57cc9d620c7fb2f9c136041e96d1192797992419e003ede59fe454",
+      "verdict": "PASS"
+    }
+  ],
+  "artifact_hashes": {
+    "CODE/data/traffic/t1_step5_micro_ab.csv": "26536d8b3b894a13d74289131653fddfdae8fe095f7c4edb2dc6a1683ec37592",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/PROCEDURE.md": "aa988c08b93fa4aa44244bcbf65bd0aaa6893780cf971ba6dc450cb19e2d93fe",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/check_procedure.py": "f0868caea937958726032306eb9389ad20a3f1a0205a5c4afdc44d8196019dd9",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/procedure_commands.py": "4be38c412a96053a95d649f068d9c7d41bc9859ad8a9d41990dd64f3c6f117c8",
+    "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/tools/step5_recompute.py": "756b95478e86d6f2449863cdc2f0bd6578f9aa5059d571ae5a81471ded53fa73",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/RUNBOOK.md": "3faa99eca0cae4a5fbda635f0bef3947d47f9b7f64fa3e2821340812ba712797",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/analysis-request.json": "bf9e45f6a3031f31dda8529b4a4f03f95fc0b5bffeff152ab2bbfe496abc5a91",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/compile-report.json": "0c088e02194af61999b767f0d4945884ce530398a411be2c48a08d7de8598cef",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/request.json": "c14e50e8dda845156e2e1427b7d4b8cc6249407f5e3b20e3ba62f3d3eea23ca0",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/resolved/EXP-20260923-T1-STEP5-MICRO-R06-cd05-s7.leo-sim.yaml": "21a15e74af8a8e743ef9475ae53ea837c66d7607bad4ed029c671bd7bb81a8cc",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/resolved/EXP-20260923-T1-STEP5-MICRO-R06-control-s7.leo-sim.yaml": "4eb001c5a45665a5c941d5e5af9e58f90471e59f430ea26db1281d20ce8b9924",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-MICRO-R06/run-manifest.json": "1767df6e73154ffce761f48d55791a421b1990e27a2220e490a358bb148475cd",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/RUNBOOK.md": "98e24a79951dc258681eae53450f204c22612a9c9f7348dbaab0be7d2bf6d86b",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/analysis-request.json": "dee420b79ab00a1112165c6bab2a2a7578298593de620e1bb3be1b24ef6835b9",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/compile-report.json": "fff932379d236e8147a9ec25808f3dc93bd0374e6fc3ea539080d727509ef33d",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/request.json": "3e7a43fd20b5325ad63608d5a000fcd1bad2ae9759101736291e1e3f69e54e9e",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/resolved/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7.leo-sim.yaml": "db31faeb008e781c3514c0632f5fa0ccc2dee8eb66b0a605e91a552d294cdbb4",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/resolved/EXP-20260923-T1-STEP5-PRESSURE-R06-control-s7.leo-sim.yaml": "5c0eb53a77f0345086cc9c410d356bfec965d779a03e15baf0e364e80f0a5486",
+    "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/run-manifest.json": "edea2961c784bc9f98feb8595e2ffa321be7c038be2a8c9927898e2d95d93e11"
+  },
+  "brief_path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/brief.json",
+  "brief_sha256": "2ed252154414b10cb93b790ba3adc54d851c37a658efbc97f16869c2e6405272",
+  "decision_path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/decision.json",
+  "decision_sha256": "21f10701182d9f5f61ecd4ef2a4580fadf20aff0980a2d50603ccc0aedb626e0",
+  "required_review_roles": [
+    "adversarial",
+    "cold_start",
+    "satellite_drl"
+  ],
+  "revision": 6,
+  "schema": "agent-work-finalization/v1",
+  "status": "ACCEPTED",
+  "work_id": "WP-LEO-V2-T1-STEP5-GATE-EVIDENCE"
+}

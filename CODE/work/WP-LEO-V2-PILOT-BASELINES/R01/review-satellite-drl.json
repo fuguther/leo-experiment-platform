@@ -1,0 +1,45 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-PILOT-BASELINES-R01-SAT",
+  "work_id": "WP-LEO-V2-PILOT-BASELINES",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-PILOT-BASELINES/R01/brief.json": "d47e08859772d3a9d28b946244398bc975a9f638607d3366ad8e4f780f91253f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/RUNBOOK.md": "562a4ffdd69e640c29bd506f1567f0688f8cf8702c0b471e20b4a350e2dae63e",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/analysis-request.json": "44f0db2b297b4a774004a1ecf1542299c28a5d5bbd447b4c75ea09c315a2e97e",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/compile-report.json": "b7a558c1c4349e0a9f5da28d98973c29428ff4b9e4fc93edc38565da64f520a2",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/request.json": "1f17ef6c0ebc79df15c9577772843cac192d1b25e1e068cf01d5b98036aeb46a",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/run-manifest.json": "466026df2bd394a94d09bc7a86f690661cd793cd12620193b3a956ae6f447dfe",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-ddqn_c3_a-s7-l7.leo-sim.yaml": "edc9c16e44e0a85696b317a865f5ff22562b0c6dcd19e4ee1937ef592e582b0f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-ddqn_c3_b-s7-l7.leo-sim.yaml": "edc9c16e44e0a85696b317a865f5ff22562b0c6dcd19e4ee1937ef592e582b0f",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-gat_a-s7-l7.leo-sim.yaml": "1571228412c690fc57bd96ffb20db05a34e2a53cfc16920e3a44a57e55220c78",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-gat_b-s7-l7.leo-sim.yaml": "1571228412c690fc57bd96ffb20db05a34e2a53cfc16920e3a44a57e55220c78",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-mpnn_a-s7-l7.leo-sim.yaml": "84b9aec609dd1fc2d32c45db4619a2b3244733518416c4ed761d74bbfef28214",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-mpnn_b-s7-l7.leo-sim.yaml": "84b9aec609dd1fc2d32c45db4619a2b3244733518416c4ed761d74bbfef28214",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-qlearning_a-s7-l7.leo-sim.yaml": "65b0858417753f5dd183375608a6f908361db7f295b00c64e272bd1c0c89a023",
+    "EXPERIMENTS/EXP-20260821-PILOT-BASELINES-R01/resolved/EXP-20260821-PILOT-BASELINES-R01-qlearning_b-s7-l7.leo-sim.yaml": "65b0858417753f5dd183375608a6f908361db7f295b00c64e272bd1c0c89a023"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-pilot-baselines-r01",
+  "reviewer_id": "reviewer:pilot-baselines-satellite-drl",
+  "reviewer_session_id": "R-pilot-baselines-satellite-drl-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "satellite_drl",
+  "verdict": "PASS",
+  "evidence": [
+    "独立运行 verify_compiled_matrix 成功解析该 formal matrix 的 8 个 training cells；compile-report.json 的 errors 为空且 execution_authorized=false，符合先审阅、后授权的门禁。",
+    "当前 runtime contract 对齐：qlearning/C3 进入 TabularQLearning；ddqn/C3、ddqn/GAT、ddqn/MPNN 进入 TensorflowDDQN，其中 GAT/MPNN 使用实际图编码器；所有 cell 均为 phase=training、mode=train、checkpoint_lineage=new_training、learning_enabled=true。",
+    "四个 duplicate pair 的 config_sha256、trace_identity_sha256、controlled_signature 均在 pair 内一致，并统一使用 trace/scenario seed=7 与 learning seed=7；公共配置固定为 100 Mbps M-Lab measurement-proxy、8–16 s 乘二 burst、20 s、MCS、Markovian topology、control plane/vis_k=12。",
+    "request.json 将 estimand 明确限定为每个 learning arm 的 paired duplicate consistency，并明确禁止 algorithm superiority、causal congestion-control effect、final E0 threshold、Q0 optimality 与 paper-ready statistical conclusion；因此该 pilot 不被冒充为算法效果证据。",
+    "运行时在自然结束时保存并校验训练 checkpoint，receipt verifier 对算法/contract、checkpoint SHA、保存后验证、训练计数器与 op determinism 设置了 fail-closed 检查；本审阅据此确认矩阵具备进入授权流程的结构条件。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "本审阅未覆盖 authorization.json、finalization 或 VM 部署回执；当前 compile 产物仍未授权。",
+    "本审阅未覆盖 8 个 cell 的 VM natural-end receipt、conservation/data-control delivery、learning.effective/train_steps>0、checkpoint/metadata SHA、RSS/CPU/wall-time 等运行验收证据。"
+  ],
+  "required_revision": []
+}

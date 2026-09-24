@@ -1,0 +1,237 @@
+{
+  "acceptance": {
+    "min_delivered_packets": 500,
+    "min_multisat_deliveries": 1,
+    "require_control_delivery": true,
+    "require_data_isl": true
+  },
+  "analysis": {
+    "analysis_id": "AN-E0-LOAD-FORMAL-R02",
+    "estimand": "paired baseline-copy minus baseline difference within each offered-load tier",
+    "paired_by": [
+      "pairing_key"
+    ],
+    "planned_contrasts": [
+      {
+        "estimand": "paired difference",
+        "left_arm": "low_copy",
+        "name": "low_copy_minus_low_control",
+        "right_arm": "low_control"
+      },
+      {
+        "estimand": "paired difference",
+        "left_arm": "medium_copy",
+        "name": "medium_copy_minus_medium_control",
+        "right_arm": "medium_control"
+      },
+      {
+        "estimand": "paired difference",
+        "left_arm": "high_copy",
+        "name": "high_copy_minus_high_control",
+        "right_arm": "high_control"
+      }
+    ],
+    "primary_metric": "delivery_rate"
+  },
+  "arms": [
+    {
+      "arm_id": "low_control",
+      "config_overrides": {"demand": {"offered_mbps": 50}},
+      "intervention_paths": ["demand.offered_mbps"]
+    },
+    {
+      "arm_id": "low_copy",
+      "config_overrides": {"demand": {"offered_mbps": 50}},
+      "intervention_paths": ["demand.offered_mbps"]
+    },
+    {
+      "arm_id": "medium_control",
+      "config_overrides": {"demand": {"offered_mbps": 100}},
+      "intervention_paths": ["demand.offered_mbps"]
+    },
+    {
+      "arm_id": "medium_copy",
+      "config_overrides": {"demand": {"offered_mbps": 100}},
+      "intervention_paths": ["demand.offered_mbps"]
+    },
+    {
+      "arm_id": "high_control",
+      "config_overrides": {"demand": {"offered_mbps": 200}},
+      "intervention_paths": ["demand.offered_mbps"]
+    },
+    {
+      "arm_id": "high_copy",
+      "config_overrides": {"demand": {"offered_mbps": 200}},
+      "intervention_paths": ["demand.offered_mbps"]
+    }
+  ],
+  "cells": [
+    {
+      "arm_id": "low_control",
+      "checkpoint_lineage": {
+        "mode": "not_applicable",
+        "source_run_id": null,
+        "source_sha256": null
+      },
+      "config_overrides": {},
+      "learning_seed": null,
+      "pairing_key": "load-50",
+      "phase": "non_learning",
+      "run_id": "EXP-20260822-E0-LOAD-FORMAL-R02-low_control-s7",
+      "trace_seed": 7
+    },
+    {
+      "arm_id": "low_copy",
+      "checkpoint_lineage": {
+        "mode": "not_applicable",
+        "source_run_id": null,
+        "source_sha256": null
+      },
+      "config_overrides": {},
+      "learning_seed": null,
+      "pairing_key": "load-50",
+      "phase": "non_learning",
+      "run_id": "EXP-20260822-E0-LOAD-FORMAL-R02-low_copy-s7",
+      "trace_seed": 7
+    },
+    {
+      "arm_id": "medium_control",
+      "checkpoint_lineage": {"mode": "not_applicable", "source_run_id": null, "source_sha256": null},
+      "config_overrides": {},
+      "learning_seed": null,
+      "pairing_key": "load-100",
+      "phase": "non_learning",
+      "run_id": "EXP-20260822-E0-LOAD-FORMAL-R02-medium_control-s7",
+      "trace_seed": 7
+    },
+    {
+      "arm_id": "medium_copy",
+      "checkpoint_lineage": {"mode": "not_applicable", "source_run_id": null, "source_sha256": null},
+      "config_overrides": {},
+      "learning_seed": null,
+      "pairing_key": "load-100",
+      "phase": "non_learning",
+      "run_id": "EXP-20260822-E0-LOAD-FORMAL-R02-medium_copy-s7",
+      "trace_seed": 7
+    },
+    {
+      "arm_id": "high_control",
+      "checkpoint_lineage": {"mode": "not_applicable", "source_run_id": null, "source_sha256": null},
+      "config_overrides": {},
+      "learning_seed": null,
+      "pairing_key": "load-200",
+      "phase": "non_learning",
+      "run_id": "EXP-20260822-E0-LOAD-FORMAL-R02-high_control-s7",
+      "trace_seed": 7
+    },
+    {
+      "arm_id": "high_copy",
+      "checkpoint_lineage": {"mode": "not_applicable", "source_run_id": null, "source_sha256": null},
+      "config_overrides": {},
+      "learning_seed": null,
+      "pairing_key": "load-200",
+      "phase": "non_learning",
+      "run_id": "EXP-20260822-E0-LOAD-FORMAL-R02-high_copy-s7",
+      "trace_seed": 7
+    }
+  ],
+  "claim_boundary": {
+    "can_claim": [
+      "all six authorized cells produce independently verified V2 receipts",
+      "the delivery_rate metric can be recomputed from the receipt",
+      "each tier's duplicate pair is descriptive consistency evidence under the fixed M-Lab burst profile",
+      "the base offered rate and integrated burst-average target can be recomputed from the authorized resolved configurations",
+      "the raw artifacts preserve source, endpoint-selection, burst and fate evidence for a later E0 load decision",
+      "load_selection_rule: after the validity gate (natural_end, conservation, governance and acceptance), label low when delivery_rate >= 0.80 and holding-overflow fraction <= 0.05, medium when delivery_rate >= 0.20 and < 0.80 and holding-overflow fraction <= 0.20, and high for every remaining valid tier that is neither low nor medium",
+      "load_selection_rule: holding-overflow fraction is HOLDING_QUEUE_OVERFLOW fate count divided by total offered packets (the sum of all fate counts); a zero denominator invalidates the cell; aggregate each pair conservatively with the lower delivery_rate and higher overflow fraction, and invalidate the tier if either cell fails validity or the duplicate fate counts/primary metric disagree",
+      "load_selection_rule: choose the lowest valid medium tier as the provisional E0 candidate; if none qualifies, run a bracket follow-up rather than freezing a load",
+      "load_selection_rule: confirm the provisional tier with at least two additional trace seeds before paper-facing load freeze"
+    ],
+    "cannot_claim": [
+      "algorithm superiority",
+      "a universal or final E0 load threshold",
+      "a cross-tier causal load-response claim",
+      "a causal congestion-control claim",
+      "Q0 optimality",
+      "paper-ready statistical conclusion",
+      "pooling R01 artifacts with R02 artifacts; R01 is bound to an older code SHA and is superseded"
+    ]
+  },
+  "common_config": {
+    "access": {
+      "acquisition_delay_s": 0.1,
+      "association": "bbm",
+      "downlink_queue_bits": 64000000,
+      "downlink_rate_mbps": 100,
+      "hysteresis_deg": 0,
+      "min_dwell_s": 0,
+      "slots_per_satellite": 4,
+      "uplink_queue_bits": 64000000,
+      "uplink_rate_mbps": 100
+    },
+    "control_plane": {
+      "advertise_interval_s": 1.0,
+      "enabled": true,
+      "packet_bits": 8000,
+      "ttl_s": 10,
+      "vis_k": 12
+    },
+    "demand": {
+      "burst_duration_s": 8,
+      "burst_multiplier": 2,
+      "burst_start_s": 8,
+      "deadline_s": null,
+      "mode": "mlab",
+      "offered_mbps": 100,
+      "packet_bits": 1000000
+    },
+    "endpoints": {
+      "aggregation_deg": 1.0,
+      "grid_deg": 0.25,
+      "mlab_auto": true,
+      "mlab_max_sites": 64,
+      "sites": []
+    },
+    "execution": {
+      "available_capacity_interval_s": 1.0,
+      "max_entities": 2000,
+      "max_events": 20000000,
+      "max_packets": 20000,
+      "monitor": false
+    },
+    "learning": {
+      "algorithm": "none"
+    },
+    "links": {
+      "ge_enabled": false,
+      "rate_model": "mcs"
+    },
+    "outputs": {
+      "plotting": false
+    },
+    "routing": {
+      "contract": "C3",
+      "learning_enabled": false,
+      "max_hops": 64,
+      "policy": "hop"
+    },
+    "scenario": {
+      "altitude_km": 600,
+      "duration_s": 20,
+      "inclination_deg": 98.6,
+      "min_elevation_deg": 30,
+      "name": "e0-load-formal-mlab-multiod-burst-r02",
+      "num_planes": 7,
+      "num_satellites": 140,
+      "time_step_s": 0.1
+    },
+    "topology": {
+      "matching": "markovian",
+      "recompute_interval_s": 1.0
+    }
+  },
+  "experiment_id": "EXP-20260822-E0-LOAD-FORMAL-R02",
+  "runtime_kind": "leo_sim_v2",
+  "schema": "leo-sim-experiment-matrix-request/v1",
+  "work_finalization": "CODE/work/WP-LEO-V2-E0-LOAD-FORMAL/R02/finalization.json"
+}

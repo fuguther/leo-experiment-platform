@@ -1,0 +1,44 @@
+{
+  "schema": "agent-review-receipt/v2",
+  "receipt_id": "RR-CONGESTION-PRESSURE-EVAL-R01-COLD",
+  "work_id": "WP-LEO-V2-CONGESTION-PRESSURE-EVAL",
+  "revision": 1,
+  "artifact_hashes": {
+    "CODE/work/WP-LEO-V2-CONGESTION-PRESSURE-EVAL/R01/brief.json": "42bdf71560cfda83189121b79b9ffbb724c403b8488c00653a1165c0e9188e3e",
+    "EXPERIMENTS/request-sources/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01.json": "7a2e7db6987d7c8b68d313b32344fbe350291b823af37a2af15b73290db950a0",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/RUNBOOK.md": "a1b5773bc44379101d29ed054c6813c08916be3244bc56c61097923dc1707978",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/analysis-request.json": "d6084d12075e9322fdc90768f82b600783f56803a6e203b1a7390c8ecb405fa1",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/compile-report.json": "26cba117d572ee0f2a58d1686dc8d7d7e153dd46be5d291f24ef2f2730a0c089",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/request.json": "7ec125073bb209263b14b734f11dbd190744ce4d6556a3942f18cd579ee7c894",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/run-manifest.json": "ffe5c081961222caa18638fc3a38e8db7eb68bba4dd770a65ec920660910aa7e",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01-ddqn_c3_pressure-s7-l7.leo-sim.yaml": "fbaa2b7469ccdd1fd0596bc11f7194264e7710f1a3ab0cfe7dddb1cb92d779d3",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01-gat_pressure-s7-l7.leo-sim.yaml": "5a99e2dfa5eeff97535039612ce434dd8b8dc822a64332e11807ad785171ddb2",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01-mpnn_pressure-s7-l7.leo-sim.yaml": "c56e1d44d72b23b7af3bef5b776d76de1b7251e0462a49c1d2e9d1284ad78641",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01-qlearning_pressure_ddqn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01-qlearning_pressure_gat-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35",
+    "EXPERIMENTS/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01/resolved/EXP-20260821-CONGESTION-PRESSURE-EVAL-R01-qlearning_pressure_mpnn-s7-l7.leo-sim.yaml": "c50b08ab86fa7837e5ea30959d290642589fa666c589573e68f189fd04f82b35"
+  },
+  "producer_id": "producer:codex",
+  "producer_session_id": "P-leo-v2-congestion-pressure-eval-r01",
+  "reviewer_id": "reviewer:congestion-pressure-cold-start",
+  "reviewer_session_id": "R-congestion-pressure-cold-start-r01",
+  "independence": {
+    "producer_and_reviewer_are_distinct": true,
+    "review_started_from_declared_inputs": true
+  },
+  "role": "cold_start",
+  "verdict": "PASS",
+  "evidence": [
+    "brief 的 work_id、revision=1、producer_id=producer:codex、producer_session_id=P-leo-v2-congestion-pressure-eval-r01 与本 receipt 一致；当前 review 按新的 exact HEAD 517049570a40f7360064981f1d5475741bc2dfc2 绑定。修订后的 brief 明确六个 cells、三组 exact pairs（pressure-ddqn、pressure-gat、pressure-mpnn），与 source/request/manifest/analysis 一致。",
+    "request-source.json 与 compiled request.json 语义内容一致；独立运行 verify_compiled_matrix 通过，得到 6 个 canonical evaluation cells、11 个矩阵 artifact，compile-report errors 为空；authorize_experiment._verified_experiment 的矩阵分支也通过 6 rows/11 hashes。",
+    "6 个 resolved YAML 均可独立解析，phase=evaluation、learning.mode=eval、resume_path=null、trace_seed=7、learning_seed=7；三组 pairing 恰各 2 个：pressure-ddqn（qlearning_pressure_ddqn/ddqn_c3_pressure）、pressure-gat（qlearning_pressure_gat/gat_pressure）、pressure-mpnn（qlearning_pressure_mpnn/mpnn_pressure）。",
+    "逐 cell 实际核验 checkpoint regular file、checkpoint SHA、sibling metadata SHA，以及 evaluation_only lineage 的 source_run_id=external-<checkpoint SHA> 与 source_sha256；全部匹配。固定 trace_identity_sha256=78a04d488323519e91ac9e1941a9680c48a9cd4eb3fc5ea8860dcfce23e9a1c3、input_sha256=f15cf8b9845c195046a4566d31ab9eb0137e16270ea98ee6a06b871a6f578437、controlled_signature=9121469be41664746e641351d262799bed031cb9da359c93aaac91e09535b750。",
+    "相对对应的 100 Mbps medium evaluation configs，逐 cell 的物理配置差异只有 demand.offered_mbps 从 100 到 200；scenario.name 仅是标签变化。压力配置为 demand.mode=mlab、offered_mbps=200、8 s 起始的 8 s burst、burst_multiplier=2、20 s horizon。",
+    "request/source 与 analysis claim boundary 将结果限定为固定 200 Mbps pressure trace 上的描述性拥塞/利用率/ledger 重算和 eval 执行证据，明确排除 algorithm superiority、causal congestion-control effect、final E0 threshold、Q0 optimality、paper-ready statistical conclusion。定向 matrix、analysis、learning、learning-semantics、Q-learning migration、config 测试为 96 passed, 1 skipped。"
+  ],
+  "blocking_findings": [],
+  "unknowns": [
+    "VM execution、formal authorization/finalization、clean deployment、natural-end receipts、conservation/physical ledger fields、实际 loaded checkpoint receipt、zero training steps 和后续 V2 analysis 尚未运行或核验。"
+  ],
+  "required_revision": []
+}
