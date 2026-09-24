@@ -33,9 +33,20 @@ def _request():
         "arms": [
             {"arm_id": "control", "config_overrides": {},
              "intervention_paths": []},
+            # The treatment must intervene on something the ANALYZER treats
+            # as pair-preserving.  This fixture used to override
+            # demand.offered_mbps, which is trace-affecting: measured
+            # 2026-09-24, routing.policy=hop|oracle|delay all hash to
+            # 3c8d3443... while demand.offered_mbps=2.0 hashes to 7d5b339d...,
+            # so v2_analysis rejects that pair with "paired identity mismatch:
+            # trace_identity_sha256" (or "actual trace_sha256 mismatch") no
+            # matter how the runs are performed.  The compiler now enforces the
+            # same rule (matrix._validate_pairing_contract), which is why this
+            # had to become a trace-neutral intervention rather than the check
+            # being relaxed.
             {"arm_id": "treatment", "config_overrides": {
-                "demand": {"offered_mbps": 2.0},
-            }, "intervention_paths": ["demand.offered_mbps"]},
+                "routing": {"policy": "hop"},
+            }, "intervention_paths": ["routing.policy"]},
         ],
         "cells": [
             {"run_id": "EXP-LEO-V2-MATRIX-control-s42", "arm_id": "control",
@@ -531,7 +542,13 @@ def test_matrix_rejects_duplicate_contrasts_for_same_arm_pair(tmp_path):
     (lambda r: r["analysis"].update(paired_by=["seed"]), "unsupported paired_by"),
     (lambda r: r["analysis"]["planned_contrasts"][0].update(right_arm="missing"),
      "unknown arm"),
-    (lambda r: r["arms"][1].update(intervention_paths=["demand"]),
+    # Declaring a PARENT of the real override leaf must fail as "not an exact
+    # leaf".  This used to name "demand" because the fixture treatment
+    # overrode demand.offered_mbps; the treatment now overrides
+    # routing.policy (a trace-neutral intervention), so the parent is
+    # "routing".  Naming a path with no override underneath it fails earlier,
+    # as an undeclared intervention, which is a different check.
+    (lambda r: r["arms"][1].update(intervention_paths=["routing"]),
      "exact override leaf paths"),
     (lambda r: r["arms"][1]["intervention_paths"].append(
         "scenario.duration_s"), "exact override leaf paths"),
