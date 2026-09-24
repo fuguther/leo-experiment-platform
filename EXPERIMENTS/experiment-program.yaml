@@ -1,0 +1,598 @@
+schema: leo-experiment-program/v1
+updated_at: "2026-09-23"
+reviewed_at: "2026-09-23"
+# Three layers, deliberately separated after the 2026-09-23 owner review:
+#   current    = what was verified NOW, by whom, with which command;
+#   historical = recorded past states; a record of a past deployment is NOT
+#                evidence of what the VM runs right now;
+#   evidence   = artefact-level facts that constrain what claims are allowed.
+# Never read a "historical" entry as a "current" one, and never let a recorded
+# deployment receipt stand in for a live re-verification.
+external_state_recheck:
+  as_of: "2026-09-23T22:22+08:00"
+  current:
+    origin_main: c0cc4ea1bda5186f377220c406494b50987aa726
+    origin_main_verified_by: local_git_rev_parse_origin_main_after_git_fetch
+    origin_main_verified_at: "2026-09-23T22:16+08:00"
+    vm_live_state: verified
+    vm_live_verified_at: "2026-09-23T22:19+08:00"
+    vm_live_evidence:
+      method: >-
+        ssh to the canonical VM, read .remote_runtime/deployment.json, then
+        re-hash every recorded file ON the VM, and separately re-hash the same
+        relative paths in the local worktree.
+      vm_deployment_commit: c0cc4ea1bda5186f377220c406494b50987aa726
+      equals_origin_main: true
+      deployed_at: "2026-09-23T22:15:45+08:00"
+      files_recorded: 722
+      vm_files_missing: 0
+      vm_files_changed: 0
+      source_tree_sha256: f56b1179c877c470f25923581b3752f55d16d4c782258a68b09455fe464e57f6
+      receipt_sha256: ab92b2791cefa05042d6fe1c53d257e0178004ba392443ddf6d9d9c4a64a8044
+      local_vs_receipt: >-
+        721 of 722 recorded paths match the local worktree byte-for-byte with
+        0 changed; the single non-compared path is .deployment_commit, which
+        the deploy tool writes only on the VM and deliberately excludes from
+        the tree hash (deployment_guard.build_archive).
+    vm_live_state_note: >-
+      Sequence, kept because each step was recorded honestly rather than
+      smoothed over: at 2026-09-23T21:25+08:00 a re-check was refused twice
+      ("Connection closed by 192.168.200.23 port 12130") and recorded as
+      unverified, NOT assumed; at 21:38 the then-current 9f8f626 was verified
+      live (720/720); at 22:15:45 the new main c0cc4ea was deployed and the live
+      install was re-verified FROM SCRATCH at 22:19 (722/722), not carried over
+      from the previous check. A later claim must re-check again.
+  historical:
+    - at: "2026-09-23T20:59:32+08:00"
+      vm_deployed_commit: 9f8f6266e0d129c8556ef63732793a11249d04aa
+      vm_deployed_verification: >-
+        producer-recorded deployment: source_tree_sha256 equal local vs remote
+        (fdfa010c04fa6df7b23474d522595b517bd66054b71373fcfc367535d4de31d6),
+        720/720 files SHA256-matched, 0 missing/changed/extra
+      receipt_sha256: e705b9f471708d914fc7b55ef32aed09c57e5b68a4881c14a647f1681a679b6f
+      caveat: Not re-verified live on 2026-09-23T21:25 (see current.vm_live_state_note)
+    - at: "2026-09-23T18:03:03+08:00"
+      vm_deployed_commit: c5a0ca781fad1baa7a62dd1c7c1b9586eabc2aaa
+      vm_deployed_verification: local_manifest_source_tree_sha256_equals_remote_install_711_of_711_files_match
+    - at: "2026-08-30"
+      vm_deployed_commit: b3a66d2
+      note: pre-task baseline recorded before this work started
+  evidence:
+    r02_raw_results_present: false
+    r02_raw_results_note: >-
+      VM CODE/Results is absent and no copy exists locally; only derived
+      analysis under ANALYSIS/EXP-20260829-.../{scene-check,v2-paired} and
+      .remote_runtime/launches witnesses survive. R02 VERIFIED covers derived
+      artifacts only; raw-event recomputation is PERMANENTLY UNAVAILABLE.
+      The owner confirmed on 2026-09-23 that no offline backup exists, so this
+      is not a recoverable gap: no claim may rely on recomputing R02 raw
+      events. Recurrence prevention is tracked as R8-A9 in FINDINGS-REGISTRY.
+    ci_test_workflow_document_governance: passing
+    vm_shape: docker_container_24_core_64gib_cgroup_a100_40gb_no_nvcc_no_cron
+authority:
+  human_plan: ANALYSIS/EXPERIMENT-PROGRAM.md
+  readiness: ANALYSIS/CURRENT-EXPERIMENT-READINESS.md
+  findings: ANALYSIS/FINDINGS-REGISTRY.md
+  note: >-
+    This file is a planning index. It is not a run request, authorization,
+    deployment receipt, experiment receipt, or research-eligibility verdict.
+
+status_values:
+  - blocked
+  - planned
+  - pilot_required
+  - preregistered
+  - rerun_required
+  - ready_for_authorization
+  - running
+  - completed_verified
+  - historical_only
+
+requirements:
+  D1_merged_to_main: {status: completed_verified, evidence: "main_8e2f1df_ci_d1_tests_vm_mcs_multiod_t0_legacy_mcs_comparison_pending"}
+  D2_merged_to_main: {status: completed_verified, evidence: "main_8e2f1df_ci_d2_holding_tests_vm_multiod_t0_long_window_receipt_metrics_verified"}
+  reward_and_mask_blockers_closed: {status: completed_verified, evidence: main_ce2566b_reward_penalty_and_main_758b606_mask_regressions}
+  v2_formal_evidence_chain_verified: {status: completed_verified, evidence: "R02_20260824_v2_analysis_VERIFIED_manifest_bc69740ec1cb5f201a79cf4749908c64e7ff4f49196b0dde7ee412bb95a6eb23_plus_global_20260829_posterior_manifest_c67c9c6c99f9d2f8b18eeb0da3dcabf58bcb2aff835fe075a2f03cd6fd60e9f7_scene_ACCESS_LIMITED_x2_strict_error_recorded"}
+  real_traffic_provenance_verified: {status: completed_verified, evidence: PR84_main_743d05c_mlab_source_sha_schema_and_manifest}
+  multi_od_and_burst_verified: {status: completed_verified, evidence: main_0f7249f_pr93_vm_56cell_mlab_t0_receipt_and_metrics_recompute}
+  mlab_multi_od_t0_verified: {status: completed_verified, evidence: main_0f7249f_trace_f6981c327f4c36e659d3f7b5ef66128f94a199d0203591401c88ed0e8ab22de4_vm_receipt}
+  topology_cadence_calibration_verified: {status: completed_verified, evidence: main_0f7249f_vm_cadence_0p5_1_2_5_receipts_raw_metrics_recompute}
+  global_scene_repeat_analysis_verified: {status: completed_verified, evidence: "origin_main_79796b6_EXP-20260829-GLOBAL-PRESSURE-BRACKET-R02_manifest_4ed749aeb9362aa37c80330779b92b654cad31d5a15d87a7f3317b3d60200455_VERIFIED_24_runs_12_unique_configs_plus_12_exact_reexecutions_scene_ACCESS_LIMITED_x24_claim_READY_FOR_INDEPENDENT_CLAIM_REVIEW"}
+  e0_load_calibration_verified: {status: rerun_required, reason: access_boundary_queue_semantics_require_new_coverage_horizon_vm_smoke_and_e0_training, historical_evidence: main_0f7249f_vm_mlab_multiod_burst_50_100_200_receipts_metrics_recompute}
+  # Closed 2026-09-24 by owner decision on the authorized step-5 verification
+  # batch (PR #217, main 046eea35; persisted evidence in PR #218).  Each gate
+  # is closed on its own evidence chain.  Provenance is recorded honestly: the
+  # recomputation output was produced by the producer; the harness and the
+  # reviewed artifacts (not the output) passed three independent cold-start
+  # reviews by different model families.
+  link_utilization_recomputation_verified:
+    status: completed_verified
+    evidence: >-
+      Independent second implementation (CODE/leo_sim/metrics_independent.py, does not import
+      metrics) recomputed every directed link from immutable events on four formal runs
+      (EXP-20260923-T1-STEP5-{MICRO,PRESSURE}-R06-{control,cd05}-s7): micro 20 links / corridor 52
+      links, per-link mismatch_total = 0, mismatch list EMPTY; zero-service links covered and
+      listed individually (16/16 and 44/44); zero-available-capacity links 0; degenerate
+      denominator ABSENT (availability_sampled=true, degenerate_denominator_links=[]);
+      negative controls rejected in all four arms (capacity != rate*(end-start); overlapping
+      available windows on one link), proving the checker is not vacuous.
+      Per-run artifacts: CODE/Results/<run>/step5-recompute.json sha256
+      556a777e6ed65915208a431cfa58c38ef61f372740e0eaf4fe5ec81b0f8c9e75,
+      0c6d6c31585d2e5ced4fd4088ddfbc321596f409cb849bdfa45a70a4a469385d,
+      5a04c3a96ab95ef164c1b37bdcd637fdbaa8d495dfc6051812be4027ca0819bf,
+      438e8c7eaa2e42f1fb0f23f526e55366fd59792024448c4bd9f456d0cef68ac0.
+    limits:
+      - "OPEN BLIND SPOT: metrics_independent.py:297-363 does not check end-start == served/rate.
+         This gate therefore rests on the three hard backstops, NOT on the checker alone."
+      - "PRODUCER-COMPUTED: the recomputation output was produced by the producer and was NOT
+         independently re-derived by a third party. Do not read this as independent review."
+  packet_delay_decomposition_verified:
+    status: completed_verified
+    evidence: >-
+      Same four formal runs. Max closure residual 4.44e-16 (tolerance 1e-9). Every individual gap
+      equals compute_delay_s: micro-cd05 histogram {0.05: 18}, corridor-cd05 {0.05: 3321} - all
+      3339 gaps, none deviating, so no merged 2*cd blanks exist; gap_length_violation_total = 0
+      and the unexplained-extra-blank list is EMPTY in all four arms. sum_gaps == n*cd holds for
+      every delivered packet. Decision-count substitute witness: admissible=true with four
+      identity digests bit-identical (formal runs refuse --decision-log); micro 18 vs 18 delivered
+      gaps, corridor 3329 vs 3321 with the 4 remaining decision rows belonging to undelivered
+      packets, reported separately by fate. Fate-appropriate truncated accounting applied to 3527
+      ACCESS_QUEUE_OVERFLOW and 162 IN_SYSTEM_AT_STOP without the delivered-packet formula.
+      Per-packet production comparison mismatch_total = 0. Section 6b hard backstops all satisfied
+      in all four arms (--cd cross-checked 4/4 including F2=0.0; delivered_gap_reconciliation_all_agree
+      4/4 true; delivered_packets_checked == delivered_packets 6=6, 6=6, 1107=1107, 1107=1107);
+      failure path empty (no exit 3 / exit 4).
+    limits:
+      - "PRODUCER-COMPUTED: same as the utilization gate - harness reviewed, output not independently re-derived."
+      - "The 0.05-only histogram is the positive evidence against absorbed gaps; no artificial
+         injection of an unexplainable blank was performed (that would need a new authorization)."
+    deployment: >-
+      main 046eea3549f7089118d85efc3300b6d20e6a3c21 == VM .deployment_commit; source_tree_sha256
+      5a0ce1681daa826802a9cbe48fb11fd774cf03a8cd5cac92c5883784bdf6de5d identical local/remote; VM
+      per-file 880 OK / 0 MISSING / 0 CHANGED; local mismatch 0; receipt
+      356bdf34a1f38372593f7f84da5875888765f62958ef105b2fd8985e394455b7.  This deployment contains
+      F2 code with F2 DISABLED (all four resolved configs measured execution.node_process_delay_s = 0.0).
+  q0_minimum_loop_verified: {status: blocked}
+  q0_replay_review_approved: {status: blocked}
+  three_final_audit_rounds_no_new_major: {status: blocked}
+  exact_main_deployed_to_vm: {status: completed_verified, evidence: main_7f29ea3_deployment_6b916fbfab1debb0a65113d3c78be47f619463683ac0d4017791b4e72a8d0289_source_b0fb2db50d30338a68351eb0ea754332d43144624bf39bdfab655e7ca282644f}
+  learning_vm_smoke_verified: {status: completed_verified, evidence: main_bfae761_vm_qlearning_ddqn_gat_mpnn_train_eval_ddqn20_capacity_anchor_receipts_metrics_recompute}
+  mcs_vm_comparison_verified: {status: blocked, reason: basic_smoke_only_no_legacy_mcs_comparison}
+  d2_long_window_vm_verified: {status: completed_verified, evidence: main_0f7249f_vm_60s_100mbps_multiod_long_window_receipt_metrics_recompute}
+  per_action_physical_features_verified: {status: blocked}
+  field_age_provenance_verified: {status: blocked}
+  resume_bundle_restore_verified: {status: completed_verified, evidence: main_bfae761_vm_ddqn_qlearning_resume_restore_and_post_resume_step_equivalence}
+  replay_resume_verified: {status: blocked, reason: full_long_window_interrupted_vs_uninterrupted_equivalence_pending}
+  interaction_triggered: {status: planned, conditional: true}
+  congestion_mechanism_identified: {status: blocked}
+  access_boundary_e0_gate:
+    status: rerun_required
+    completed: [main_63a1099_deployed, vm_queue_smoke_natural_end, conservation, receipt_v4_verified, ingress_stage_metrics]
+    pending: [coverage_horizon_positive_rate_joint_calibration, new_e0_training]
+    evidence: {run_id: SMOKE-20260822-ACCESS-QUEUE-63a1099, deployment_receipt_sha: 8f31142bbf6a80b764fe66cd27e36b6e805ccad8de48b585a8436dae66b3f7a9, offered: 1299, admitted: 762, delivered: 656, max_rss_kib: 869920, paper_ready: false}
+
+gates:
+  platform_frozen:
+    status: blocked
+    requires:
+      - D1_merged_to_main
+      - D2_merged_to_main
+      - reward_and_mask_blockers_closed
+      - v2_formal_evidence_chain_verified
+      - three_final_audit_rounds_no_new_major
+      - exact_main_deployed_to_vm
+  formal_analysis_available:
+    status: completed_verified
+    evidence: origin_main_8a30409_EXP-20260829-GLOBAL-PRESSURE-BRACKET-R02_v2_paired_manifest_VERIFIED_and_claim_gate_READY_FOR_INDEPENDENT_CLAIM_REVIEW
+    caveat: derived_artifacts_only_raw_events_no_longer_present_see_R8-A1
+  t1_platform_ready:
+    status: completed_verified
+    requires:
+      - T1-TIME-LEDGER-PASS
+      - T1-DOWNSTREAM-RESOURCE-PASS
+      - T1-COUNTERFACTUAL-REPLAY-PASS
+      - T1-COMPUTE-DELAY-PASS
+      - T1-PRESSURE-WINDOW-PASS
+    scope: >-
+      PLATFORM CAPABILITY ONLY. This gate says the measurement and
+      counterfactual instrumentation exists and was producer-verified. It does
+      NOT say the T1 scientific question is answered, that predictive routing
+      has value, that an ISL-saturating scenario exists, or that any causal
+      experiment is authorized.
+    scope_note: >-
+      Wording tightened on 2026-09-23 after owner review, to be read as
+      "measurement and counterfactual capability finished and PRODUCER-verified;
+      the formal causal experiment is NOT yet authorized". Claims that go
+      further -- predictive value, stale-neighbour-state effect, ISL saturation
+      -- require the Phase 1 micro-mechanism evidence described in
+      ANALYSIS/T1-MEASUREMENT-PROTOCOL.md first.
+    note: >-
+      Review 2026-09-23: keep leo-direct-sim, no simulator rewrite. Data plane,
+      control plane/AoI, information-leak control and the formal evidence chain
+      are adequate; what is missing is measurement and counterfactual ability
+      for the T1 stale-neighbour-state / candidate-arrival-alignment question.
+      All five capabilities landed on main in PRs #201-#208. Deployment history
+      lives in external_state_recheck.historical: the newest recorded
+      deployment is 9f8f626 at 2026-09-23T20:59:32+08:00, and the live VM was
+      NOT re-verified afterwards, so this entry must not be cited as the
+      current online state.
+    known_partial_criteria:
+      - gate: T1-COMPUTE-DELAY-PASS
+        finding: R8-A10
+        detail: >-
+          RESOLVED 2026-09-23 (PR #210): refresh is still the default and
+          still cannot represent compute-induced staleness, but the second
+          mode now exists -- execution.decision_observation_mode=frozen infers
+          on the observation captured at decision start and only checks
+          legality at commit, recording commit_rejected when the inferred
+          action is refused. Producer-verified only; has NOT run on a formal
+          VM artifact; v1 restricts it (no learning arm, no forced_actions).
+      - gate: T1-PRESSURE-WINDOW-PASS
+        finding: R8-A9
+        detail: >-
+          Access is not unthrottled above ~20 Mbps offered; utilisation
+          plateaus near 0.56 instead of approaching 1.0. It is a medium-high
+          pressure window and must NOT be used to claim ISL saturation.
+    verification_provenance: >-
+      SELF-VERIFIED. On 2026-09-23 the owner instructed that the independent
+      cold-start review mechanism no longer be used, so no verdict from an
+      independent party is bound to these declarations. Each gate below rests
+      on: CI green, a real full-suite count run locally by the producer,
+      an old-vs-new numerical comparison showing zero result perturbation, and
+      the gate-specific tests named in its evidence. AGENTS.md rule 20 is
+      therefore UNSATISFIED for these changes and is recorded as such rather
+      than silently waived. Treat these statuses as evidence-backed claims by
+      the producer, not as independently reviewed conclusions.
+  T1-TIME-LEDGER-PASS:
+    status: completed_verified
+    capability: unique per-decision id, lifecycle milestones, eleven-field fold
+    evidence: >-
+      kernel.py decision_id + independent timeline sink + decision_ledger.py;
+      PR #202 plus R8-A6/R8-A7/R8-A8 fixes. 280-satellite diagnostic profile:
+      534 decisions all uniquely identified, 4876 milestones, 0 unaccounted
+      ids, t_control_rx 534/534 (was 0/534 before R8-A6). Full suite 864 passed
+      vs 855 at the baseline. Old-vs-new digest byte-identical.
+  T1-DOWNSTREAM-RESOURCE-PASS:
+    status: completed_verified
+    capability: candidate-level downstream contention truth, predicted vs realized
+    evidence: >-
+      kernel.py _peer_downstream_truth + _egress_snapshot, decision_ledger.py
+      score_downstream_predictions; PR #204. Contention sweep: egress_bits_delta
+      max 0 (1000 Mbps) -> 8000 (8 Mbps) -> 64000 (1 Mbps) while the direction
+      match rate stays 1.0, i.e. the direction is right and the RESOURCE belief
+      is stale -- exactly the misalignment T1 measures. Full suite 879 passed.
+      Old-vs-new digest byte-identical.
+  T1-COUNTERFACTUAL-REPLAY-PASS:
+    status: completed_verified
+    capability: strictly paired forced-action replay
+    evidence: >-
+      CODE/leo_sim/counterfactual.py + kernel forced_actions hook; PR #206.
+      Branch fingerprints proven equal before the branch point, one action
+      forced once; forcing the 4-hop direction moves the target packet path
+      from [0,1,2] to [0,5,4,3,2] with delivery 2.67s -> 4.68s. Four refusal
+      paths tested (same action, unknown decision, illegal direction, learning
+      run). Full suite 881 passed. Old-vs-new digest byte-identical.
+  T1-COMPUTE-DELAY-PASS:
+    status: completed_verified
+    capability: decision computation consumes simulated time, with revalidation
+    evidence: >-
+      execution.compute_delay_s + Kernel.decide_deferred; PR #205. _decide body
+      unchanged: it re-reads env.now and rebuilds candidates, so committing
+      after the timeout IS the revalidation. delay 0 keeps the synchronous path
+      (digest byte-identical to pre-change); delay 0.05/0.5 separates
+      t_decision_start from t_commit by exactly the delay and changes the
+      event count (2444 -> 2510/2461). Full suite 880 passed.
+    known_consequence: >-
+      Adding this config key changes config_sha256 for EVERY configuration, so
+      config hashes recorded in existing EXPERIMENTS/EXP-*/run-manifest.json
+      and their authorization.json can no longer be reused against this code.
+      Historical authorizations must not be replayed.
+  T1-PRESSURE-WINDOW-PASS:
+    status: completed_verified
+    capability: analytic single-OD corridor pressure window, quantified
+    limitation: >-
+      PARTIAL on one of the gate's five criteria. The window EXISTS, is a fixed
+      OD hotspot, uses constant PHY, and its directed ISL utilisation is
+      quantified (0.02-0.57, up to 55-110x the R02 bracket's ~0.005-0.01) with
+      a linear calibration util_max ~= 0.0235 x offered_mbps below 20 Mbps.
+      BUT "access is not the bottleneck" holds only below roughly 20 Mbps
+      offered: above it the endpoint and holding queues overflow, delivered
+      throughput falls (9.66 -> 9.26 -> 5.86 Mbps) and utilisation plateaus
+      near 0.56 instead of approaching 1.0. This profile is therefore a
+      MEDIUM-HIGH pressure window and must NOT be used to claim ISL
+      saturation. Single seed (7); no statistical claim.
+    evidence: >-
+      CODE/leo_sim/profiles/t1_pressure_corridor.yaml +
+      ANALYSIS/T1-PRESSURE-WINDOW.md; PR #207. The profile also documents a
+      trap found while building it: without
+      execution.available_capacity_interval_s the per-link utilisation
+      denominator is the sum of the service windows themselves, so it reads
+      ~1.0 for any constant-rate service and measures nothing.
+  real_diagnostic_ready:
+    status: blocked
+    requires:
+      - platform_frozen
+      - real_traffic_provenance_verified
+      - multi_od_and_burst_verified
+      - link_utilization_recomputation_verified
+      - packet_delay_decomposition_verified
+  current_load_levels_frozen:
+    status: blocked
+    reason: E0_REAL_must_run_after_real_diagnostic_ready
+  theory_ready:
+    status: blocked
+    requires:
+      - q0_minimum_loop_verified
+      - q0_replay_review_approved
+      - per_action_physical_features_verified
+      - field_age_provenance_verified
+
+experiments:
+  - id: VAL-D1
+    class: platform_validation
+    title: dynamic_link_rate_equivalence
+    status: blocked
+    prerequisites: [D1_merged_to_main]
+    purpose: Verify legacy MCS characterization and V2 service/observation/receipt integration.
+    required_evidence: [pytest, characterization_ledger, independent_review, vm_receipt]
+
+  - id: VAL-D2
+    class: platform_validation
+    title: dynamic_topology_and_holding_semantics
+    status: blocked
+    prerequisites: [D2_merged_to_main]
+    purpose: Verify rematching, retiring links, in-flight ownership, FIFO and finite holding behavior.
+    required_evidence: [pytest, long_window_trace, independent_review, vm_receipt]
+
+  - id: TRAFFIC-VALIDATE
+    class: platform_validation
+    title: real_traffic_multi_od_and_burst_provenance
+    status: blocked
+    prerequisites: [platform_frozen]
+    arms: [csv_real_or_trace, mlab_measurement_proxy, population_gravity_proxy, uniform_control]
+    purpose: Freeze source identity, units, time/OD mapping, burst transformation and offered-load recomputation.
+    required_evidence: [source_hash, provenance_contract, od_mapping, offered_bits_recomputation]
+
+  - id: TRAFFIC-T0
+    class: engineering_pilot
+    title: bounded_mlab_multi_od_burst_trace_closure
+    status: completed_verified
+    prerequisites: [real_traffic_provenance_verified, exact_main_deployed_to_vm]
+    arms: [mlab_auto_max_64]
+    traffic_mode: mlab_measurement_proxy_multi_od_with_burst
+    purpose: Prove that the full measured snapshot can be mapped to a bounded, closed V2 OD set and run on VM without pretending every measured cell is a gateway.
+    evidence: {main_sha: 8e2f1dfe8ee39dacfb56d52d572d37046bb6b8a4, trace_sha: f6981c327f4c36e659d3f7b5ef66128f94a199d0203591401c88ed0e8ab22de4, offered_packets: 1299, delivered: 613, access_rejected: 579, in_system: 107, natural_end: true, conservation_ok: true, metrics_recomputed: true}
+    required_evidence: [source_hash, selection_manifest, natural_end, conservation, receipt_verified, raw_metrics_recompute]
+
+  - id: TOPOLOGY-CADENCE-CALIBRATION
+    class: engineering_calibration
+    title: topology_recompute_interval_sweep_on_same_trace
+    status: completed_verified
+    prerequisites: [TRAFFIC-T0]
+    arms: [interval_0p5s, interval_1s, interval_2s, interval_5s]
+    fixed: [trace_sha_f6981c327f4c36e659d3f7b5ef66128f94a199d0203591401c88ed0e8ab22de4, mlab_multiod_burst_t0, seed_7]
+    purpose: Measure whether topology update cadence changes current delivery, delay or utilization and record VM cost; this is engineering calibration, not a paper effect claim.
+    evidence: {main_sha: 8e2f1dfe8ee39dacfb56d52d572d37046bb6b8a4, wall_s: {0.5: 171, 1.0: 120, 2.0: 107, 5.0: 94}, topo_recomputes: {0.5: 39, 1.0: 19, 2.0: 9, 5.0: 3}, all_receipts_verified: true, all_metrics_recomputed: true}
+    decision: {primary: 1.0, sensitivity: [2.0], negative_control: [5.0]}
+    required_evidence: [same_trace_sha, natural_end, conservation, receipt_verified, cadence_cost, raw_metrics_recompute]
+
+  - id: METRIC-VALIDATE
+    class: platform_validation
+    title: congestion_utilization_and_delay_recomputation
+    status: blocked
+    prerequisites: [platform_frozen]
+    purpose: Recompute directional per-link utilization and per-packet queue/tx/prop delay from immutable events.
+    required_evidence:
+      - available_capacity_denominator
+      - served_bits_numerator
+      - queue_and_holding_integral
+      - packet_stage_sum_check
+      - artifact_hash_chain
+
+  - id: Q0-I-TINY
+    class: upper_bound_diagnostic
+    title: current_global_causal_optimum
+    status: blocked
+    prerequisites: [DIAG-CONGESTION, q0_replay_review_approved]
+    arms: [event_dp, independent_enumeration]
+    purpose: Separate current-information decision gap from practical learner error.
+    required_evidence: [objective_equality, action_trace_equality, replay_receipt]
+
+  - id: Q0-F-TINY
+    class: upper_bound_diagnostic
+    title: clairvoyant_future_optimum
+    status: blocked
+    prerequisites: [platform_frozen, Q0-I-TINY]
+    arms: [event_milp_or_cp_sat, independent_enumeration]
+    purpose: Measure the value of future information under identical data-plane physics.
+    required_evidence: [objective_equality, VF_ge_VI, replay_receipt]
+
+  - id: E0-REAL
+    class: calibration
+    title: real_traffic_load_level_calibration
+    status: rerun_required
+    prerequisites: [real_diagnostic_ready, formal_analysis_available]
+    arms: [deterministic_shortest_path]
+    traffic_mode: real_or_measurement_proxy_multi_od_with_uniform_control
+    purpose: Freeze informative low, medium and high loads on the final platform using primary real traffic and a synthetic control.
+    required_evidence: [natural_end, conservation, provenance, load_table, frozen_thresholds]
+
+  - id: ACCESS-BOUNDARY
+    class: engineering_gate
+    title: access_boundary_coverage_and_ingress_recalibration
+    status: in_progress
+    prerequisites: [real_traffic_provenance_verified]
+    purpose: Distinguish access coverage loss from post-ingress congestion before E0 load freeze.
+    completed_evidence: [explicit_unavailable_policy, vm_smoke, raw_ingress_metrics, receipt_v4_verified]
+    required_evidence: [coverage_scan_json, horizon_audit, positive_rate_usable_coverage]
+    decision: coverage_scan_does_not_automatically_select_added_satellites
+    provisional_vm_candidate:
+      status: frozen_e0_engineering_baseline
+      profile: CODE/leo_sim/profiles/mlab_multiod_burst_t0_queue_280x14_e25.yaml
+      constellation: {num_satellites: 280, num_planes: 14, satellites_per_plane: 20, min_elevation_deg: 25}
+      trace_sha256: f6981c327f4c36e659d3f7b5ef66128f94a199d0203591401c88ed0e8ab22de4
+      coverage_20s_1s: {endpoints: 55, never_visible: 0, threshold_met_fraction: 1.0, min_visible_fraction: 0.6190476190, median_visible_fraction: 1.0, max_gap_s: 8}
+      coverage_6000s_20s: {endpoints: 55, never_visible: 0, threshold_met_fraction: 1.0, min_visible_fraction: 0.6345514950, median_visible_fraction: 0.9734219269, max_gap_s: 1760}
+      rf_visible_samples: {max_slant_km: 1213.2078115, min_uplink_rate_bps: 2532845000, min_downlink_rate_bps: 1317618000, uplink_positive_range_km: 12067.9044812, downlink_positive_range_km: 4482.1358470}
+      local_run: {natural_end: true, conservation_ok: true, offered: 1299, delivered: 978, holding_overflow: 16, no_route: 1, in_system_at_stop: 304, wall_s: 133.93, user_s: 132.47, sys_s: 1.06, max_rss: unverified_macos_permission}
+      provisional: false
+      capacity_proof: false
+      paper_ready: false
+      vm_trial: completed_exact_main
+      vm_run: SMOKE-20260822-COVERAGE-280X14-E25-29e41c8
+      deployment_receipt_sha: 11688f2f2fae23c250b535aa439057c01eebd8b386f132c00ba654c4003b31a8
+      vm_stage_metrics: {offered: 1299, admitted: 1233, delivered: 978, holding_overflow: 16, no_route: 1, in_system_at_stop: 304, access_admission_rate: 0.9491916859, network_delivery_rate_by_horizon: 0.7931873479}
+      global_freeze: false
+      freeze_condition: e0_engineering_baseline_only; complete_10_25_same_trace_vm_cells_before_load_band_decision
+
+  - id: E0-LOAD-CALIBRATION
+    class: engineering_calibration
+    title: mlab_multi_od_burst_load_calibration
+    status: rerun_required
+    prerequisites: [D1_merged_to_main, D2_merged_to_main, TRAFFIC-T0, TOPOLOGY-CADENCE-CALIBRATION, exact_main_deployed_to_vm, ACCESS-BOUNDARY]
+    arms: [offered_10_mbps, offered_25_mbps, offered_50_mbps]
+    traffic_mode: mlab_measurement_proxy_multi_od_with_20s_burst
+    purpose: Select low, medium and high load candidates before formal E0 on the new bounded multi-OD profile; this engineering calibration is not a paper effect result.
+    decision: drain_aware_vm_recalibration_required
+    reason: historical_50_100_200_only; prior_20s_runs_are_diagnostic_truncated_horizon; emission_window_must_be_separate_from_simulation_horizon
+    evidence: {historical_only: true, historical_loads_mbps: [50, 100, 200], historical_main_sha: 8e2f1dfe8ee39dacfb56d52d572d37046bb6b8a4, historical_deployment_receipt_sha: 4bd3ba95438379a88cb58f4e4c9fe6559fa924f04e0b901e4c122a4527c286d5, current_profile: CODE/leo_sim/profiles/mlab_multiod_burst_t0_queue_280x14_e25.yaml, current_vm_run: SMOKE-20260822-COVERAGE-280X14-E25-29e41c8, deployment_receipt_sha: 11688f2f2fae23c250b535aa439057c01eebd8b386f132c00ba654c4003b31a8, trace_sha256: f6981c327f4c36e659d3f7b5ef66128f94a199d0203591401c88ed0e8ab22de4, offered_packets: 1299, admitted_packets: 1233, delivered_packets: 978, holding_overflow: 16, no_route: 1, in_system_at_stop: 304, access_admission_rate: 0.9491916859, network_delivery_rate_by_horizon: 0.7931873479, natural_end: true, conservation_ok: true, receipt_verified: true, wall_s: 424.1882, user_s: 429.4386, sys_s: 2.0247, max_rss_kib: 1869052, events: 9618761, paper_ready: false, global_freeze: false, diagnostic_truncated_horizon: true, prior_simulation_horizon_s: 20, prior_emission_end_s: 20, drain_aware_vm_pending: true, prior_10mbps: {offered: 250, admitted: 240, delivered: 192, in_system_at_stop: 58, access_admission_rate: 0.96, network_delivery_rate_by_horizon: 0.8, natural_end: true, conservation_ok: true, receipt_verified: true, wall_s: 401.3503, user_s: 405.0936, sys_s: 2.3318, max_rss_kib: 1775096}, prior_25mbps: {offered: 685, admitted: 684, delivered: 527, in_system_at_stop: 156, access_admission_rate: 0.998540146, network_delivery_rate_by_horizon: 0.7704678363, natural_end: true, conservation_ok: true, receipt_verified: true, wall_s: 414.9082, user_s: 418.2221, sys_s: 2.7069, max_rss_kib: 1836412}}
+    information_reference: {graph_connected_at_s: [0, 1, 5, 10, 20, 30], degree: 4, diameter: 17, old_vis_k: 12, old_result_status: diagnostic_info_truncated, old_result_paper_use: false, old_result_congestion_binning: false}
+    current_f328e85_drain_diagnostic: {trace_shas: {10: e2b469b984a7fc677f4ae8a61621f7e1e9c93ff3b3ade097461a68f365a2d23, 25: 22d341d9a5f8028f91ca8bb32f6a580a4a28a08dd6409a774e76690e31937193, 50: f6981c327f4c36e659d3f7b5ef66128f94a199d0203591401c88ed0e8ab22de4}, results: {10: {offered: 250, admitted: 240, delivered: 192, in_system: 58, access_admission_rate: 0.96, delivery_rate: 0.768, last_event_holding: 48, last_event_uplink: 10, isl_max_utilization: 0.00080674}, 25: {offered: 685, admitted: 685, delivered: 541, in_system: 142, no_route: 2, last_event_holding: 142, isl_max_utilization: 0.00188239}, 50: {offered: 1299, admitted: 1299, delivered: 1057, in_system: 222, holding_overflow: 16, no_route: 4, last_event_holding: 222, isl_max_utilization: 0.00389923}}, status: diagnostic_info_truncated, paper_use: false}
+    next_preregistered_cell: {id: E0-VIS-K17-DIAGNOSTIC, load_mbps: 10, trace_sha256: e2b469b984a7fc677f4ae8a61621f7e1e9c93ff3b3ade097461a68f365a2d23, vis_k: 17, compare_against: old_vis_k_12, required_evidence: [receipt_verified, natural_end, conservation_ok, holding, in_system, total_delivery]}
+    required_evidence: [same_trace_identity_per_arm, natural_end, conservation, receipt_verified, fate_counts, vm_wall_time, raw_metrics_recompute]
+
+  - id: E0-VIS-K17-DIAGNOSTIC
+    class: engineering_calibration
+    title: full_information_reference_radius_check
+    status: preregistered
+    prerequisites: [D1_merged_to_main, D2_merged_to_main, TRAFFIC-T0, ACCESS-BOUNDARY, exact_main_deployed_to_vm]
+    base_evidence: {main_sha: f328e855857c60c4c87860a4eabb550d58636618, trace_sha256: e2b469b984a7fc677f4ae8a61621f7e1e9c93ff3b3ade097461a68f365a2d23}
+    fixed: [trace_e2b469b984a7fc677f4ae8a61621f7e1e9c93ff3b3ade097461a68f365a2d23, offered_10_mbps, emission_end_20s, horizon_30s, topology_recompute_1s]
+    execution: {code: post_merge_exact_main_tbd, deployment: same_sha_required, status: pending}
+    arms: [vis_k_17]
+    negative_control: [historical_vis_k_12]
+    purpose: Determine whether the old 10M holding/in-system result was confounded by control-plane information truncation below the registered 280/14 graph diameter.
+    claim_boundary: diagnostic_only; no_congestion_load_bin_or_paper_claim
+    required_evidence: [same_trace_sha, receipt_verified, natural_end, conservation_ok, holding_comparison, in_system_comparison, total_delivery_comparison]
+
+  - id: DIAG-CONGESTION
+    class: diagnostic
+    title: baseline_congestion_and_link_utilization_diagnosis
+    status: blocked
+    prerequisites: [PILOT-BASELINES]
+    arms: [deterministic_shortest_path, queue_aware_anchor, DDQN, MPNN, GAT]
+    purpose: Locate bottlenecks and distinguish unused capacity, hotspot saturation, queueing, path stretch and learning failure.
+    required_evidence:
+      - paired_trace_and_load
+      - offered_delivered_dropped_in_system
+      - directional_link_utilization
+      - queue_tx_prop_delay
+      - backlog_and_fairness
+
+  - id: PILOT-BASELINES
+    class: engineering_pilot
+    title: baseline_end_to_end_pilot
+    status: blocked
+    prerequisites: [E0-REAL]
+    purpose: Verify every baseline arm and estimate wall time, variance, memory and sample size without making effect claims.
+    required_evidence:
+      - compile_authorize_run_analysis_chain
+      - natural_end
+      - conservation
+      - checkpoint_verified
+      - no_info_zero
+      - seed_provenance
+
+  - id: INFO-LADDER
+    class: upper_bound_diagnostic
+    title: per_action_physical_information_ladder
+    status: blocked
+    prerequisites: [Q0-F-TINY, per_action_physical_features_verified]
+    arms: [F0_queue_direction, F1_distance_rate_availability]
+    purpose: Measure whether candidate-direction physical information closes the diagnosed practical gap.
+
+  - id: AGE-LADDER
+    class: upper_bound_diagnostic
+    title: field_age_information_ladder
+    status: blocked
+    prerequisites: [INFO-LADDER, field_age_provenance_verified]
+    arms: [no_age, field_age, shuffled_age, fixed_fresh_age]
+    purpose: Test whether genuine freshness, rather than extra parameters or correlated noise, explains improvement.
+
+  - id: NEW-SCHEME-TINY
+    class: mechanism_validation
+    title: diagnosed_congestion_control_mechanism
+    status: blocked
+    prerequisites: [AGE-LADDER, congestion_mechanism_identified, replay_resume_verified]
+    purpose: Reject or support the mechanism hypothesis on tiny cases and adversarial stress scenarios before a large matrix.
+    required_evidence: [mechanism_hypothesis, negative_controls, q0_gap_alignment, resume_equivalence]
+
+  - id: EXP-CC-FORMAL
+    class: formal_effect
+    title: congestion_control_on_real_traffic
+    status: blocked
+    prerequisites: [NEW-SCHEME-TINY, current_load_levels_frozen]
+    traffic_mode: real_or_measurement_proxy_multi_od_with_bursts
+    arms: [deterministic_anchor, strongest_existing_learning_baseline, new_scheme, mechanism_ablation]
+    purpose: Test congestion-control effectiveness and explain link-utilization changes on paired real traffic.
+    required_evidence:
+      - frozen_request_and_contrasts
+      - paired_trace_traffic_and_training_seeds
+      - natural_end_and_conservation
+      - v2_recomputed_metrics
+      - independently_verified_claim
+
+  - id: EXP1-HOPS
+    class: conditional_followup
+    title: observation_hop_ablation
+    status: planned
+    conditional: true
+    prerequisites: [EXP-CC-FORMAL]
+    fixed: [GAT, feature_set_F1, training_budget, control_plane_range]
+    arms: [obs_hops_1, obs_hops_2, obs_hops_3]
+    loads: [low, medium, high]
+    purpose: Run only if the congestion diagnosis or formal result implicates observation range.
+    historical_evidence: ANALYSIS/HISTORY/ROUTING-OBSERVATION-AGE-20260814/13-e1-results-20260815.md
+
+  - id: EXP2-AGG
+    class: conditional_followup
+    title: aggregation_architecture
+    status: blocked
+    prerequisites: [EXP1-HOPS]
+    fixed: [h_star, feature_set_F1, training_budget]
+    arms: [cache_aggregation, MPNN, GAT, deterministic_shortest_path]
+    conditional: true
+    purpose: Run only if the main mechanism depends on aggregation architecture.
+
+  - id: EXP2B-FEATURES
+    class: historical_alias
+    title: information_content_ablation
+    status: historical_only
+    replaced_by: INFO-LADDER
+    prerequisites: [INFO-LADDER]
+    fixed: [GAT, h_star, training_budget]
+    arms: [F0_queue_direction, F1_rate_availability, F2_field_age]
+    purpose: Align practical information gains with the Q0 information ladder.
+
+  - id: EXP3-AGE
+    class: historical_alias
+    title: information_age_mechanism
+    status: historical_only
+    replaced_by: AGE-LADDER
+    prerequisites: [AGE-LADDER]
+    arms: [G0_no_age, G1_age_feature, G2_age_attention, G3_age_shuffle, G4_fixed_fresh]
+    purpose: Test whether real freshness is causally used rather than acting as extra capacity.
+
+  - id: INT-HOPS-AGG
+    class: conditional_followup
+    title: hop_aggregation_interaction
+    status: planned
+    prerequisites: [EXP1-HOPS, EXP2-AGG, interaction_triggered]
+    purpose: Resolve non-additive hop-by-architecture effects only if single-factor results conflict.
+
+  - id: SENS-GRAVITY
+    class: sensitivity
+    title: gravity_traffic_sensitivity
+    status: planned
+    prerequisites: [EXP-CC-FORMAL]
+    purpose: Compare gravity and other proxies against the primary real-traffic result; uniform remains a controlled synthetic contrast.
