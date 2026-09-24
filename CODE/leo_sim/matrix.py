@@ -472,8 +472,18 @@ def _validate_pairing_contract(request: dict[str, Any],
     """Validate the executable v1 paired comparison contract.
 
     Every pairing key is exactly one left/right pair for one preregistered
-    contrast. Trace identity is shared; learning identity and checkpoints are
-    intentionally allowed to differ between the two arms.
+    contrast, and the two cells must agree on every field the ANALYZER treats
+    as paired identity: trace seed, trace identity, trace input, learning
+    phase, the controlled projection and the code identity.  Learning identity
+    and checkpoints are intentionally allowed to differ between the arms.
+
+    Why the analyzer's field list is enforced here too: v2_analysis rejects a
+    contrast whose paired arms disagree on any of them.  A compiler that
+    accepts such a request only defers the failure to after the runs have been
+    paid for.  This docstring always CLAIMED trace identity was shared, but the
+    code compared only trace_seed / phase / controlled_signature -- so a
+    treatment overriding e.g. demand.offered_mbps compiled cleanly and then
+    died at analysis with "actual trace_sha256 mismatch".
     """
     contrasts = request["analysis"]["planned_contrasts"]
     by_pair: dict[str, list[dict[str, Any]]] = {}
@@ -505,15 +515,19 @@ def _validate_pairing_contract(request: dict[str, Any],
                 f"pairing_key {pairing_key} has no matching planned contrast")
         left = next(row for row in group if row["arm_id"] == contrast["left_arm"])
         right = next(row for row in group if row["arm_id"] == contrast["right_arm"])
-        if left["trace_seed"] != right["trace_seed"]:
-            raise MatrixError(
-                f"pairing_key {pairing_key} must share trace_seed for paired comparison")
-        if left["phase"] != right["phase"]:
-            raise MatrixError(
-                f"pairing_key {pairing_key} must share learning phase")
-        if left["controlled_signature"] != right["controlled_signature"]:
-            raise MatrixError(
-                f"pairing_key {pairing_key} has inconsistent controlled configuration")
+        # Keep this list in step with the analyzer's paired-identity loop in
+        # CODE/experiment_platform/v2_analysis.py.  Adding a field there
+        # without adding it here re-opens the deferral this check closes.
+        for field, complaint in (
+            ("trace_seed", "must share trace_seed for paired comparison"),
+            ("phase", "must share learning phase"),
+            ("controlled_signature", "has inconsistent controlled configuration"),
+            ("trace_identity_sha256", "must share the trace identity"),
+            ("input_sha256", "must share the trace input hash"),
+            ("code_sha256", "must share the code identity"),
+        ):
+            if left[field] != right[field]:
+                raise MatrixError(f"pairing_key {pairing_key} {complaint}")
     for contrast in contrasts:
         contrast_arm_ids = {
             contrast["left_arm"], contrast["right_arm"]}

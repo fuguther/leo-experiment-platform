@@ -121,6 +121,21 @@ def analyze_windows(
             service_windows, list) or not isinstance(available_windows, list):
         raise PressureAnalysisError(
             "packet_events and link window ledgers must be lists")
+    if not available_windows:
+        # Without this the run looks like "served bits without available
+        # capacity" on the first served window, which names the symptom and
+        # not the cause.  The kernel's _available_capacity_ticker returns
+        # immediately when the interval is null, so link_available_windows is
+        # never populated and every link's capacity stays zero.
+        raise PressureAnalysisError(
+            "this run recorded no available-capacity windows, so link capacity "
+            "is unmeasurable and every served bit would be reported as having "
+            "exceeded zero capacity.  Cause: "
+            "execution.available_capacity_interval_s is null, which makes "
+            "kernel._available_capacity_ticker return immediately.  Set it "
+            "(e.g. available_capacity_interval_s: 1.0) in the run config; the "
+            "T1 profile CODE/leo_sim/profiles/t1_pressure_corridor.yaml "
+            "already does")
 
     bin_count = math.ceil(stop / window_s)
     links: dict[str, dict[str, Any]] = {}

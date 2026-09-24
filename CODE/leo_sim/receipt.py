@@ -1128,14 +1128,66 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
     return errors
 
 
-def verify_receipt_dir(out_dir: str) -> list[str]:
-    """Strict exact-runtime verification, unchanged: recompute every
-    checkable claim AND require the local analyzer sources/dependencies to
-    equal the run-time identity recorded in the receipt.  Empty list =
-    verified.  Any local != runtime difference (code sha or dependency
-    versions) still FAILS."""
+def verify_receipt_dir(out_dir: str, *, decision_log: str | None = None,
+                       timeline_log: str | None = None) -> list[str]:
+    """Strict exact-runtime verification: recompute every checkable claim AND
+    require the local analyzer sources/dependencies to equal the run-time
+    identity recorded in the receipt.  Empty list = verified.  Any local !=
+    runtime difference (code sha or dependency versions) still FAILS.
+
+    A V6 receipt also names the two evidence streams it was built from.  Those
+    files live OUTSIDE the run directory, so this function cannot see them by
+    itself and can only check that the recorded digests have sha256 shape --
+    which is why a V6 stream binding was, until now, a claim rather than
+    evidence.  Pass the stream paths and the digests are recomputed and
+    compared, so the binding becomes checkable by anyone holding both.  Omit
+    them and the check is simply skipped, exactly as before.
+    """
     errors, _identity = _verify_receipt_dir_impl(
         out_dir, require_local_runtime_identity=True)
+    errors.extend(_verify_stream_bindings(
+        out_dir, decision_log=decision_log, timeline_log=timeline_log))
+    return errors
+
+
+def _verify_stream_bindings(out_dir: str, *, decision_log: str | None,
+                            timeline_log: str | None) -> list[str]:
+    """Recompute the V6 stream digests against the files, when supplied.
+
+    Only what the caller hands over is checked: without the streams there is
+    nothing this side can recompute, and inventing an error for their absence
+    would break every existing caller that verifies a bare run directory.
+    """
+    if decision_log is None and timeline_log is None:
+        return []
+    errors: list[str] = []
+    receipt_path = Path(out_dir) / "receipt.json"
+    if receipt_path.is_symlink() or not receipt_path.is_file():
+        return [f"missing or symbolic artifact: {receipt_path}"]
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"receipt.json is unreadable: {exc}"]
+    if receipt.get("schema") not in RECEIPT_SCHEMAS_V5_FAMILY:
+        return [f"{receipt_path} has an unsupported receipt schema"]
+    if receipt.get("schema") != RECEIPT_SCHEMA_V6:
+        errors.append(
+            "stream paths were supplied but this receipt is "
+            f"{receipt.get('schema')}, which carries no stream binding")
+        return errors
+    for key, raw in (("decision_log_sha256", decision_log),
+                     ("timeline_log_sha256", timeline_log)):
+        if raw is None:
+            continue
+        path = Path(raw)
+        if path.is_symlink() or not path.is_file():
+            errors.append(f"{key}: missing or symbolic stream file: {path}")
+            continue
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        if receipt.get(key) != actual:
+            errors.append(
+                f"{key} does not match {path}: receipt says "
+                f"{receipt.get(key)}, file is {actual}")
     return errors
 
 

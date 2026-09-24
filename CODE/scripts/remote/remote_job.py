@@ -310,10 +310,27 @@ def validate_formal_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, P
 def formal_command(args: argparse.Namespace, workdir: Path, config: Path, authorization: Path) -> list[str]:
     if getattr(args, "runtime_kind", "legacy_gateway") == "leo_sim_v2":
         out_dir = CANONICAL_RESULTS / args.expected_run_id
+        # T1 evidence streams are requested on EVERY v2 formal run and live
+        # INSIDE the run directory.  Two reasons for that placement:
+        #   1. pull-results-remote.sh fetches by run directory, so the streams
+        #      travel with the run instead of being stranded on the VM;
+        #   2. the run CLI binds their hashes into a leo-sim-receipt/v6, which
+        #      is what lets a T1 claim point back at `receipt verify`.
+        # Without this the formal route could only ever emit V5, so a real
+        # experiment produced no T1 evidence at all -- the capability existed
+        # but was unreachable from the path that actually runs experiments.
+        #
+        # The directory is created here, still empty, because a log
+        # destination requires its parent to exist while the run CLI itself
+        # refuses a NON-empty --out for a formal run.  A leftover directory
+        # therefore still fails loud rather than being silently reused.
+        out_dir.mkdir(parents=True, exist_ok=True)
         return [
             sys.executable, "-m", "CODE.leo_sim", "run",
             "--config", str(config),
             "--out", str(out_dir),
+            "--decision-log", str(out_dir / "decisions.jsonl"),
+            "--timeline-log", str(out_dir / "timeline.jsonl"),
             "--authorization", str(authorization),
             "--launch-nonce", args.launch_nonce,
             "--expect-run-id", args.expected_run_id,

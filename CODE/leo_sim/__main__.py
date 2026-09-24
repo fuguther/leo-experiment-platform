@@ -629,7 +629,9 @@ def _cmd_run(args) -> int:
 
 
 def _cmd_receipt_verify(args) -> int:
-    errors = receipt_mod.verify_receipt_dir(args.dir)
+    errors = receipt_mod.verify_receipt_dir(
+        args.dir, decision_log=args.decision_log,
+        timeline_log=args.timeline_log)
     if errors:
         print(json.dumps({"status": "FAILED", "errors": errors}, indent=2))
         return 2
@@ -719,6 +721,12 @@ def main(argv=None) -> int:
     p = sub.add_parser("receipt")
     rsub = p.add_subparsers(dest="sub", required=True)
     rv = rsub.add_parser("verify")
+    rv.add_argument("--decision-log", default=None,
+                    help="recompute the V6 decision-stream digest against "
+                         "this file instead of trusting the recorded shape")
+    rv.add_argument("--timeline-log", default=None,
+                    help="recompute the V6 timeline-stream digest against "
+                         "this file instead of trusting the recorded shape")
     rv.add_argument("dir")
     rv.set_defaults(fn=_cmd_receipt_verify)
 
