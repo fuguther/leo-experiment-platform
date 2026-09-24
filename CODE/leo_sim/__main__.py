@@ -122,6 +122,10 @@ class _TimelineLogWriter(_DecisionLogWriter):
     node time), so classifying this stream as diagnostic-only and refusing
     it on a formal run would make F2 formally unusable rather than merely
     unattributed.  See ANALYSIS/CURRENT-EVENT-TIMELINE.md section 5.
+
+    Note the asymmetry with the decision stream: the decision log carries a
+    frozen row contract (decision_ledger.DECISION_ROW_KEYS) while this one
+    does not yet, so only the decision side has a stream contract to name.
     """
 
 
@@ -458,10 +462,14 @@ def _cmd_run(args) -> int:
             # so a collision cannot leave a partial run behind.
             _check_new_destination(
                 _decision_manifest_target(Path(args.decision_log)))
+            # The row contract is a property of the kernel's writer, not of
+            # a run's formality, so it is enforced on EVERY run that publishes
+            # a decision stream.  A V6 receipt asserts 'decision-rows/v1';
+            # enforcing only on formal runs let a diagnostic run publish a
+            # stream that provably violated the contract the receipt claimed.
             decision_writer = _DecisionLogWriter(
                 args.decision_log,
-                validate=(decision_ledger.validate_decision_row
-                          if formal is not None else None))
+                validate=decision_ledger.validate_decision_row)
         except Exception as exc:
             print(f"RUN REFUSED (decision audit log): {exc}")
             return 3
@@ -568,12 +576,14 @@ def _cmd_run(args) -> int:
             timeline_writer.abort()
             print(f"RUN REFUSED (timeline log): {exc}")
             return 6
-    if formal is not None and decision_writer is not None \
-            and decision_writer.row_count == 0:
+    if decision_writer is not None and decision_writer.row_count == 0:
         # An empty stream would bind a V6 receipt to nothing, which is a
-        # weaker claim than the V5 receipt it replaced.  Refuse instead.
-        print("RUN REFUSED (formal decision stream): a formal run's decision "
-              "log must contain at least one contract-valid decision row")
+        # weaker claim than the V5 receipt it replaced.  This holds for EVERY
+        # run, not only formal ones: a diagnostic run publishing an empty
+        # stream used to receive a V6 receipt asserting decision-rows/v1 over
+        # the hash of an empty file.
+        print("RUN REFUSED (decision stream): a decision log must contain at "
+              "least one contract-valid decision row")
         return 6
     rcp = receipt_mod.write_run(
         out_dir, resolved, trace_bytes, manifest, result, rows,
@@ -696,7 +706,11 @@ def main(argv=None) -> int:
                         "(JSONL + sidecar manifest) to this NEW path; "
                         "required by execution.node_process_delay_s > 0")
     p.add_argument("--decision-log", default=None,
-                   help="diagnostic-only JSONL decision/info audit path; forbidden for formal runs")
+                   help="JSONL decision/info audit path (JSONL + sidecar "
+                        "manifest) at this NEW path; every row must satisfy "
+                        "decision_ledger.DECISION_ROW_KEYS and the stream must "
+                        "be non-empty.  Together with --timeline-log it "
+                        "upgrades the receipt to leo-sim-receipt/v6")
     p.add_argument("--authorization", default=None)
     p.add_argument("--launch-nonce", default=None)
     p.add_argument("--expect-run-id", default=None)

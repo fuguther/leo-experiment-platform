@@ -442,7 +442,9 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
     if not isinstance(governed, dict):
         raise V2AnalysisError(f"{run_id} governance receipt schema mismatch")
     receipt_schema = receipt.get("schema")
-    if receipt_schema == receipt_mod.RECEIPT_SCHEMA:
+    if receipt_schema in receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY:
+        # V5 and V6 share the witness contract: V6 only ADDS stream bindings
+        # on top of V5, so it is current evidence, not a legacy schema.
         expected_governance_schema = GOVERNANCE_SCHEMA_V2
     elif receipt_schema in {receipt_mod.LEGACY_RECEIPT_SCHEMA,
                             receipt_mod.LEGACY_RECEIPT_SCHEMA_V4}:
@@ -486,7 +488,11 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
             + ", ".join(identity_mismatches))
     if expected_governance_schema == GOVERNANCE_SCHEMA_V2:
         expected_binding = {
-            "receipt_schema": receipt_mod.RECEIPT_SCHEMA,
+            # The witness must name the schema of the receipt it witnesses.
+            # Hardcoding one version here is exactly how V6 would silently
+            # fail to be witnessed: remote_job writes the ACTUAL schema, so an
+            # expected constant can only ever match one version.
+            "receipt_schema": receipt_schema,
             "resolved_config_sha256": file_sha256(paths["resolved_config.json"]),
             "trace_manifest_schema": docs["manifest.json"].get("schema"),
             "trace_identity_contract": receipt.get("trace_identity_contract"),

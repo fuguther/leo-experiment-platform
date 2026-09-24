@@ -142,8 +142,18 @@ def build_v2_governance_receipt(
     launch-scoped status file is the separate VM witness that carries these
     bindings outside that directory.
     """
-    if receipt.get("schema") != "leo-sim-receipt/v5":
-        raise ValueError("leo_sim_v2 formal runs must produce receipt/v5")
+    # The accepted receipt schemas come from the canonical module, never from a
+    # literal here: a hardcoded version can only ever match one of them, so a
+    # new schema would be silently un-witnessable.  Same sys.path pattern as
+    # config_identity above (this script runs standalone on the VM).
+    sys.path.insert(0, str(CANONICAL_WORKSPACE))
+    from CODE.leo_sim import receipt as receipt_mod
+
+    if receipt.get("schema") not in receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY:
+        raise ValueError(
+            "leo_sim_v2 formal runs must produce a current receipt schema "
+            f"(one of {sorted(receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY)}); "
+            f"got {receipt.get('schema')!r}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
         raise ValueError("manifest.json must contain an object")
