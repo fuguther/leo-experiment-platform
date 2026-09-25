@@ -556,12 +556,16 @@ def _select_mlab_endpoints(grid_deg: float, agg_deg: float,
 #: Two different questions used to be answered by one test, and the second one
 #: was answered wrongly (independent review, 2026-09-25):
 #:
-#:   1. Does the generator APPLY the declared transform?  That is a property of
-#:      the code and the config, so it is checked deterministically by
+#:   1. Is the multiplier FUNCTION the declared one?  That is a property of the
+#:      code and the config, so it is checked deterministically by
 #:      verify_burst_transform() below: boundary behaviour, longitude
-#:      independence, and the thinning identity
-#:      proposal_rate * acceptance_probability == base_rate * multiplier(t).
-#:      A failure here is a defect and refuses the compile.
+#:      independence, and the algebraic consistency of the thinning formula
+#:      (which holds by construction, so it is a sanity check on the formula,
+#:      NOT evidence about the generator).  A failure here refuses the compile.
+#:      The generator's own ACCEPTANCE STEP is not deterministically
+#:      observable: an independent review of 2026-09-25 patched only that step,
+#:      dropped the burst entirely, and this check still reported zero
+#:      mismatches.  A defect there is a STATISTICAL finding (question 2).
 #:   2. Did THIS random draw land near its expectation?  That is a property of
 #:      the seed, not of the platform.  It is reported as a statistical
 #:      DIAGNOSTIC and never refuses the compile: at multiplier 5 on the
@@ -618,7 +622,7 @@ def _expected_in_window(resolved: dict, start: float,
 
 def verify_burst_transform(resolved: dict, longitudes=None,
                            longitude_source=None) -> dict:
-    """Deterministically check that the generator APPLIES the declared burst.
+    """Deterministically check the declared burst MULTIPLIER FUNCTION.
 
     Property of the code and the config, independent of any seed: the
     multiplier function must return exactly the declared value on
@@ -759,7 +763,7 @@ def verify_burst_transform(resolved: dict, longitudes=None,
     if broken:
         first = broken[0]
         raise TraceError(
-            "the generator does not apply the declared burst transform: "
+            "the declared burst multiplier function is not applied: "
             f"probe {first['probe']} at t={first['t']} longitude "
             f"{first['longitude_deg']} gives multiplier {first['multiplier']} "
             f"and thinning rate {first['thinning_rate']}, expected "
@@ -841,8 +845,11 @@ def _burst_intensity_diagnostics(resolved: dict, start: float,
             f"expected {expected_burst:.3f} +/- {band:.3f} "
             f"({report['sigma_distance']:.2f} sigma, seed {seed}). A single "
             "Poisson draw is allowed to sit that far out, so this is reported "
-            "as a property of THIS SEED, not as a defect of the transform; "
-            "judge it together with the deterministic transform check")
+            "as a property of THIS SEED rather than proof of a defect. It is, "
+            "however, the ONLY check that can see a generator whose acceptance "
+            "step ignores the multiplier -- the deterministic transform check "
+            "provably cannot (independent review, 2026-09-25). A draw this far "
+            "out calls for the pre-declared design's judgement, not a re-draw")
         return report
     report["status"] = "COMPATIBLE"
     report["reason"] = (
@@ -959,8 +966,11 @@ def materialization_report(resolved: dict, rows: list[dict],
         window_end = start + float(dm["burst_duration_s"])
         inside = [row for row in rows if start <= float(row["emit_time_s"]) < window_end]
         effective_multiplier = max(1.0, float(dm["burst_multiplier"]))
-        # Deterministic: does the generator apply the declared transform at
-        # all?  A failure here is a defect and raises (structural).
+        # Deterministic, and narrower than its name suggests: this checks the
+        # multiplier FUNCTION and the thinning formula, not the generator's
+        # acceptance step (see the docstring's WHAT THIS DOES NOT DO).  A
+        # generator-side defect is visible only in the statistical diagnostic
+        # below.
         transform = verify_burst_transform(resolved, endpoint_longitudes,
                                            endpoint_longitude_source)
         # Statistical: where did THIS draw land?  Recorded, never a gate.

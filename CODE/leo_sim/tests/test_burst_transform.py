@@ -241,8 +241,10 @@ def test_the_declared_transform_holds_at_every_probed_boundary():
 def test_a_broken_transform_is_caught_deterministically(monkeypatch, sabotage,
                                                         description):
     monkeypatch.setattr(trace_mod, "_rate_multiplier", sabotage)
+    # the message now names what was actually probed -- the multiplier
+    # function -- instead of blaming "the generator" (R5 review, 2026-09-25)
     with pytest.raises(trace_mod.TraceError,
-                       match="does not apply the declared burst transform"):
+                       match="declared burst multiplier function is not applied"):
         trace_mod.verify_burst_transform(_burst_cfg())
 
 

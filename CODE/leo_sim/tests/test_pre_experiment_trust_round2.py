@@ -169,7 +169,10 @@ def test_an_incompatible_draw_is_reported_and_never_blocks_the_compile(tmp_path)
     assert intensity["raw_sample_preserved"]["all_emitted"] == len(starved)
     assert intensity["scenario_seed"] == 7
     assert intensity["sigma_distance"] > trace_mod.INTENSITY_SIGMA
-    assert "not as a defect of the transform" in intensity["reason"]
+    assert "rather than proof of a defect" in intensity["reason"]
+    # the reason must point at the ONE check that can see a broken generator,
+    # now that the deterministic transform check is documented as unable to
+    assert "ONLY check that can see a generator" in intensity["reason"]
 
     rows = [{"packet_id": index, "emit_time_s": 0.5 * index,
              "src_grid_id": "src", "dst_grid_id": "dst",
