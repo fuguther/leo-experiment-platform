@@ -142,8 +142,18 @@ def build_v2_governance_receipt(
     launch-scoped status file is the separate VM witness that carries these
     bindings outside that directory.
     """
-    if receipt.get("schema") != "leo-sim-receipt/v5":
-        raise ValueError("leo_sim_v2 formal runs must produce receipt/v5")
+    # The accepted receipt schemas come from the canonical module, never from a
+    # literal here: a hardcoded version can only ever match one of them, so a
+    # new schema would be silently un-witnessable.  Same sys.path pattern as
+    # config_identity above (this script runs standalone on the VM).
+    sys.path.insert(0, str(CANONICAL_WORKSPACE))
+    from CODE.leo_sim import receipt as receipt_mod
+
+    if receipt.get("schema") not in receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY:
+        raise ValueError(
+            "leo_sim_v2 formal runs must produce a current receipt schema "
+            f"(one of {sorted(receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY)}); "
+            f"got {receipt.get('schema')!r}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
         raise ValueError("manifest.json must contain an object")
@@ -300,10 +310,27 @@ def validate_formal_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, P
 def formal_command(args: argparse.Namespace, workdir: Path, config: Path, authorization: Path) -> list[str]:
     if getattr(args, "runtime_kind", "legacy_gateway") == "leo_sim_v2":
         out_dir = CANONICAL_RESULTS / args.expected_run_id
+        # T1 evidence streams are requested on EVERY v2 formal run and live
+        # INSIDE the run directory.  Two reasons for that placement:
+        #   1. pull-results-remote.sh fetches by run directory, so the streams
+        #      travel with the run instead of being stranded on the VM;
+        #   2. the run CLI binds their hashes into a leo-sim-receipt/v6, which
+        #      is what lets a T1 claim point back at `receipt verify`.
+        # Without this the formal route could only ever emit V5, so a real
+        # experiment produced no T1 evidence at all -- the capability existed
+        # but was unreachable from the path that actually runs experiments.
+        #
+        # The directory is created here, still empty, because a log
+        # destination requires its parent to exist while the run CLI itself
+        # refuses a NON-empty --out for a formal run.  A leftover directory
+        # therefore still fails loud rather than being silently reused.
+        out_dir.mkdir(parents=True, exist_ok=True)
         return [
             sys.executable, "-m", "CODE.leo_sim", "run",
             "--config", str(config),
             "--out", str(out_dir),
+            "--decision-log", str(out_dir / "decisions.jsonl"),
+            "--timeline-log", str(out_dir / "timeline.jsonl"),
             "--authorization", str(authorization),
             "--launch-nonce", args.launch_nonce,
             "--expect-run-id", args.expected_run_id,
@@ -321,6 +348,35 @@ def formal_command(args: argparse.Namespace, workdir: Path, config: Path, author
     if args.bundle_stages:
         command.extend(("--bundle-stages", args.bundle_stages))
     return command
+
+
+def verify_v2_formal_result(result_dir: Path) -> list[str]:
+    """The VM-side verification of one V2 formal result directory.
+
+    Split out of run_formal so the exact sequence the VM applies can be
+    executed -- and regression-tested -- without a VM.  Two independent
+    questions, both asked of the directory itself:
+
+      1. verify_receipt_dir: strict exact-runtime verification.  On the VM the
+         checkout IS the runtime, so this is meaningful there; it is *not*
+         usable against a pulled-back copy (a different machine's identity),
+         which is why pull-back acceptance is a separate gate.
+      2. verify_receipt_streams(require_streams=True): the stream contract,
+         resolved from the receipt instead of from unconditionally supplied
+         paths.  Without this the V6 binding was a claim rather than evidence;
+         with unconditional paths a legitimate zero-decision run (which is
+         signed v5 and carries no binding at all) was failed instead. Here the
+         v5 downgrade must be PROVEN -- empty decision stream, both sidecar
+         manifests and both stream files present -- and any v6 receipt has both
+         digests recomputed.
+    """
+    sys.path.insert(0, str(CANONICAL_WORKSPACE))
+    from CODE.leo_sim.receipt import verify_receipt_dir, verify_receipt_streams
+
+    errors = list(verify_receipt_dir(str(result_dir)))
+    errors += list(verify_receipt_streams(str(result_dir),
+                                           require_streams=True))
+    return errors
 
 
 def formal_child_cwd(args: argparse.Namespace, workdir: Path) -> Path:
@@ -659,10 +715,10 @@ def run_formal(args: argparse.Namespace) -> int:
                     rc = 2
                 elif getattr(args, "runtime_kind", "legacy_gateway") == "leo_sim_v2":
                     receipt_path = Path(payload["last_results_dir"]) / "receipt.json"
-                    sys.path.insert(0, str(CANONICAL_WORKSPACE))
-                    from CODE.leo_sim.receipt import verify_receipt_dir
-
-                    receipt_errors = verify_receipt_dir(payload["last_results_dir"])
+                    # One implementation, shared by the VM path and the
+                    # regression test (see verify_v2_formal_result).
+                    receipt_errors = verify_v2_formal_result(
+                        Path(payload["last_results_dir"]))
                     receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
                     ledgers_payload = json.loads(
                         (Path(payload["last_results_dir"]) / "ledgers.json").read_text(

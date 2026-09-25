@@ -22,8 +22,11 @@ from pathlib import Path
 from . import acceptance as acceptance_mod
 from . import comparison as comparison_mod
 from . import config as config_mod
+from . import decision_ledger
 from . import governance, kernel, learning, platform_check as platform_check_mod
-from . import receipt as receipt_mod, trace as trace_mod
+from . import pullback as pullback_mod
+from . import receipt as receipt_mod, recompute as recompute_mod
+from . import trace as trace_mod
 
 
 def _load(path: str) -> dict:
@@ -64,7 +67,13 @@ def _publish_new_file(temporary: Path, target: Path) -> None:
 class _DecisionLogWriter:
     """Bounded-memory streaming writer for diagnostic decision rows."""
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, validate=None):
+        # 'validate' is the frozen row contract a FORMAL run must satisfy
+        # (decision_ledger.validate_decision_row).  Diagnostic runs pass None
+        # and keep their historical behaviour; the contract is enforced at
+        # append time so a violation aborts the run rather than publishing a
+        # stream the receipt chain would have to distrust.
+        self._validate = validate
         self.target = Path(path)
         _check_new_destination(self.target)
         fd, temporary_name = tempfile.mkstemp(
@@ -78,6 +87,8 @@ class _DecisionLogWriter:
         self.log_sha256: str | None = None
 
     def append(self, row: dict) -> None:
+        if self._validate is not None:
+            self._validate(row)
         line = json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
         self._handle.write(line)
         self._log_hasher.update(line.encode("utf-8"))
@@ -113,6 +124,10 @@ class _TimelineLogWriter(_DecisionLogWriter):
     node time), so classifying this stream as diagnostic-only and refusing
     it on a formal run would make F2 formally unusable rather than merely
     unattributed.  See ANALYSIS/CURRENT-EVENT-TIMELINE.md section 5.
+
+    Note the asymmetry with the decision stream: the decision log carries a
+    frozen row contract (decision_ledger.DECISION_ROW_KEYS) while this one
+    does not yet, so only the decision side has a stream contract to name.
     """
 
 
@@ -234,7 +249,8 @@ def _cmd_config_validate(args) -> int:
 
 
 def _compile(resolved: dict, out_dir: str) -> tuple[dict, bytes, list[dict]]:
-    manifest = trace_mod.compile_trace(resolved, out_dir)
+    evidence: dict = {}
+    manifest = trace_mod.compile_trace(resolved, out_dir, evidence=evidence)
     trace_bytes = (Path(out_dir) / "trace.csv").read_bytes()
     manifest_bytes = (Path(out_dir) / "manifest.json").read_bytes()
     manifest["__trace_sha256"] = hashlib.sha256(trace_bytes).hexdigest()
@@ -243,6 +259,10 @@ def _compile(resolved: dict, out_dir: str) -> tuple[dict, bytes, list[dict]]:
         str(Path(out_dir) / "trace.csv"),
         horizon_s=resolved["config"]["scenario"]["duration_s"],
         max_packets=resolved["config"]["execution"]["max_packets"])
+    # Input materialization evidence for the CLI output: produced by the gate
+    # inside compile_trace (the only place that knows the real endpoint set)
+    # and carried here under a "__" key, which never reaches manifest.json.
+    manifest["__materialization"] = evidence["materialization"]
     return manifest, trace_bytes, rows
 
 
@@ -257,7 +277,19 @@ def _cmd_trace_compile(args) -> int:
                       "manifest_sha256": manifest["__sha256"],
                       "offered_packets": manifest["offered_packets"],
                       "offered_bits": manifest["offered_bits"],
-                      "provenance": manifest["provenance"]}, indent=2))
+                      "provenance": manifest["provenance"],
+                      # Input materialization evidence: packet-size /
+                      # injection / endpoint / emission-window conformance, and
+                      # -- for a burst declaration -- whether the window saw
+                      # packets AND whether the declared intensity actually
+                      # materialized (COMPATIBLE / INCOMPATIBLE /
+                      # UNDECIDABLE; the statistical diagnostic never blocks,
+                      # the deterministic transform check in burst.transform
+                      # refuses a multiplier function that disagrees with the
+                      # declaration; it does not observe the generator's
+                      # acceptance step).
+                      "materialization": manifest.get("__materialization")},
+                     indent=2))
     return 0
 
 
@@ -394,6 +426,10 @@ def _load_precompiled(resolved: dict, trace_dir: str) -> tuple[dict, bytes, list
         str(tpath),
         horizon_s=emission_end,
         max_packets=resolved["config"]["execution"]["max_packets"])
+    # No materialization evidence on this path: a precompiled trace was gated
+    # where it was compiled, and its endpoint set cannot be re-derived from the
+    # config (mlab_auto / population_gravity read it from a data source).  The
+    # identity contract is re-checked above instead.
     return manifest, trace_bytes, rows
 
 
@@ -409,10 +445,12 @@ def _cmd_run(args) -> int:
     except Exception as exc:
         print(f"RUN REFUSED (formal authorization): {exc}")
         return 3
-    if args.decision_log and formal is not None:
-        print("RUN REFUSED: decision audit log is diagnostic-only and cannot "
-              "be attached to a formal authorized run")
-        return 3
+    # A decision log used to be refused outright on a formal authorized run
+    # because it had no row contract and therefore sat outside the
+    # receipt/ledger trust chain (ANALYSIS/T1-MEASUREMENT-PROTOCOL.md 3.3).
+    # The contract now exists (decision_ledger.DECISION_ROW_KEYS), so a formal
+    # run may attach one -- but only one whose every row satisfies it, which
+    # is enforced per row at append time and re-checked for emptiness below.
     if args.decision_log and args.dry_run:
         print("RUN REFUSED: decision audit log is unavailable in dry-run mode")
         return 3
@@ -447,7 +485,14 @@ def _cmd_run(args) -> int:
             # so a collision cannot leave a partial run behind.
             _check_new_destination(
                 _decision_manifest_target(Path(args.decision_log)))
-            decision_writer = _DecisionLogWriter(args.decision_log)
+            # The row contract is a property of the kernel's writer, not of
+            # a run's formality, so it is enforced on EVERY run that publishes
+            # a decision stream.  A V6 receipt asserts 'decision-rows/v1';
+            # enforcing only on formal runs let a diagnostic run publish a
+            # stream that provably violated the contract the receipt claimed.
+            decision_writer = _DecisionLogWriter(
+                args.decision_log,
+                validate=decision_ledger.validate_decision_row)
         except Exception as exc:
             print(f"RUN REFUSED (decision audit log): {exc}")
             return 3
@@ -554,7 +599,25 @@ def _cmd_run(args) -> int:
             timeline_writer.abort()
             print(f"RUN REFUSED (timeline log): {exc}")
             return 6
-    rcp = receipt_mod.write_run(out_dir, resolved, trace_bytes, manifest, result, rows)
+    if decision_writer is not None and decision_writer.row_count == 0:
+        # An empty stream cannot bind anything meaningful -- the digest would
+        # be the hash of an empty file -- so the receipt must NOT claim
+        # decision-rows/v1.  Dropping the identity keeps it V5 instead.
+        #
+        # Round 3 replaced an earlier REFUSAL here.  Refusing removed the
+        # false claim but also turned every 0-decision configuration on the
+        # formal route from "emits V5" into "fails" (measured: the repository
+        # matrix fixture cell exited 6 under the launcher and exit 0 with a V5
+        # receipt before).  Downgrading is honest AND leaves the run usable;
+        # the empty log and its manifest are still published, so the absence
+        # is visible rather than implied.
+        print("NOTE: no decision rows were recorded; the receipt stays "
+              "leo-sim-receipt/v5 and binds no stream identity")
+        decision_log_sha = None
+    rcp = receipt_mod.write_run(
+        out_dir, resolved, trace_bytes, manifest, result, rows,
+        decision_log_sha256=decision_log_sha,
+        timeline_log_sha256=timeline_log_sha)
     decision_manifest_path = None
     if args.decision_log:
         try:
@@ -585,6 +648,8 @@ def _cmd_run(args) -> int:
                       "natural_end": rcp["natural_end"],
                       "fate_counts": rcp["fate_counts"],
                       "conservation_ok": rcp["conservation_ok"],
+                      **({"materialization": manifest["__materialization"]}
+                         if "__materialization" in manifest else {}),
                       **({"decision_log": str(Path(args.decision_log).resolve()),
                           "decision_log_manifest": str(decision_manifest_path.resolve())}
                          if args.decision_log else {}),
@@ -595,12 +660,54 @@ def _cmd_run(args) -> int:
 
 
 def _cmd_receipt_verify(args) -> int:
-    errors = receipt_mod.verify_receipt_dir(args.dir)
+    errors = receipt_mod.verify_receipt_dir(
+        args.dir, decision_log=args.decision_log,
+        timeline_log=args.timeline_log)
     if errors:
         print(json.dumps({"status": "FAILED", "errors": errors}, indent=2))
         return 2
     print(json.dumps({"status": "verified", "dir": args.dir}, indent=2))
     return 0
+
+
+def _cmd_receipt_verify_pulled(args) -> int:
+    try:
+        report = pullback_mod.verify_pulled_run(
+            args.run_dir, expect=args.expect,
+            witness_root=args.witness_root)
+    except pullback_mod.PullbackError as exc:
+        print(f"PULLBACK REFUSED: {exc}")
+        return 11
+    if args.out:
+        target = Path(args.out)
+        if target.is_symlink():
+            print(f"PULLBACK REFUSED: output may not be symbolic: {target}")
+            return 11
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(report, ensure_ascii=False, indent=2,
+                                     sort_keys=True) + "\n", encoding="utf-8")
+        report = {**report, "wrote": str(target)}
+    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+    return 0 if report["ok"] else 11
+
+
+def _cmd_recompute(args) -> int:
+    try:
+        report = recompute_mod.recompute_run(args.run_dir)
+    except recompute_mod.RecomputeError as exc:
+        print(f"RECOMPUTE REFUSED: {exc}")
+        return 10
+    if args.out:
+        target = Path(args.out)
+        if target.is_symlink():
+            print(f"RECOMPUTE REFUSED: output may not be symbolic: {target}")
+            return 10
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(report, ensure_ascii=False, indent=2,
+                                     sort_keys=True) + "\n", encoding="utf-8")
+        report = {**report, "wrote": str(target)}
+    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+    return 0 if report["ok"] else 10
 
 
 def _cmd_acceptance_run(args) -> int:
@@ -672,7 +779,11 @@ def main(argv=None) -> int:
                         "(JSONL + sidecar manifest) to this NEW path; "
                         "required by execution.node_process_delay_s > 0")
     p.add_argument("--decision-log", default=None,
-                   help="diagnostic-only JSONL decision/info audit path; forbidden for formal runs")
+                   help="JSONL decision/info audit path (JSONL + sidecar "
+                        "manifest) at this NEW path; every row must satisfy "
+                        "decision_ledger.DECISION_ROW_KEYS and the stream must "
+                        "be non-empty.  Together with --timeline-log it "
+                        "upgrades the receipt to leo-sim-receipt/v6")
     p.add_argument("--authorization", default=None)
     p.add_argument("--launch-nonce", default=None)
     p.add_argument("--expect-run-id", default=None)
@@ -681,8 +792,27 @@ def main(argv=None) -> int:
     p = sub.add_parser("receipt")
     rsub = p.add_subparsers(dest="sub", required=True)
     rv = rsub.add_parser("verify")
+    rv.add_argument("--decision-log", default=None,
+                    help="recompute the V6 decision-stream digest against "
+                         "this file instead of trusting the recorded shape")
+    rv.add_argument("--timeline-log", default=None,
+                    help="recompute the V6 timeline-stream digest against "
+                         "this file instead of trusting the recorded shape")
     rv.add_argument("dir")
     rv.set_defaults(fn=_cmd_receipt_verify)
+    rvp = rsub.add_parser("verify-pulled")
+    rvp.add_argument("--run-dir", required=True)
+    rvp.add_argument("--expect", required=True, choices=pullback_mod.EXPECTATIONS,
+                     help="what this copy is SUPPOSED to be. Required, and "
+                          "never inferred from which files are present: a "
+                          "formal witness lost in transit must not be "
+                          "accepted as a diagnostic copy")
+    rvp.add_argument("--witness-root", default=None,
+                     help="directory holding the pulled external launch "
+                          "witness (<launch_nonce>.json); without it the "
+                          "witness is reported as NOT CHECKED")
+    rvp.add_argument("--out", help="optional path for the JSON report")
+    rvp.set_defaults(fn=_cmd_receipt_verify_pulled)
 
     p = sub.add_parser("acceptance")
     asub = p.add_subparsers(dest="sub", required=True)
@@ -696,6 +826,13 @@ def main(argv=None) -> int:
     cr.add_argument("--config", default=str(Path(__file__).resolve().parent / "profiles" / "comparison.yaml"))
     cr.add_argument("--out", required=True)
     cr.set_defaults(fn=_cmd_compare_run)
+
+    p = sub.add_parser("recompute")
+    p.add_argument("--run-dir", required=True,
+                   help="a persisted run directory (receipt/resolved/ledgers/"
+                        "timeline)")
+    p.add_argument("--out", help="optional path for the JSON report")
+    p.set_defaults(fn=_cmd_recompute)
 
     p = sub.add_parser("platform")
     psub = p.add_subparsers(dest="sub", required=True)

@@ -1,0 +1,114 @@
+{
+ "work_id": "WP-LEO-V2-T1-TRUST-CHAIN-V6",
+ "frozen_at_sha": "c8eeca1a9b47c7b4eeb3dde702ac9484ebab6317",
+ "frozen_at": "2026-09-24",
+ "scope": "B4a decision 行键契约 → B4b 放开正式运行 --decision-log → B4c receipt schema V6",
+ "note": "每条必须可判定：check 是一条命令或一个明确谓词。集外建议写 BACKLOG，不阻塞。",
+ "criteria": [
+  {
+   "id": "C1",
+   "statement": "既有 V5 回执的验证行为逐位不变",
+   "check": "python3 -m CODE.leo_sim receipt verify out/smoke 仍返回 {\"status\":\"verified\"}",
+   "touches": [
+    "CODE/leo_sim/receipt.py"
+   ]
+  },
+  {
+   "id": "C2",
+   "statement": "不引入任何新 config key（协议 3.3-1：会改 config_sha256 并作废既有授权）",
+   "check": "smoke.yaml 的 config_sha256 仍为 934315391f9572ca2f03a641a3b2a800889330e8f0579fccbb7ee29379c68816",
+   "touches": [
+    "CODE/leo_sim/config.py"
+   ]
+  },
+  {
+   "id": "C3",
+   "statement": "decision 行契约被冻结为实测的 19 键集，不多不少",
+   "check": "python3 -c \"from CODE.leo_sim import decision_ledger as d; print(len(d.DECISION_ROW_KEYS))\" -> 19",
+   "touches": [
+    "CODE/leo_sim/decision_ledger.py"
+   ]
+  },
+  {
+   "id": "C4",
+   "statement": "契约校验拒绝未知键（fail loud，不静默丢弃）",
+   "check": "对一行注入 {\"rogue\": 1} 后校验函数报错并指出该键",
+   "touches": [
+    "CODE/leo_sim/decision_ledger.py"
+   ]
+  },
+  {
+   "id": "C5",
+   "statement": "契约校验拒绝缺失键",
+   "check": "删除 chosen 后校验函数报错并指出该键",
+   "touches": [
+    "CODE/leo_sim/decision_ledger.py"
+   ]
+  },
+  {
+   "id": "C6",
+   "statement": "正式运行在提供合契约 decision log 时不再被策略拒绝",
+   "check": "formal 三参数 + --decision-log 的调用不再输出 'diagnostic-only'",
+   "touches": [
+    "CODE/leo_sim/__main__.py"
+   ]
+  },
+  {
+   "id": "C7",
+   "statement": "正式运行在 decision log 不合契约时仍被拒绝（把不住的不能放行）",
+   "check": "注入未知键的 decision log + formal 三参数 -> RUN REFUSED 且退出码非 0",
+   "touches": [
+    "CODE/leo_sim/__main__.py"
+   ]
+  },
+  {
+   "id": "C8",
+   "statement": "V6 回执携带 decision/timeline 流身份，且与实际文件一致",
+   "check": "回执的 decision_log_sha256 == sha256sum <decision log 文件>",
+   "touches": [
+    "CODE/leo_sim/receipt.py"
+   ]
+  },
+  {
+   "id": "C9",
+   "statement": "V6 回执可通过 verify",
+   "check": "receipt verify 对含 V6 回执的目录返回 verified",
+   "touches": [
+    "CODE/leo_sim/receipt.py"
+   ]
+  },
+  {
+   "id": "C10",
+   "statement": "V3/V4 旧回执仍按各自键集校验（版本分派未被破坏）",
+   "check": "既有 V3/V4 样本的 verify 行为与改动前一致",
+   "touches": [
+    "CODE/leo_sim/receipt.py"
+   ]
+  },
+  {
+   "id": "C11",
+   "statement": "LEDGER_KEYS 不变(17)，packet_events 与 congestion_metrics 未被改动（协议 3.4）",
+   "check": "python3 -c \"from CODE.leo_sim import receipt as r; print(len(r.LEDGER_KEYS))\" -> 17；git diff 不含 packet_events 写入改动",
+   "touches": [
+    "CODE/leo_sim/receipt.py",
+    "CODE/leo_sim/kernel.py"
+   ]
+  },
+  {
+   "id": "C12",
+   "statement": "折叠件与回执的流身份闭合（T1 结论能指回 receipt verify）",
+   "check": "B1 产出的 source.decision_log_sha256 == 回执的 decision_log_sha256",
+   "touches": [
+    "CODE/experiment_platform/fold_decision_ledger.py"
+   ]
+  },
+  {
+   "id": "C13",
+   "statement": "全量测试通过",
+   "check": "python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q -> 0 failed",
+   "touches": [
+    "CODE/"
+   ]
+  }
+ ]
+}

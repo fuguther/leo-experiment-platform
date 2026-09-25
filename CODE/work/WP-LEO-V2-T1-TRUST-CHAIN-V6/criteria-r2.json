@@ -1,0 +1,156 @@
+{
+ "work_id": "WP-LEO-V2-T1-TRUST-CHAIN-V6",
+ "round": 2,
+ "frozen_at_sha": "4d5e28b2bd2286397be67b9a4eecd4c81a5ae9a3",
+ "frozen_at": "2026-09-24",
+ "supersedes": "round1（frozen_at_sha c8eeca1）：其中 C1 的 check 命令被三方一致证明对任何提交都不成立，已重写；C14-C18 为 round1 收敛发现所加",
+ "criteria": [
+  {
+   "id": "C1",
+   "statement": "既有 V5 回执的验证行为逐位不变",
+   "check": "在被审 SHA 上现场生成 V5 回执（run 不带 --decision-log/--timeline-log）-> verify 返回 verified 且 28 键；且 v3/v4/v5 样本在父提交 98f7412 与被审 SHA 上给出逐字相同的裁决",
+   "touches": [
+    "CODE/leo_sim/receipt.py",
+    "CODE/leo_sim/__main__.py"
+   ]
+  },
+  {
+   "id": "C2",
+   "statement": "不引入任何新 config key",
+   "check": "smoke.yaml 的 config_sha256 仍为 934315391f9572ca2f03a641a3b2a800889330e8f0579fccbb7ee29379c68816",
+   "touches": [
+    "CODE/leo_sim/config.py"
+   ]
+  },
+  {
+   "id": "C3",
+   "statement": "decision 行契约 = 实测的 19 键集",
+   "check": "len(DECISION_ROW_KEYS)==19 且与一次真实运行的键集完全相等",
+   "touches": [
+    "CODE/leo_sim/decision_ledger.py"
+   ]
+  },
+  {
+   "id": "C4",
+   "statement": "契约拒绝未知键",
+   "check": "注入 rogue 键 -> DecisionRowError 并点名该键",
+   "touches": [
+    "CODE/leo_sim/decision_ledger.py"
+   ]
+  },
+  {
+   "id": "C5",
+   "statement": "契约拒绝缺失键",
+   "check": "删 chosen -> DecisionRowError 并点名该键",
+   "touches": [
+    "CODE/leo_sim/decision_ledger.py"
+   ]
+  },
+  {
+   "id": "C6",
+   "statement": "formal 运行可附 decision log 且不再被策略拒绝",
+   "check": "formal 三参数 + --decision-log -> 不出现 diagnostic-only，产出已验证回执",
+   "touches": [
+    "CODE/leo_sim/__main__.py"
+   ]
+  },
+  {
+   "id": "C7",
+   "statement": "不合契约的 decision 流不能放行",
+   "check": "越契约行 -> 退出码非 0 且不发布回执",
+   "touches": [
+    "CODE/leo_sim/__main__.py"
+   ]
+  },
+  {
+   "id": "C8",
+   "statement": "V6 回执的流身份与实际文件一致",
+   "check": "回执 decision_log_sha256/timeline_log_sha256 == sha256sum 实际文件",
+   "touches": [
+    "CODE/leo_sim/receipt.py"
+   ]
+  },
+  {
+   "id": "C9",
+   "statement": "V6 回执可通过 verify",
+   "check": "receipt verify 对 V6 目录返回 verified 且 V6 分支非空转",
+   "touches": [
+    "CODE/leo_sim/receipt.py"
+   ]
+  },
+  {
+   "id": "C10",
+   "statement": "V3/V4 旧回执验证行为不变",
+   "check": "既有 v3/v4 样本的 verify 裁决与改动前逐字相同",
+   "touches": [
+    "CODE/leo_sim/receipt.py"
+   ]
+  },
+  {
+   "id": "C11",
+   "statement": "LEDGER_KEYS 不变(17)，packet_events/congestion_metrics 未动",
+   "check": "len(LEDGER_KEYS)==17；diff 无这两处写入改动",
+   "touches": [
+    "CODE/leo_sim/receipt.py",
+    "CODE/leo_sim/kernel.py"
+   ]
+  },
+  {
+   "id": "C12",
+   "statement": "折叠件与回执的流身份闭合",
+   "check": "fold 的 source.decision_log_sha256 == 回执的 decision_log_sha256",
+   "touches": [
+    "CODE/experiment_platform/fold_decision_ledger.py"
+   ]
+  },
+  {
+   "id": "C13",
+   "statement": "全量测试通过",
+   "check": "python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q -> 0 failed",
+   "touches": [
+    "CODE/"
+   ]
+  },
+  {
+   "id": "C14",
+   "statement": "版本家族在 receipt.py 之外也被遵守（round1 3/3 收敛项）",
+   "check": "V6 回执不再被 remote_job.build_v2_governance_receipt 抛 ValueError；v2_analysis 的 receipt_schema 分派接受 V6",
+   "touches": [
+    "CODE/experiment_platform/v2_analysis.py",
+    "CODE/scripts/remote/remote_job.py"
+   ]
+  },
+  {
+   "id": "C15",
+   "statement": "治理见证的 receipt_schema 绑定不硬编码",
+   "check": "v2_analysis.py 中 expected_binding 的 receipt_schema 取自被见证回执自身的 schema",
+   "touches": [
+    "CODE/experiment_platform/v2_analysis.py"
+   ]
+  },
+  {
+   "id": "C16",
+   "statement": "行契约的挂载不依赖运行是否正式（round1 2/3 收敛项）",
+   "check": "__main__.py 中 _DecisionLogWriter 的 validate 参数无条件；且 test_the_decision_writer_is_always_given_the_row_contract 通过",
+   "touches": [
+    "CODE/leo_sim/__main__.py"
+   ]
+  },
+  {
+   "id": "C17",
+   "statement": "空流的拒绝不依赖运行是否正式",
+   "check": "__main__.py 中空流拒绝条件不含 formal；且 test_the_empty_stream_refusal_is_not_formal_only 通过",
+   "touches": [
+    "CODE/leo_sim/__main__.py"
+   ]
+  },
+  {
+   "id": "C18",
+   "statement": "陈旧文案已清除",
+   "check": "run --help 不含 'forbidden for formal runs'，且含 DECISION_ROW_KEYS",
+   "touches": [
+    "CODE/leo_sim/__main__.py"
+   ]
+  }
+ ]
+}

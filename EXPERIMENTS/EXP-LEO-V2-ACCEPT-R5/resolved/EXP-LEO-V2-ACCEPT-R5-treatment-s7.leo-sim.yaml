@@ -1,0 +1,193 @@
+{
+  "access": {
+    "acquisition_delay_s": 0.1,
+    "association": "bbm",
+    "downlink_queue_bits": 64000000,
+    "downlink_rate_mbps": 100.0,
+    "drr_quantum_bits": 1000000,
+    "dual_connect": false,
+    "holding_queue_bits": 64000000,
+    "hysteresis_deg": 1.0,
+    "idle_release_s": 1.0,
+    "min_dwell_s": 1.0,
+    "retirement_deadline_s": 5.0,
+    "retiring_link_limit": 4,
+    "slot_lease_s": 10.0,
+    "slots_per_satellite": 4,
+    "unavailable_policy": "reject",
+    "uplink_queue_bits": 64000000,
+    "uplink_rate_mbps": 100.0
+  },
+  "config_version": "leo-sim-config/v1",
+  "control_plane": {
+    "advertise_interval_s": 1.0,
+    "enabled": false,
+    "packet_bits": 8000,
+    "priority": "nonpreemptive_priority",
+    "ttl_s": 10.0,
+    "vis_k": 2
+  },
+  "demand": {
+    "burst_duration_s": null,
+    "burst_multiplier": 2.0,
+    "burst_start_s": null,
+    "csv_path": "CODE/data/traffic/t1_step5_micro_ab.csv",
+    "deadline_s": null,
+    "destination_population_exponent": 1.0,
+    "destination_rejection_max_draws": 10000,
+    "diurnal_amplitude": 0.5,
+    "diurnal_phase_h": 12.0,
+    "emission_end_s": null,
+    "gravity_alpha": 1.5,
+    "gravity_d_floor_km": 500.0,
+    "hotspot_concentration": 0.8,
+    "hotspot_fraction": 0.1,
+    "mode": "csv",
+    "nested_master_offered_mbps": null,
+    "offered_mbps": 1.0,
+    "packet_bits": 8000000,
+    "population_destination_sampler": "scan",
+    "population_path": null,
+    "source_population_exponent": 1.0,
+    "temporal_model": "constant",
+    "utc_start_hour": 0.0
+  },
+  "endpoints": {
+    "aggregation_deg": 1.0,
+    "grid_deg": 0.25,
+    "mlab_auto": false,
+    "mlab_max_sites": 64,
+    "sites": [
+      {
+        "lat": 0.1,
+        "lon": 0.1,
+        "name": "a"
+      },
+      {
+        "lat": 52.6,
+        "lon": 90.4,
+        "name": "b"
+      }
+    ]
+  },
+  "execution": {
+    "available_capacity_interval_s": 0.1,
+    "compute_delay_s": 0.0,
+    "decision_observation_mode": "refresh",
+    "dry_run": false,
+    "max_entities": 10000,
+    "max_events": 1000000,
+    "max_packets": 200000,
+    "monitor": false,
+    "node_process_delay_s": 0.0
+  },
+  "learning": {
+    "algorithm": "none",
+    "arrive_reward": 50.0,
+    "batch_size": 64,
+    "checkpoint_metadata_sha256": null,
+    "checkpoint_path": null,
+    "checkpoint_sha256": null,
+    "epsilon_decay_s": 300.0,
+    "epsilon_end": 0.05,
+    "epsilon_start": 1.0,
+    "fast_train": true,
+    "forward_step_penalty": -20.0,
+    "gamma": 0.99,
+    "lr": 0.001,
+    "mode": "train",
+    "obs_hops": null,
+    "qlearning_alpha": 0.25,
+    "replay_size": 50000,
+    "resume_path": null,
+    "resume_sha256": null,
+    "reward": "queue",
+    "reward_beta": 200.0,
+    "reward_w1": 20.0,
+    "seed": null,
+    "target_update_interval": 500
+  },
+  "links": {
+    "ge_enabled": false,
+    "ge_gsl": {
+      "mean_bad_s": 1.0,
+      "mean_good_s": 300.0
+    },
+    "ge_isl": {
+      "mean_bad_s": 0.5,
+      "mean_good_s": 900.0
+    },
+    "geometry_loss": true,
+    "isl_dirs": [
+      "N",
+      "S",
+      "E",
+      "W"
+    ],
+    "isl_queue_bits": 256000000,
+    "isl_rate_mbps": 1000.0,
+    "max_isl_km": 6000.0,
+    "mcs_table": "legacy-dvbs2x",
+    "rate_model": "constant",
+    "rf_downlink": {
+      "antenna_diameter_rx_m": 0.26,
+      "antenna_diameter_tx_m": 0.26,
+      "bandwidth_hz": 500000000.0,
+      "frequency_hz": 20000000000.0,
+      "max_ptx_w": 10.0,
+      "min_rate_bps": 10000.0,
+      "noise_figure_db": 2.0,
+      "noise_temperature_k": 290.0,
+      "pointing_loss_db": 0.3
+    },
+    "rf_isl": {
+      "antenna_diameter_rx_m": 0.26,
+      "antenna_diameter_tx_m": 0.26,
+      "bandwidth_hz": 500000000.0,
+      "frequency_hz": 26000000000.0,
+      "max_ptx_w": 10.0,
+      "min_rate_bps": 10000.0,
+      "noise_figure_db": 2.0,
+      "noise_temperature_k": 290.0,
+      "pointing_loss_db": 0.3
+    },
+    "rf_uplink": {
+      "antenna_diameter_rx_m": 0.26,
+      "antenna_diameter_tx_m": 0.33,
+      "bandwidth_hz": 500000000.0,
+      "frequency_hz": 30000000000.0,
+      "max_ptx_w": 20.0,
+      "min_rate_bps": 10000.0,
+      "noise_figure_db": 2.0,
+      "noise_temperature_k": 290.0,
+      "pointing_loss_db": 0.3
+    }
+  },
+  "outputs": {
+    "out_dir": "leo_sim_out",
+    "plotting": false,
+    "trace_path": null
+  },
+  "routing": {
+    "contract": "C3",
+    "learning_enabled": false,
+    "max_hops": 16,
+    "policy": "oracle"
+  },
+  "scenario": {
+    "altitude_km": 550.0,
+    "duration_s": 40.0,
+    "geometry_epoch_s": 0.0,
+    "inclination_deg": 53.0,
+    "min_elevation_deg": 25.0,
+    "name": "default",
+    "num_planes": 1,
+    "num_satellites": 8,
+    "seed": 7,
+    "time_step_s": 0.1
+  },
+  "topology": {
+    "matching": "markovian",
+    "recompute_interval_s": null
+  }
+}

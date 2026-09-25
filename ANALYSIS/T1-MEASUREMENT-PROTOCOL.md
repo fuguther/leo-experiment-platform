@@ -42,9 +42,17 @@
 
 1. `config_sha256` 是对**整份 merged config** 的 canonical JSON 求 SHA（`CODE/leo_sim/config.py:970-976`）。**任何新 config key（哪怕纯输出用）都会改变所有配置的 `config_sha256`**，从而让已编译的 planned-run 行与既有授权失效（`CODE/experiment_platform/authorize_experiment.py:338-339`）。
 2. 只往 `info_audit` 里加字段则 `config_sha256` 与 trace identity 都不变；`code_sha256`（对 `CODE/leo_sim/*.py` 逐个求 SHA，`CODE/leo_sim/receipt.py:124-131`）必然改变——这是任何 kernel 改动的固有代价，且是正确的：代码确实变了。
-3. decision log 工件**不在 receipt / ledger 信任链内**（不在 `receipt.RECEIPT_KEYS` 与 `LEDGER_KEYS` 中），没有行键白名单。
+3. ~~decision log 工件**不在 receipt / ledger 信任链内**（不在 `receipt.RECEIPT_KEYS` 与 `LEDGER_KEYS` 中），没有行键白名单。~~
+   **【2026-09-24 更新，本节写于此前的状态】** decision log 现在**有**冻结的行键契约：
+   `decision_ledger.DECISION_ROW_KEYS`（19 键，双向 fail loud）+ `DECISION_STREAM_CONTRACT =
+   "decision-rows/v1"`。当一次运行同时给出 decision 与 timeline 两条流时，回执升为
+   `leo-sim-receipt/v6`，其 31 键额外携带 `decision_stream_contract`、`decision_log_sha256`、
+   `timeline_log_sha256`；正式运行附 `--decision-log` 的策略性拒绝已随之撤销。
+   **仍未闭合的部分（据实声明）**：`verify_receipt_dir` 看不到 run 目录之外的流文件，故只校验
+   这两个 sha256 的**形状**，不重算其数值；真正的闭合目前由
+   `fold_decision_ledger` 记录的 `source.*_sha256` 与回执字段比对完成。
 
-因此：**T1 时间账本一律实现为 `info_audit` 的纯输出扩展，不引入任何新 config key。**
+因此：**T1 时间账本一律实现为 `info_audit` 的纯输出扩展，不引入任何新 config key**（该结论不受上述更新影响）。
 
 ### 3.4 不改动 `packet_events`
 

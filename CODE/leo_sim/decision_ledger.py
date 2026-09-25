@@ -62,6 +62,54 @@ TIMELINE_FIELDS = (
 #: never an inference from the numbers.
 DEFAULT_OBS_MODE = "refresh"
 
+#: The frozen top-level key contract of one decision row.
+#:
+#: The kernel appends decision rows from a single unconditional dict literal
+#: (kernel.py, the decision_sink.append call in the decision path), so this
+#: key set is fixed by construction rather than by convention -- there are no
+#: conditional fields.  It is what a formal run must satisfy for its decision
+#: stream to be attachable to an authorized run: without a row contract the
+#: stream is diagnostic-only, which is precisely why
+#: ANALYSIS/T1-MEASUREMENT-PROTOCOL.md section 3.3 keeps it outside the
+#: receipt/ledger trust chain and why a formal run used to refuse it.
+DECISION_ROW_KEYS = frozenset({
+    "t", "t_decision_start", "decision_id", "state_version", "pid", "src",
+    "dst", "sat", "kind", "policy", "candidates", "chosen", "own_queue_bits",
+    "obs", "info_audit", "obs_mode", "observation_at_start",
+    "estimate_at_start", "truth_at_commit",
+})
+
+#: Stream-contract identifier a V6 receipt binds the decision log under.
+DECISION_STREAM_CONTRACT = "decision-rows/v1"
+
+
+class DecisionRowError(ValueError):
+    """A decision row does not satisfy the frozen row contract."""
+
+
+def validate_decision_row(row) -> None:
+    """Refuse a row that is not exactly the frozen contract.
+
+    Fail loud in BOTH directions.  An unknown key means the writer changed
+    without this contract being updated; a missing key means the row cannot
+    carry the evidence the contract promises.  Neither is silently dropped --
+    a contract that checks only one direction lets the other drift.
+    """
+    if not isinstance(row, dict):
+        raise DecisionRowError(
+            f"decision row is not a JSON object: {type(row).__name__}")
+    keys = set(row)
+    unknown = sorted(keys - DECISION_ROW_KEYS)
+    if unknown:
+        raise DecisionRowError(
+            "decision row carries keys outside the frozen contract: "
+            f"{unknown}")
+    missing = sorted(DECISION_ROW_KEYS - keys)
+    if missing:
+        raise DecisionRowError(
+            f"decision row is missing contract keys: {missing}")
+
+
 #: Milestones that end a decision ATTEMPT without committing it, most
 #: authoritative first: a rejected commit also parks the packet, so both
 #: commit_rejected and hold are recorded and the rejection is the outcome.

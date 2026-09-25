@@ -472,16 +472,16 @@ def recompute_link_utilization(packet_events, service_windows,
     utilization, status, ...}}.
 
     available_capacity_bits and utilization are the *sampled* physical
-    availability; both are None when the run recorded no availability sample at
-    all, and status is then DEGENERATE_DENOMINATOR.  The service-window
+    availability; both are None, with status DEGENERATE_DENOMINATOR, whenever
+    the denominator does not exist for that link -- either because the run
+    sampled no availability at all, or because this particular link has no
+    availability window.  Neither case publishes a number.  The service-window
     fallback ratio is reported separately as fallback_utilization so a reader
     can never mistake it for a measurement (it is ~1.0 by construction).
 
-    Raises IndependentMetricsError for a tampered capacity_bits, for overlapping
-    or duplicated available windows, for a link whose served bits exceed its
-    sampled available capacity (sum(served) <= sum(available)), and for a link
-    with served_bits > 0 that has no availability coverage while availability
-    was sampled at all.
+    Raises IndependentMetricsError for a tampered capacity_bits, for
+    overlapping or duplicated available windows, and for a link whose served
+    bits exceed its sampled available capacity (sum(served) <= sum(available)).
     """
     records = _scan_packet_events(_mapping_list(packet_events, "packet_events"))
     service_windows = _mapping_list(service_windows, "service_windows")
@@ -523,12 +523,32 @@ def recompute_link_utilization(packet_events, service_windows,
             entry["status"] = STATUS_DEGENERATE
             entry["fallback_utilization"] = min(
                 1.0, served / capacity if capacity else 0.0)
-        else:
-            if served > 0 and available is None:
+        elif available is None:
+            # Availability WAS sampled somewhere in this run, but this link
+            # has no availability window at all, so its denominator does not
+            # exist.  A link that SERVED something stays the loud error it
+            # always was: those bits are missing from every denominator.
+            # A link that served nothing used to fall through with
+            # available_bits = 0.0 and be published as status=OK /
+            # utilization=0.0 / available_samples=0 -- i.e. the module that
+            # exists to catch fabricated denominators fabricated one, and
+            # cross-checking against production could not see it (production
+            # reads 0.0 there too).  Measured 2026-09-25: a stalled service
+            # window on isl:1:2 returned status OK, utilization 0.0,
+            # available_capacity_bits 0.0 while isl:0:1 was covered.  A
+            # missing denominator is a missing number whether or not anything
+            # was served.
+            if served > 0:
                 raise IndependentMetricsError(
                     f"served link {link_id} has no available-capacity "
                     f"coverage: {served} served bits are missing from the "
                     f"denominator")
+            entry["available_capacity_bits"] = None
+            entry["utilization"] = None
+            entry["status"] = STATUS_DEGENERATE
+            entry["fallback_utilization"] = min(
+                1.0, served / capacity if capacity else 0.0)
+        else:
             if served > available_bits * (1.0 + CAPACITY_REL_TOL):
                 raise IndependentMetricsError(
                     f"link {link_id}: served bits {served} exceed sampled "

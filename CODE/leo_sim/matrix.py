@@ -13,6 +13,11 @@ import re
 from pathlib import Path
 from typing import Any
 
+from CODE.experiment_platform.primary_metrics import (
+    SUPPORTED_PRIMARY_METRICS,
+    UTILIZATION_PRIMARY_METRICS,
+)
+
 from . import config as config_mod
 from . import governance
 
@@ -25,6 +30,7 @@ EXPERIMENT_ID = re.compile(r"^EXP-[A-Za-z0-9][A-Za-z0-9_-]*$")
 PHASES = {"training", "evaluation", "train", "eval", "non_learning"}
 LINEAGE_MODES = {"new_training", "evaluation_only", "not_applicable"}
 SUPPORTED_PAIRED_BY = {"pairing_key"}
+DESIGN_POLICIES = {"strict", "exploratory_multi_factor"}
 STOCHASTIC_IDENTITY_PATHS = {
     "scenario.seed", "learning.seed",
     "learning.checkpoint_path", "learning.checkpoint_sha256",
@@ -181,6 +187,17 @@ def _validate_analysis(value: Any) -> dict[str, Any]:
     for key in ("primary_metric", "estimand"):
         if not isinstance(analysis[key], str) or not analysis[key]:
             raise MatrixError(f"analysis.{key} must be a non-empty string")
+    # A non-empty string is not a contract.  The analyzer dispatches over a
+    # fixed vocabulary (experiment_platform/primary_metrics.py); before this
+    # check existed a metric outside it compiled to
+    # COMPILED_REVIEW_REQUIRED with errors=[], was authorized, deployed and
+    # run, and only then raised "unsupported V2 primary metric" (audit B4:
+    # 20 of the 23 catalog ids, 10 of them marked eligible_as_primary).
+    metric = analysis["primary_metric"]
+    if metric not in SUPPORTED_PRIMARY_METRICS:
+        raise MatrixError(
+            f"analysis.primary_metric {metric!r} is not one the V2 analyzer "
+            f"can compute; supported: {sorted(SUPPORTED_PRIMARY_METRICS)}")
     if analysis["paired_by"] != ["pairing_key"]:
         raise MatrixError("unsupported paired_by; v1 supports only ['pairing_key']")
     contrasts = analysis["planned_contrasts"]
@@ -219,6 +236,58 @@ def _validate_analysis(value: Any) -> dict[str, Any]:
     return analysis
 
 
+def _validate_design(value: Any) -> dict[str, Any]:
+    """The optional declaration that makes a single-factor claim checkable.
+
+    The V2 request contract had no place to say "this contrast changes one
+    factor", so the strict rule lived only in the legacy compiler
+    (compile_experiment.py:462) and on the retained, formally executable V2
+    route a multi-factor treatment compiled with no signal at all (audit
+    B12).  Declaring the policy is opt-in: a request without it behaves
+    exactly as before.  What the declaration buys is mechanical
+    verification against the RESOLVED cell configurations, in
+    _design_check below - not a promise about the request text.
+    """
+    design = _expect_keys(value, {"one_change_policy", "factor_changed"},
+                          "design")
+    policy = design["one_change_policy"]
+    if policy not in DESIGN_POLICIES:
+        raise MatrixError(
+            f"design.one_change_policy must be one of {sorted(DESIGN_POLICIES)}")
+    declared = design["factor_changed"]
+    if not isinstance(declared, list) or not declared:
+        raise MatrixError("design.factor_changed must be a non-empty list")
+    normalized = [_dotted_path(path, "design.factor_changed")
+                  for path in declared]
+    if len(set(normalized)) != len(normalized):
+        raise MatrixError("design.factor_changed contains duplicates")
+    if policy == "strict" and len(normalized) != 1:
+        raise MatrixError(
+            "design.one_change_policy=strict requires exactly one "
+            "factor_changed path")
+    return {"one_change_policy": policy, "factor_changed": normalized}
+
+
+def _leaf_diff(left: Any, right: Any, prefix: str = "") -> set[str]:
+    """Dotted paths whose resolved values differ between two configs.
+
+    A path present on one side only counts as differing, so a key silently
+    added by an arm override cannot hide behind an absent counterpart.
+    """
+    paths: set[str] = set()
+    if isinstance(left, dict) and isinstance(right, dict):
+        for key in set(left) | set(right):
+            child = f"{prefix}.{key}" if prefix else str(key)
+            if key not in left or key not in right:
+                paths.add(child)
+                continue
+            paths |= _leaf_diff(left[key], right[key], child)
+        return paths
+    if left != right:
+        paths.add(prefix)
+    return paths
+
+
 def _validate_claim_boundary(value: Any) -> dict[str, Any]:
     boundary = _expect_keys(value, {"can_claim", "cannot_claim"}, "claim_boundary")
     for key in ("can_claim", "cannot_claim"):
@@ -234,7 +303,7 @@ def validate_request(request: Any) -> dict[str, Any]:
         "common_config", "arms", "cells", "acceptance", "analysis",
         "claim_boundary",
     }
-    allowed = required | {"execution_policy"}
+    allowed = required | {"execution_policy", "design"}
     if not isinstance(request, dict):
         raise MatrixError("matrix request must be a mapping")
     unknown = set(request) - allowed
@@ -257,6 +326,9 @@ def validate_request(request: Any) -> dict[str, Any]:
         if execution_policy["mode"] != "serial_fail_closed":
             raise MatrixError(
                 "execution_policy.mode must be serial_fail_closed")
+    design = request.get("design")
+    if design is not None:
+        design = _validate_design(design)
     finalization = request["work_finalization"]
     if (not isinstance(finalization, str) or not finalization.startswith("CODE/work/")
             or not finalization.endswith("/finalization.json")
@@ -352,6 +424,7 @@ def validate_request(request: Any) -> dict[str, Any]:
         **request,
         **({"execution_policy": execution_policy}
            if execution_policy is not None else {}),
+        **({"design": design} if design is not None else {}),
         "arms": normalized_arms,
         "cells": normalized_cells,
     }
@@ -421,7 +494,8 @@ def _canonical_run_id(experiment_id: str, cell: dict[str, Any]) -> str:
     return f"{experiment_id}-{cell['arm_id']}-{suffix}"
 
 
-def _resolve_cells(request: dict[str, Any], project_root: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _resolve_cells(request: dict[str, Any], project_root: Path) -> tuple[
+        dict[str, Any], list[dict[str, Any]], dict[str, Any] | None]:
     validated = validate_request(request)
     arm_by_id = {arm["arm_id"]: arm for arm in validated["arms"]}
     all_intervention_paths = {
@@ -464,7 +538,110 @@ def _resolve_cells(request: dict[str, Any], project_root: Path) -> tuple[dict[st
             "config_path": f"resolved/{cell['run_id']}.leo-sim.yaml",
         })
     _validate_pairing_contract(validated, rows)
-    return validated, rows
+    _validate_capacity_sampling(validated, rows)
+    design_check = _design_check(validated, rows)
+    return validated, rows, design_check
+
+
+def _design_check(request: dict[str, Any],
+                  rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Verify a declared one-change policy against the RESOLVED cell configs.
+
+    Counted from the resolved configurations of the cells that are actually
+    planned, so an override hidden in cells[].config_overrides (which the arm
+    level cannot see) is counted too.  STOCHASTIC_IDENTITY_PATHS are excluded
+    because a paired contrast is REQUIRED to share trace identity and is
+    explicitly allowed to differ in learning seed/checkpoint: those are
+    re-execution identity, not treatment factors (same projection the
+    controlled_signature uses).
+
+    Returns None when the request declares nothing, so a request without a
+    design block derives exactly the documents it derived before.
+    """
+    design = request.get("design")
+    if design is None:
+        return None
+    contrast_by_arms = {
+        frozenset((contrast["left_arm"], contrast["right_arm"])): contrast
+        for contrast in request["analysis"]["planned_contrasts"]
+    }
+    by_pair: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_pair.setdefault(row["pairing_key"], []).append(row)
+    observed: dict[str, list[frozenset[str]]] = {}
+    for _pairing_key, group in sorted(by_pair.items()):
+        if len(group) != 2:
+            continue
+        contrast = contrast_by_arms.get(frozenset(row["arm_id"] for row in group))
+        if contrast is None:
+            continue
+        left, right = group
+        changed = frozenset(_leaf_diff(left["config"]["config"],
+                                       right["config"]["config"])
+                            - STOCHASTIC_IDENTITY_PATHS)
+        observed.setdefault(contrast["name"], []).append(changed)
+
+    declared = set(design["factor_changed"])
+    strict = design["one_change_policy"] == "strict"
+    summary: dict[str, Any] = {}
+    for name, variants in sorted(observed.items()):
+        if len(set(variants)) != 1:
+            raise MatrixError(
+                f"contrast {name}: its pairing keys resolve to different "
+                f"changed-path sets {sorted(sorted(v) for v in set(variants))}; "
+                "a contrast must change the same factors in every pairing key")
+        changed = sorted(variants[0])
+        summary[name] = changed
+        if strict and set(changed) != declared:
+            raise MatrixError(
+                f"contrast {name} declares one_change_policy=strict with "
+                f"factor_changed={sorted(declared)} but the resolved "
+                f"configurations differ in {changed}; the single-factor claim "
+                "is not supported by the compiled cells")
+    if strict and not observed:
+        raise MatrixError(
+            "design.one_change_policy=strict declared but no planned contrast "
+            "could be measured")
+    return {
+        "schema": "leo-sim-matrix-design-check/v1",
+        "one_change_policy": design["one_change_policy"],
+        "declared_factor_changed": sorted(declared),
+        "observed_changed_paths_by_contrast": summary,
+        "single_factor_verified": bool(strict and len(observed) == 1
+                                       and all(len(v) == 1
+                                               for v in summary.values())),
+    }
+
+
+def _validate_capacity_sampling(request: dict[str, Any],
+                                rows: list[dict[str, Any]]) -> None:
+    """A utilization endpoint needs a sampled available-capacity denominator.
+
+    With execution.available_capacity_interval_s null the kernel records no
+    availability windows at all, metrics.summarize falls back to the
+    service-window capacity as the denominator, and every successfully served
+    link reads ~1.0 with available_samples == 0 (metrics.py:334-340; measured
+    2026-09-25 on the micro fixture: utilization 0.9999999999999992,
+    available_samples 0).  The analyzer then either averages that fabricated
+    ratio into the reported endpoint or aborts in isl_pressure - in both cases
+    only after every run has been paid for.  Refuse at compile time instead.
+    """
+    metric = request["analysis"]["primary_metric"]
+    if metric not in UTILIZATION_PRIMARY_METRICS:
+        return
+    unsampled = [
+        row["run_id"] for row in rows
+        if row["config"]["config"]["execution"][
+            "available_capacity_interval_s"] is None
+    ]
+    if unsampled:
+        raise MatrixError(
+            f"analysis.primary_metric {metric!r} is a link-utilization ratio, "
+            "which does not exist unless available capacity is sampled; "
+            "execution.available_capacity_interval_s is null in "
+            f"{unsampled}. Without it the reported utilization is the "
+            "service-window fallback (~1.0 for any served link, "
+            "available_samples=0), not a measurement")
 
 
 def _validate_pairing_contract(request: dict[str, Any],
@@ -472,8 +649,18 @@ def _validate_pairing_contract(request: dict[str, Any],
     """Validate the executable v1 paired comparison contract.
 
     Every pairing key is exactly one left/right pair for one preregistered
-    contrast. Trace identity is shared; learning identity and checkpoints are
-    intentionally allowed to differ between the two arms.
+    contrast, and the two cells must agree on every field the ANALYZER treats
+    as paired identity: trace seed, trace identity, trace input, learning
+    phase, the controlled projection and the code identity.  Learning identity
+    and checkpoints are intentionally allowed to differ between the arms.
+
+    Why the analyzer's field list is enforced here too: v2_analysis rejects a
+    contrast whose paired arms disagree on any of them.  A compiler that
+    accepts such a request only defers the failure to after the runs have been
+    paid for.  This docstring always CLAIMED trace identity was shared, but the
+    code compared only trace_seed / phase / controlled_signature -- so a
+    treatment overriding e.g. demand.offered_mbps compiled cleanly and then
+    died at analysis with "actual trace_sha256 mismatch".
     """
     contrasts = request["analysis"]["planned_contrasts"]
     by_pair: dict[str, list[dict[str, Any]]] = {}
@@ -505,15 +692,19 @@ def _validate_pairing_contract(request: dict[str, Any],
                 f"pairing_key {pairing_key} has no matching planned contrast")
         left = next(row for row in group if row["arm_id"] == contrast["left_arm"])
         right = next(row for row in group if row["arm_id"] == contrast["right_arm"])
-        if left["trace_seed"] != right["trace_seed"]:
-            raise MatrixError(
-                f"pairing_key {pairing_key} must share trace_seed for paired comparison")
-        if left["phase"] != right["phase"]:
-            raise MatrixError(
-                f"pairing_key {pairing_key} must share learning phase")
-        if left["controlled_signature"] != right["controlled_signature"]:
-            raise MatrixError(
-                f"pairing_key {pairing_key} has inconsistent controlled configuration")
+        # Keep this list in step with the analyzer's paired-identity loop in
+        # CODE/experiment_platform/v2_analysis.py.  Adding a field there
+        # without adding it here re-opens the deferral this check closes.
+        for field, complaint in (
+            ("trace_seed", "must share trace_seed for paired comparison"),
+            ("phase", "must share learning phase"),
+            ("controlled_signature", "has inconsistent controlled configuration"),
+            ("trace_identity_sha256", "must share the trace identity"),
+            ("input_sha256", "must share the trace input hash"),
+            ("code_sha256", "must share the code identity"),
+        ):
+            if left[field] != right[field]:
+                raise MatrixError(f"pairing_key {pairing_key} {complaint}")
     for contrast in contrasts:
         contrast_arm_ids = {
             contrast["left_arm"], contrast["right_arm"]}
@@ -545,8 +736,15 @@ def _artifact_hashes(out_dir: Path, paths: list[str]) -> dict[str, str]:
             for raw in sorted(paths)}
 
 
-def _design_accounting(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Count unique resolved configurations separately from re-executions."""
+def _design_accounting(rows: list[dict[str, Any]],
+                       design_check: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Count unique resolved configurations separately from re-executions.
+
+    The one-change verification is attached ONLY when the request declared a
+    design policy.  A request without one therefore derives byte-identical
+    documents to before, which is what keeps every already-compiled matrix and
+    already-issued receipt verifiable by this same code.
+    """
     run_ids_by_config: dict[str, list[str]] = {}
     for row in rows:
         run_ids_by_config.setdefault(row["config_sha256"], []).append(
@@ -557,7 +755,7 @@ def _design_accounting(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if len(run_ids) > 1
     ]
     unique = len(run_ids_by_config)
-    return {
+    accounting = {
         "schema": "leo-sim-matrix-design-accounting/v1",
         "planned_cells": len(rows),
         "unique_resolved_configurations": unique,
@@ -566,6 +764,9 @@ def _design_accounting(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "independent_condition_rule": (
             "one independent condition per unique resolved config SHA256"),
     }
+    if design_check is not None:
+        accounting["one_change_policy_check"] = design_check
+    return accounting
 
 
 def _reject_symlink_ancestors(path: Path, stop: Path) -> None:
@@ -718,6 +919,22 @@ def _render_runbook(
             "Exact re-executions are repeatability evidence only and do not "
             "increase the independent-condition count.", "",
         ])
+    check = (design_accounting or {}).get("one_change_policy_check")
+    if check is not None:
+        lines.extend([
+            "## One-change policy", "",
+            f"Declared policy: `{check['one_change_policy']}`; declared "
+            f"factor(s): {', '.join(check['declared_factor_changed'])}.", "",
+        ])
+        for name, changed in sorted(
+                check["observed_changed_paths_by_contrast"].items()):
+            lines.append(
+                f"- contrast `{name}`: changed paths "
+                f"{', '.join(changed) if changed else '(none)'}")
+        lines.extend(["",
+            "Changed paths are counted from the RESOLVED configurations of the "
+            "planned cells, excluding stochastic identity paths.", "",
+        ])
     if serial:
         lines.extend([
             "Execution policy: `serial_fail_closed`. The canonical runner applies a "
@@ -827,8 +1044,8 @@ def compile_matrix_experiment(request_path: Path, out_dir: Path,
         raise MatrixError(f"request unreadable: {exc}") from exc
     validated = validate_request(request)
     decision_contract = _load_decision_contract(project_root, validated)
-    validated, rows = _resolve_cells(validated, project_root)
-    design_accounting = _design_accounting(rows)
+    validated, rows, design_check = _resolve_cells(validated, project_root)
+    design_accounting = _design_accounting(rows, design_check)
     out_dir = _canonical_experiment_dir(project_root,
                                          validated["experiment_id"], out_dir)
     if out_dir.is_symlink():
@@ -945,8 +1162,9 @@ def verify_compiled_matrix(root: Path, experiment_dir: Path) -> tuple[str, dict[
             manifest.get("common_config_sha256") != canonical_sha(request["common_config"]) or \
             manifest.get("arms") != request["arms"]:
         raise MatrixError("matrix manifest identity/state mismatch")
-    _, rows = _resolve_cells(request, root)
-    design_accounting = None if legacy_report else _design_accounting(rows)
+    _, rows, design_check = _resolve_cells(request, root)
+    design_accounting = (None if legacy_report
+                         else _design_accounting(rows, design_check))
     if not legacy_report and report["design_accounting"] != design_accounting:
         raise MatrixError("matrix compile report design accounting mismatch")
     expected_cells = [{key: row[key] for key in (
