@@ -7,15 +7,15 @@
 | 量 | 值 |
 |---|---|
 | 开发工作树 HEAD（本文件生成处，**不是**冻结提交） | `98c858f642aeca8056d215224b20783b00354026` |
-| **冻结提交** | `eec0db985668c038c3d32cb1d1599019b82dae01` |
-| 本文件所在提交 | `1bcf435686ff4498651445165253ddb5f9786ee2` |
-| code_sha256()（当前树） | `e77472175e3a652f9b685808ed91d4626118ada305428a18f06f5749857365ae` |
+| **冻结提交** | `d44667f71b7ee9669c668e79ca894a88cdf74644` |
+| 本文件所在提交 | `PENDING` |
+| code_sha256()（当前树） | `57cca0eda33994844cf072c91914545708b53837957d829af248ab9ad1a8b011` |
 | execution_chain 汇总 | `121d4c1ac2cf124feb912af1fe1487f0ddae6223d748a987629c2565c62f87aa` |
 | 冻结集合文件数 | **22**（已跟踪修改 12 + 新增 10） |
 | 其中：运行代码哈希覆盖 | 8 |
 | 其中：执行链哈希覆盖 | 2 |
 | 其中：测试 | 10 |
-| 冻结集合汇总哈希 | `ca5e44ee8ff8fb3a14242354875440397737ef0042cd537327744882644ede34` |
+| 冻结集合汇总哈希 | `4a993d4cfc49640e7bd70aef27159c3e74d5d82089d6cc8202a113fd38f2c1fc` |
 
 ---
 
@@ -27,12 +27,12 @@
 - **覆盖集合**：`CODE/leo_sim/*.py`（31 个文件）
 - **不覆盖**：`CODE/leo_sim/tests/`（子目录，非递归）、`CODE/leo_sim/profiles/*.yaml`、`CODE/experiment_platform/`、`CODE/scripts/`。
   测试因此**需要冻结但不属于本哈希的覆盖范围**；不为迎合文档修改哈希算法。
-- **汇总哈希**：`e77472175e3a652f9b685808ed91d4626118ada305428a18f06f5749857365ae`（即该函数的返回值本身）
+- **汇总哈希**：`57cca0eda33994844cf072c91914545708b53837957d829af248ab9ad1a8b011`（即该函数的返回值本身）
 
 | 文件 | sha256 |
 |---|---|
 | `CODE/leo_sim/__init__.py` | `ffa389fad40f7de4a3e5f9d710dc897c58328c97a8ad1c4f2b945e776b713225` |
-| `CODE/leo_sim/__main__.py` | `18a5c82f623b92e4efb2beb9b4025c28b698ee9dbd9d3d6c7681f662ebfb4643` |
+| `CODE/leo_sim/__main__.py` | `f0883e6ffece7b16a2356b76a657d1c9d3f5959ce71a8792962043e8cbcba282` |
 | `CODE/leo_sim/acceptance.py` | `ceb07ba1e797c005a3523bc056c1ac9a82f566ec1c1624e1ecc526663d724802` |
 | `CODE/leo_sim/comparison.py` | `7a4e60a14a4d5773e965efa0156f87ce6809cd7b17829371a92864ee1f02fcea` |
 | `CODE/leo_sim/config.py` | `f904eeebeb29ab8abd6da64381ab5b0f1912cce7324fd617b521bd91f533aec7` |
@@ -60,7 +60,7 @@
 | `CODE/leo_sim/rng.py` | `10435d9415b1d3d11a091a2831572461e17845838616f2260d185f36bc35642d` |
 | `CODE/leo_sim/routing.py` | `0d37c2cece590af79b21caa8ba86b026dac4a3396142e2309bdbe09fe4981046` |
 | `CODE/leo_sim/scene_check.py` | `2a631a77d37f33e8b15a8574f582c27d9deaba0036724d29d90ff30f88ac57a7` |
-| `CODE/leo_sim/trace.py` | `6a29565cd8faa9498bc608b3b9a828ac8527e44ef98e787518165f8cff26291d` |
+| `CODE/leo_sim/trace.py` | `d447308c326c473d1a6ec982ce13147feee19be7414f138de4909f42435df4d7` |
 | `CODE/leo_sim/trace_family.py` | `e9eb8f91f5254519b0352094342f4675d87dfc3e6522632db5c60ee1ea580278` |
 
 > 本轮改动落在该覆盖内的文件：`CODE/leo_sim/__main__.py`, `CODE/leo_sim/config.py`, `CODE/leo_sim/matrix.py`, `CODE/leo_sim/metrics_independent.py`, `CODE/leo_sim/pullback.py`, `CODE/leo_sim/receipt.py`, `CODE/leo_sim/recompute.py`, `CODE/leo_sim/trace.py`
@@ -95,12 +95,12 @@
 |---|---|
 | `CODE/experiment_platform/tests/test_design_accounting_extension.py` | `49f53c9d9df77aea40d35962d973f64c1c5ad005557300adde6feadd98dd58a4` |
 | `CODE/experiment_platform/tests/test_stale_authorization_guard.py` | `988a3ece83d0b7345a04325974b6b8f28501a53daf056a25d4724f8357a8834a` |
-| `CODE/leo_sim/tests/test_burst_transform.py` | `326d8fecb2daaf0e1f3e18a5490b2bd8c3d34b8c5b269c0e16319248389e7527` |
+| `CODE/leo_sim/tests/test_burst_transform.py` | `5dff1361cd7945fe60413e602b38a42e4dbb030c1b59f0f9601cca4340590ce1` |
 | `CODE/leo_sim/tests/test_config.py` | `e85c9063e7ab16e693f41c6ccfc7dad5b825f24c43e3cbd8de6ac7d6c696f7b7` |
 | `CODE/leo_sim/tests/test_formal_stream_gate.py` | `2cbee00c5ff9fe96629b71c2a202f05e3d6d01e559b87958813af237cc5be370` |
 | `CODE/leo_sim/tests/test_pairing_trace_identity.py` | `cbc1a1a9cd7b1ff5669c03fee0a9101ad2e772bb998164d38f938b74ce6a757c` |
 | `CODE/leo_sim/tests/test_pre_experiment_trust.py` | `ee2d1ea6b838fe52351788da35ea5e54badb490bd2d468444ceb8a1384960bf4` |
-| `CODE/leo_sim/tests/test_pre_experiment_trust_round2.py` | `bd466cdaf984653c2d3ff46dde28b5cfdab355692dac25195b7e5ca5a1c112c9` |
+| `CODE/leo_sim/tests/test_pre_experiment_trust_round2.py` | `f35295157a38bc5de8dbddcef597a2723144875fdec1eea5e875b4bd44146ad4` |
 | `CODE/leo_sim/tests/test_pullback_authority.py` | `fcbc1a7af484a9364362e0054d2badb68d021f39aedb2a1270a1061fc1392605` |
 | `CODE/leo_sim/tests/test_review_residuals.py` | `f137bac8fdb701646fd66851a969cb4d137c0f40a1886b425bc34202064f85ff` |
 
@@ -119,22 +119,22 @@
 | `CODE/experiment_platform/tests/test_design_accounting_extension.py` | `49f53c9d9df77aea40d35962d973f64c1c5ad005557300adde6feadd98dd58a4` |
 | `CODE/experiment_platform/tests/test_stale_authorization_guard.py` | `988a3ece83d0b7345a04325974b6b8f28501a53daf056a25d4724f8357a8834a` |
 | `CODE/experiment_platform/v2_analysis.py` | `a63b2cdef6c77ea33e399f4d9d87c993b16edb4f71e2addfbff827089531eef2` |
-| `CODE/leo_sim/__main__.py` | `18a5c82f623b92e4efb2beb9b4025c28b698ee9dbd9d3d6c7681f662ebfb4643` |
+| `CODE/leo_sim/__main__.py` | `f0883e6ffece7b16a2356b76a657d1c9d3f5959ce71a8792962043e8cbcba282` |
 | `CODE/leo_sim/config.py` | `f904eeebeb29ab8abd6da64381ab5b0f1912cce7324fd617b521bd91f533aec7` |
 | `CODE/leo_sim/matrix.py` | `c6b1203fbacdadb8b549bd47f42c7cc9f02210b78809e6206500d9fa2a55edbe` |
 | `CODE/leo_sim/metrics_independent.py` | `778726b7121637af50f91ad08b913e0a2e5c464e92fb65a0ed9d961bdb03f2e7` |
 | `CODE/leo_sim/pullback.py` | `b6e395977bc01dab2958a7e4177229af56feb7524359dbbd51bfb8b654b8d869` |
 | `CODE/leo_sim/receipt.py` | `759c7f76db30673a010ad0c8cbe073289860c51da48c7a67ff2616081f6446de` |
 | `CODE/leo_sim/recompute.py` | `9d141996afbd7d2718542044974c50350d204b7b1e4ab05beca88a82dd2d7d2b` |
-| `CODE/leo_sim/tests/test_burst_transform.py` | `326d8fecb2daaf0e1f3e18a5490b2bd8c3d34b8c5b269c0e16319248389e7527` |
+| `CODE/leo_sim/tests/test_burst_transform.py` | `5dff1361cd7945fe60413e602b38a42e4dbb030c1b59f0f9601cca4340590ce1` |
 | `CODE/leo_sim/tests/test_config.py` | `e85c9063e7ab16e693f41c6ccfc7dad5b825f24c43e3cbd8de6ac7d6c696f7b7` |
 | `CODE/leo_sim/tests/test_formal_stream_gate.py` | `2cbee00c5ff9fe96629b71c2a202f05e3d6d01e559b87958813af237cc5be370` |
 | `CODE/leo_sim/tests/test_pairing_trace_identity.py` | `cbc1a1a9cd7b1ff5669c03fee0a9101ad2e772bb998164d38f938b74ce6a757c` |
 | `CODE/leo_sim/tests/test_pre_experiment_trust.py` | `ee2d1ea6b838fe52351788da35ea5e54badb490bd2d468444ceb8a1384960bf4` |
-| `CODE/leo_sim/tests/test_pre_experiment_trust_round2.py` | `bd466cdaf984653c2d3ff46dde28b5cfdab355692dac25195b7e5ca5a1c112c9` |
+| `CODE/leo_sim/tests/test_pre_experiment_trust_round2.py` | `f35295157a38bc5de8dbddcef597a2723144875fdec1eea5e875b4bd44146ad4` |
 | `CODE/leo_sim/tests/test_pullback_authority.py` | `fcbc1a7af484a9364362e0054d2badb68d021f39aedb2a1270a1061fc1392605` |
 | `CODE/leo_sim/tests/test_review_residuals.py` | `f137bac8fdb701646fd66851a969cb4d137c0f40a1886b425bc34202064f85ff` |
-| `CODE/leo_sim/trace.py` | `6a29565cd8faa9498bc608b3b9a828ac8527e44ef98e787518165f8cff26291d` |
+| `CODE/leo_sim/trace.py` | `d447308c326c473d1a6ec982ce13147feee19be7414f138de4909f42435df4d7` |
 | `CODE/scripts/remote/pull-results-remote.sh` | `15a7677097265dd93fc24999235cf96c692e653056035a74b385930e3be1b03b` |
 | `CODE/scripts/remote/remote_job.py` | `c468c2bcb77832f31b0b0bbaf590c04be276a678019738f73640e369bdb1d13e` |
 
