@@ -47,6 +47,10 @@ from typing import Any
 
 from CODE.experiment_platform import authorize_experiment
 from CODE.experiment_platform import isl_pressure
+from CODE.experiment_platform.primary_metrics import (
+    SUPPORTED_PRIMARY_METRICS,
+    UTILIZATION_PRIMARY_METRICS,
+)
 from CODE.leo_sim import metrics as metrics_mod
 from CODE.leo_sim import receipt as receipt_mod
 
@@ -226,6 +230,13 @@ def _verify_external_witness(
 
 def _metric_from_result(receipt: dict[str, Any], ledgers: dict[str, Any],
                         primary: str) -> float:
+    # The compiler reads this same set (matrix._validate_analysis), so an
+    # unsupported metric can no longer be compiled, authorized, deployed and
+    # run before anyone notices.  The guard is kept here as well because this
+    # function is the analyzer's own entry point: a caller that reaches it
+    # with a metric outside the vocabulary gets the same verdict.
+    if primary not in SUPPORTED_PRIMARY_METRICS:
+        raise V2AnalysisError(f"unsupported V2 primary metric: {primary}")
     totals = receipt.get("totals")
     fate_counts = receipt.get("fate_counts")
     if not isinstance(totals, dict) or not isinstance(fate_counts, dict):

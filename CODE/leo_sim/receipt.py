@@ -72,6 +72,14 @@ SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 #: through to the legacy identity/v1 branch and fail every V6 receipt.
 RECEIPT_SCHEMAS_V5_FAMILY = frozenset({RECEIPT_SCHEMA, RECEIPT_SCHEMA_V6})
 
+#: The two stream identities a V6 receipt can name, and the file each one is
+#: the digest OF.  Inside the run directory, so a pulled-back result set either
+#: contains both files or is provably incomplete.
+STREAM_FILES = {
+    "decision_log_sha256": "decisions.jsonl",
+    "timeline_log_sha256": "timeline.jsonl",
+}
+
 
 def _family_label(schema: str) -> str:
     """Operator-facing label for a receipt schema in an error message.
@@ -1168,6 +1176,14 @@ def _verify_stream_bindings(out_dir: str, *, decision_log: str | None,
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return [f"receipt.json is unreadable: {exc}"]
+    # A well-formed JSON document need not be an OBJECT.  Without this guard a
+    # receipt.json holding a list/str/number reached the .get() below and
+    # raised AttributeError, so "receipt verify --decision-log ..." exited 1
+    # with a traceback instead of the FAILED verdict the bare form gives.
+    # That breaks this module's own invariant: corrupted JSON must never
+    # crash verify.  (Found in round 3.)
+    if not isinstance(receipt, dict):
+        return [f"{receipt_path} must be a JSON object"]
     if receipt.get("schema") not in RECEIPT_SCHEMAS_V5_FAMILY:
         return [f"{receipt_path} has an unsupported receipt schema"]
     if receipt.get("schema") != RECEIPT_SCHEMA_V6:
@@ -1179,16 +1195,154 @@ def _verify_stream_bindings(out_dir: str, *, decision_log: str | None,
                      ("timeline_log_sha256", timeline_log)):
         if raw is None:
             continue
-        path = Path(raw)
-        if path.is_symlink() or not path.is_file():
-            errors.append(f"{key}: missing or symbolic stream file: {path}")
-            continue
-        actual = hashlib.sha256(path.read_bytes()).hexdigest()
-        if receipt.get(key) != actual:
-            errors.append(
-                f"{key} does not match {path}: receipt says "
-                f"{receipt.get(key)}, file is {actual}")
+        errors.extend(_stream_digest_errors(receipt, Path(raw), key))
     return errors
+
+
+def _stream_digest_errors(receipt: dict, path: Path, key: str) -> list[str]:
+    """Recompute one recorded stream digest against the file it names.
+
+    Shared by the caller-supplied form (verify_receipt_dir, which is handed
+    paths that may live anywhere) and the run-directory form
+    (verify_receipt_streams, which resolves them from STREAM_FILES), so the two
+    entry points can never disagree about what a matching digest means.
+    """
+    if path.is_symlink() or not path.is_file():
+        return [f"{key}: missing or symbolic stream file: {path}"]
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if receipt.get(key) != actual:
+        return [f"{key} does not match {path}: receipt says "
+                f"{receipt.get(key)}, file is {actual}"]
+    return []
+
+
+def _nonblank_lines(path: Path) -> int:
+    with path.open(encoding="utf-8") as handle:
+        return sum(1 for line in handle if line.strip())
+
+
+def verify_receipt_streams(out_dir: str, *,
+                           require_streams: bool = False) -> list[str]:
+    """Recompute a run DIRECTORY's stream contract from its own files.
+
+    verify_receipt_dir can only check the digests a caller hands it, so the
+    caller has to already know which streams to pass -- and a caller that
+    passes them unconditionally gets a false failure on any run whose receipt
+    is v5 (a v5 receipt carries no stream binding, and supplying paths for one
+    is an explicit refusal, not a silent skip).  This function removes that
+    fork: the receipt itself says what must be recomputed.
+
+      * v6 -- the receipt NAMES both streams, so both files must be present in
+        the run directory and their sha256 must equal the recorded digests.
+        There is no switch that skips this.
+      * v5 -- nothing is bound, so there is no digest to recompute; what is
+        checked instead is that the directory does not CONTRADICT the receipt.
+
+    The v5 rules come from the signing condition, not from a guess.  A run is
+    signed v6 exactly when BOTH streams were requested (each writes a
+    <stream>.manifest.json sidecar, so "requested" is observable) AND the
+    decision stream has rows (__main__._cmd_run drops the decision identity
+    when row_count == 0).  So under a v5 receipt, "both sidecars present" and
+    "decision stream non-empty" cannot both hold.  That single implication is
+    checked unconditionally, which is what catches a swapped or appended
+    decision stream even in a directory nobody claims is formal.
+
+    require_streams=True additionally demands that the downgrade be PRESENT and
+    PROVEN, which is the formal route's case because its command always asks
+    for both streams: both files and both sidecars must exist, and the decision
+    stream must have zero rows.  require_streams=False is the historical
+    behaviour for every existing caller and adds no error for a stream that was
+    simply never requested.
+
+    Neither branch reports a digest comparison for v5: the binding does not
+    exist, and saying so is not the same as saying it was verified.
+    """
+    out = Path(out_dir)
+    receipt_path = out / "receipt.json"
+    if receipt_path.is_symlink() or not receipt_path.is_file():
+        return [f"missing or symbolic artifact: {receipt_path}"]
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"receipt.json is unreadable: {exc}"]
+    if not isinstance(receipt, dict):
+        return [f"{receipt_path} must be a JSON object"]
+    schema = receipt.get("schema")
+    if schema not in RECEIPT_SCHEMAS_V5_FAMILY:
+        return [f"{receipt_path} has an unsupported receipt schema"]
+    if schema == RECEIPT_SCHEMA_V6:
+        errors: list[str] = []
+        for key, name in sorted(STREAM_FILES.items()):
+            errors.extend(_stream_digest_errors(receipt, out / name, key))
+        return errors
+    errors = []
+
+    def present(path: Path) -> bool:
+        return not path.is_symlink() and path.is_file()
+
+    streams = {key: out / name for key, name in STREAM_FILES.items()}
+    sidecars = {key: out / (name + ".manifest.json")
+                for key, name in STREAM_FILES.items()}
+    both_requested = all(present(path) for path in sidecars.values())
+    if both_requested:
+        # Contradiction check, valid for EVERY v5 directory.
+        decision = streams["decision_log_sha256"]
+        if not present(decision):
+            errors.append(
+                f"{receipt_path} is a v5 receipt whose sidecar manifests say "
+                f"both streams were requested, but {decision} is missing")
+        else:
+            rows = _nonblank_lines(decision)
+            if rows:
+                errors.append(
+                    f"{receipt_path} is a v5 receipt but {decision} holds "
+                    f"{rows} row(s) while both stream sidecars are present; a "
+                    "run with recorded decisions and both streams requested is "
+                    "signed v6, so this receipt contradicts its own run "
+                    "directory")
+    if not require_streams:
+        return errors
+    # The formal route: the downgrade must be present and PROVEN.
+    for key in ("decision_log_sha256", "timeline_log_sha256"):
+        if not present(sidecars[key]):
+            errors.append(
+                f"formal run result set is incomplete: {sidecars[key]} is "
+                "missing, so the requested streams cannot be identified")
+        if not present(streams[key]):
+            errors.append(
+                f"formal run result set is incomplete: {streams[key]} is "
+                "missing")
+    decision = streams["decision_log_sha256"]
+    if present(decision) and not present(sidecars["decision_log_sha256"]):
+        rows = _nonblank_lines(decision)
+        if rows:
+            errors.append(
+                f"{receipt_path} is a v5 receipt but its decision stream holds "
+                f"{rows} row(s); the formal route signs v6 whenever decisions "
+                "are recorded, so the empty-decision downgrade is not proven")
+    return errors
+
+
+def verify_run_artifacts(out_dir: str) -> tuple[list[str], dict]:
+    """Artifact integrity for a run directory whose runtime was NOT this
+    checkout.
+
+    Public wrapper over the unbound primitive: it recomputes every hash the
+    receipt binds to files in the directory (trace/manifest/ledgers/config,
+    fates, totals, conservation, mechanisms) but does NOT require the local
+    analyzer source and dependency versions to equal the recorded run-time
+    identity.  That local-equality gate is a statement about the verifying
+    checkout, so applying it to a result produced on another machine (the VM)
+    can only ever fail.
+
+    An empty error list from this function is therefore NOT a trust-chain
+    verdict and NOT authorization to use the run: it says the artifact set is
+    internally consistent with the receipt, nothing more.  Run-identity
+    binding (authorization + formal witness + governance receipt + external
+    launch witness) is what v2_analysis adds on top; pull-back acceptance adds
+    the stream contract via verify_receipt_streams.
+    """
+    return _verify_receipt_dir_impl(out_dir, require_local_runtime_identity=False)
 
 
 def _verify_receipt_dir_artifacts_unbound(

@@ -5,8 +5,13 @@ used to compare only trace_seed / phase / controlled_signature, so a
 treatment overriding a trace-affecting knob (demand.offered_mbps) compiled
 cleanly and then failed at analysis -- after both runs had been paid for.
 
-Measured 2026-09-24: routing.policy hop/oracle/delay all give trace identity
-3c8d3443..., while demand.offered_mbps=2.0 gives 7d5b339d...
+Measured 2026-09-24 on THIS fixture common_config: routing.policy
+hop/oracle/delay all give trace identity
+610900101fd1f21ff53cc449a46f987b939e56d60017d061648e22b261ab4700, while
+demand.offered_mbps=2.0 gives
+5e51fa445ad887a217af4cbeddb1ad4d2cee2f59f00ad1740c72253faa699191.
+(The earlier text quoted 3c8d3443/7d5b339d, which are the SMOKE profile's
+identities -- the same conclusion, the wrong measurement.)
 """
 from __future__ import annotations
 

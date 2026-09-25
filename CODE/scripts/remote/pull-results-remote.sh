@@ -286,6 +286,15 @@ def add_run_dir(run_dir: Path) -> None:
         run_dir / "ledgers.json",
         run_dir / "formal_run.json",
         run_dir / "governance_receipt.json",
+        # T1 evidence streams and their sidecar manifests.  The run CLI binds
+        # their sha256 into a leo-sim-receipt/v6, so leaving them on the VM
+        # meant the binding could never be checked and the time ledger could
+        # not be folded at all -- the receipt would name two files nobody
+        # could produce.  They are small JSONL and belong to the run.
+        run_dir / "decisions.jsonl",
+        run_dir / "decisions.jsonl.manifest.json",
+        run_dir / "timeline.jsonl",
+        run_dir / "timeline.jsonl.manifest.json",
     ]
     for candidate in default_files:
         add_file(candidate)
