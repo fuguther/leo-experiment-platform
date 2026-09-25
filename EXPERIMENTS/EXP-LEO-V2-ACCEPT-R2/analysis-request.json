@@ -1,0 +1,96 @@
+{
+  "analysis": {
+    "analysis_id": "AN-ACCEPT-R1",
+    "estimand": "paired difference",
+    "paired_by": [
+      "pairing_key"
+    ],
+    "planned_contrasts": [
+      {
+        "estimand": "paired difference",
+        "left_arm": "treatment",
+        "name": "treatment_minus_control",
+        "right_arm": "control"
+      }
+    ],
+    "primary_metric": "delivery_rate"
+  },
+  "claim_boundary": {
+    "can_claim": [
+      "platform chain acceptance only"
+    ],
+    "cannot_claim": [
+      "any scientific claim",
+      "any performance result"
+    ]
+  },
+  "design_accounting": {
+    "exact_reexecution_cells": 0,
+    "exact_reexecution_groups": [],
+    "independent_condition_rule": "one independent condition per unique resolved config SHA256",
+    "one_change_policy_check": {
+      "declared_factor_changed": [
+        "routing.policy"
+      ],
+      "observed_changed_paths_by_contrast": {
+        "treatment_minus_control": [
+          "routing.policy"
+        ]
+      },
+      "one_change_policy": "strict",
+      "schema": "leo-sim-matrix-design-check/v1",
+      "single_factor_verified": true
+    },
+    "planned_cells": 2,
+    "schema": "leo-sim-matrix-design-accounting/v1",
+    "unique_resolved_configurations": 2
+  },
+  "experiment_id": "EXP-LEO-V2-ACCEPT-R2",
+  "matrix_manifest_sha256": "38f6b7b0e6aafff2fe5f2e934af309209148a79d744cacb6e607744015e6d0d3",
+  "planned_cells": [
+    {
+      "acceptance": {
+        "min_delivered_packets": 0,
+        "min_multisat_deliveries": 0,
+        "require_control_delivery": false,
+        "require_data_isl": false
+      },
+      "arm_id": "control",
+      "config_sha256": "a5f1341fdacbed64471180b54d29e98d24e8152da06af2c411a7d114a79a7df0",
+      "controlled_signature": "e659c9196d51909bed7eea00d0f262180da8b9f4ab0be5f8cd86350f3bc566f8",
+      "input_sha256": "26536d8b3b894a13d74289131653fddfdae8fe095f7c4edb2dc6a1683ec37592",
+      "learning_seed": null,
+      "pairing_key": "pair-7",
+      "phase": "non_learning",
+      "run_id": "EXP-LEO-V2-ACCEPT-R2-control-s7",
+      "trace_identity_sha256": "2e4700b51dd327008b9b755ca85b5d2dc6551ef592ff3ace991d6d0e184bb47b",
+      "trace_seed": 7
+    },
+    {
+      "acceptance": {
+        "min_delivered_packets": 0,
+        "min_multisat_deliveries": 0,
+        "require_control_delivery": false,
+        "require_data_isl": false
+      },
+      "arm_id": "treatment",
+      "config_sha256": "dce59c55ce73f848e85037a85890094133950b1ee5808d3fb5a96656f62cd2a2",
+      "controlled_signature": "e659c9196d51909bed7eea00d0f262180da8b9f4ab0be5f8cd86350f3bc566f8",
+      "input_sha256": "26536d8b3b894a13d74289131653fddfdae8fe095f7c4edb2dc6a1683ec37592",
+      "learning_seed": null,
+      "pairing_key": "pair-7",
+      "phase": "non_learning",
+      "run_id": "EXP-LEO-V2-ACCEPT-R2-treatment-s7",
+      "trace_identity_sha256": "2e4700b51dd327008b9b755ca85b5d2dc6551ef592ff3ace991d6d0e184bb47b",
+      "trace_seed": 7
+    }
+  ],
+  "planned_run_ids": [
+    "EXP-LEO-V2-ACCEPT-R2-control-s7",
+    "EXP-LEO-V2-ACCEPT-R2-treatment-s7"
+  ],
+  "request_sha256": "57504ac46fbcf8e5ac46adb2d728048e37d9ca855bf2b7d11acfd8ff43d61f68",
+  "runtime_kind": "leo_sim_v2",
+  "schema": "leo-sim-matrix-analysis-request/v1",
+  "status": "WAITING_FOR_VERIFIED_RUNS"
+}
