@@ -47,6 +47,10 @@ from typing import Any
 
 from CODE.experiment_platform import authorize_experiment
 from CODE.experiment_platform import isl_pressure
+from CODE.experiment_platform.primary_metrics import (
+    SUPPORTED_PRIMARY_METRICS,
+    UTILIZATION_PRIMARY_METRICS,
+)
 from CODE.leo_sim import metrics as metrics_mod
 from CODE.leo_sim import receipt as receipt_mod
 
@@ -226,6 +230,13 @@ def _verify_external_witness(
 
 def _metric_from_result(receipt: dict[str, Any], ledgers: dict[str, Any],
                         primary: str) -> float:
+    # The compiler reads this same set (matrix._validate_analysis), so an
+    # unsupported metric can no longer be compiled, authorized, deployed and
+    # run before anyone notices.  The guard is kept here as well because this
+    # function is the analyzer's own entry point: a caller that reaches it
+    # with a metric outside the vocabulary gets the same verdict.
+    if primary not in SUPPORTED_PRIMARY_METRICS:
+        raise V2AnalysisError(f"unsupported V2 primary metric: {primary}")
     totals = receipt.get("totals")
     fate_counts = receipt.get("fate_counts")
     if not isinstance(totals, dict) or not isinstance(fate_counts, dict):
@@ -672,9 +683,41 @@ def _validated_design_accounting(
         "independent_condition_rule": (
             "one independent condition per unique resolved config SHA256"),
     }
-    if declared is not None and declared != expected:
-        raise V2AnalysisError(
-            "analysis request design accounting does not match matrix cells")
+    if declared is not None:
+        # The compiler's accounting may carry a verification result the
+        # analyzer CANNOT recompute from the cells alone: the one-change check
+        # needs the resolved leaf paths, and the analysis request carries only
+        # config digests.  Every field the analyzer can derive must still match
+        # exactly; the extension is shape-checked and anything else is
+        # rejected.  Without this the compiler accepted a request (design block
+        # present) that the analyzer then refused for every run -- the exact
+        # deferral CODE/work/WP-LEO-V2-T1-TRUST-CHAIN-V6 recorded as S-2, found
+        # again by the VM acceptance round on 2026-09-25.
+        recomputable = {key: value for key, value in declared.items()
+                        if key in expected}
+        if recomputable != expected:
+            raise V2AnalysisError(
+                "analysis request design accounting does not match matrix cells")
+        unknown = set(declared) - set(expected) - {"one_change_policy_check"}
+        if unknown:
+            raise V2AnalysisError(
+                "analysis request design accounting has unknown fields "
+                f"{sorted(unknown)}")
+        check = declared.get("one_change_policy_check")
+        if check is not None:
+            observed = check.get("observed_changed_paths_by_contrast") \
+                if isinstance(check, dict) else None
+            if (not isinstance(check, dict)
+                    or check.get("schema") != "leo-sim-matrix-design-check/v1"
+                    or check.get("one_change_policy") not in
+                    {"strict", "exploratory_multi_factor"}
+                    or not isinstance(check.get("declared_factor_changed"), list)
+                    or not isinstance(observed, dict)
+                    or not all(isinstance(paths, list)
+                               for paths in observed.values())
+                    or not isinstance(check.get("single_factor_verified"), bool)):
+                raise V2AnalysisError(
+                    "analysis request one-change policy check is malformed")
     return expected
 
 
