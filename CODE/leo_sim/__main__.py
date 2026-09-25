@@ -285,7 +285,9 @@ def _cmd_trace_compile(args) -> int:
                       # materialized (COMPATIBLE / INCOMPATIBLE /
                       # UNDECIDABLE; the statistical diagnostic never blocks,
                       # the deterministic transform check in burst.transform
-                      # is what refuses a broken transform).
+                      # refuses a multiplier function that disagrees with the
+                      # declaration; it does not observe the generator's
+                      # acceptance step).
                       "materialization": manifest.get("__materialization")},
                      indent=2))
     return 0

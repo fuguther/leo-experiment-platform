@@ -551,7 +551,8 @@ def _select_mlab_endpoints(grid_deg: float, agg_deg: float,
     return endpoints, weights, summary
 
 
-#: THE TRANSFORM IS CHECKED DETERMINISTICALLY; THE RANDOM DRAW IS NOT JUDGED.
+#: THE DECLARED MULTIPLIER FUNCTION IS CHECKED DETERMINISTICALLY; THE RANDOM
+#: DRAW IS NOT JUDGED.
 #:
 #: Two different questions used to be answered by one test, and the second one
 #: was answered wrongly (independent review, 2026-09-25):
@@ -570,20 +571,24 @@ def _select_mlab_endpoints(grid_deg: float, agg_deg: float,
 #:      the seed, not of the platform.  It is reported as a statistical
 #:      DIAGNOSTIC and never refuses the compile: at multiplier 5 on the
 #:      reference fixture the 3-sigma band rejected 2 of the first 400 seeds
-#:      (222 and 227) while the realized in-window mean over those 400 seeds was
-#:      248.40 against an expected 250 and the sample sd 15.57 against the
-#:      theoretical 15.81 -- a correct generator inside a wrong test.
+#:      (222 and 227) while the realized in-window mean over the 398 OTHER seeds
+#:      was 248.40 against an expected 250, sample sd 15.57 (theoretical 15.81);
+#:      over all 400 seeds the mean is 248.42 with sample sd 16.00, so the quoted
+#:      pair is the outlier-excluded set, not the full one.  A correct generator
+#:      inside a wrong test.
 #:
 #: Nothing here re-seeds or retries: one seed, one generation, one report.  A
 #: diagnostic that reads INCOMPATIBLE keeps the seed, the raw sample and the
 #: numbers so a human can judge; it does NOT auto-fail the run.
 #:
 #: The intensity verdict is COMPATIBLE / INCOMPATIBLE and nothing stronger.
-#: Statistical compatibility is not a proof that the transform is correct; the
-#: deterministic check above is what speaks to correctness.
+#: Statistical compatibility is not a proof that the transform WAS APPLIED; the
+#: deterministic check above is what speaks to the correctness of the multiplier
+#: FUNCTION.  The generator's application of it is not observed.
 INTENSITY_SIGMA = 3.0
 
-#: Longitudes probed by verify_burst_transform(), as a 1-degree grid over
+#: BACKSTOP longitudes for verify_burst_transform(), used when the caller does
+#: not pass the longitudes the trace actually uses: a 1-degree grid over
 #: [-180, 180).  The first version probed three longitudes; an independent
 #: review of 2026-09-25 falsified it with a transform that leaked at every
 #: longitude EXCEPT those three, and the trace compiled.  The grid is a
@@ -627,8 +632,8 @@ def verify_burst_transform(resolved: dict, longitudes=None,
     Property of the code and the config, independent of any seed: the
     multiplier function must return exactly the declared value on
     [start, start+duration) and 1.0 outside it, at every probed longitude
-    (LONGITUDE_PROBE_STEP_DEG below defines the grid), and the thinning the
-    generator performs must reproduce base_rate * multiplier(t) exactly:
+    (BURST_LONGITUDE_PROBE_STEP_DEG below defines the grid), and the thinning
+    FORMULA must be arithmetically consistent with it:
 
         proposal_rate(t) * acceptance_probability(t)
             == base_rate * multiplier(t),
@@ -852,18 +857,19 @@ def _burst_intensity_diagnostics(resolved: dict, start: float,
             f"({report['sigma_distance']:.2f} sigma, seed {seed}). A single "
             "Poisson draw is allowed to sit that far out, so this is reported "
             "as a property of THIS SEED rather than proof of a defect. It is, "
-            "however, the ONLY check that can see a generator whose acceptance "
-            "step ignores the multiplier -- the deterministic transform check "
-            "provably cannot (independent review, 2026-09-25). A draw this far "
-            "out calls for the pre-declared design's judgement, not a re-draw")
+            "however, the only RUNTIME field that responds to a generator whose "
+            "acceptance step ignores the multiplier: burst.applied reads true "
+            "and mismatched_probes stays 0 in that case (independent review, "
+            "2026-09-25). A draw this far out calls for the pre-declared "
+            "design's judgement, not a re-draw")
         return report
     report["status"] = "COMPATIBLE"
     report["reason"] = (
         f"{observed} packets inside the window against an expected "
         f"{expected_burst:.3f} +/- {band:.3f} (seed {seed}); statistically "
         "COMPATIBLE with the declaration, which is not a proof that the "
-        "transform is correct -- verify_burst_transform() is what speaks to "
-        "that")
+        "transform was APPLIED -- verify_burst_transform() speaks to the "
+        "multiplier FUNCTION, not to the generator's acceptance step")
     return report
 
 
@@ -879,7 +885,9 @@ def materialization_report(resolved: dict, rows: list[dict],
     declaration that never materialized - a burst window past the emission
     horizon, a burst window under a mode that ignores it, a packet size the
     generator does not use - reached the receipt unremarked.  Every rule below
-    raises TraceError instead of annotating: the trace is the experiment's
+    either raises TraceError or, where the platform deliberately annotates
+    instead (the burst block), records that annotation in the manifest: the
+    trace is the experiment's
     input, and an input whose treatment did not happen cannot be repaired
     downstream.
 
@@ -990,7 +998,9 @@ def materialization_report(resolved: dict, rows: list[dict],
             "effective_multiplier": effective_multiplier,
             "packets_inside_window": len(inside),
             # "applied" answers ONE question only: did any emitted packet fall
-            # inside the declared window.  Whether the realized INTENSITY is
+            # inside the declared window.  Read it together with applied_reason:
+            # true here does NOT mean the generator applied the burst -- a
+            # generator that drops it entirely still reads true.  Whether the realized INTENSITY is
             # compatible with the declared multiplier is a separate statistical
             # diagnostic reported below; conflating the two is exactly how "one
             # packet in the window" would get read as intensity acceptance.

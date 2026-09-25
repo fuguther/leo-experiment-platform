@@ -1,11 +1,12 @@
-"""The burst transform is checked deterministically; the draw is not judged.
+"""The declared multiplier FUNCTION is checked deterministically; the draw is not
+judged, and the generator's application of that function is not observed.
 
 Independent review, 2026-09-25: _burst_cfg() defaults at seed 222 produced 198
 in-window packets and the 3-sigma intensity gate REFUSED the compile, with an
 unmodified generator.  Scanning seeds 1..400 found two such seeds (222, 227)
-while the realized in-window mean over those 400 seeds was 248.40 against an
-expected 250 (sample sd 15.57, theoretical 15.81): a correct generator inside a
-wrong test.
+while the realized in-window mean over the 398 OTHER seeds was 248.40 against an
+expected 250 (sample sd 15.57, theoretical 15.81); over all 400 seeds the mean
+is 248.42 with sample sd 16.00.  A correct generator inside a wrong test.
 
 The two questions are now separated:
 
@@ -15,8 +16,9 @@ The two questions are now separated:
     review then patched only that step, dropped the burst entirely, and the
     check still reported zero mismatches;
   * "where did this draw land" -- a property of the seed, reported as a
-    diagnostic, never a gate.  This is the ONLY check that can see a generator
-    whose acceptance step ignores the multiplier.
+    diagnostic, never a gate.  This is the only RUNTIME signal that responds to
+    a generator that ignores the multiplier; the mean-of-N calibration and the
+    seed scan in this file also see such a generator.
 
 Nothing re-seeds or retries: one seed, one generation, one report.
 """

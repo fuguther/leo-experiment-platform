@@ -172,7 +172,7 @@ def test_an_incompatible_draw_is_reported_and_never_blocks_the_compile(tmp_path)
     assert "rather than proof of a defect" in intensity["reason"]
     # the reason must point at the ONE check that can see a broken generator,
     # now that the deterministic transform check is documented as unable to
-    assert "ONLY check that can see a generator" in intensity["reason"]
+    assert "only RUNTIME field that responds" in intensity["reason"]
 
     rows = [{"packet_id": index, "emit_time_s": 0.5 * index,
              "src_grid_id": "src", "dst_grid_id": "dst",
