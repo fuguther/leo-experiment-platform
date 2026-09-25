@@ -1,0 +1,39 @@
+{
+  "artifact_hashes": {
+    "RUNBOOK.md": "ccd9ca80ba48179265f07eda53b77375c3ce0c7e58683c45f87dd5841d04e839",
+    "analysis-request.json": "af5ca1d65aa96e2ef6c7656f6e86451a5794ee0003395559d4474bc6815f7073",
+    "request.json": "bf3763812cd03c4185af1c5ebef75e5f5be0b02c18ef9dd3e3881e0b44a1cee5",
+    "resolved/EXP-LEO-V2-ACCEPT-R3-control-s7.leo-sim.yaml": "e8ba74c8c0fabfb70be58c786ed74d2fcd20bcf23ab13d9c474fdb7ab13cba00",
+    "resolved/EXP-LEO-V2-ACCEPT-R3-treatment-s7.leo-sim.yaml": "8e470a03594ad4a8eeb827ccdebc6b4bd9a7ab25198c882281a9e9300431d656",
+    "run-manifest.json": "514797677921dd989a6ce67f514936ab0f155ed268d85e7c1d0e807aa76a2e26"
+  },
+  "design_accounting": {
+    "exact_reexecution_cells": 0,
+    "exact_reexecution_groups": [],
+    "independent_condition_rule": "one independent condition per unique resolved config SHA256",
+    "one_change_policy_check": {
+      "declared_factor_changed": [
+        "routing.policy"
+      ],
+      "observed_changed_paths_by_contrast": {
+        "treatment_minus_control": [
+          "routing.policy"
+        ]
+      },
+      "one_change_policy": "strict",
+      "schema": "leo-sim-matrix-design-check/v1",
+      "single_factor_verified": true
+    },
+    "planned_cells": 2,
+    "schema": "leo-sim-matrix-design-accounting/v1",
+    "unique_resolved_configurations": 2
+  },
+  "errors": [],
+  "execution_authorized": false,
+  "experiment_id": "EXP-LEO-V2-ACCEPT-R3",
+  "launcher_generated": false,
+  "request_sha256": "bf3763812cd03c4185af1c5ebef75e5f5be0b02c18ef9dd3e3881e0b44a1cee5",
+  "runtime_kind": "leo_sim_v2",
+  "schema": "leo-sim-experiment-matrix-compile-report/v2",
+  "status": "COMPILED_REVIEW_REQUIRED"
+}

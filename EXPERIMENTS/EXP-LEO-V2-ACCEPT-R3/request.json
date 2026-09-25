@@ -1,0 +1,126 @@
+{
+  "acceptance": {
+    "min_delivered_packets": 0,
+    "min_multisat_deliveries": 0,
+    "require_control_delivery": false,
+    "require_data_isl": false
+  },
+  "analysis": {
+    "analysis_id": "AN-ACCEPT-R1",
+    "estimand": "paired difference",
+    "paired_by": [
+      "pairing_key"
+    ],
+    "planned_contrasts": [
+      {
+        "estimand": "paired difference",
+        "left_arm": "treatment",
+        "name": "treatment_minus_control",
+        "right_arm": "control"
+      }
+    ],
+    "primary_metric": "delivery_rate"
+  },
+  "arms": [
+    {
+      "arm_id": "control",
+      "config_overrides": {},
+      "intervention_paths": []
+    },
+    {
+      "arm_id": "treatment",
+      "config_overrides": {
+        "routing": {
+          "policy": "oracle"
+        }
+      },
+      "intervention_paths": [
+        "routing.policy"
+      ]
+    }
+  ],
+  "cells": [
+    {
+      "arm_id": "control",
+      "checkpoint_lineage": {
+        "mode": "not_applicable",
+        "source_run_id": null,
+        "source_sha256": null
+      },
+      "config_overrides": {},
+      "learning_seed": null,
+      "pairing_key": "pair-7",
+      "phase": "non_learning",
+      "run_id": "EXP-LEO-V2-ACCEPT-R3-control-s7",
+      "trace_seed": 7
+    },
+    {
+      "arm_id": "treatment",
+      "checkpoint_lineage": {
+        "mode": "not_applicable",
+        "source_run_id": null,
+        "source_sha256": null
+      },
+      "config_overrides": {},
+      "learning_seed": null,
+      "pairing_key": "pair-7",
+      "phase": "non_learning",
+      "run_id": "EXP-LEO-V2-ACCEPT-R3-treatment-s7",
+      "trace_seed": 7
+    }
+  ],
+  "claim_boundary": {
+    "can_claim": [
+      "platform chain acceptance only"
+    ],
+    "cannot_claim": [
+      "any scientific claim",
+      "any performance result"
+    ]
+  },
+  "common_config": {
+    "control_plane": {
+      "enabled": false
+    },
+    "demand": {
+      "csv_path": "CODE/data/traffic/t1_step5_micro_ab.csv",
+      "mode": "csv"
+    },
+    "endpoints": {
+      "sites": [
+        {
+          "lat": 0.1,
+          "lon": 0.1,
+          "name": "a"
+        },
+        {
+          "lat": 52.6,
+          "lon": 90.4,
+          "name": "b"
+        }
+      ]
+    },
+    "execution": {
+      "available_capacity_interval_s": 0.1
+    },
+    "learning": {
+      "algorithm": "none"
+    },
+    "scenario": {
+      "duration_s": 40.0,
+      "num_planes": 1,
+      "num_satellites": 8,
+      "seed": 7
+    }
+  },
+  "design": {
+    "factor_changed": [
+      "routing.policy"
+    ],
+    "one_change_policy": "strict"
+  },
+  "experiment_id": "EXP-LEO-V2-ACCEPT-R3",
+  "runtime_kind": "leo_sim_v2",
+  "schema": "leo-sim-experiment-matrix-request/v1",
+  "work_finalization": "CODE/work/WP-LEO-V2-ACCEPT-R3/R01/finalization.json"
+}
