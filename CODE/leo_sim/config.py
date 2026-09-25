@@ -571,6 +571,36 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         dm["burst_start_s"] is not None
         or dm["burst_duration_s"] is not None
     )
+    if burst_declared and dm["mode"] not in {"burst", "mlab"}:
+        # The transform exists ONLY in _rate_multiplier() for mode in
+        # {burst, mlab} (trace.py:302-307).  Declaring the window under any
+        # other mode used to resolve happily and then be silently dropped:
+        # the manifest published traffic_transform.burst = null while the
+        # resolved config still carried burst_start_s, so nothing downstream
+        # could separate "no burst intended" from "burst intended and lost".
+        # Measured 2026-09-25: demand.mode=uniform + burst [2,4) resolved and
+        # compiled with traffic_transform.burst = null and no diagnostic.
+        raise ConfigError(
+            "demand.burst_start_s/burst_duration_s are declared but "
+            f"demand.mode={dm['mode']} never applies the burst transform; "
+            "the window would be silently dropped. Use demand.mode=burst or "
+            "demand.mode=mlab, or remove the burst window")
+    # The multiplier alone is the other half of the same hole: a config that
+    # sets burst_multiplier but declares no window under a mode that never
+    # applies the transform used to resolve happily with the value kept in the
+    # resolved config and never used (independent review of 2026-09-25).  The
+    # default is exempt because it is present in every resolved config whether
+    # or not the author asked for it; a non-default value is a claim that
+    # something will use it.
+    default_multiplier = DEFAULTS["demand"]["burst_multiplier"]
+    if dm["mode"] not in {"burst", "mlab"} \
+            and dm["burst_multiplier"] != default_multiplier:
+        raise ConfigError(
+            f"demand.burst_multiplier={dm['burst_multiplier']} is declared but "
+            f"demand.mode={dm['mode']} never applies the burst transform, so "
+            "the value would be silently ignored. Use demand.mode=burst or "
+            f"demand.mode=mlab, or leave burst_multiplier at its default "
+            f"({default_multiplier})")
     if dm["mode"] in {"burst", "mlab"} and (
             dm["mode"] == "burst" or burst_declared):
         if dm["burst_start_s"] is None or dm["burst_duration_s"] is None:
@@ -579,14 +609,25 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
                 "burst_duration_s")
         if dm["burst_start_s"] < 0 or dm["burst_duration_s"] <= 0:
             raise ConfigError("burst window invalid")
-        # a burst window that never intersects [0, duration_s] would silently
-        # run the whole experiment at multiplier 1 while still declaring the
-        # burst mechanism: fail closed on a non-observed treatment
-        if not (dm["burst_start_s"] < sc["duration_s"]
-                and dm["burst_start_s"] + dm["burst_duration_s"] > 0):
+        # The window must lie inside the interval in which packets are
+        # actually emitted, not merely intersect the scenario horizon.  The
+        # historical check used scenario.duration_s only, so a window placed
+        # after demand.emission_end_s passed validation and then produced
+        # ZERO packets inside it: the run was a plain baseline while the
+        # manifest still declared a burst.  Measured 2026-09-25:
+        # emission_end_s=20 with the window at [30, 40) gave 100 packets,
+        # 0 inside the window, and realized offered load == target 40 Mbps.
+        emitted_until = (float(sc["duration_s"])
+                         if dm["emission_end_s"] is None
+                         else float(dm["emission_end_s"]))
+        window_end = dm["burst_start_s"] + dm["burst_duration_s"]
+        if window_end > emitted_until:
             raise ConfigError(
-                "burst window must intersect the scenario horizon "
-                "[0, duration_s]")
+                "burst window [burst_start_s, burst_start_s+burst_duration_s) "
+                f"= [{dm['burst_start_s']}, {window_end}) must lie inside the "
+                f"emission window [0, {emitted_until}] "
+                "(demand.emission_end_s, or scenario.duration_s when unset); "
+                "a window that extends past it is only partially applied")
     if dm["deadline_s"] is not None and dm["deadline_s"] <= 0:
         raise ConfigError("demand.deadline_s must be > 0 when set")
     if dm["gravity_alpha"] <= 0 or dm["gravity_d_floor_km"] <= 0:

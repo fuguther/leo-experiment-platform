@@ -75,34 +75,96 @@ def test_available_capacity_sampling_interval_is_positive():
         })
 
 
-def test_burst_window_must_intersect_scenario_horizon():
+def test_burst_window_must_lie_inside_the_emission_window():
+    """A window that only INTERSECTS the horizon is not enough.
+
+    The historical rule compared the window with scenario.duration_s alone, so
+    a window placed after demand.emission_end_s passed validation and then
+    produced zero packets inside it: the manifest still declared a burst while
+    the run was a plain baseline (measured 2026-09-25: emission_end_s=20 with
+    the window at [30, 40) gave 100 packets, none of them inside the window).
+    """
     base = {
         "scenario": {"duration_s": 120.0},
         "demand": {"mode": "burst", "burst_start_s": 121.0,
                    "burst_duration_s": 10.0, "burst_multiplier": 5.0},
     }
-    with pytest.raises(config.ConfigError, match="intersect"):
+    with pytest.raises(config.ConfigError, match="must lie inside the emission window"):
         config.resolve_config(base)
     # window starting exactly at the horizon is also out of [0, duration)
     base["demand"]["burst_start_s"] = 120.0
-    with pytest.raises(config.ConfigError, match="intersect"):
+    with pytest.raises(config.ConfigError, match="must lie inside the emission window"):
         config.resolve_config(base)
-    # an intersecting window (including zero-length overlap edge) is valid
+    # a window that STARTS inside but ends past the horizon is only partially
+    # applied and is refused for the same reason
+    base["demand"]["burst_start_s"] = 115.0
+    with pytest.raises(config.ConfigError, match="partially applied"):
+        config.resolve_config(base)
+    # a window fully inside the horizon is valid
     base["demand"]["burst_start_s"] = 110.0
     ok = config.resolve_config(base)
     assert ok["config"]["demand"]["mode"] == "burst"
 
 
-def test_mlab_burst_requires_complete_intersecting_window():
+def test_burst_window_is_measured_against_the_emission_end_not_the_horizon():
+    def cfg(emission_end, start, duration):
+        return {
+            "scenario": {"duration_s": 60.0},
+            "demand": {"mode": "burst", "emission_end_s": emission_end,
+                       "burst_start_s": start, "burst_duration_s": duration,
+                       "burst_multiplier": 5.0},
+        }
+    # entirely after the last emitted packet
+    with pytest.raises(config.ConfigError, match="must lie inside the emission window"):
+        config.resolve_config(cfg(20.0, 30.0, 10.0))
+    # half of the declared window is unreachable
+    with pytest.raises(config.ConfigError, match="must lie inside the emission window"):
+        config.resolve_config(cfg(20.0, 15.0, 10.0))
+    # touching the emission end exactly is inside
+    accepted = config.resolve_config(cfg(20.0, 10.0, 10.0))
+    assert accepted["config"]["demand"]["burst_duration_s"] == 10.0
+
+
+def test_a_burst_window_under_a_mode_that_ignores_it_is_refused():
+    """Only mode in {burst, mlab} applies the transform (trace._rate_multiplier).
+
+    Every other mode used to resolve with the window still in the resolved
+    config and traffic_transform.burst = null in the manifest, so nothing
+    downstream could distinguish "no burst intended" from "burst intended and
+    dropped" (audit L18).
+    """
+    for mode in ("uniform", "gravity", "hotspot", "diurnal", "csv",
+                 "population_gravity"):
+        demand = {"mode": mode, "burst_start_s": 1.0, "burst_duration_s": 2.0}
+        if mode == "csv":
+            demand["csv_path"] = "CODE/data/traffic/t1_step5_micro_ab.csv"
+        elif mode == "population_gravity":
+            demand["population_path"] = "CODE/data/geoip/GPW_2020.tif"
+        with pytest.raises(config.ConfigError, match="never applies the burst transform"):
+            config.resolve_config({"demand": demand})
+    # the same window under a mode that does apply it resolves
+    ok = config.resolve_config({"demand": {
+        "mode": "burst", "burst_start_s": 1.0, "burst_duration_s": 2.0,
+        "burst_multiplier": 5.0}})
+    assert ok["config"]["demand"]["burst_start_s"] == 1.0
+
+
+def test_mlab_burst_requires_complete_window_inside_the_emission_window():
     with pytest.raises(config.ConfigError, match="mode=mlab"):
         config.resolve_config({
             "demand": {"mode": "mlab", "burst_start_s": 1.0},
         })
-    with pytest.raises(config.ConfigError, match="intersect"):
+    with pytest.raises(config.ConfigError, match="must lie inside the emission window"):
         config.resolve_config({
             "scenario": {"duration_s": 10.0},
             "demand": {"mode": "mlab", "burst_start_s": 10.0,
                        "burst_duration_s": 1.0},
+        })
+    with pytest.raises(config.ConfigError, match="must lie inside the emission window"):
+        config.resolve_config({
+            "scenario": {"duration_s": 60.0},
+            "demand": {"mode": "mlab", "emission_end_s": 20.0,
+                       "burst_start_s": 30.0, "burst_duration_s": 10.0},
         })
 
 

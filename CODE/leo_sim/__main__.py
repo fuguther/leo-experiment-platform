@@ -24,7 +24,9 @@ from . import comparison as comparison_mod
 from . import config as config_mod
 from . import decision_ledger
 from . import governance, kernel, learning, platform_check as platform_check_mod
-from . import receipt as receipt_mod, trace as trace_mod
+from . import pullback as pullback_mod
+from . import receipt as receipt_mod, recompute as recompute_mod
+from . import trace as trace_mod
 
 
 def _load(path: str) -> dict:
@@ -247,7 +249,8 @@ def _cmd_config_validate(args) -> int:
 
 
 def _compile(resolved: dict, out_dir: str) -> tuple[dict, bytes, list[dict]]:
-    manifest = trace_mod.compile_trace(resolved, out_dir)
+    evidence: dict = {}
+    manifest = trace_mod.compile_trace(resolved, out_dir, evidence=evidence)
     trace_bytes = (Path(out_dir) / "trace.csv").read_bytes()
     manifest_bytes = (Path(out_dir) / "manifest.json").read_bytes()
     manifest["__trace_sha256"] = hashlib.sha256(trace_bytes).hexdigest()
@@ -256,6 +259,10 @@ def _compile(resolved: dict, out_dir: str) -> tuple[dict, bytes, list[dict]]:
         str(Path(out_dir) / "trace.csv"),
         horizon_s=resolved["config"]["scenario"]["duration_s"],
         max_packets=resolved["config"]["execution"]["max_packets"])
+    # Input materialization evidence for the CLI output: produced by the gate
+    # inside compile_trace (the only place that knows the real endpoint set)
+    # and carried here under a "__" key, which never reaches manifest.json.
+    manifest["__materialization"] = evidence["materialization"]
     return manifest, trace_bytes, rows
 
 
@@ -270,7 +277,17 @@ def _cmd_trace_compile(args) -> int:
                       "manifest_sha256": manifest["__sha256"],
                       "offered_packets": manifest["offered_packets"],
                       "offered_bits": manifest["offered_bits"],
-                      "provenance": manifest["provenance"]}, indent=2))
+                      "provenance": manifest["provenance"],
+                      # Input materialization evidence: packet-size /
+                      # injection / endpoint / emission-window conformance, and
+                      # -- for a burst declaration -- whether the window saw
+                      # packets AND whether the declared intensity actually
+                      # materialized (COMPATIBLE / INCOMPATIBLE /
+                      # UNDECIDABLE; the statistical diagnostic never blocks,
+                      # the deterministic transform check in burst.transform
+                      # is what refuses a broken transform).
+                      "materialization": manifest.get("__materialization")},
+                     indent=2))
     return 0
 
 
@@ -407,6 +424,10 @@ def _load_precompiled(resolved: dict, trace_dir: str) -> tuple[dict, bytes, list
         str(tpath),
         horizon_s=emission_end,
         max_packets=resolved["config"]["execution"]["max_packets"])
+    # No materialization evidence on this path: a precompiled trace was gated
+    # where it was compiled, and its endpoint set cannot be re-derived from the
+    # config (mlab_auto / population_gravity read it from a data source).  The
+    # identity contract is re-checked above instead.
     return manifest, trace_bytes, rows
 
 
@@ -577,14 +598,20 @@ def _cmd_run(args) -> int:
             print(f"RUN REFUSED (timeline log): {exc}")
             return 6
     if decision_writer is not None and decision_writer.row_count == 0:
-        # An empty stream would bind a V6 receipt to nothing, which is a
-        # weaker claim than the V5 receipt it replaced.  This holds for EVERY
-        # run, not only formal ones: a diagnostic run publishing an empty
-        # stream used to receive a V6 receipt asserting decision-rows/v1 over
-        # the hash of an empty file.
-        print("RUN REFUSED (decision stream): a decision log must contain at "
-              "least one contract-valid decision row")
-        return 6
+        # An empty stream cannot bind anything meaningful -- the digest would
+        # be the hash of an empty file -- so the receipt must NOT claim
+        # decision-rows/v1.  Dropping the identity keeps it V5 instead.
+        #
+        # Round 3 replaced an earlier REFUSAL here.  Refusing removed the
+        # false claim but also turned every 0-decision configuration on the
+        # formal route from "emits V5" into "fails" (measured: the repository
+        # matrix fixture cell exited 6 under the launcher and exit 0 with a V5
+        # receipt before).  Downgrading is honest AND leaves the run usable;
+        # the empty log and its manifest are still published, so the absence
+        # is visible rather than implied.
+        print("NOTE: no decision rows were recorded; the receipt stays "
+              "leo-sim-receipt/v5 and binds no stream identity")
+        decision_log_sha = None
     rcp = receipt_mod.write_run(
         out_dir, resolved, trace_bytes, manifest, result, rows,
         decision_log_sha256=decision_log_sha,
@@ -619,6 +646,8 @@ def _cmd_run(args) -> int:
                       "natural_end": rcp["natural_end"],
                       "fate_counts": rcp["fate_counts"],
                       "conservation_ok": rcp["conservation_ok"],
+                      **({"materialization": manifest["__materialization"]}
+                         if "__materialization" in manifest else {}),
                       **({"decision_log": str(Path(args.decision_log).resolve()),
                           "decision_log_manifest": str(decision_manifest_path.resolve())}
                          if args.decision_log else {}),
@@ -637,6 +666,46 @@ def _cmd_receipt_verify(args) -> int:
         return 2
     print(json.dumps({"status": "verified", "dir": args.dir}, indent=2))
     return 0
+
+
+def _cmd_receipt_verify_pulled(args) -> int:
+    try:
+        report = pullback_mod.verify_pulled_run(
+            args.run_dir, expect=args.expect,
+            witness_root=args.witness_root)
+    except pullback_mod.PullbackError as exc:
+        print(f"PULLBACK REFUSED: {exc}")
+        return 11
+    if args.out:
+        target = Path(args.out)
+        if target.is_symlink():
+            print(f"PULLBACK REFUSED: output may not be symbolic: {target}")
+            return 11
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(report, ensure_ascii=False, indent=2,
+                                     sort_keys=True) + "\n", encoding="utf-8")
+        report = {**report, "wrote": str(target)}
+    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+    return 0 if report["ok"] else 11
+
+
+def _cmd_recompute(args) -> int:
+    try:
+        report = recompute_mod.recompute_run(args.run_dir)
+    except recompute_mod.RecomputeError as exc:
+        print(f"RECOMPUTE REFUSED: {exc}")
+        return 10
+    if args.out:
+        target = Path(args.out)
+        if target.is_symlink():
+            print(f"RECOMPUTE REFUSED: output may not be symbolic: {target}")
+            return 10
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(report, ensure_ascii=False, indent=2,
+                                     sort_keys=True) + "\n", encoding="utf-8")
+        report = {**report, "wrote": str(target)}
+    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+    return 0 if report["ok"] else 10
 
 
 def _cmd_acceptance_run(args) -> int:
@@ -729,6 +798,19 @@ def main(argv=None) -> int:
                          "this file instead of trusting the recorded shape")
     rv.add_argument("dir")
     rv.set_defaults(fn=_cmd_receipt_verify)
+    rvp = rsub.add_parser("verify-pulled")
+    rvp.add_argument("--run-dir", required=True)
+    rvp.add_argument("--expect", required=True, choices=pullback_mod.EXPECTATIONS,
+                     help="what this copy is SUPPOSED to be. Required, and "
+                          "never inferred from which files are present: a "
+                          "formal witness lost in transit must not be "
+                          "accepted as a diagnostic copy")
+    rvp.add_argument("--witness-root", default=None,
+                     help="directory holding the pulled external launch "
+                          "witness (<launch_nonce>.json); without it the "
+                          "witness is reported as NOT CHECKED")
+    rvp.add_argument("--out", help="optional path for the JSON report")
+    rvp.set_defaults(fn=_cmd_receipt_verify_pulled)
 
     p = sub.add_parser("acceptance")
     asub = p.add_subparsers(dest="sub", required=True)
@@ -742,6 +824,13 @@ def main(argv=None) -> int:
     cr.add_argument("--config", default=str(Path(__file__).resolve().parent / "profiles" / "comparison.yaml"))
     cr.add_argument("--out", required=True)
     cr.set_defaults(fn=_cmd_compare_run)
+
+    p = sub.add_parser("recompute")
+    p.add_argument("--run-dir", required=True,
+                   help="a persisted run directory (receipt/resolved/ledgers/"
+                        "timeline)")
+    p.add_argument("--out", help="optional path for the JSON report")
+    p.set_defaults(fn=_cmd_recompute)
 
     p = sub.add_parser("platform")
     psub = p.add_subparsers(dest="sub", required=True)

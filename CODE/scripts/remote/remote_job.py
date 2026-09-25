@@ -350,6 +350,35 @@ def formal_command(args: argparse.Namespace, workdir: Path, config: Path, author
     return command
 
 
+def verify_v2_formal_result(result_dir: Path) -> list[str]:
+    """The VM-side verification of one V2 formal result directory.
+
+    Split out of run_formal so the exact sequence the VM applies can be
+    executed -- and regression-tested -- without a VM.  Two independent
+    questions, both asked of the directory itself:
+
+      1. verify_receipt_dir: strict exact-runtime verification.  On the VM the
+         checkout IS the runtime, so this is meaningful there; it is *not*
+         usable against a pulled-back copy (a different machine's identity),
+         which is why pull-back acceptance is a separate gate.
+      2. verify_receipt_streams(require_streams=True): the stream contract,
+         resolved from the receipt instead of from unconditionally supplied
+         paths.  Without this the V6 binding was a claim rather than evidence;
+         with unconditional paths a legitimate zero-decision run (which is
+         signed v5 and carries no binding at all) was failed instead. Here the
+         v5 downgrade must be PROVEN -- empty decision stream, both sidecar
+         manifests and both stream files present -- and any v6 receipt has both
+         digests recomputed.
+    """
+    sys.path.insert(0, str(CANONICAL_WORKSPACE))
+    from CODE.leo_sim.receipt import verify_receipt_dir, verify_receipt_streams
+
+    errors = list(verify_receipt_dir(str(result_dir)))
+    errors += list(verify_receipt_streams(str(result_dir),
+                                           require_streams=True))
+    return errors
+
+
 def formal_child_cwd(args: argparse.Namespace, workdir: Path) -> Path:
     """Return the runtime cwd whose import/data semantics were authorized."""
     if getattr(args, "runtime_kind", "legacy_gateway") == "leo_sim_v2":
@@ -686,10 +715,10 @@ def run_formal(args: argparse.Namespace) -> int:
                     rc = 2
                 elif getattr(args, "runtime_kind", "legacy_gateway") == "leo_sim_v2":
                     receipt_path = Path(payload["last_results_dir"]) / "receipt.json"
-                    sys.path.insert(0, str(CANONICAL_WORKSPACE))
-                    from CODE.leo_sim.receipt import verify_receipt_dir
-
-                    receipt_errors = verify_receipt_dir(payload["last_results_dir"])
+                    # One implementation, shared by the VM path and the
+                    # regression test (see verify_v2_formal_result).
+                    receipt_errors = verify_v2_formal_result(
+                        Path(payload["last_results_dir"]))
                     receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
                     ledgers_payload = json.loads(
                         (Path(payload["last_results_dir"]) / "ledgers.json").read_text(

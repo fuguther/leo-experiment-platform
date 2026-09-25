@@ -87,11 +87,19 @@ def test_the_compiler_requires_what_the_analyzer_requires():
     import re
     mx = (ROOT/"CODE/leo_sim/matrix.py").read_text()
     va = (ROOT/"CODE/experiment_platform/v2_analysis.py").read_text()
+    # [a-z0-9_]+ and not [a-z_]+: every field this guard exists to protect
+    # contains digits (trace_identity_sha256, input_sha256, code_sha256), and
+    # the narrower class silently captured NEITHER side, so the assertion
+    # below passed even with the compiler checks deleted.  Found in round 3.
     i = mx.index("for field, complaint in (")
-    compiler = set(re.findall(r'\("([a-z_]+)"', mx[i:mx.index("):", i)]))
+    compiler = set(re.findall(r'\("([a-z0-9_]+)"', mx[i:mx.index("):", i)]))
     k = va.index("for field in (\"trace_sha256\"")
-    analyzer = set(re.findall(r'"([a-z_]+)"', va[k:va.index("):", k)]))
-    assert analyzer, "failed to read the analyzer paired-identity list"
+    analyzer = set(re.findall(r'"([a-z0-9_]+)"', va[k:va.index("):", k)]))
+    # Non-vacuity guards: without these the test can pass while reading
+    # nothing, which is exactly what the [a-z_]+ class did.
+    assert "trace_identity_sha256" in compiler, sorted(compiler)
+    assert "trace_identity_sha256" in analyzer, sorted(analyzer)
+    assert "trace_sha256" in analyzer, sorted(analyzer)
     # Derived, and therefore covered by construction: trace_sha256 is a
     # function of trace_identity_sha256 + input_sha256, and scenario.seed is
     # written from the cell trace_seed.  Both inputs are checked directly.
