@@ -762,8 +762,14 @@ def verify_burst_transform(resolved: dict, longitudes=None,
     }
     if broken:
         first = broken[0]
+        # Name the OBSERVATION, not a conclusion about application: this check
+        # sees return values and nothing else, so "not applied" was false both
+        # for a function that returns the declared multiplier everywhere and
+        # for one that returns half of it -- both ARE applied, both failed here
+        # (independent review, 2026-09-25).
         raise TraceError(
-            "the declared burst multiplier function is not applied: "
+            "the burst multiplier function does not return the declared value "
+            "at this probe: "
             f"probe {first['probe']} at t={first['t']} longitude "
             f"{first['longitude_deg']} gives multiplier {first['multiplier']} "
             f"and thinning rate {first['thinning_rate']}, expected "

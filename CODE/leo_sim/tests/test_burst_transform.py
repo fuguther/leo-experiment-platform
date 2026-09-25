@@ -9,10 +9,14 @@ wrong test.
 
 The two questions are now separated:
 
-  * "does the generator apply the declared transform" -- a property of the code
-    and the config, checked deterministically by verify_burst_transform();
+  * "is the multiplier FUNCTION the declared one" -- a property of the code and
+    the config, checked deterministically by verify_burst_transform().  That
+    check does NOT observe the generator's acceptance step: an independent
+    review then patched only that step, dropped the burst entirely, and the
+    check still reported zero mismatches;
   * "where did this draw land" -- a property of the seed, reported as a
-    diagnostic, never a gate.
+    diagnostic, never a gate.  This is the ONLY check that can see a generator
+    whose acceptance step ignores the multiplier.
 
 Nothing re-seeds or retries: one seed, one generation, one report.
 """
@@ -43,13 +47,14 @@ REFERENCE_BITS = 8_000_000
 
 
 def test_the_compile_gate_probes_every_endpoint_longitude(tmp_path):
-    """compile_trace makes the transform check COMPLETE, not a sample.
+    """compile_trace makes the longitude set COMPLETE -- not the check.
 
     The generator only ever calls the multiplier function at the declared
     endpoint longitudes (plus the half-open window boundaries), so probing
-    those longitudes covers the real generation.  The 1-degree grid is a
-    backstop for direct callers, and a leak confined to irrational endpoint
-    longitudes would slip past it.
+    those longitudes covers every longitude the real generation touches, and
+    the 1-degree backstop grid would miss a leak confined to irrational
+    endpoint longitudes.  Time is still a 0.05 s sample of the window, and
+    the generator's acceptance step is not observed at all.
     """
     from CODE.leo_sim import config as config_mod
     lon_a, lon_b = 0.1234567890123, 10.9876543210987
@@ -241,10 +246,12 @@ def test_the_declared_transform_holds_at_every_probed_boundary():
 def test_a_broken_transform_is_caught_deterministically(monkeypatch, sabotage,
                                                         description):
     monkeypatch.setattr(trace_mod, "_rate_multiplier", sabotage)
-    # the message now names what was actually probed -- the multiplier
-    # function -- instead of blaming "the generator" (R5 review, 2026-09-25)
+    # the message names the OBSERVATION (a return value that differs from the
+    # declaration).  "not applied" was false for two of these sabotage classes:
+    # a function returning the declared multiplier everywhere, and one
+    # returning half of it, are both "applied" (R6 review, 2026-09-25).
     with pytest.raises(trace_mod.TraceError,
-                       match="declared burst multiplier function is not applied"):
+                       match="does not return the declared value at this probe"):
         trace_mod.verify_burst_transform(_burst_cfg())
 
 
