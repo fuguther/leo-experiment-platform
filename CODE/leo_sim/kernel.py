@@ -1063,7 +1063,7 @@ class ISLLink:
 class Kernel:
     def __init__(self, resolved: dict, rows: list[dict], geometry=None,
                  learning_out_dir=None, decision_sink=None, timeline_sink=None,
-                 forced_actions=None):
+                 forced_actions=None, control_audit=False):
         cfg = resolved["config"]
         self.resolved = resolved
         self.cfg_sc = cfg["scenario"]
@@ -1132,6 +1132,11 @@ class Kernel:
         # default, so normal runs never consult it.
         self.forced_actions = dict(forced_actions or {})
         self._forced_applied: set[int] = set()
+        # T1-CTRL-AUDIT: opt-in control-plane lifecycle audit.  Default off so
+        # a run that does not ask for it writes exactly the rows it wrote
+        # before; the audit exists to ATTRIBUTE a missing destination
+        # advertisement, not to change any decision.
+        self.control_audit = bool(control_audit)
         # T1-COMPUTE-DELAY: simulated seconds one routing decision takes to
         # compute.  0 (the default) keeps every historical run exactly as it
         # was: _decide stays a plain synchronous call with no yield at all.
@@ -3011,6 +3016,27 @@ class Kernel:
             yield self.env.timeout(interval)
 
     # --------------------------------------------------------------- control
+    def _ctrl_audit(self, milestone: str, **fields) -> None:
+        """Record one control-plane lifecycle event on the timeline sink.
+
+        T1-CTRL-AUDIT.  This is a DIAGNOSTIC channel: it is written only when
+        the caller asked for it (control_audit=True) and only to the timeline
+        sink, which is an output-only stream that no decision reads.  Its
+        purpose is to make an advertisement's life observable -- generated,
+        relayed, arrived, expired, or stopped by the hop limit -- so a missing
+        destination advertisement can be ATTRIBUTED instead of guessed.
+
+        Rows are appended directly rather than through _timeline because a
+        control packet carries an instance id (iid), not a data packet id, and
+        pretending otherwise would put a wrong key in the stream.
+        """
+        if not self.control_audit or self.timeline_sink is None:
+            return
+        row = {"milestone": milestone, "at": float(self.env.now),
+               "pid": None, "decision_id": None, "audit": "control_plane"}
+        row.update(fields)
+        self.timeline_sink.append(row)
+
     def _advertise(self, sat: int):
         self.ctrl_seq += 1
         # metrics are bound to the CURRENT peer identity: after a rematch an
@@ -3035,6 +3061,12 @@ class Kernel:
             self.cfg_access["slots_per_satellite"])
         snap["serve_cells"] = serve
         self.mech["control_snapshots"] += 1
+        self._ctrl_audit("ctrl_advert_generated", origin=int(sat),
+                         seq=int(self.ctrl_seq), hops=0,
+                         vis_k=self.cfg_cp["vis_k"],
+                         ttl_s=self.cfg_cp["ttl_s"],
+                         serve_cells=list(serve),
+                         children=list(self.control_children[sat][sat]))
         # the origin never accepts its own advertisement back, however long
         # it loops: its own (origin, seq) keys are pre-seeded as seen
         self.seen_ctrl[sat].add((sat, self.ctrl_seq))
@@ -3060,6 +3092,10 @@ class Kernel:
         if not pkt.valid_at(now):
             self.ctrl_ledger.record(pkt.iid, "CONTROL_EXPIRED", pkt.bits,
                                     received_at=now)
+            self._ctrl_audit("ctrl_advert_expired", origin=int(pkt.origin),
+                             seq=int(pkt.seq), sat=int(sat),
+                             hops=int(self.cfg_cp["vis_k"]
+                                      - pkt.remaining_hops))
             return
         if pkt.origin == sat:
             # explicit guard: an origin never consumes its own looped
@@ -3075,9 +3111,20 @@ class Kernel:
         self.seen_ctrl[sat].add(key)
         self.ctrl_ledger.record(pkt.iid, "DELIVERED", pkt.bits, received_at=now)
         hops = self.cfg_cp["vis_k"] - pkt.remaining_hops + 1
+        self._ctrl_audit("ctrl_advert_arrived", origin=int(pkt.origin),
+                         seq=int(pkt.seq), sat=int(sat), hops=int(hops),
+                         remaining_hops=int(pkt.remaining_hops),
+                         serve_cells=sorted(pkt.payload.get("serve_cells", ())))
         entry = control.CacheEntry(pkt.origin, pkt.payload, pkt.generated_at,
                                    pkt.received_at, pkt.ttl_s, hops=hops)
         self.caches[sat].put(entry)
+        if pkt.remaining_hops <= 1:
+            # the hop budget is exhausted exactly here: this arrival is the
+            # last one this advertisement can make, and saying so is what
+            # separates "out of reach" from "still travelling"
+            self._ctrl_audit("ctrl_advert_hop_limit", origin=int(pkt.origin),
+                             seq=int(pkt.seq), sat=int(sat), hops=int(hops),
+                             vis_k=self.cfg_cp["vis_k"])
         if pkt.remaining_hops > 1:
             for d in self.control_children[pkt.origin][sat]:
                 link = self.isls[sat][d]
@@ -3087,8 +3134,16 @@ class Kernel:
                     pkt.ttl_s, pkt.remaining_hops - 1, pkt.bits, pkt.payload)
                 self.ctrl_ledger.register(fwd.iid, fwd.bits)
                 self.mech["control_registered"] += 1
+                self._ctrl_audit("ctrl_advert_relayed", origin=int(pkt.origin),
+                                 seq=int(pkt.seq), sat=int(sat),
+                                 toward=int(self.topo[sat][d]),
+                                 hops=int(hops),
+                                 remaining_hops=int(fwd.remaining_hops))
                 if not link.room(fwd.bits):
                     self.ctrl_ledger.record(fwd.iid, "QUEUE_OVERFLOW", fwd.bits)
+                    self._ctrl_audit("ctrl_advert_dropped", origin=int(pkt.origin),
+                                     seq=int(pkt.seq), sat=int(sat),
+                                     reason="ctrl_queue_overflow")
                     continue
                 self.mech["control_entered_queue"] += 1
                 link.put_ctrl(fwd)
@@ -4760,9 +4815,10 @@ class Kernel:
 
 def run_simulation(resolved: dict, rows: list[dict], geometry=None,
                    learning_out_dir=None, decision_sink=None,
-                   timeline_sink=None, forced_actions=None) -> dict:
+                   timeline_sink=None, forced_actions=None,
+                   control_audit=False) -> dict:
     kern = Kernel(resolved, rows, geometry=geometry,
                   learning_out_dir=learning_out_dir,
                   decision_sink=decision_sink, timeline_sink=timeline_sink,
-                  forced_actions=forced_actions)
+                  forced_actions=forced_actions, control_audit=control_audit)
     return kern.run()

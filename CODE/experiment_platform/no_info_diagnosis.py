@@ -7,15 +7,25 @@ means the local control cache held no valid, actually-arrived advertisement
 whose serve_cells listed the destination cell.  That single label hides four
 different causes, and they have different remedies:
 
-  RANGE        the advertisement travelled as far as vis_k allows and the
-               destination-serving satellite is simply further away;
-  NOT_ARRIVED  a serving satellite exists within vis_k hops but its
-               advertisement has not arrived yet at the decision instant
-               (warm-up / advertise interval / propagation);
-  EXPIRED      an entry for a serving satellite arrived but is no longer valid
-               at the decision instant (ttl);
+  NO_DESTINATION_ADVERTISEMENT  the default, and deliberately NOT a cause:
+               the cache held entries, none of them advertised this packet's
+               destination, and the observation alone cannot say WHY.  The
+               four explanations below require evidence the policy never sees.
   ABSENT       the cache held no entry from anywhere, i.e. the control plane
-               did not reach this satellite at all.
+               did not reach this satellite at all (this one IS decidable from
+               the observation).
+  EXPIRED      every entry that did arrive was already older than ttl_s.
+  COVERING_ENTRY_PRESENT  an entry advertising the destination WAS present and
+               the routing status still said no_info -- a contradiction that
+               must be surfaced, not classified away.
+
+An earlier version of this tool called the default case RANGE and asserted the
+destination-serving satellite was "simply further away".  That was an
+attribution without evidence: the observation shows only that no covering
+advertisement had arrived, which is equally consistent with it not having been
+generated yet, being still in flight, having been dropped, or having expired
+before arrival.  The claim has been retracted; attribution now comes from the
+separate control-plane audit below, and only when that audit was run.
 
 What it reads
 -------------
@@ -126,13 +136,14 @@ def _classify(attempt, dst_cells, ttl_s):
         cause = "EXPIRED"
         note = "entries arrived but were older than ttl_s at the decision instant"
     else:
-        hop_values = [e["hops"] for e in entries if isinstance(e["hops"], int)]
-        cause = "RANGE"
-        note = ("entries arrived, none advertises the destination; the "
-                "deepest entry is at hops=%s, which is the reach vis_k allows"
-                % (max(hop_values) if hop_values else None))
+        cause = "NO_DESTINATION_ADVERTISEMENT"
+        note = ("entries arrived, none advertises this packet's destination. "
+                "The observation cannot say why: not generated yet, still in "
+                "flight, dropped, or never within reach all look the same "
+                "here.  Attribution requires the control-plane audit.")
     return {
         "cause": cause,
+        "cause_undetermined": cause == "NO_DESTINATION_ADVERTISEMENT",
         "note": note,
         "cache_entries": entries,
         "deepest_hops": max([e["hops"] for e in entries
@@ -142,7 +153,95 @@ def _classify(attempt, dst_cells, ttl_s):
     }
 
 
-def diagnose(config_path: Path, root: Path, forced=None):
+def _attach_control_audit(resolved, rows, per_attempt):
+    """Separate global audit run: attribute each no_info from the advertisement
+    lifecycle.
+
+    This is an ISOLATED post-hoc audit.  It runs the same config and trace a
+    second time with control_audit=True, which adds lifecycle rows to the
+    timeline sink and changes nothing that any policy reads.  It is allowed to
+    see the whole constellation precisely because it decides nothing.
+    """
+    _sink, audit_timeline = [], []
+    kernel.run_simulation(resolved, rows, decision_sink=_sink,
+                          timeline_sink=audit_timeline, control_audit=True)
+    generations, arrivals, hop_limits, expiries = [], [], [], []
+    for row in audit_timeline:
+        milestone = row.get("milestone")
+        if milestone == "ctrl_advert_generated":
+            generations.append(row)
+        elif milestone == "ctrl_advert_arrived":
+            arrivals.append(row)
+        elif milestone == "ctrl_advert_hop_limit":
+            hop_limits.append(row)
+        elif milestone == "ctrl_advert_expired":
+            expiries.append(row)
+    for attempt in per_attempt:
+        dst = attempt["packet_dst_cell"]
+        sat = attempt["sat"]
+        at = attempt["at"]
+        gen = [g for g in generations if dst in (g.get("serve_cells") or [])]
+        arr = [a for a in arrivals if dst in (a.get("serve_cells") or [])]
+        at_sat = [a for a in arr if a.get("sat") == sat]
+        after = [a for a in at_sat if a["at"] > at]
+        before = [a for a in at_sat if a["at"] <= at]
+        limits = [h for h in hop_limits
+                  if any(g["origin"] == h["origin"] and g["seq"] == h["seq"]
+                         for g in gen)]
+        if not gen:
+            verdict = "AUDIT_NO_DESTINATION_SERVER_ADVERTISED"
+            detail = ("no satellite generated an advertisement naming this "
+                      "destination anywhere in the window")
+        elif not before and after:
+            verdict = "AUDIT_GENERATED_AFTER_THE_DECISION"
+            detail = ("the first advertisement naming this destination reached "
+                      "this satellite at %s, after the decision at %s"
+                      % (round(after[0]["at"], 6), round(at, 6)))
+        elif not at_sat and limits:
+            verdict = "AUDIT_HOP_LIMIT"
+            detail = ("advertisements naming this destination were generated "
+                      "and relayed to the hop limit (vis_k=%s) without ever "
+                      "reaching this satellite"
+                      % (limits[0].get("vis_k")))
+        elif before and expiries:
+            verdict = "AUDIT_EXPIRED_BEFORE_USE"
+            detail = "a covering advertisement had reached this satellite and expired"
+        elif not at_sat:
+            verdict = "AUDIT_NEVER_REACHED_UNRESOLVED"
+            detail = ("advertisements naming this destination were generated "
+                      "but none is recorded as arriving here, and no hop-limit "
+                      "event was recorded either")
+        else:
+            verdict = "AUDIT_UNEXPLAINED"
+            detail = "the audit found no lifecycle event that explains it"
+        attempt["audit"] = {
+            "verdict": verdict,
+            "detail": detail,
+            "dst_advertisements_generated": len(gen),
+            "first_generation_at": (min((g["at"] for g in gen), default=None)),
+            "dst_advertisements_arrived_anywhere": len(arr),
+            "max_hops_reached": (max((a.get("hops", 0) for a in arr),
+                                     default=None)),
+            "arrivals_at_this_satellite": len(at_sat),
+            "first_arrival_here_at": (min((a["at"] for a in at_sat),
+                                          default=None)),
+            "hop_limit_events_for_dst": len(limits),
+            "expired_events": len([e for e in expiries
+                                   if dst in (e.get("serve_cells") or [])
+                                   or True]) if expiries else 0,
+        }
+
+
+def _verdict_counts(per_attempt):
+    counts = {}
+    for attempt in per_attempt:
+        verdict = (attempt.get("audit") or {}).get("verdict")
+        if verdict:
+            counts[verdict] = counts.get(verdict, 0) + 1
+    return counts
+
+
+def diagnose(config_path: Path, root: Path, forced=None, audit=False):
     try:
         resolved = config_mod.load_config_file(str(config_path))
     except (config_mod.ConfigError, FileNotFoundError) as exc:
@@ -201,23 +300,30 @@ def diagnose(config_path: Path, root: Path, forced=None):
                         cp["ttl_s"]),
         })
 
+    if audit:
+        _attach_control_audit(resolved, rows, per_attempt)
+
     no_info = [a for a in per_attempt if a["routing_status"] == "no_info"]
     causes = {}
     for a in no_info:
         causes[a["cause"]] = causes.get(a["cause"], 0) + 1
 
-    # When did each satellite FIRST hold an advertisement covering the
-    # destination?  That separates "never in range" from "not yet arrived".
+    # When did each (satellite, destination cell) pair FIRST hold an
+    # advertisement covering THAT destination?  Keyed by the pair, not by the
+    # satellite: a satellite can be well covered for one destination and never
+    # covered for another, and a satellite-only key would average the two into
+    # a number that describes neither.
     first_covered = {}
     for a in per_attempt:
         if not any(e["covers_destination"] for e in a["cache_entries"]):
             continue
-        sat = a["sat"]
-        if sat not in first_covered or a["at"] < first_covered[sat]:
-            first_covered[sat] = a["at"]
+        key = "%s|%s" % (a["sat"], a["packet_dst_cell"])
+        if key not in first_covered or a["at"] < first_covered[key]:
+            first_covered[key] = a["at"]
 
-    dead_end_sats = sorted({a["sat"] for a in no_info
-                            if a["sat"] not in first_covered})
+    never_covered_pairs = sorted({
+        "%s|%s" % (a["sat"], a["packet_dst_cell"]) for a in no_info
+        if "%s|%s" % (a["sat"], a["packet_dst_cell"]) not in first_covered})
     return {
         "schema": SCHEMA,
         "source": {
@@ -244,15 +350,18 @@ def diagnose(config_path: Path, root: Path, forced=None):
             "no_info_by_cause": causes,
             "no_info_attempts_seen": len(no_info),
         },
-        "first_covered_at": {str(k): round(v, 9)
+        "first_covered_at": {k: round(v, 9)
                              for k, v in sorted(first_covered.items())},
-        "satellites_never_covered": dead_end_sats,
+        "first_covered_key": "sat|destination_cell",
+        "pairs_never_covered": never_covered_pairs,
         "attempts": per_attempt,
         "forced": (None if forced is None
                    else {"decision_id": int(forced[0]),
                          "action": str(forced[1]),
                          "meaning": "this diagnosis describes the FORCED "
                                     "branch, not the baseline"}),
+        "audited_verdicts": (None if not audit else
+                           _verdict_counts(per_attempt)),
         "fate_counts": {k: v for k, v in result["fate_counts"].items() if v},
         "limits": [
             "diagnostic only: nothing here is fed back into any policy",
@@ -272,6 +381,10 @@ def main(argv=None) -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--forced-decision-id", type=int, default=None)
     parser.add_argument("--forced-action", default=None)
+    parser.add_argument("--ctrl-audit", action="store_true",
+                        help="run the isolated control-plane audit and "
+                             "attribute each no_info from the advertisement "
+                             "lifecycle")
     args = parser.parse_args(argv)
     if (args.forced_decision_id is None) != (args.forced_action is None):
         print("DIAGNOSIS REFUSED: give both --forced-decision-id and "
@@ -280,7 +393,8 @@ def main(argv=None) -> int:
     forced = (None if args.forced_decision_id is None
               else (args.forced_decision_id, args.forced_action))
     try:
-        document = diagnose(args.config, args.root, forced)
+        document = diagnose(args.config, args.root, forced,
+                            audit=args.ctrl_audit)
     except DiagnosisError as exc:
         print(f"DIAGNOSIS REFUSED: {exc}")
         return 2
@@ -301,7 +415,8 @@ def main(argv=None) -> int:
         "out": str(args.out),
         "control_plane": document["control_plane"],
         "totals": document["totals"],
-        "satellites_never_covered": document["satellites_never_covered"],
+        "pairs_never_covered": document["pairs_never_covered"],
+        "audited_verdicts": document.get("audited_verdicts"),
     }, ensure_ascii=False))
     return 0
 
