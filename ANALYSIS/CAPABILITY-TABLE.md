@@ -67,6 +67,8 @@
 | 逐包比较产物（**两个候选都送达**，零负载） | `out/br-reach.json`：两分支 `delivered_at` 完全相同，Δ = 0.000000000 s | 本地实跑 ✅ + **VM 实跑 ✅** |
 | 逐包比较产物（**可手算的出口竞争**） | `out/br-cont.json`：入队前工作量 1,566,997.9231432169 bit → 实测等待 1.614997923 s；送达差 = −1.614997923 s，与实测等待逐位相等 | 本地实跑 ✅ + **VM 实跑 ✅** |
 | 脚本化场景定义（参数先声明） | `CODE/experiment_platform/scripted_scenarios.py` | 本地实跑 ✅ |
+| **真实星座 no_info 原因定位**（四因互斥分类，只用观测自身） | `CODE/experiment_platform/no_info_diagnosis.py` + `ANALYSIS/REAL-CONSTELLATION-SCAN-20260926.md` §1 | 本地实跑 ✅（诊断） |
+| **真实星座双可达人口扫描**（选点规则预先声明） | `CODE/experiment_platform/dual_reachable_scan.py` + 同上 §3；实测 **0/12** | 本地实跑 ✅（诊断） |
 | 成本/压力探针产物 | `out/cost-pressure.json`（`cost-pressure-probe/v1`） | 本地实跑 ✅ |
 | 无学习小场景 profile | `CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml` | 本地实跑 ✅ |
 | **VM 实跑**（本轮，与提交对齐） | VM `/data/论文/leo-direct-sim/ANALYSIS/DIAG-T1-FROZEN-BRANCH-20260926/`；部署 `leo-vmdeploy@ab15b8f`，`code_sha256 = 2c17718d…` = 提交 `a49ce82`，Python 3.11.15 / simpy 4.0.1 / numpy 1.24.3。VM 上重算的握手量与本机**逐位相同** | **VM 实跑 ✅**（诊断，非正式授权） |
@@ -87,7 +89,7 @@
 
 **不能说（剩余阻塞）**：
 1. **真实星座场景（no_info）里"改选另一个合法候选"从未成功送达**：3 个负载档 × 4 个种子 × 3 个计算时延档全部如此。原因已定位：`routing.policy=hop` 下冻结推理规则取 `legal[0]`，其余合法候选在本地星座里是死端（对端 `no_info` → 反复 hold）。该场景**保留为失败诊断**。
-2. **代价对照目前只在脚本化场景成立**（拓扑是手写的 4 星两路径）。它证明的是**机制与度量正确**，不是真实星座上的路由结论。真实星座上的代价对照仍未做出。
+2. **真实星座上不存在可比较的代价差异**（本轮实测）：预先声明的选点规则下，13 个候选点里执行了 12 个，**双可达点 0 / 12**——被强制的备选方向一个都不送达，原因与 no_info 相同（控制面 2 跳可达范围）。所以代价对照目前**只在脚本化场景成立**，它证明的是机制与度量正确，不是真实星座上的路由结论。
 3. 因此 **`research comparison complete` 仍不成立**：把它推到真实星座需要一个候选之间真正可竞争的配置（换策略、换 OD 或换星座规模），这属研究选择，本轮未替你决定。
 4. **VM 上跑的是诊断，不是正式授权运行**（`research_eligible` 为假、无回执、不在信任链内）。正式运行要重新 compile + authorize。
 5. 十一时刻**字段**仍不进回执信任链；只有两条流的哈希进链。
