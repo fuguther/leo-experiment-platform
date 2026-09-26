@@ -219,6 +219,16 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # variable as the PHY bandwidth (F3, links.isl_rate_mbps).  0 keeps the
         # historical instantaneous arrival path exactly.
         "node_process_delay_s": (int, float),
+        # T1-COMPUTE-QUEUE: how many routing decisions one satellite can
+        # compute CONCURRENTLY.  0 (the default) means the on-board processor
+        # is never the binding resource: a deferred decision waits exactly
+        # compute_delay_s and nothing else, which is the historical behaviour.
+        # A positive value makes the satellite a bounded server pool, so a
+        # decision can also WAIT for a free server -- that waiting time is
+        # compute-resource contention, and it is recorded separately from the
+        # service time so the two cannot be added up into one unattributable
+        # number.
+        "compute_servers_per_satellite": int,
     },
     "outputs": {
         "out_dir": str,
@@ -414,6 +424,9 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         # Historical runs process an arriving packet instantaneously; a
         # non-zero node cost is opt-in.
         "node_process_delay_s": 0.0,
+        # Historical runs have no bound on concurrent decisions per satellite;
+        # a bounded on-board processor is opt-in.
+        "compute_servers_per_satellite": 0,
     },
     "outputs": {"out_dir": "leo_sim_out", "trace_path": None, "plotting": False},
 }
@@ -924,6 +937,18 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             or not math.isfinite(node_delay)):
         raise ConfigError(
             "execution.node_process_delay_s must be finite and >= 0")
+    servers = ex["compute_servers_per_satellite"]
+    if isinstance(servers, bool) or not isinstance(servers, int) or servers < 0:
+        raise ConfigError(
+            "execution.compute_servers_per_satellite must be a non-negative "
+            "integer")
+    if servers > 0 and compute_delay <= 0:
+        # Fail loud instead of silently ignoring the bound: with no computation
+        # time there is nothing for a server to be busy with, so a positive
+        # server count would be a configuration error rather than a no-op.
+        raise ConfigError(
+            "execution.compute_servers_per_satellite > 0 requires "
+            "execution.compute_delay_s > 0")
 
 
 # The five demand fields defaulted since identity/v2 (Task 1 global scene

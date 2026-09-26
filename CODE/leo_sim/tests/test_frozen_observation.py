@@ -61,11 +61,12 @@ def _cfg(mode: str, delay: float = DELAY) -> dict:
     })
 
 
-def _run(mode: str, up_before: bool, delay: float = DELAY):
+def _run(mode: str, up_before: bool, delay: float = DELAY, forced=None):
     sink, timeline = [], []
     rows = [row(99, 0.0, A, B, bits=BITS), row(1, TARGET_EMIT, A, B, bits=BITS)]
     res = kernel.run_simulation(_cfg(mode, delay), rows, geometry=_geo(up_before),
-                                decision_sink=sink, timeline_sink=timeline)
+                                decision_sink=sink, timeline_sink=timeline,
+                                forced_actions=forced)
     return res, sink, timeline
 
 
@@ -128,10 +129,95 @@ def test_frozen_may_not_be_combined_with_a_learning_arm():
         kernel.Kernel(cfg, [], geometry=_geo(True))
 
 
-def test_frozen_may_not_be_combined_with_forced_actions():
-    with pytest.raises(kernel.KernelError, match="forced_actions"):
-        kernel.Kernel(_cfg("frozen"), [], geometry=_geo(True),
-                      forced_actions={0: "E"})
+# ------------------------------------- T1-FROZEN-BRANCH: forcing at t_observe
+
+STEADY_VIS = VIS
+
+
+def _steady_run(forced=None):
+    """The negative-control geometry: nothing changes across the interval, so
+    the target's first observation is a legal forward that also commits."""
+    sink, timeline = [], []
+    rows = [row(99, 0.0, A, B, bits=BITS), row(1, TARGET_EMIT, A, B, bits=BITS)]
+    res = kernel.run_simulation(
+        _cfg("frozen"), rows,
+        geometry=StaticGeometry(2, neighbors_map=NB, visible=STEADY_VIS),
+        decision_sink=sink, timeline_sink=timeline, forced_actions=forced)
+    return res, sink, timeline
+
+
+def _committed_branch_id() -> int:
+    """The target packet's first committed decision id, discovered from an
+    unforced run.  The harness is given a decision id by its caller, so the
+    tests discover it the same way rather than hard-coding an allocation order
+    a future change would silently invalidate."""
+    _res, sink, _tl = _steady_run()
+    mine = [r["decision_id"] for r in sink if r.get("pid") == 1]
+    assert mine, "the control fixture must commit a decision for pid 1"
+    return mine[0]
+
+
+def _held_branch_id() -> int:
+    """The target packet's HOLD attempt id: the flip fixture where the ISL is
+    down at t_observe, so no forward direction was legal at the branch point."""
+    _res, _sink, timeline = _run("frozen", up_before=False)
+    holds = _target_marks(timeline, "frozen_inferred_hold")
+    assert holds, "the flip fixture must record the hold attempt"
+    return holds[0]["decision_id"]
+
+
+def test_frozen_accepts_a_forced_action_taken_from_the_observation_legal_set():
+    """A frozen branch point is obs["t_observe"], so an override must be
+    resolved against the legal set the observation recorded -- and the
+    substitution must be auditable at that instant."""
+    decision_id = _committed_branch_id()
+    res, _sink, timeline = _steady_run(forced={decision_id: "E"})
+    forced = [m for m in timeline
+              if m.get("milestone") == "forced_action"
+              and m.get("decision_id") == decision_id]
+    assert len(forced) == 1, "the substitution must be recorded exactly once"
+    mark = forced[0]
+    assert mark["obs_mode"] == "frozen"
+    assert mark["branch_instant"] == "observation"
+    assert mark["t_observe"] == pytest.approx(5.082), \
+        "the branch instant is the OBSERVATION, not the commit"
+    assert mark["original"] == "E" and mark["forced"] == "E"
+    assert mark["legal_at_branch_point"] == ["E"]
+    assert res["fates"][1] == "DELIVERED"
+
+
+def test_a_forced_action_illegal_at_the_frozen_branch_point_fails_loud():
+    """Forcing outside the observation's legal set would commit an action the
+    kernel had already refused; that is a different experiment, not a
+    counterfactual, so it must refuse rather than silently drop the override."""
+    decision_id = _committed_branch_id()
+    with pytest.raises(kernel.KernelError, match="frozen branch point"):
+        _steady_run(forced={decision_id: "W"})
+
+
+def test_forcing_a_frozen_hold_branch_point_fails_loud():
+    """When the observation inferred a hold there was no legal forward
+    direction at the branch point, so no counterfactual action exists."""
+    decision_id = _held_branch_id()
+    with pytest.raises(kernel.KernelError, match="frozen branch point"):
+        _run("frozen", up_before=False, forced={decision_id: "E"})
+
+
+def test_no_override_leaves_a_frozen_run_bit_identical():
+    """Negative control: supplying no forced_actions must not move a single
+    recorded byte, so the new capability is strictly opt-in."""
+    def run(**kw):
+        sink, timeline = [], []
+        rows = [row(99, 0.0, A, B, bits=BITS), row(1, TARGET_EMIT, A, B, bits=BITS)]
+        res = kernel.run_simulation(_cfg("frozen"), rows, geometry=_geo(True),
+                                    decision_sink=sink, timeline_sink=timeline,
+                                    **kw)
+        return (res["fates"], res["totals"], sink, timeline)
+    plain = run()
+    empty = run(forced_actions={})
+    assert plain[0] == empty[0] and plain[1] == empty[1]
+    assert plain[2] == empty[2], "decision rows must be unchanged"
+    assert plain[3] == empty[3], "timeline rows must be unchanged"
 
 
 # ------------------------------------------------- the discriminating cases

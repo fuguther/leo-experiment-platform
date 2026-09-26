@@ -573,12 +573,25 @@ class DownlinkServer(_DRRMixin):
         return self.queued_bits + bits <= self.k.cfg_access["downlink_queue_bits"]
 
     def put(self, pkt: DataPacket) -> None:
+        # T1-WORKLOAD-AHEAD, downlink half.  Only the queued bits are measured:
+        # _in_service_remaining extrapolates at the ISL rate and would be wrong
+        # for a GSL egress, so no in-service number is produced rather than a
+        # wrong one (the same rule the MCS branch follows).
+        backlog = {
+            "resource": f"gsl:downlink:{self.sat}:{pkt.dst}",
+            "resource_kind": "downlink_egress",
+            "queued_bits_before": int(self.queued_bits),
+            "in_service_remaining_bits_before": None,
+            "in_service_remaining_method": "not_measured_for_downlink_egress",
+            "measured": "before_insertion",
+            "excludes": "the enqueueing packet",
+        }
         self.queues.setdefault(pkt.dst, deque()).append(pkt)
         self.queued_bits += pkt.bits
         self.area.add(pkt.bits, self.k.env.now)
         self.k._metric_queue_enter(
             pkt, "downlink", f"gsl:downlink:{self.sat}:{pkt.dst}",
-            decision_id=pkt.decision_id)
+            decision_id=pkt.decision_id, backlog_before=backlog)
         self.k._note_busy(pkt.dst)
         self.k._poke(self.wake)
 
@@ -807,12 +820,32 @@ class ISLLink:
         return k.geometry.isl_available(self.sat, self.peer, k.env.now)
 
     def put_data(self, pkt: DataPacket) -> None:
+        # T1-WORKLOAD-AHEAD: measure the resource BEFORE this packet joins it,
+        # so the reported work ahead provably excludes the target packet
+        # itself.  Measuring after the insert and subtracting would rely on the
+        # packet's bits being recoverable; measuring before cannot get it wrong.
+        bits, remaining, _phase, _is_ctrl, method = \
+            self.k._in_service_remaining(self, self.k.env.now)
+        backlog = {
+            "resource": f"isl:{self.sat}:{self.peer}",
+            "resource_kind": "isl_egress",
+            "queued_bits_before": int(self.data_bits + self.ctrl_bits),
+            "queued_data_bits_before": int(self.data_bits),
+            "queued_ctrl_bits_before": int(self.ctrl_bits),
+            "in_service_bits_before": int(bits),
+            "in_service_remaining_bits_before": (None if remaining is None
+                                                 else float(remaining)),
+            "in_service_remaining_method": method,
+            "measured": "before_insertion",
+            "excludes": "the enqueueing packet",
+        }
         pkt.isl_enqueued_at = self.k.env.now
         self.data_q.append(pkt)
         self.data_bits += pkt.bits
         self.data_area.add(pkt.bits, self.k.env.now)
         self.k._metric_queue_enter(pkt, "isl", f"isl:{self.sat}:{self.peer}",
-                                   decision_id=pkt.decision_id)
+                                   decision_id=pkt.decision_id,
+                                   backlog_before=backlog)
         self.k._poke(self.wake)
 
     def put_ctrl(self, pkt: ControlPacket) -> None:
@@ -1103,6 +1136,19 @@ class Kernel:
         # compute.  0 (the default) keeps every historical run exactly as it
         # was: _decide stays a plain synchronous call with no yield at all.
         self.compute_delay_s = float(self.cfg_ex["compute_delay_s"])
+        # T1-COMPUTE-QUEUE: concurrent decisions one satellite can compute.
+        # 0 = unbounded, i.e. the historical behaviour where compute_delay_s is
+        # the WHOLE cost of a decision and no decision ever waits.  A positive
+        # value turns each satellite into a deterministic N-server pool, so the
+        # cost of a decision splits into two separately recorded parts:
+        # the WAIT for a free server (resource contention) and the SERVICE
+        # (compute_delay_s).  Keeping them apart is the point: a single summed
+        # number could not tell "the processor is oversubscribed" from "the
+        # computation is slow", and those two have different remedies.
+        self.compute_servers = int(self.cfg_ex["compute_servers_per_satellite"])
+        # earliest instant each server of each satellite becomes free
+        self._compute_free_at: list[list[float]] = [
+            [0.0] * self.compute_servers for _ in range(self.num_sats)]
         # T1-COMPUTE-DELAY observation semantics (protocol doc 4.1/4.4):
         #   "refresh" (default) -- the deferred decision re-reads env.now and
         #       the live state when it lands.  That is a *delayed re-observation*
@@ -1113,10 +1159,26 @@ class Kernel:
         #       whether the inferred action is still LEGAL.  A rejected action
         #       is recorded and the packet is parked; it is never silently
         #       replaced by a freshly solved optimum.
-        # The first version of "frozen" is deliberately restricted: a learning
-        # arm needs its own observation contract, and the counterfactual
-        # harness forces actions at the branch point, which frozen moves to the
-        # observation instant.
+        # "frozen" is still restricted on one axis: a learning arm needs its
+        # own observation contract and has none yet.
+        #
+        # T1-FROZEN-BRANCH.  "frozen" and forced_actions USED to be refused
+        # together, on the argument that the counterfactual harness forces at
+        # the branch point and frozen moves the branch point to the observation
+        # instant.  That argument was about the LOCATION of the branch, not
+        # about incompatibility: a frozen branch point is well defined, it is
+        # obs["t_observe"], and the legal set recorded in obs["legal"] is
+        # exactly the set the branch could have picked from.  Forcing an action
+        # that is inside that set is therefore a counterfactual AT the frozen
+        # branch point -- see _forced_action_at_observation.  The alternative
+        # (refusing the pair, then approximating it with a refresh run) is what
+        # this removal eliminates: a refresh run has a DIFFERENT branch point
+        # and cannot be compared against a frozen baseline at all.
+        #
+        # Nothing here changes a run that supplies no forced_actions: the
+        # override is consulted only on the commit half and only for decision
+        # ids the caller named, and decision ids are still allocated in the same
+        # order, so existing frozen runs stay bit-identical.
         self.obs_mode = str(self.cfg_ex["decision_observation_mode"])
         if self.obs_mode not in ("refresh", "frozen"):
             raise KernelError(
@@ -1125,12 +1187,6 @@ class Kernel:
             raise KernelError(
                 "execution.decision_observation_mode=frozen is not supported "
                 "together with a learning arm in the first version")
-        if self.obs_mode == "frozen" and self.forced_actions:
-            raise KernelError(
-                "execution.decision_observation_mode=frozen cannot be combined "
-                "with forced_actions: the counterfactual harness forces at the "
-                "branch point, and frozen moves the branch point to the "
-                "observation instant")
 
         # F2 (node processing / scheduling cost).  A satellite visit costs the
         # node the configured receive/process/schedule time BEFORE the packet
@@ -1537,7 +1593,8 @@ class Kernel:
 
     def _metric_queue_enter(self, pkt: DataPacket, queue: str,
                             link_id: str,
-                            decision_id: int | None = None) -> None:
+                            decision_id: int | None = None,
+                            backlog_before: dict | None = None) -> None:
         """Record one enqueue into a physical queue.
 
         ``decision_id`` is the decision that CAUSED this enqueue and must be
@@ -1548,6 +1605,13 @@ class Kernel:
         or retirement therefore pass None, the ISL and downlink enqueues a
         commit performs pass the committed id, and the holding enqueue passes
         the id of the holding attempt.
+
+        backlog_before is the state of the CONTENDED RESOURCE measured BEFORE
+        this packet is inserted into it, so the target packet can never count
+        itself as work ahead of itself (T1-WORKLOAD-AHEAD).  It is recorded
+        only where a producer can measure it honestly; an enqueue that passes
+        None is one whose queue is not a forwarding egress (uplink, holding),
+        and the absence is a fact rather than a zero.
         """
         qid = self._metric_queue_seq
         self._metric_queue_seq += 1
@@ -1558,8 +1622,10 @@ class Kernel:
             "link_id": link_id, "queue_id": qid,
         })
         if self.timeline_sink is not None:
+            extra = ({} if backlog_before is None
+                     else {"backlog_before": dict(backlog_before)})
             self._timeline("queue_enter", pkt, decision_id,
-                           queue=queue, link_id=link_id)
+                           queue=queue, link_id=link_id, **extra)
 
     def _metric_link_id(self, link_ref, occ_key: str) -> tuple[str, str]:
         if link_ref[0] == "isl":
@@ -3828,6 +3894,52 @@ class Kernel:
                            original=action, forced=forced)
         return forced
 
+    def _forced_action_at_observation(self, pkt: DataPacket, sat: int,
+                                      decision_id: int | None,
+                                      obs: dict) -> str | None:
+        """Resolve a counterfactual override at a FROZEN branch point.
+
+        The frozen branch point is the OBSERVATION instant, not the commit
+        instant: the action is inferred from the observation taken at
+        obs["t_observe"] and commit only re-checks that it is still legal.  A
+        counterfactual branch must therefore pick its action from the legal set
+        that observation recorded -- obs["legal"].  Forcing a direction that
+        was not legal there would commit an action the kernel itself had
+        already refused, which is a different experiment rather than a
+        counterfactual, so it fails loud exactly like the refresh path does.
+
+        Returns the forced direction, or None when this decision is not forced.
+        Strictly opt-in and at most once per decision id, like
+        _apply_forced_action; the timeline milestone records the branch instant
+        and the legal set the choice was made from, so a substitution is
+        auditable rather than invisible.
+        """
+        if not self.forced_actions or decision_id is None:
+            return None
+        forced = self.forced_actions.get(decision_id)
+        if forced is None or decision_id in self._forced_applied:
+            return None
+        if obs["kind"] != "forward":
+            raise KernelError(
+                f"decision {decision_id} is a {obs['kind']} decision at its "
+                "frozen branch point; the first version of the counterfactual "
+                "harness only forces a choice among the ISL forward candidates")
+        legal_at_branch = list(obs["legal"] or [])
+        if forced not in legal_at_branch:
+            raise KernelError(
+                f"forced action {forced!r} for decision {decision_id} is not "
+                f"legal at the frozen branch point {sorted(legal_at_branch)} "
+                f"(t_observe={obs['t_observe']})")
+        self._forced_applied.add(decision_id)
+        if self.timeline_sink is not None:
+            self._timeline("forced_action", pkt, decision_id, sat=int(sat),
+                           original=obs["action"], forced=forced,
+                           obs_mode="frozen",
+                           branch_instant="observation",
+                           t_observe=float(obs["t_observe"]),
+                           legal_at_branch_point=legal_at_branch)
+        return forced
+
     def decide_deferred(self, pkt: DataPacket, sat: int):
         """Decide after consuming simulated computation time (T1-COMPUTE-DELAY).
 
@@ -3848,9 +3960,43 @@ class Kernel:
         # timeout; only the legality check and the commit happen after it.
         observation = (self._observe_preferred_action(pkt, sat)
                        if self.obs_mode == "frozen" else None)
-        yield self.env.timeout(self.compute_delay_s)
+        wait = self._compute_queue_wait(pkt, sat, started)
+        yield self.env.timeout(wait + self.compute_delay_s)
         self._decide(pkt, sat, compute_started_at=started,
                      observation=observation)
+
+    def _compute_queue_wait(self, pkt: DataPacket, sat: int,
+                            now: float) -> float:
+        """Seconds this decision waits for a free on-board compute server.
+
+        Returns 0.0 when the pool is unbounded (compute_servers == 0), which is
+        the historical behaviour: the timeout above is then exactly
+        compute_delay_s and no extra event is created, so a run that does not
+        opt in stays bit-identical.
+
+        With a bound, the satellite is a deterministic N-server pool and this
+        decision takes the server that frees EARLIEST (ties broken by server
+        index, so the assignment is reproducible).  The wait is recorded on the
+        timeline sink rather than in the decision row: the decision row has a
+        frozen 19-key contract, and the wait happens before a decision id is
+        allocated.  Not recording it would make queueing cost invisible -- the
+        exact failure mode F2 and compute_delay_s were introduced to avoid.
+        """
+        if self.compute_servers <= 0:
+            return 0.0
+        slots = self._compute_free_at[sat]
+        index = min(range(self.compute_servers), key=lambda i: (slots[i], i))
+        wait = max(0.0, slots[index] - now)
+        slots[index] = now + wait + self.compute_delay_s
+        if self.timeline_sink is not None:
+            busy = sum(1 for free_at in slots if free_at > now)
+            self._timeline("compute_wait", pkt, None, sat=int(sat),
+                           wait_s=float(wait),
+                           service_s=self.compute_delay_s,
+                           servers=self.compute_servers,
+                           servers_busy=busy,
+                           queueing=bool(wait > 0.0))
+        return wait
 
     # ------------------------------- T1-COMPUTE-DELAY frozen observation
 
@@ -3969,6 +4115,12 @@ class Kernel:
                        observation=obs["observation"])
             return
         kind = obs["kind"]
+        # T1-FROZEN-BRANCH: an override is resolved against the OBSERVATION's
+        # legal set -- the branch point -- not against the commit-time state.
+        # A decision whose frozen branch point was not a forward choice raises
+        # here, so an illegal counterfactual can never be silently dropped.
+        action_override = self._forced_action_at_observation(
+            pkt, sat, decision_id, obs)
         if kind == "deliver" and self._deliver_legal_now(pkt, sat, now):
             pkt.decision_id = decision_id
             self._record_decision(pkt, sat, "deliver", ["deliver"], "deliver",
@@ -3978,7 +4130,8 @@ class Kernel:
             self.downlinks[sat].put(pkt)
             return
         if kind == "forward":
-            action = obs["action"]
+            action = (obs["action"] if action_override is None
+                      else action_override)
             if self._forward_legal_now(pkt, sat, now, [action]):
                 pkt.decision_id = decision_id
                 self._record_decision(
