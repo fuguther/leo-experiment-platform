@@ -14,8 +14,8 @@
 |---|---|---|---|---|
 | **A** | **旧 R5 冻结** | `0ab9bb44…` | 平台冻结提交 `5fb89de0` 的 leo_sim 码。**R5 回执绑定的就是它**，R1--R5 十格验收跑在它上面 | `EXPERIMENTS/EXP-LEO-V2-ACCEPT-R5/run-manifest.json`；VM 各 run 的 `receipt.json`；本机对 `d29a8cb`/`5fb89de0` 重算 |
 | **B** | **实验平台 main** | `57cca0ed…` | `origin/main = 1fad58f` 的干净检出。比 A 多了 R6/R7/R8 的**声明收紧**（AST 归一化后逐节点相同） | 本机对 `1fad58f` 重算；CI run `36138702506` success |
-| **C** | **本轮提交**（本地代码形成可审查提交后） | `2c17718d…` | B + 本轮全部改动：解除 frozen×forced 互斥、`compute_servers_per_satellite`、`queue_enter backlog_before`、两个新 CLI、脚本化场景 | 本机对**提交树**重算；逐条命令见 §7.6 |
-| **D** | **当前 VM 诊断部署** | `ff8ba667…` | 本轮第一次部署（`leo-vmdeploy@f9a74647`）时的 leo_sim 码。**在 C 之前**：C 又改了 `kernel.py`（`backlog_before`），所以 D 落后 C 一版 | VM 上实跑同一函数；`.deployment_commit` |
+| **C** | **本轮提交** | `2c17718d…` | 分支 `t1/frozen-branch-and-async-design`，提交 **`a49ce82c19329c86c50f96ce2bfa97fe0bbc62c7`**。B + 本轮全部改动：解除 frozen×forced 互斥、`compute_servers_per_satellite`、`queue_enter backlog_before`、两个新 CLI、脚本化场景 | `git archive a49ce82 CODE/leo_sim` 后重算（**不是**对工作树重算） |
+| **D** | **当前 VM 诊断部署** | `2c17718d…` | **已与 C 对齐**：部署提交 `leo-vmdeploy@ab15b8f`，推送摘要 `source_tree_sha256 = 0288580a…`（本地与远端相同） | VM 上实跑同一函数；`.deployment_commit` |
 | **E** | 原工作树 `98c858f`（chore 分支，clean） | `2a114890…` | 另一条线，E0--E3 交付集冻结于此 | `ANALYSIS/ARRIVAL-TIME-T1-20260923/00e` + 本机复核 |
 | — | `README.md` 曾引用的身份 | `4402081f…` | **已过期**（c8eeca1 时代） | 见 §4 |
 
@@ -24,7 +24,7 @@
 1. **R5 回执（A）与它的验收运行自洽**：十格验收的 `code_sha256` 逐个核对过，都是 `0ab9bb44…`。**但它不是 main，也不是本轮提交。**
 2. **实验平台 main（B）从未在 VM 上跑过。** 它与 A 的差异只在声明文本，语义等价，**但字节身份不同**，所以 A 的授权不能在 B 上重放（§3、§7.5）。
 3. **本轮提交（C）是在 B 之上的功能改动**，身份再次变更。**任何既有授权对 C 一律失效**，包括 A 的十格验收（§5）。
-4. **当前 VM 诊断部署（D）落后 C 一版**，且它上面跑的**不是正式授权运行**——是诊断，`research_eligible` 为假（`ANALYSIS/VM-RUN-20260926.md`）。**"VM 上有本轮证据"与"本轮代码已在 VM 上"是两句不同的话**：要 C 在 VM 上，必须重部署（§7.6）。
+4. **当前 VM 诊断部署（D）已与 C 对齐**（`ab15b8f` / `2c17718d`），但 D 上跑的是**诊断**：没有回执、`research_eligible` 为假、不在任何信任链里。**"VM 上有本轮证据"与"本轮代码在 VM 上正式跑过"仍是两句不同的话**——后者要重新 compile + authorize + 走 `run-remote.sh --authorization`。
 
 **一句话**：VM 上跑的是 R5 冻结版（`0ab9bb44`），R5 回执与 VM **自洽**；**main 从未在 VM 上跑过**——main 比 R5 多了 R6/R7/R8 的声明收紧，因此字节身份不同。
 
@@ -110,10 +110,12 @@ identity gate would pass      : False
 |---|---|
 | main @1fad58f（本轮之前） | `57cca0ed…` |
 | main + frozen×forced 组合修复 | `cf7d2add…`（中间态） |
-| main + 本轮全部改动（含 `execution.compute_servers_per_satellite`） | **`ff8ba667…`** |
+| main + 有界每星计算资源（中间态，未提交；曾部署到 VM） | `ff8ba667…` |
+| main + 本轮全部改动（**提交 `a49ce82`**） | **`2c17718d…`** |
 
-VM 已于 2026-09-26 部署到 `ff8ba667…`（部署提交 `leo-vmdeploy@f9a74647`），
+VM 已于 2026-09-26 部署到 `2c17718d…`（部署提交 `leo-vmdeploy@ab15b8f`），
 实跑记录见 `ANALYSIS/VM-RUN-20260926.md`。
+**中间态的两个身份（`cf7d2add…` / `ff8ba667…`）不对应任何提交**，引用时必须说明这一点。
 
 **这不使任何既有结论失效，但使任何既有授权失效。** 与 gates 里 `T1-COMPUTE-DELAY-PASS` 已记录的 `known_consequence`（新增 config key 改变每一个配置的 `config_sha256` → 既有 `run-manifest.json`/`authorization.json` 不可复用）同一机制。**本轮的任何 VM 正式运行都必须重新 compile + authorize**，不得复用 R5 的授权。
 

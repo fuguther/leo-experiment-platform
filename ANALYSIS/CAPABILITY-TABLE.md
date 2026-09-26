@@ -61,12 +61,15 @@
 | 证据 | 位置 | 级别 |
 |---|---|---|
 | frozen × forced 组合的生成侧测试（4 条：接受/非法/持有分支点/零扰动负对照） | `CODE/leo_sim/tests/test_frozen_observation.py` | 本地实跑 ✅ |
-| 逐包比较驱动的 14 条测试（含三条拒绝路径） | `CODE/experiment_platform/tests/test_minimal_branch_compare.py` | 本地实跑 ✅ |
+| 逐包比较驱动的 17 条测试（含两条脚本化场景、两时刻工作量检查、三条拒绝路径） | `CODE/experiment_platform/tests/test_minimal_branch_compare.py` | 本地实跑 ✅ |
 | 有界每星计算资源 + 计算排队的 6 条测试（含无界逐位相同负对照、服务器数单调性） | `CODE/leo_sim/tests/test_compute_delay.py` | 本地实跑 ✅ |
-| 逐包比较产物 | `out/branch-compare.json`（`minimal-branch-compare/v1`） | 本地实跑 ✅ |
+| 逐包比较产物（no_info 失败诊断） | `out/br-noinfo.json`（`minimal-branch-compare/v2`） | 本地实跑 ✅ |
+| 逐包比较产物（**两个候选都送达**，零负载） | `out/br-reach.json`：两分支 `delivered_at` 完全相同，Δ = 0.000000000 s | 本地实跑 ✅ + **VM 实跑 ✅** |
+| 逐包比较产物（**可手算的出口竞争**） | `out/br-cont.json`：入队前工作量 1,566,997.9231432169 bit → 实测等待 1.614997923 s；送达差 = −1.614997923 s，与实测等待逐位相等 | 本地实跑 ✅ + **VM 实跑 ✅** |
+| 脚本化场景定义（参数先声明） | `CODE/experiment_platform/scripted_scenarios.py` | 本地实跑 ✅ |
 | 成本/压力探针产物 | `out/cost-pressure.json`（`cost-pressure-probe/v1`） | 本地实跑 ✅ |
 | 无学习小场景 profile | `CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml` | 本地实跑 ✅ |
-| **VM 实跑**（本轮） | VM `/data/论文/leo-direct-sim/ANALYSIS/DIAG-T1-FROZEN-BRANCH-20260926/`，拉回 `out/vm/`；部署 `leo-vmdeploy@f9a7464`，`code_sha256=ff8ba667…`，Python 3.11.15 / simpy 4.0.1 / numpy 1.24.3 | **VM 实跑 ✅** |
+| **VM 实跑**（本轮，与提交对齐） | VM `/data/论文/leo-direct-sim/ANALYSIS/DIAG-T1-FROZEN-BRANCH-20260926/`；部署 `leo-vmdeploy@ab15b8f`，`code_sha256 = 2c17718d…` = 提交 `a49ce82`，Python 3.11.15 / simpy 4.0.1 / numpy 1.24.3。VM 上重算的握手量与本机**逐位相同** | **VM 实跑 ✅**（诊断，非正式授权） |
 | VM 上的平台测试套件 | `3 failed, 1005 passed, 1 skipped`——3 条失败全部归因于部署形态（无 `.git`、父仓实验实例），非本轮引入 | VM 实跑 ✅（含失败） |
 | 跨环境一致性 | 语义字段逐项相同；算力争用 `wait_total=17.234256 s` 两边相同；`branch_fingerprint` **不同**（6/1199 叶子为 ≤1e-9 的相对浮点差） | 见 `ANALYSIS/VM-RUN-20260926.md` §4 |
 
@@ -77,13 +80,17 @@
 **能说**（有本地配对证据）：
 - `frozen` 的分支点是**观测时刻**，且在 `compute_delay>0` 时严格早于提交；强制动作必须落在该观测记录的合法集内，否则 fail-loud。
 - 一对分支的**分支前状态逐行相同**（决策指纹 + 分支时刻之前的全部 timeline 行），**分支后的第一个差异出现在分支时刻之后**。
-- 在 `t1_frozen_branch_smoke` 上，`N` 与 `S` 两个候选的真实差异是：走 `N` 送达（45.13 s，路径 [0,1,2]），走 `S` 在对端拿不到路由信息、61 次 hold、地平线内未送达。**这是"机制可分辨"的证据，不是"某个路由策略更好"的证据。**
+- 在脚本化 `reachability` 场景（无负载、两条路径几何相同）上，两个候选**都送达且送达时刻完全相同**，Δ = 0.000000000 s。这是**如实报告的"没有差异"**：该场景只证明可达性与配对正确，不证明任何策略优劣。
+- 在脚本化 `contention` 场景（额外一个 4 Mbit 竞争包、链路 1 Mbps）上，两条路径的**真实代价可以手算并被实测逐位验证**：基线走 E 在对端出口 `isl:1:3` 入队前有 1,566,997.9231432169 bit 在前面，实测等待 1.614997923 s；强制走 W 的 `isl:2:3` 工作量为 0、等待为 0；两个分支的送达差 = −1.614997923 s，**与实测等待逐位相等**。
+- 两时刻工作量检查在该场景为 `True`：对端到达时的快照比入队前多出 84,000 bit —— 若直接引用到达快照，就会把**取错快照**当成机制差异。
+- 在 `t1_frozen_branch_smoke`（真实星座）上，`N` 与 `S` 的差异是：走 `N` 送达（45.13 s，路径 [0,1,2]），走 `S` 在对端拿不到路由信息、61 次 hold、地平线内未送达。**这是保留的失败诊断（可行性对照），不是代价对照。**
 
 **不能说（剩余阻塞）**：
-1. **本场景里"改选另一个合法候选"从未成功送达**。在 3 个负载档 × 4 个种子 × 3 个计算时延档下扫描，**没有找到"两个候选都送达"的梯度对照**；已定位原因：`routing.policy=hop` 下冻结推理规则取 `legal[0]`，其余合法候选在本地星座里是死端（对端 `no_info` → 反复 hold）。因此**当前还比较不了"代价大小"，只比较了"可行/不可行"**。
-2. 因此 **`research comparison complete` 不成立**：要拿到梯度代价，需要一个候选之间真正可竞争的配置（换策略或换 OD/星座规模），这属研究选择，本轮未替你决定。
-3. **main 系代码没有在 VM 上跑过**（VM 停在 R5 冻结版）。VM 实跑的结果见 §C 指向的文件；它跑的是本轮改动的诊断路径，**不是正式授权运行**（`research_eligible=false`）。
-4. 十一时刻**字段**仍不进回执信任链；只有两条流的哈希进链。
+1. **真实星座场景（no_info）里"改选另一个合法候选"从未成功送达**：3 个负载档 × 4 个种子 × 3 个计算时延档全部如此。原因已定位：`routing.policy=hop` 下冻结推理规则取 `legal[0]`，其余合法候选在本地星座里是死端（对端 `no_info` → 反复 hold）。该场景**保留为失败诊断**。
+2. **代价对照目前只在脚本化场景成立**（拓扑是手写的 4 星两路径）。它证明的是**机制与度量正确**，不是真实星座上的路由结论。真实星座上的代价对照仍未做出。
+3. 因此 **`research comparison complete` 仍不成立**：把它推到真实星座需要一个候选之间真正可竞争的配置（换策略、换 OD 或换星座规模），这属研究选择，本轮未替你决定。
+4. **VM 上跑的是诊断，不是正式授权运行**（`research_eligible` 为假、无回执、不在信任链内）。正式运行要重新 compile + authorize。
+5. 十一时刻**字段**仍不进回执信任链；只有两条流的哈希进链。
 
 ---
 
