@@ -1,0 +1,93 @@
+--- a/CODE/leo_sim/trace.py (pre-change)
++++ b/CODE/leo_sim/trace.py (current)
+@@ -676,7 +676,8 @@
+ 
+ 
+ def _burst_intensity_diagnostics(resolved: dict, start: float,
+-                                 window_end: float, inside: list[dict]) -> dict:
++                                 window_end: float, inside: list[dict],
++                                 emitted_packets: int) -> dict:
+     """Report how this random draw compares with the declared expectation.
+ 
+     NOT a gate.  The generator is an exact thinning of a Poisson process, so
+@@ -718,7 +719,11 @@
+                            if expected_burst > 0 else None),
+         "raw_sample_preserved": {
+             "inside_window": observed,
+-            "all_emitted": len(inside),
++            # NOT len(inside): that is the same number as inside_window and
++            # said "0 emitted" for a 3-packet trace (caught by the independent
++            # review of 2026-09-25).  The emitted count comes from the caller,
++            # which is the only place that has the whole trace.
++            "all_emitted": emitted_packets,
+             "note": ("the sample and its seed are reported, never replaced or "
+                      "re-drawn"),
+         },
+@@ -853,7 +858,7 @@
+         transform = verify_burst_transform(resolved)
+         # Statistical: where did THIS draw land?  Recorded, never a gate.
+         intensity = _burst_intensity_diagnostics(resolved, start, window_end,
+-                                                 inside)
++                                                 inside, len(rows))
+         report["burst"] = {
+             "start_s": start,
+             "duration_s": float(dm["burst_duration_s"]),
+@@ -866,24 +871,46 @@
+             # compatible with the declared multiplier is a separate statistical
+             # diagnostic reported below; conflating the two is exactly how "one
+             # packet in the window" would get read as intensity acceptance.
++            # applied_reason separates the two ways applied can be false, which
++            # a bare boolean cannot (independent review, 2026-09-25).
+             "applied": bool(inside) and effective_multiplier > 1.0,
++            "applied_reason": (
++                "MULTIPLIER_IS_A_NOOP" if effective_multiplier <= 1.0
++                else "WINDOW_OBSERVED" if inside
++                else "NO_PACKET_IN_WINDOW"),
+             "transform": transform,
+             "intensity": intensity,
+             "intensity_compatible": intensity.get("status") == "COMPATIBLE",
+         }
+         if not inside:
+-            # A SUFFICIENCY refusal, not a statistical test: when the declared
+-            # window receives no packet at all the treatment is unobservable in
+-            # this sample, and the operator can act on it (raise the rate or
+-            # widen the window).  The sample statistics travel with the message
+-            # so the refusal is checkable rather than mysterious.
+-            problems.append(
+-                f"a burst window [{start}, {window_end}) is declared but ZERO "
+-                f"of the {len(rows)} emitted packets fall inside it "
+-                f"(declaration predicts {intensity.get('expected_packets_if_burst_applied')} "
+-                f"in-window packets at seed {intensity.get('scenario_seed')}): "
+-                "the treatment is unobservable in this sample; raise the rate "
+-                "or widen the window")
++            # NOT a refusal.  A declared window that receives no packet is a
++            # legitimate outcome of the declared random process when the
++            # declaration itself predicts a small expectation, and whether an
++            # experiment has enough discriminating power to say anything about
++            # the treatment is a question for the PRE-DECLARED DESIGN -- not
++            # something a generic trace compiler may answer by refusing to
++            # compile, and never something to be repaired by dropping the
++            # sample or drawing another seed.
++            #
++            # What the compiler owes the reader is the fact and the numbers, so
++            # they are recorded here (and in burst.intensity / burst.applied)
++            # instead of being turned into a gate.  Everything structural --
++            # mode, window inside the emission window, multiplier > 1, and the
++            # deterministic transform check above -- still refuses.
++            report["burst"]["zero_packet_diagnostic"] = {
++                "observed_packets_in_window": 0,
++                "emitted_packets": len(rows),
++                "scenario_seed": intensity.get("scenario_seed"),
++                "expected_packets_if_burst_applied":
++                    intensity.get("expected_packets_if_burst_applied"),
++                "expected_packets_if_burst_not_applied":
++                    intensity.get("expected_packets_if_burst_not_applied"),
++                "meaning": ("the declared treatment is unobservable in this "
++                            "sample; the raw sample and its seed are reported "
++                            "unchanged and no re-draw was attempted"),
++                "where_discriminating_power_is_judged": (
++                    "the pre-declared experiment design, not this compiler"),
++            }
+         if effective_multiplier <= 1.0:
+             problems.append(
+                 f"a burst window is declared with burst_multiplier "

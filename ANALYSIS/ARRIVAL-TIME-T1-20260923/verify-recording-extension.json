@@ -1,0 +1,25 @@
+{
+ "run_exit": 0,
+ "criterion2_semantics_unchanged": {
+  "identical": true,
+  "new_rows": 10579,
+  "baseline_rows": 10579,
+  "note": "记录字段不参与决策；不一致说明补丁改变了语义（应回退）"
+ },
+ "criterion1_structure": {
+  "checked_multi_candidate": 3528,
+  "fully_covered": 3528,
+  "sample_missing": []
+ },
+ "criterion5_size": {
+  "new_bytes": 118829148,
+  "baseline_bytes": 98799854,
+  "delta_bytes": 20029294,
+  "delta_per_decision": 1893.3069288212496,
+  "estimate_from_proposal_bytes_per_decision": 384
+ },
+ "criterion3_online_boundary": {
+  "status": "需跑平台测试套件",
+  "command": "python3 -m pytest CODE/leo_sim/tests -q -k 'whitelist or info or audit'"
+ }
+}

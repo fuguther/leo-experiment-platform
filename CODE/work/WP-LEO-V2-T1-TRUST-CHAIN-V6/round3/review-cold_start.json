@@ -1,0 +1,93 @@
+{
+ "reviewed_sha": "c2e18a8f34aca5e4c7b7a54e7bcc58dbb9474689",
+ "criteria_sha256": "bf1f4f2be948facb34eed0277e31e316591991c029e60247aaaa1c4392795942",
+ "reviewer_id": "cold_start",
+ "round": 3,
+ "criteria_results": [
+  {
+   "id": "T1",
+   "result": "PASS",
+   "command": "# /tmp/rev3/e2e3.py in a throwaway copy of the repo at /private/tmp/rev3/ws\n# (only relocation: rj.CANONICAL_RESULTS -> <copy>/CODE/Results, the VM path /data/论文/leo-direct-sim does not exist on this host)\nreq = tmc._request(); req['experiment_id']='EXP-LEO-V2-MATRIX-RUNNABLE'\nreq['common_config'] = smoke.yaml body (24 sats / 60 s / control_plane on) with routing.policy=oracle, scenario.seed=42\nmatrix.compile_matrix_experiment(...) -> authorize_experiment.build_authorization(...) -> authorization.json\nrj.CANONICAL_RESULTS = ws/'CODE'/'Results'\ncmd = rj.formal_command(Namespace(runtime_kind='leo_sim_v2', expected_run_id='EXP-LEO-V2-MATRIX-RUNNABLE-control-s42',\n                                  launch_nonce='0'*31+'c9'), ws/'CODE', cfg, auth_path)\nsubprocess.run(cmd, cwd=ws)   # the exact vector, executed under a real authorization",
+   "output": "command = ['/opt/homebrew/opt/python@3.14/bin/python3.14','-m','CODE.leo_sim','run',\n '--config','.../EXPERIMENTS/EXP-LEO-V2-MATRIX-RUNNABLE/resolved/EXP-LEO-V2-MATRIX-RUNNABLE-control-s42.leo-sim.yaml',\n '--out','.../CODE/Results/EXP-LEO-V2-MATRIX-RUNNABLE-control-s42',\n '--decision-log','.../CODE/Results/EXP-LEO-V2-MATRIX-RUNNABLE-control-s42/decisions.jsonl',\n '--timeline-log','.../CODE/Results/EXP-LEO-V2-MATRIX-RUNNABLE-control-s42/timeline.jsonl',\n '--authorization','.../authorization.json','--launch-nonce','000000000000000000000000000000c9',\n '--expect-run-id','EXP-LEO-V2-MATRIX-RUNNABLE-control-s42']\nrc=0  dir_empty_after_call=True\nlisting=['decisions.jsonl','decisions.jsonl.manifest.json','formal_run.json','ledgers.json','manifest.json','receipt.json','resolved_config.json','timeline.jsonl','timeline.jsonl.manifest.json','trace.csv']\nschema=leo-sim-receipt/v6  keys=31  decision_rows=9  timeline_rows=63\nsha_match_decision=True  verify_no_streams=[]  verify_with_streams=[]  (same for the treatment cell)",
+   "why": "Check passes: the leo_sim_v2 branch returns both flags with concrete paths, and the returned vector executed verbatim under a real authorization produced both streams inside the run dir plus a V6 receipt whose digests equal the files. Residual (see report): probe A shows the run CLI itself does not force the streams - an authorized \"formal\" run invoked directly (--authorization/--launch-nonce/--expect-run-id, no stream flags) still exits 0 with a V5/28-key receipt, so the statement \"every formal run requests both streams\" is enforced by the launcher only."
+  },
+  {
+   "id": "T2",
+   "result": "PASS",
+   "command": "# same driver; T2 clauses measured on the live vector\nparents equal --out : info['--decision-log_parent_equals_out'], info['--timeline-log_parent_equals_out']\nempty dir           : run_dir.is_dir() and not any(run_dir.iterdir()) right after formal_command() returned\nnon-empty refusal   : for the 2nd authorized cell, write run_dir/'leftover.txt' BEFORE subprocess.run(cmd)",
+   "output": "--decision-log  = .../CODE/Results/<run_id>/decisions.jsonl   parent_equals_out=True  parent_is_dir=True  inside_out=True\n--timeline-log  = .../CODE/Results/<run_id>/timeline.jsonl   parent_equals_out=True  parent_is_dir=True  inside_out=True\nout_value       = .../CODE/Results/<run_id>\ndir_exists_after_call=True   dir_empty_after_call=True\npre-seeded non-empty cell: exit_code=3\nstdout_tail=\"RUN REFUSED (formal output): destination must be a new empty directory\"",
+   "why": "All three clauses hold with the real CLI and a real authorization (the refusal is emitted after _verify_formal_args succeeded, so authorization is not the cause). The empty dir created by formal_command is exactly what the CLI's own formal-output gate accepts (exists + empty), and a stale non-empty dir still fails loud."
+  },
+  {
+   "id": "T3",
+   "result": "PASS",
+   "command": "python3 /tmp/rev3/probe1.py     # regex-extracts both literal tuples and diffs them\n  compiler: matrix.py, the tuple after 'for field, complaint in ('\n  analyzer: v2_analysis.py, the tuple after 'for field in (\"trace_sha256\"'",
+   "output": "T3_compiler_fields = [\"code_sha256\",\"controlled_signature\",\"input_sha256\",\"phase\",\"trace_identity_sha256\",\"trace_seed\"]\nT3_analyzer_fields = [\"code_sha256\",\"controlled_signature\",\"input_sha256\",\"seed\",\"trace_identity_sha256\",\"trace_sha256\"]\nT3_analyzer_minus_compiler = [\"seed\",\"trace_sha256\"]     <-- exactly the two declared derived fields\nT3_extra_in_compiler       = [\"phase\",\"trace_seed\"]      <-- compiler is a strict superset\n# independent adversarial check of the \"derived\" claim (traffic-producing 4796-packet T1 profile, /tmp/rev3/probe_hole2.py):\n# 13 identity-neutral variants incl. routing.policy, links.isl_rate_mbps, access.uplink_rate_mbps, scenario.time_step_s,\n# num_satellites, altitude_km, geometry_epoch_s, control_plane.advertise_interval_s, execution.max_events\n# -> every one produced a byte-identical actual trace_sha256; the only variants that changed trace bytes\n#    (duration_s=300, demand.offered_mbps=4) also changed trace_identity_sha256.  HOLE=False for all 13.",
+   "why": "The field-set difference is exactly {trace_sha256, seed}, as the criterion requires, and I did not take the \"derived\" annotation on faith: an independent 13-variant probe on a real traffic-producing config found no case where the actual trace bytes change while the compiler-declared identity stays fixed, so comparing trace_identity_sha256/input_sha256 does pin trace_sha256 on this config family."
+  },
+  {
+   "id": "T4",
+   "result": "PASS",
+   "command": "python3 /tmp/rev3/probe1.py      # request = canonical fixture with arms[1] = {\"demand\":{\"offered_mbps\":2.0}}, intervention_paths=[\"demand.offered_mbps\"]\nmatrix._resolve_cells(request, ROOT)\n# reverse guard, /tmp/rev3/probe_ab.py probe B: compile a valid matrix, then rewrite request.json arms[1] to the same\n# trace-affecting override AND update compile-report/run-manifest request_sha256 + arms, then\nauthorize_experiment._verified_experiment(WS, experiment)",
+   "output": "T4_exc_type = MatrixError\nT4_exc_message = \"pairing_key pair-42 must share the trace identity\"\nT4_contains_trace_identity = True\nprobe B: AuthorizationError: \"invalid leo_sim V2 matrix: pairing_key pair-42 must share the trace identity\"\n# the only two call sites of the contract are matrix.py:844 (compile) and matrix.py:962 (verify_compiled_matrix,\n# which authorize_experiment.py:246 calls); grep shows no other producer of matrix cells.",
+   "why": "The trace-affecting treatment is rejected in the compile path with the required message, and the reverse guard shows it cannot be smuggled past the authorization path either: verify_compiled_matrix re-derives the cells and re-runs the same contract. No bypass entry point found for the matrix route."
+  },
+  {
+   "id": "T5",
+   "result": "PASS",
+   "command": "python3 /tmp/rev3/probe1.py        # _resolve_cells(fixture) + governance identity per variant\npython3 /tmp/rev3/probe_t8_hex.py # repeats it for the smoke profile, which is where the criterion's literals come from",
+   "output": "T5_resolve_ok = True\nT5_rows = [[\"EXP-LEO-V2-MATRIX-control-s42\",\"610900101fd1f21ff53cc449a46f987b939e56d60017d061648e22b261ab4700\"],\n           [\"EXP-LEO-V2-MATRIX-treatment-s42\",\"610900101fd1f21ff53cc449a46f987b939e56d60017d061648e22b261ab4700\"]]\nfixture routing.policy hop / oracle / delay -> all 610900101fd1f21ff53cc449a46f987b939e56d60017d061648e22b261ab4700\nfixture demand.offered_mbps=2.0              ->     5e51fa445ad887a217af4cbeddb1ad4d2cee2f59f00ad1740c72253faa699191\n# the values printed in the criterion are the SMOKE profile's, not the fixture's:\nsmoke base (hop)               -> 3c8d3443c3a3ce295aa9985215d4eff86b94050320a19f853e9e1101330f2e0f\nsmoke policy oracle / delay    -> 3c8d3443c3a3ce295aa9985215d4eff86b94050320a19f853e9e1101330f2e0f\nsmoke demand.offered_mbps=2.0  -> 7d5b339d922ae388496c2bab22ed3b8bac24ca0b2c37312608b5b19ca1a72506",
+   "why": "PASS on the proposition: the corrected fixture resolves without error (reverse guard against \"reject everything\"), its treatment (routing.policy) is identity-inert for hop/oracle/delay, and demand.offered_mbps=2.0 is identity-affecting - all measured independently. CRITERIA DEFECT (not a code defect, recorded for round 4): the two hex literals in the check (\"3c8d3443…\", \"7d5b339d…\") are the smoke profile's identities; the fixture's own values are 61090010…/5e51fa44…. The criterion therefore mis-attributes its \"实测\" evidence, although the neutral/affecting distinction it asserts is true for the fixture as well."
+  },
+  {
+   "id": "T6",
+   "result": "PASS",
+   "command": "# on the V6 run dir produced by the real formal vector (/tmp/rev3/e2e3.py):\nshutil.copyfile(run_dir/'decisions.jsonl', '/private/tmp/rev3/tamper.jsonl'); append '{}' + newline\nreceipt_mod.verify_receipt_dir(str(run_dir), decision_log='/private/tmp/rev3/tamper.jsonl')\npython3 -m CODE.leo_sim receipt verify <run_dir> --decision-log /private/tmp/rev3/tamper.jsonl",
+   "output": "verify_receipt_dir -> ['decision_log_sha256 does not match /private/tmp/rev3/tamper.jsonl: receipt says 98c8cb1c4cfde39044f8752669d40cdebf6d34ddd57cb5f1250de538efbcc5bc, file is fc11a1d6798773bcc343e44a26a132e9e5e00479c11d3dc52869f00532796fa0']\nCLI -> rc=2 {\"status\": \"FAILED\", \"errors\": [\"decision_log_sha256 does not match ...\"]}",
+   "why": "The digest is recomputed and a one-line append is caught with the actual digest difference. (Verified independently that the untampered pair verifies: verify_with_streams=[] .)"
+  },
+  {
+   "id": "T7",
+   "result": "PASS",
+   "command": "git diff 149e4d5 c2e18a8 -- CODE/leo_sim/receipt.py           # hunks: exactly one\n# empirical: identical procedure in the pre-change tree and the reviewed tree\nTREE=/tmp/rev3/wt-old python3 /tmp/rev3/t7.py     # git archive 149e4d5 -> /tmp/rev3/wt-old\nTREE=<repo>           python3 /tmp/rev3/t7.py     # each tree runs smoke.yaml itself, then verifies WITHOUT stream args",
+   "output": "git diff -> a single hunk @@ -1128,14 +1128,66 @@: verify_receipt_dir gains the two keyword args and appends\n_verify_stream_bindings(...); _verify_receipt_dir_impl and every callee are untouched.\nOLD (149e4d5): v5 {verify_plain: [], corrupt_missing_trace: [identical 6 errors], corrupt_events_processed: [\"events_processed != ledgers\"], corrupt_extra_key: [\"receipt keys mismatch: unknown=['not_a_key'] missing=[]\"]}\n               v6 {verify_plain: [], same three corruption lists verbatim}\nNEW (c2e18a8): v5/v6 -> byte-for-byte the same verdicts and the same error strings.",
+   "why": "The no-stream path is unchanged both by construction (one hunk, the helper returns [] when both args are None) and empirically (pre-change tree vs reviewed tree produce identical verdicts and identical error strings on V5 and V6 under three identical corruptions). Existing callers - platform_check.py, acceptance.py, __main__ run, remote_job - pass no streams and are unaffected."
+  },
+  {
+   "id": "T8",
+   "result": "PASS",
+   "command": "python3 /tmp/rev3/probe_t8_hex.py\nreceipt_mod.verify_receipt_dir(str(v5dir), decision_log='/private/tmp/rev3/any-file.txt')\nreceipt_mod.verify_receipt_dir(str(v5dir), timeline_log='/private/tmp/rev3/any-file.txt')\npython3 -m CODE.leo_sim receipt verify <v5dir> --decision-log /private/tmp/rev3/any-file.txt",
+   "output": "v5_schema = leo-sim-receipt/v5   v5_keys = 28\nT8_api_decision_only = [\"stream paths were supplied but this receipt is leo-sim-receipt/v5, which carries no stream binding\"]\nT8_api_timeline_only = [\"stream paths were supplied but this receipt is leo-sim-receipt/v5, which carries no stream binding\"]\nT8_cli = {\"rc\": 2, \"stdout\": \"{\\n  \\\"status\\\": \\\"FAILED\\\",\\n  \\\"errors\\\": [\\n    \\\"stream paths were supplied but this receipt is leo-sim-receipt/v5, which carries no stream binding\\\"\\n  ]\\n}\"}",
+   "why": "Supplying either stream for a V5 receipt is an explicit refusal, not a silent skip, and the CLI surfaces exactly the same message with exit code 2."
+  },
+  {
+   "id": "T9",
+   "result": "PASS",
+   "command": "grep -c \"no available-capacity windows\" CODE/experiment_platform/isl_pressure.py\nls CODE/experiment_platform/tests/ | grep -i capacity\ngit archive 3aa2890 | tar -x -C /tmp/rev3/wt-3aa2890\ncd /tmp/rev3/wt-3aa2890 && python3 -m pytest CODE/experiment_platform/tests/test_isl_pressure.py -q\npython3 -m pytest CODE/experiment_platform/tests/test_isl_pressure.py -q   # reviewed tree",
+   "output": "reviewed tree: grep -c -> 0 ; test_capacity_sampling_diagnostic.py -> absent\n3aa2890 export: grep -c -> 1 ; test_capacity_sampling_diagnostic.py -> present (2 tests)\n3aa2890: \"3 failed, 8 passed\" = test_queue_event_outside_stop_fails_loud, test_service_start_without_matching_service_window_fails_loud,\n         test_service_without_available_capacity_fails_loud  (all three got the S-1 early-raise message instead of their own)\nreviewed tree: \"11 passed in 0.02s\" (the same 8 + the 3 restored)",
+   "why": "The revert is complete: no early-raise string, no orphaned test file, and exactly the three pre-existing isl_pressure cases that the S-1 patch broke are green again. No dead code or misleading comment left behind (the removed block's comment went with it)."
+  },
+  {
+   "id": "T10",
+   "result": "PASS",
+   "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q -p no:cacheprovider",
+   "output": "940 passed, 1 skipped, 1 warning in 712.15s (0:11:52)",
+   "why": "Zero failures, and the counts match the commit's claim (940 passed / 1 skipped / 0 failed); the single warning is a pre-existing unregistered pytest mark in test_platform_check.py."
+  },
+  {
+   "id": "T11",
+   "result": "PASS",
+   "command": "python3 /tmp/rev3/probe1.py       # family/key-set/v3-v4-v7 membership\npython3 /tmp/rev3/probe_t11.py    # schema-patched copies of a real V5 run dir, verified\n# plus the real runs: no streams -> V5, both streams -> V6",
+   "output": "T11_family = [\"leo-sim-receipt/v5\",\"leo-sim-receipt/v6\"]   v3/v4/v7 in family = False/False/False\nT11_v5_keys = 28   T11_v6_keys = 31\nreal runs: plain -> leo-sim-receipt/v5 (28 keys), both streams -> leo-sim-receipt/v6 (31 keys, decision_stream_contract set)\nschema-patched dirs: v3 -> 6 errors, v4 -> 5 errors,\n                     v7 -> [\"receipt schema mismatch: leo-sim-receipt/v7\", ...],\n                     V5 key set claiming v6 -> [\"v6 decision_stream_contract must be decision-rows/v1\", ...]\nfamily consumers unchanged: v2_analysis.py \"if receipt_schema in receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY:\" ; remote_job.py same check + its error text.",
+   "why": "Family membership, both signing conditions and the rejection of v3/v4/v7 all hold, and both consumers still key off the same family constant - no dispatch site was left on the old literal."
+  },
+  {
+   "id": "T12",
+   "result": "PASS",
+   "command": "cd <repo>          && python3 -m CODE.leo_sim run --config CODE/leo_sim/profiles/smoke.yaml --dry-run\ncd /tmp/rev3/wt-old && python3 -m CODE.leo_sim run --config CODE/leo_sim/profiles/smoke.yaml --dry-run   # 149e4d5",
+   "output": "reviewed tree: config_sha256 = 934315391f9572ca2f03a641a3b2a800889330e8f0579fccbb7ee29379c68816\n               code_sha256   = 2a114890e8b11e429fec45a6b1efcb81c1d80a8e195a9c9407a250d218f16dbe\n149e4d5:       config_sha256 = 934315391f9572ca2f03a641a3b2a800889330e8f0579fccbb7ee29379c68816  (unchanged)\n               code_sha256   = 6ed13d75be46a9dc95af355cfb9d0dd79e03da3557e523e1cebb96ffa4fb729f  (differs, as claimed)\ngit diff --stat 149e4d5 c2e18a8: no config.py / no profile change; only __main__ (CLI args), matrix, receipt, remote_job, tests.",
+   "why": "Both hashes match the criterion exactly, and the statement is internally honest: the code identity moved (CODE/ code changed) while the resolved config identity did not (no new config key), corroborated by the untouched config.py/profile and the identical config_sha256 at the previous commit."
+  }
+ ],
+ "overall": "PASS"
+}

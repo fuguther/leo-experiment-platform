@@ -1,0 +1,71 @@
+# T1-PRESSURE-WINDOW v2: 经验证的有效 ISL 压力窗口（受控压力机制场景）
+
+# 与 v1 (t1_pressure_corridor.yaml) 的差异，以及为什么：
+#   * scenario.min_elevation_deg = 5 —— v1 从未设置该字段，默认仰角使站点可见窗口过短，
+#     接入侧成为瓶颈（admission 恒为 ~0.48，被判 ACCESS_LIMITED，与 ISL 速率/负载/队列容量无关）。
+#     设 5 度后站点可见性接近连续，admission = 1.0，压力回到星上 ISL。
+#   * access.uplink/downlink_queue_bits = 4 Gbit —— 消掉上行队列溢出（v1 为 64 Mbit，46.6% 溢出）。
+#   * scenario.duration_s = 300 —— 与 ANALYSIS/T1-PRESSURE-WINDOW.md 的标定窗口一致
+#     （v1 写 600 s，导致 committed profile 复现不出自己的支撑文档，属已记录的漂移）。
+#   * demand.offered_mbps = 12 —— 验证过的中心档；offered 9–18 Mbps 均通过。
+
+# 验证记录（2026-09-25，冻结于 commit 98c858f，code_sha256 2a114890…，本地诊断跑、未授权）：
+#   官方分类器 CODE.leo_sim.scene_check 判定 = ISL_PRESSURE_CANDIDATE
+#   4 种子 (7/11/23/42) x 4 档负载 (9/10/12/14/18) = 8/8 通过；access/route/downlink 三层全清。
+#   候选链路实例：seed7/offered12 -> isl:2:1 连续窗口 31,32 利用率 0.8296/0.9984，p95 排队 0.279 s；
+#                 seed7/offered18 -> isl:0:1 窗口 79,80 利用率 1.0000/0.8548，p95 排队 1.153 s。
+
+# 边界与限制：本场景是「受控压力机制场景」，不得冒称真实运营星座或真实 ISL 饱和；
+#   本次为本地诊断跑，未走 VM 正式链路、未签发授权，故不是 research_eligible 证据。
+# 复现：见 ANALYSIS/ARRIVAL-TIME-T1-20260923/02-scene-and-pressure-audit.md
+
+config_version: leo-sim-config/v1
+scenario:
+  name: t1-pressure-corridor
+  duration_s: 300.0
+  time_step_s: 0.1
+  num_satellites: 24
+  num_planes: 3
+  seed: 7
+  min_elevation_deg: 5
+endpoints:
+  sites:
+  - name: equator
+    lat: 0.1
+    lon: 0.1
+    demand_weight: 1.0
+  - name: north
+    lat: 52.6
+    lon: 90.4
+    demand_weight: 1.0
+demand:
+  mode: uniform
+  offered_mbps: 12.0
+  packet_bits: 1000000
+access:
+  unavailable_policy: queue
+  uplink_rate_mbps: 1000.0
+  downlink_rate_mbps: 1000.0
+  association: bbm
+  uplink_queue_bits: 4000000000
+  downlink_queue_bits: 4000000000
+links:
+  rate_model: constant
+  isl_rate_mbps: 10.0
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 2.0
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  max_events: 20000000
+  max_entities: 20000
+  max_packets: 200000
+  available_capacity_interval_s: 1.0
+outputs:
+  out_dir: leo_sim_out/t1-pressure-corridor
+  plotting: false

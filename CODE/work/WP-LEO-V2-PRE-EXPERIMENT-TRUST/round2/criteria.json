@@ -1,0 +1,162 @@
+{
+  "work_id": "WP-LEO-V2-PRE-EXPERIMENT-TRUST-R2",
+  "round": 1,
+  "frozen_at_head": "98c858f642aeca8056d215224b20783b00354026",
+  "frozen_at_sha": null,
+  "frozen_at_note": "本轮不允许提交，改动全部在工作树里，因此不存在可冻结的 commit SHA。可冻结的等价身份是 code_sha256 + execution_chain_sha256（见下）。审阅者必须知道：在这两个值被写进一个提交之前，任何回执都无法指向这个身份，本轮材料因此只够做『改动审查』，不够做『面向合并的独立冷启动复核』。",
+  "frozen_code_sha256": "681a10b1c71f14f3b266ddd1fa9d841f4bf2096d379f7aa6ed78bb27a1bcc02b",
+  "frozen_execution_chain_sha256": "d3f283d49dad4ef716a7ccf72342a572243133901d77b46cce616bda186f1e15",
+  "scope": "R11 收口：正式运行链的流契约（VM 门）与结果拉回本地门；以及两个漏检点（recompute 缺字段、突发强度未判定）。",
+  "not_in_scope": "不改 metrics.py / 不改 manifest 与 receipt 键集 / 不改 config key / 不动开工前的 6 个未提交文件以外的既有 dirty 材料 / 不提交不推送。",
+  "independence_note": "本轮作者同时是改动者，因此**不能**自我判定为独立复核。下列判据是给独立冷启动审阅者的输入，不是结论。",
+  "criteria": [
+    {
+      "id": "C1",
+      "statement": "零决策行的正式运行（回执 v5）不被 VM 门错判失败",
+      "check": "code_sha256 对应的树上运行 tests/test_formal_stream_gate.py::test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate；并要求 remote_job.verify_v2_formal_result(v5dir) == []",
+      "touches": [
+        "CODE/leo_sim/receipt.py",
+        "CODE/scripts/remote/remote_job.py"
+      ]
+    },
+    {
+      "id": "C2",
+      "statement": "非零决策的 v6 回执，两条流摘要被真的重算而不是信任",
+      "check": "同文件 ::test_a_nonzero_decision_formal_run_is_signed_v6_and_its_digests_are_recomputed；向 decisions.jsonl 追加一行后 verify_v2_formal_result 必须报 decision_log_sha256 mismatch",
+      "touches": [
+        "CODE/leo_sim/receipt.py"
+      ]
+    },
+    {
+      "id": "C3",
+      "statement": "v5 回执若两条侧车齐备且决策流非空，必须被判为自相矛盾",
+      "check": "tests/test_formal_stream_gate.py::test_a_zero_decision_dir_that_gained_a_row_is_rejected",
+      "touches": [
+        "CODE/leo_sim/receipt.py"
+      ]
+    },
+    {
+      "id": "C4",
+      "statement": "require_streams=True 时，v5 的降级必须被证明（两条流与两个侧车都在、决策流为空）",
+      "check": "删除 timeline.jsonl 的 v5 副本 -> verify_v2_formal_result 非空且含 'formal run result set is incomplete'",
+      "touches": [
+        "CODE/leo_sim/receipt.py"
+      ]
+    },
+    {
+      "id": "C5",
+      "statement": "不提供流参数时，verify_receipt_dir 的裁决与改动前逐字相同（既有调用方不受影响）",
+      "check": "对同一 v5/v6 目录分别调用 verify_receipt_dir(dir)（无流参数），与本轮之前的实现逐元素比对；全量套件中既有 receipt 用例不变",
+      "touches": [
+        "CODE/leo_sim/receipt.py"
+      ]
+    },
+    {
+      "id": "C6",
+      "statement": "对 v5 回执提供流路径仍然是明确拒绝，不静默忽略",
+      "check": "verify_receipt_dir(v5dir, decision_log=<任意文件>) 含 'carries no stream binding'",
+      "touches": [
+        "CODE/leo_sim/receipt.py"
+      ]
+    },
+    {
+      "id": "C7",
+      "statement": "流摘要比较只有一处实现，两条入口共用（不会各自漂移）",
+      "check": "grep -n '_stream_digest_errors' CODE/leo_sim/receipt.py 恰好定义一次、被 _verify_stream_bindings 与 verify_receipt_streams 各调用一次",
+      "touches": [
+        "CODE/leo_sim/receipt.py"
+      ]
+    },
+    {
+      "id": "C8",
+      "statement": "remote_job 不再无条件把两条流路径交给 verify_receipt_dir",
+      "check": "grep -n 'decision_log=str(_run_dir' CODE/scripts/remote/remote_job.py 无输出；且 verify_v2_formal_result 用 require_streams=True",
+      "touches": [
+        "CODE/scripts/remote/remote_job.py"
+      ]
+    },
+    {
+      "id": "C9",
+      "statement": "VM 门与回归测试调用的是同一个函数（不是两份相似代码）",
+      "check": "grep -n 'verify_v2_formal_result' CODE/scripts/remote/remote_job.py CODE/leo_sim/tests/test_formal_stream_gate.py 显示定义一次、run_formal 调用一次、测试调用多次",
+      "touches": [
+        "CODE/scripts/remote/remote_job.py",
+        "CODE/leo_sim/tests/test_formal_stream_gate.py"
+      ]
+    },
+    {
+      "id": "C10",
+      "statement": "拉回本地门在缺流/篡改流/缺核心文件/篡改账本时失败，完整时通过",
+      "check": "tests/test_formal_stream_gate.py 的 pullback 用例；并实测 exit code：完整=0，其余=11",
+      "touches": [
+        "CODE/leo_sim/pullback.py",
+        "CODE/leo_sim/__main__.py"
+      ]
+    },
+    {
+      "id": "C11",
+      "statement": "存在 formal_run.json 时，拉回门必须核对正式增量（research_eligible / verification_errors / 三个 hash / 见证回执一致）",
+      "check": "tests/test_formal_stream_gate.py::test_a_recorded_vm_verdict_cannot_make_an_incomplete_copy_pass；并单独篡改 governance_receipt 的每个字段观察 P5 失败",
+      "touches": [
+        "CODE/leo_sim/pullback.py"
+      ]
+    },
+    {
+      "id": "C12",
+      "statement": "拉回门不要求本地代码身份等于运行时身份，且报告显式说明这不是信任链判定",
+      "check": "verify_pulled_run 的 runtime_identity.runtime_equals_local 可为 False 而 ok 仍为 True；报告 scope 字段含 'NOT authorization'",
+      "touches": [
+        "CODE/leo_sim/pullback.py"
+      ]
+    },
+    {
+      "id": "C13",
+      "statement": "recompute 在生产读数缺 served_bits / capacity_bits / utilization 或值非数值时失败",
+      "check": "tests/test_pre_experiment_trust_round2.py::test_recompute_rejects_a_production_reading_that_lost_a_field 与 ::test_recompute_rejects_a_link_the_production_reading_invented",
+      "touches": [
+        "CODE/leo_sim/recompute.py"
+      ]
+    },
+    {
+      "id": "C14",
+      "statement": "未改动的运行仍然 mismatch_total == 0（反向守卫：不是靠全拒通过）",
+      "check": "同一测试文件的第一段断言 plus tests/test_pre_experiment_trust.py::test_recompute_reports_a_sampled_run_as_a_measurement",
+      "touches": [
+        "CODE/leo_sim/recompute.py"
+      ]
+    },
+    {
+      "id": "C15",
+      "statement": "突发强度：容差事前定义、样本不足报 UNDECIDABLE、与声明不符报 VIOLATED 并拒绝编译",
+      "check": "tests/test_pre_experiment_trust_round2.py 的三个 intensity 用例；并确认 INTENSITY_SIGMA 与可判定条件写在 trace.py 里而非测试里",
+      "touches": [
+        "CODE/leo_sim/trace.py"
+      ]
+    },
+    {
+      "id": "C16",
+      "statement": "材料化报告不进入 manifest.json，且 receipt.trace_manifest_sha256 仍等于磁盘上 manifest.json 的 sha256",
+      "check": "对任一真实 run：sha256(manifest.json) == receipt.trace_manifest_sha256；manifest.json 无 '__' 前缀键",
+      "touches": [
+        "CODE/leo_sim/trace.py",
+        "CODE/leo_sim/receipt.py"
+      ]
+    },
+    {
+      "id": "C17",
+      "statement": "全量测试 0 failed",
+      "check": "PYTHONDONTWRITEBYTECODE=1 python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q -p no:cacheprovider",
+      "touches": [
+        "CODE/"
+      ]
+    },
+    {
+      "id": "C18",
+      "statement": "未新增或修改任何 config key（resolved config 身份不变）",
+      "check": "smoke.yaml 的 config_sha256 仍为 934315391f9572ca2f03a641a3b2a800889330e8f0579fccbb7ee29379c68816",
+      "touches": [
+        "CODE/leo_sim/config.py"
+      ]
+    }
+  ]
+}

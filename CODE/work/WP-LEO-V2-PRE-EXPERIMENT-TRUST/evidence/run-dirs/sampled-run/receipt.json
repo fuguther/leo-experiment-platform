@@ -1,0 +1,133 @@
+{
+  "code_sha256": "6acc2c127215396e81c602fd13cacdfc286238a301cbc786e13bd7031ab149e7",
+  "config_sha256": "1858e9f477dd9bb28ce1f6246c118c85e3fad6d68621cfe07029c3e4885d2532",
+  "config_version": "leo-sim-config/v1",
+  "congestion_metrics_contract": "leo-sim-congestion-metrics/v2",
+  "conservation_ok": true,
+  "control": {
+    "counters": {
+      "arrived": 0,
+      "duplicate": 0,
+      "entered_queue": 0,
+      "expired": 0,
+      "geometry_lost": 0,
+      "in_system": 0,
+      "lost": 0,
+      "overflow": 0,
+      "registered": 0,
+      "snapshots_created": 0,
+      "transmission_completed": 0,
+      "transmission_started": 0
+    },
+    "fate_counts": {
+      "CONTROL_EXPIRED": 0,
+      "DELIVERED": 0,
+      "DUPLICATE": 0,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "IN_SYSTEM_AT_STOP": 0,
+      "QUEUE_OVERFLOW": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+    },
+    "totals": {
+      "delivered_bits": 0,
+      "in_system_bits_at_stop": 0,
+      "offered_bits": 0,
+      "terminal_loss_bits": 0
+    }
+  },
+  "deps": {
+    "numpy": "2.3.5",
+    "python": "3.14.2",
+    "pyyaml": "6.0.3",
+    "simpy": "4.1.1"
+  },
+  "error": null,
+  "events_processed": 4506,
+  "fate_counts": {
+    "ACCESS_QUEUE_OVERFLOW": 0,
+    "ACCESS_REJECTED": 0,
+    "DATA_DEADLINE_EXPIRED": 0,
+    "DELIVERED": 0,
+    "GEOMETRY_LOSS_IN_FLIGHT": 0,
+    "HOLDING_QUEUE_OVERFLOW": 0,
+    "IN_SYSTEM_AT_STOP": 0,
+    "ISL_QUEUE_OVERFLOW": 0,
+    "NO_ROUTE": 6,
+    "RANDOM_OUTAGE_IN_FLIGHT": 0
+  },
+  "handover_event_count": 2,
+  "horizon_s": 40.0,
+  "interrupted": false,
+  "ledgers_sha256": "33bb2f0597753c2188924673e8a5425d77fcbe014cfd34faaf0e96efaeed1f10",
+  "mechanisms": {
+    "effective": {
+      "control_plane": false,
+      "dynamic_topology": false,
+      "ge": false,
+      "learning": false,
+      "mbb": false,
+      "mcs": false
+    },
+    "requested": {
+      "association": "bbm",
+      "control_enabled": false,
+      "forward_step_penalty": -20.0,
+      "ge_enabled": false,
+      "learning_algorithm": "none",
+      "learning_mode": "train",
+      "monitor": false,
+      "policy": "hop",
+      "rate_model": "constant",
+      "topology_matching": "markovian",
+      "topology_recompute_interval_s": null
+    }
+  },
+  "natural_end": true,
+  "occupied": {
+    "ctrl_isl_s": 0.0,
+    "gsl_downlink_s": 0.0,
+    "gsl_uplink_s": 0.4800000000000003,
+    "isl_s": 0.0
+  },
+  "packet_fates": {
+    "1": [
+      "NO_ROUTE",
+      8000000
+    ],
+    "2": [
+      "NO_ROUTE",
+      8000000
+    ],
+    "3": [
+      "NO_ROUTE",
+      8000000
+    ],
+    "4": [
+      "NO_ROUTE",
+      8000000
+    ],
+    "5": [
+      "NO_ROUTE",
+      8000000
+    ],
+    "99": [
+      "NO_ROUTE",
+      8000000
+    ]
+  },
+  "research_eligible": false,
+  "routing_label": null,
+  "schema": "leo-sim-receipt/v5",
+  "seed": 7,
+  "totals": {
+    "delivered_bits": 0,
+    "in_system_bits_at_stop": 0,
+    "offered_bits": 48000000,
+    "terminal_loss_bits": 48000000
+  },
+  "trace_identity_contract": "leo-sim-trace-identity/v3",
+  "trace_identity_sha256": "37080a6feaeaf28d0b0a0492aa398d7d29d00fe06f78ad6b35f2c8d636898f4a",
+  "trace_manifest_contract": "leo-sim-trace-manifest/v2",
+  "trace_manifest_sha256": "da5b7095939967c1bd1531e88a25a1ee1fecec7d433dfbcb233cf9d1819956fb",
+  "trace_sha256": "3423c86c17427cc4f76a28a936a8c85c44dccd7cd79a93fcd3aba0d482809a5c"
+}

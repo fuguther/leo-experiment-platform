@@ -1,0 +1,199 @@
+{
+  "probes": [
+    {
+      "manifest_traffic_transform": {
+        "burst": null,
+        "diurnal": null,
+        "mode": "uniform"
+      },
+      "observed": "ACCEPTED",
+      "packets": 2,
+      "probe": "A1",
+      "realized_offered_mbps": 1.6,
+      "resolution": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "resolved_burst_start_s": 2.0,
+      "target_offered_mbps": 5.0,
+      "title": "burst declared under demand.mode=uniform"
+    },
+    {
+      "declared_burst": {
+        "duration_s": 10.0,
+        "multiplier": 5.0,
+        "start_s": 30.0
+      },
+      "emission_end_s": 20.0,
+      "last_emit_time_s": 19.988119,
+      "observed": "ACCEPTED",
+      "packets": 100,
+      "packets_inside_burst_window": 0,
+      "probe": "A2",
+      "realized_offered_mbps": 40.0,
+      "resolution": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "target_offered_mbps": 40.0,
+      "title": "burst window [30,40) outside emission window [0,20)"
+    },
+    {
+      "declared_burst": {
+        "duration_s": 10.0,
+        "multiplier": 5.0,
+        "start_s": 15.0
+      },
+      "emission_end_s": 20.0,
+      "observed": "ACCEPTED",
+      "packets": 193,
+      "packets_inside_declared_window": 123,
+      "packets_inside_unreachable_tail": 0,
+      "probe": "A3",
+      "resolution": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "title": "burst window [15,25) half outside emission window [0,20)"
+    },
+    {
+      "analyzer": {
+        "error": "'str' object has no attribute 'get'",
+        "error_type": "AttributeError",
+        "status": "REFUSED"
+      },
+      "compile": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "compile_errors": [],
+      "compile_status": "COMPILED_REVIEW_REQUIRED",
+      "observed": "ACCEPTED",
+      "probe": "B1",
+      "title": "primary_metric=p95_e2e_latency (in catalog, not in analyzer)"
+    },
+    {
+      "analyzer": {
+        "note": "the analyzer will average the production service-window fallback ratio",
+        "status": "ACCEPTED"
+      },
+      "compile": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "compile_errors": [],
+      "compile_status": "COMPILED_REVIEW_REQUIRED",
+      "observed": "ACCEPTED",
+      "probe": "B2",
+      "resolved_available_capacity_interval_s": null,
+      "title": "primary_metric=link_utilization_mean with no capacity sampling"
+    },
+    {
+      "declare_policy": {
+        "error": "unknown request fields ['design']",
+        "error_type": "MatrixError",
+        "status": "REFUSED"
+      },
+      "design_accounting": {
+        "exact_reexecution_cells": 0,
+        "exact_reexecution_groups": [],
+        "independent_condition_rule": "one independent condition per unique resolved config SHA256",
+        "planned_cells": 2,
+        "schema": "leo-sim-matrix-design-accounting/v1",
+        "unique_resolved_configurations": 2
+      },
+      "observed": "ACCEPTED",
+      "probe": "B3",
+      "title": "single-factor claim declaration/verification absent",
+      "two_factor_compile_errors": [],
+      "two_factor_compile_status": "COMPILED_REVIEW_REQUIRED",
+      "two_factor_without_policy": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      }
+    },
+    {
+      "links": {
+        "isl:0:1": {
+          "available_capacity_bits": 1000.0,
+          "available_samples": 1,
+          "served_bits": 1000.0,
+          "status": "OK",
+          "utilization": 1.0
+        },
+        "isl:1:2": {
+          "available_capacity_bits": 0.0,
+          "available_samples": 0,
+          "served_bits": 0.0,
+          "status": "OK",
+          "utilization": 0.0
+        }
+      },
+      "observed": "ACCEPTED",
+      "probe": "C1",
+      "recompute": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "title": "availability sampled elsewhere; isl:1:2 has no denominator"
+    },
+    {
+      "analyzer_diagnostics": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "observed": "ACCEPTED",
+      "probe": "C2",
+      "production_links": {
+        "gsl:uplink:0:G1:90:180": {
+          "available_capacity_bits": 48000000.00000004,
+          "available_samples": 0,
+          "capacity_bits": 48000000.00000004,
+          "utilization": 0.9999999999999992
+        }
+      },
+      "resolved_available_capacity_interval_s": null,
+      "run": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "title": "production utilization without capacity sampling"
+    },
+    {
+      "exit": 2,
+      "observed": "REFUSED",
+      "probe": "D1",
+      "stderr_tail": "usage: python -m CODE.leo_sim [-h]\n                              {config,trace,experiment,run,receipt,acceptance,compare,platform} ...\npython -m CODE.leo_sim: error: argument cmd: invalid choice: 'recompute' (choose from config, trace, experiment, run, receipt, acceptance, compare, platform)",
+      "stdout_tail": "",
+      "title": "python3 -m CODE.leo_sim recompute on a persisted run"
+    },
+    {
+      "exit": 2,
+      "observed": "REFUSED",
+      "probe": "D2",
+      "stdout_tail": "",
+      "title": "F2 enabled but no timeline stream in the run directory"
+    },
+    {
+      "exit": 2,
+      "observed": "REFUSED",
+      "probe": "D3",
+      "run": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "title": "sampled run: the independent recomputation publishes a number"
+    }
+  ],
+  "schema": "leo-sim-pre-experiment-trust-probe/v1"
+}

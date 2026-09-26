@@ -1,0 +1,62 @@
+--- a/CODE/leo_sim/kernel.py
++++ b/CODE/leo_sim/kernel.py
+@@ -56,6 +56,43 @@
+ LearningUnavailable = _learning.LearningUnavailable
+ 
+ 
++AUDIT_CACHE_VALUE_FIELDS = ("isl_queue_bits",)
++
++
++def _cache_field_values(value):
++    """把缓存字段压成可落盘形式（保留 peer 身份与数值）。仅用于离线审计流。"""
++    if not isinstance(value, dict):
++        return value
++    out = {}
++    for direction, rec in sorted(value.items()):
++        if isinstance(rec, dict):
++            v = rec.get("value")
++            if isinstance(v, float) and v.is_integer():
++                v = int(v)
++            out[str(direction)] = {"peer": rec.get("peer"), "value": v}
++        else:
++            out[str(direction)] = rec
++    return out
++
++
++def _truth_queue_bits(links_by_sat, origin):
++    """E3 记录面扩展 B：某起源星在决策时刻的真实出口队列（data+ctrl 位）。
++
++    links_by_sat 是**按卫星号索引的列表**（self.isls），缓存条目的 key 可能是字符串，故显式转换。
++    """
++    try:
++        i = int(origin)
++    except (TypeError, ValueError):
++        return None
++    try:
++        links = links_by_sat[i]
++    except (IndexError, KeyError, TypeError):
++        return None
++    if not links:
++        return None
++    return {str(d): int(lnk.data_bits + lnk.ctrl_bits) for d, lnk in sorted(links.items())}
++
++
+ class KernelError(RuntimeError):
+     pass
+ 
+@@ -3791,7 +3828,15 @@
+                 "source": "control_cache",
+                 "payload_field_age_s": {
+                     str(field): age for field in sorted(payload)
++                },
++                # E3 记录面扩展 A：决策时刻缓存里看到的队列值（O0 的完整记录）。
++                "payload_values": {
++                    str(field): _cache_field_values(payload[field])
++                    for field in sorted(payload)
++                    if field in AUDIT_CACHE_VALUE_FIELDS
+                 },
++                # E3 记录面扩展 B：同一起源星在该决策时刻的真值（供 O1 注入；仅离线）。
++                "truth_queue_bits": _truth_queue_bits(getattr(self, "isls", []), origin),
+             }
+         return {
+             "schema": "leo-sim-decision-info/v1",

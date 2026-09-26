@@ -1,0 +1,206 @@
+FFFF.FF.FFFFF                                                            [100%]
+=================================== FAILURES ===================================
+_____ test_a_declared_burst_that_no_packet_observes_is_refused_by_compile ______
+
+tmp_path = PosixPath('/private/var/folders/tz/6lfp92051_d1sjmq6vfkpqbc0000gn/T/pytest-of-lge/pytest-144/test_a_declared_burst_that_no_0')
+
+    def test_a_declared_burst_that_no_packet_observes_is_refused_by_compile(tmp_path):
+        """0 packets inside a declared window is a treatment that did not happen.
+    
+        The window here IS inside the emission window, so config validation accepts
+        it; the emission rate is simply too low for any packet to land in it.  The
+        check has to be made against the emitted rows, not against the config.
+        """
+        resolved = _trace_cfg(offered_mbps=1e-6, burst_start_s=50.0,
+                              burst_duration_s=1.0)
+        out = tmp_path / "trace"
+>       with pytest.raises(trace_mod.TraceError,
+                           match=r"ZERO\s+of the emitted packets"):
+E                          Failed: DID NOT RAISE TraceError
+
+CODE/leo_sim/tests/test_pre_experiment_trust.py:122: Failed
+_________ test_materialization_report_checks_size_endpoints_and_window _________
+
+    def test_materialization_report_checks_size_endpoints_and_window():
+        resolved = _trace_cfg()
+        good = [
+            {"packet_id": 1, "emit_time_s": 0.0, "src_grid_id": A, "dst_grid_id": B,
+             "bits": 8_000_000, "deadline_at_s": None},
+            {"packet_id": 2, "emit_time_s": 11.0, "src_grid_id": B, "dst_grid_id": A,
+             "bits": 8_000_000, "deadline_at_s": None},
+        ]
+>       report = trace_mod.materialization_report(resolved, good,
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                                  declared_cells={A, B})
+E       AttributeError: module 'CODE.leo_sim.trace' has no attribute 'materialization_report'
+
+CODE/leo_sim/tests/test_pre_experiment_trust.py:138: AttributeError
+_______ test_a_real_burst_trace_reports_where_its_packets_actually_land ________
+
+tmp_path = PosixPath('/private/var/folders/tz/6lfp92051_d1sjmq6vfkpqbc0000gn/T/pytest-of-lge/pytest-144/test_a_real_burst_trace_report0')
+
+    def test_a_real_burst_trace_reports_where_its_packets_actually_land(tmp_path):
+        """The positive control: the report is not vacuous."""
+        resolved = _trace_cfg()
+        out = tmp_path / "trace"
+        manifest = trace_mod.compile_trace(resolved, str(out))
+        rows = trace_mod.load_trace(str(out / "trace.csv"))
+>       report = trace_mod.materialization_report(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            resolved, rows, declared_cells={A, B})
+E       AttributeError: module 'CODE.leo_sim.trace' has no attribute 'materialization_report'
+
+CODE/leo_sim/tests/test_pre_experiment_trust.py:170: AttributeError
+_______ test_a_primary_metric_the_analyzer_cannot_compute_never_compiles _______
+
+tmp_path = PosixPath('/private/var/folders/tz/6lfp92051_d1sjmq6vfkpqbc0000gn/T/pytest-of-lge/pytest-144/test_a_primary_metric_the_anal0')
+
+    def test_a_primary_metric_the_analyzer_cannot_compute_never_compiles(tmp_path):
+        """The three counter-example metrics are catalog ids marked primary.
+    
+        Before this gate they compiled to COMPILED_REVIEW_REQUIRED with errors=[]
+        and failed only inside v2_analysis, after every cell had run.
+        """
+        for metric in ("p95_e2e_latency", "packet_loss_rate", "mean_e2e_latency"):
+            assert metric not in SUPPORTED_PRIMARY_METRICS
+>           with pytest.raises(matrix.MatrixError, match="not one the V2 analyzer"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           Failed: DID NOT RAISE MatrixError
+
+CODE/leo_sim/tests/test_pre_experiment_trust.py:266: Failed
+_____ test_a_utilization_endpoint_without_capacity_sampling_never_compiles _____
+
+tmp_path = PosixPath('/private/var/folders/tz/6lfp92051_d1sjmq6vfkpqbc0000gn/T/pytest-of-lge/pytest-144/test_a_utilization_endpoint_wi0')
+
+    def test_a_utilization_endpoint_without_capacity_sampling_never_compiles(tmp_path):
+        for metric in sorted(UTILIZATION_PRIMARY_METRICS):
+>           with pytest.raises(matrix.MatrixError,
+                               match="does not exist unless available capacity"):
+E                              Failed: DID NOT RAISE MatrixError
+
+CODE/leo_sim/tests/test_pre_experiment_trust.py:302: Failed
+__ test_a_declared_single_factor_claim_is_checked_against_the_resolved_cells ___
+
+tmp_path = PosixPath('/private/var/folders/tz/6lfp92051_d1sjmq6vfkpqbc0000gn/T/pytest-of-lge/pytest-144/test_a_declared_single_factor_0')
+
+    def test_a_declared_single_factor_claim_is_checked_against_the_resolved_cells(tmp_path):
+        two_factor = {"routing": {"policy": "hop"},
+                      "links": {"isl_rate_mbps": 20.0}}
+        design = {"one_change_policy": "strict",
+                  "factor_changed": ["routing.policy"]}
+>       with pytest.raises(matrix.MatrixError,
+                           match="single-factor claim is not supported"):
+E                          AssertionError: Regex pattern did not match.
+E                            Expected regex: 'single-factor claim is not supported'
+E                            Actual message: "unknown request fields ['design']"
+
+CODE/leo_sim/tests/test_pre_experiment_trust.py:317: AssertionError
+__________ test_a_link_without_a_denominator_publishes_no_utilization __________
+
+    def test_a_link_without_a_denominator_publishes_no_utilization():
+        events, windows, available = _stalled_without_coverage()
+        report = indep.recompute_link_utilization(events, windows, available)
+        row = report["isl:1:2"]
+>       assert row["status"] == indep.STATUS_DEGENERATE
+E       AssertionError: assert 'OK' == 'DEGENERATE_DENOMINATOR'
+E         
+E         - DEGENERATE_DENOMINATOR
+E         + OK
+
+CODE/leo_sim/tests/test_pre_experiment_trust.py:388: AssertionError
+_________ test_recompute_publishes_utilization_only_with_a_denominator _________
+
+tmp_path = PosixPath('/private/var/folders/tz/6lfp92051_d1sjmq6vfkpqbc0000gn/T/pytest-of-lge/pytest-144/test_recompute_publishes_utili0')
+
+    def test_recompute_publishes_utilization_only_with_a_denominator(tmp_path):
+        cfg, result, _ = _run(interval=None)
+        run_dir = _persist(tmp_path / "unsampled", cfg, result)
+>       report = recompute.recompute_run(run_dir)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+CODE/leo_sim/tests/test_pre_experiment_trust.py:404: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+run_dir = PosixPath('/private/var/folders/tz/6lfp92051_d1sjmq6vfkpqbc0000gn/T/pytest-of-lge/pytest-144/test_recompute_publishes_utili0/unsampled/run')
+
+    def recompute_run(run_dir):  # pragma: no cover - baseline evidence only
+>       raise RecomputeError(
+            "no independent recomputation entry point existed at 98c858f")
+E       CODE.leo_sim.recompute.RecomputeError: no independent recomputation entry point existed at 98c858f
+
+CODE/leo_sim/recompute.py:10: RecomputeError
+____________ test_recompute_reports_a_sampled_run_as_a_measurement _____________
+
+tmp_path = PosixPath('/private/var/folders/tz/6lfp92051_d1sjmq6vfkpqbc0000gn/T/pytest-of-lge/pytest-144/test_recompute_reports_a_sampl0')
+
+    def test_recompute_reports_a_sampled_run_as_a_measurement(tmp_path):
+        cfg, result, _ = _run(interval=1.0)
+        run_dir = _persist(tmp_path / "sampled", cfg, result)
+>       report = recompute.recompute_run(run_dir)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+CODE/leo_sim/tests/test_pre_experiment_trust.py:420: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+run_dir = PosixPath('/private/var/folders/tz/6lfp92051_d1sjmq6vfkpqbc0000gn/T/pytest-of-lge/pytest-144/test_recompute_reports_a_sampl0/sampled/run')
+
+    def recompute_run(run_dir):  # pragma: no cover - baseline evidence only
+>       raise RecomputeError(
+            "no independent recomputation entry point existed at 98c858f")
+E       CODE.leo_sim.recompute.RecomputeError: no independent recomputation entry point existed at 98c858f
+
+CODE/leo_sim/recompute.py:10: RecomputeError
+__________ test_recompute_refuses_to_name_node_time_as_decision_time ___________
+
+tmp_path = PosixPath('/private/var/folders/tz/6lfp92051_d1sjmq6vfkpqbc0000gn/T/pytest-of-lge/pytest-144/test_recompute_refuses_to_name0')
+
+    def test_recompute_refuses_to_name_node_time_as_decision_time(tmp_path):
+        """A run whose config enables F2 but whose timeline is missing or empty."""
+        cfg, result, _ = _run(interval=1.0)
+        run_dir = _persist(tmp_path / "no-timeline", cfg, result)
+        payload = json.loads((run_dir / "resolved_config.json").read_text())
+        payload["config"]["execution"]["node_process_delay_s"] = 0.05
+        (run_dir / "resolved_config.json").write_text(json.dumps(payload))
+>       with pytest.raises(recompute.RecomputeError, match="requires the timeline"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'requires the timeline'
+E         Actual message: 'no independent recomputation entry point existed at 98c858f'
+
+CODE/leo_sim/tests/test_pre_experiment_trust.py:435: AssertionError
+______ test_recompute_separates_node_processing_from_decision_computation ______
+
+tmp_path = PosixPath('/private/var/folders/tz/6lfp92051_d1sjmq6vfkpqbc0000gn/T/pytest-of-lge/pytest-144/test_recompute_separates_node_0')
+
+    def test_recompute_separates_node_processing_from_decision_computation(tmp_path):
+        cfg, result, timeline = _run(interval=1.0, delay=0.05, node_delay=0.05,
+                                     timeline=True)
+        assert timeline, "the run must have produced a timeline sink"
+        run_dir = _persist(tmp_path / "f2", cfg, result, timeline_rows=timeline)
+>       report = recompute.recompute_run(run_dir)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+CODE/leo_sim/tests/test_pre_experiment_trust.py:452: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+run_dir = PosixPath('/private/var/folders/tz/6lfp92051_d1sjmq6vfkpqbc0000gn/T/pytest-of-lge/pytest-144/test_recompute_separates_node_0/f2/run')
+
+    def recompute_run(run_dir):  # pragma: no cover - baseline evidence only
+>       raise RecomputeError(
+            "no independent recomputation entry point existed at 98c858f")
+E       CODE.leo_sim.recompute.RecomputeError: no independent recomputation entry point existed at 98c858f
+
+CODE/leo_sim/recompute.py:10: RecomputeError
+=========================== short test summary info ============================
+FAILED CODE/leo_sim/tests/test_pre_experiment_trust.py::test_a_declared_burst_that_no_packet_observes_is_refused_by_compile
+FAILED CODE/leo_sim/tests/test_pre_experiment_trust.py::test_materialization_report_checks_size_endpoints_and_window
+FAILED CODE/leo_sim/tests/test_pre_experiment_trust.py::test_a_real_burst_trace_reports_where_its_packets_actually_land
+FAILED CODE/leo_sim/tests/test_pre_experiment_trust.py::test_a_primary_metric_the_analyzer_cannot_compute_never_compiles
+FAILED CODE/leo_sim/tests/test_pre_experiment_trust.py::test_a_utilization_endpoint_without_capacity_sampling_never_compiles
+FAILED CODE/leo_sim/tests/test_pre_experiment_trust.py::test_a_declared_single_factor_claim_is_checked_against_the_resolved_cells
+FAILED CODE/leo_sim/tests/test_pre_experiment_trust.py::test_a_link_without_a_denominator_publishes_no_utilization
+FAILED CODE/leo_sim/tests/test_pre_experiment_trust.py::test_recompute_publishes_utilization_only_with_a_denominator
+FAILED CODE/leo_sim/tests/test_pre_experiment_trust.py::test_recompute_reports_a_sampled_run_as_a_measurement
+FAILED CODE/leo_sim/tests/test_pre_experiment_trust.py::test_recompute_refuses_to_name_node_time_as_decision_time
+FAILED CODE/leo_sim/tests/test_pre_experiment_trust.py::test_recompute_separates_node_processing_from_decision_computation
+11 failed, 2 passed in 0.28s

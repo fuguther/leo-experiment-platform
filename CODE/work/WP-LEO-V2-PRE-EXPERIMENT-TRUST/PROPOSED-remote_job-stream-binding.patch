@@ -1,0 +1,35 @@
+--- a/CODE/scripts/remote/remote_job.py
++++ b/CODE/scripts/remote/remote_job.py
+@@ -693,12 +693,28 @@
+                     # rather than trusted.  Without them this call could only
+                     # check that the two digests had sha256 shape, which is
+                     # what made the binding a claim instead of evidence.
++                    #
++                    # PROPOSED (not applied by the pre-experiment trust round):
++                    # the handover must be conditional on the receipt ACTUALLY
++                    # being v6.  A run that records no contract-valid decision
++                    # row downgrades to v5, and a v5 receipt carries no stream
++                    # binding -- passing the paths anyway makes
++                    # _verify_stream_bindings report "stream paths were
++                    # supplied but this receipt is leo-sim-receipt/v5", which
++                    # fails a LEGITIMATE run at
++                    # failure_stage=receipt_verification (measured 2026-09-25
++                    # on the micro fixture: 0 decision rows, 36 timeline rows,
++                    # bare verify [] vs stream verify 1 error).
+                     _run_dir = Path(payload["last_results_dir"])
+-                    receipt_errors = verify_receipt_dir(
+-                        payload["last_results_dir"],
+-                        decision_log=str(_run_dir / "decisions.jsonl"),
+-                        timeline_log=str(_run_dir / "timeline.jsonl"))
+                     receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
++                    stream_args = {}
++                    if receipt_payload.get("schema") == "leo-sim-receipt/v6":
++                        stream_args = {
++                            "decision_log": str(_run_dir / "decisions.jsonl"),
++                            "timeline_log": str(_run_dir / "timeline.jsonl"),
++                        }
++                    receipt_errors = verify_receipt_dir(
++                        payload["last_results_dir"], **stream_args)
+                     ledgers_payload = json.loads(
+                         (Path(payload["last_results_dir"]) / "ledgers.json").read_text(
+                             encoding="utf-8"))

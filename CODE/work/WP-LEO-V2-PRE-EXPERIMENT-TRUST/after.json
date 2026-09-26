@@ -1,0 +1,191 @@
+{
+  "probes": [
+    {
+      "observed": "REFUSED",
+      "probe": "A1",
+      "resolution": {
+        "error": "demand.burst_start_s/burst_duration_s are declared but demand.mode=uniform never applies the burst transform; the window would be silently dropped. Use demand.mode=burst or demand.mode=mlab, or remove the burst window",
+        "error_type": "ConfigError",
+        "status": "REFUSED"
+      },
+      "title": "burst declared under demand.mode=uniform"
+    },
+    {
+      "observed": "REFUSED",
+      "probe": "A2",
+      "resolution": {
+        "error": "burst window [burst_start_s, burst_start_s+burst_duration_s) = [30.0, 40.0) must lie inside the emission window [0, 20.0] (demand.emission_end_s, or scenario.duration_s when unset); a window that extends past it is only partially applied",
+        "error_type": "ConfigError",
+        "status": "REFUSED"
+      },
+      "title": "burst window [30,40) outside emission window [0,20)"
+    },
+    {
+      "observed": "REFUSED",
+      "probe": "A3",
+      "resolution": {
+        "error": "burst window [burst_start_s, burst_start_s+burst_duration_s) = [15.0, 25.0) must lie inside the emission window [0, 20.0] (demand.emission_end_s, or scenario.duration_s when unset); a window that extends past it is only partially applied",
+        "error_type": "ConfigError",
+        "status": "REFUSED"
+      },
+      "title": "burst window [15,25) half outside emission window [0,20)"
+    },
+    {
+      "compile": {
+        "error": "analysis.primary_metric 'p95_e2e_latency' is not one the V2 analyzer can compute; supported: ['access_admission_rate', 'delivered_bits', 'delivery_rate', 'e2e_delay_mean_s', 'in_system_bits_at_stop', 'isl_link_utilization_max', 'isl_link_utilization_mean', 'link_utilization_mean', 'network_delivery_rate_by_horizon', 'propagation_time_mean_s', 'queue_wait_mean_s', 'service_window_utilization_mean', 'terminal_loss_bits', 'tx_time_mean_s']",
+        "error_type": "MatrixError",
+        "status": "REFUSED"
+      },
+      "observed": "REFUSED",
+      "probe": "B1",
+      "title": "primary_metric=p95_e2e_latency (in catalog, not in analyzer)"
+    },
+    {
+      "compile": {
+        "error": "analysis.primary_metric 'link_utilization_mean' is a link-utilization ratio, which does not exist unless available capacity is sampled; execution.available_capacity_interval_s is null in ['EXP-LEO-V2-PRE-TRUST-PROBE-control-s42', 'EXP-LEO-V2-PRE-TRUST-PROBE-treatment-s42']. Without it the reported utilization is the service-window fallback (~1.0 for any served link, available_samples=0), not a measurement",
+        "error_type": "MatrixError",
+        "status": "REFUSED"
+      },
+      "observed": "REFUSED",
+      "probe": "B2",
+      "title": "primary_metric=link_utilization_mean with no capacity sampling"
+    },
+    {
+      "declare_policy": {
+        "error": "contrast treatment_minus_control declares one_change_policy=strict with factor_changed=['routing.policy'] but the resolved configurations differ in ['links.isl_rate_mbps', 'routing.policy']; the single-factor claim is not supported by the compiled cells",
+        "error_type": "MatrixError",
+        "status": "REFUSED"
+      },
+      "design_accounting": {
+        "exact_reexecution_cells": 0,
+        "exact_reexecution_groups": [],
+        "independent_condition_rule": "one independent condition per unique resolved config SHA256",
+        "planned_cells": 2,
+        "schema": "leo-sim-matrix-design-accounting/v1",
+        "unique_resolved_configurations": 2
+      },
+      "observed": "ACCEPTED",
+      "probe": "B3",
+      "title": "single-factor claim declaration/verification absent",
+      "two_factor_compile_errors": [],
+      "two_factor_compile_status": "COMPILED_REVIEW_REQUIRED",
+      "two_factor_without_policy": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      }
+    },
+    {
+      "links": {
+        "isl:0:1": {
+          "available_capacity_bits": 1000.0,
+          "available_samples": 1,
+          "served_bits": 1000.0,
+          "status": "OK",
+          "utilization": 1.0
+        },
+        "isl:1:2": {
+          "available_capacity_bits": null,
+          "available_samples": 0,
+          "served_bits": 0.0,
+          "status": "DEGENERATE_DENOMINATOR",
+          "utilization": null
+        }
+      },
+      "observed": "ACCEPTED",
+      "probe": "C1",
+      "recompute": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "title": "availability sampled elsewhere; isl:1:2 has no denominator"
+    },
+    {
+      "analyzer_diagnostics": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "observed": "ACCEPTED",
+      "probe": "C2",
+      "production_links": {
+        "gsl:uplink:0:G1:90:180": {
+          "available_capacity_bits": 48000000.00000004,
+          "available_samples": 0,
+          "capacity_bits": 48000000.00000004,
+          "utilization": 0.9999999999999992
+        }
+      },
+      "resolved_available_capacity_interval_s": null,
+      "run": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "title": "production utilization without capacity sampling"
+    },
+    {
+      "checks": {
+        "R1": true,
+        "R2": false,
+        "R3": true,
+        "R4": true,
+        "R5": true,
+        "R6": true
+      },
+      "exit": 10,
+      "f2_separation": null,
+      "link_utilization_summary": {
+        "degenerate_links": [
+          "gsl:uplink:0:G1:90:180"
+        ],
+        "link_utilization_mean": null,
+        "reason": "no sampled available-capacity denominator for gsl:uplink:0:G1:90:180",
+        "served_links": 1,
+        "status": "DEGENERATE_DENOMINATOR"
+      },
+      "observed": "REFUSED",
+      "ok": false,
+      "probe": "D1",
+      "stderr_tail": "",
+      "stdout_tail": "sers/lge/Desktop/topic/leo-experiment-platform/CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/_scratch/C2\",\n  \"run_id\": null,\n  \"schema\": \"leo-sim-recompute/v1\",\n  \"scope\": \"metric cross-check over persisted artifacts; this is not a receipt verification and not an authorization\",\n  \"stream_bindings\": {}\n}",
+      "title": "python3 -m CODE.leo_sim recompute on a persisted run"
+    },
+    {
+      "exit": 10,
+      "observed": "REFUSED",
+      "probe": "D2",
+      "stdout_tail": "RECOMPUTE REFUSED: execution.node_process_delay_s > 0 requires the timeline stream: satellite node processing time is recorded nowhere else, so decision_compute_s cannot be separated from it (run with --timeline-log)",
+      "title": "F2 enabled but no timeline stream in the run directory"
+    },
+    {
+      "checks": {
+        "R1": true,
+        "R2": true,
+        "R3": true,
+        "R4": true,
+        "R5": true,
+        "R6": true
+      },
+      "exit": 0,
+      "link_utilization_summary": {
+        "degenerate_links": [],
+        "link_utilization_mean": 0.0006000000000000027,
+        "served_links": 1,
+        "status": "OK"
+      },
+      "observed": "ACCEPTED",
+      "ok": true,
+      "probe": "D3",
+      "production_cross_check": 0,
+      "run": {
+        "error": null,
+        "error_type": null,
+        "status": "ACCEPTED"
+      },
+      "title": "sampled run: the independent recomputation publishes a number"
+    }
+  ],
+  "schema": "leo-sim-pre-experiment-trust-probe/v1"
+}

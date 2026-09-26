@@ -1,0 +1,35 @@
+field_name,value,source_org,year,region,realness,original_file,original_file_sha256,supportable_claim,must_not_extrapolate
+ISL_NOMINAL_RATE_CURRENT_GEN,单星 3 条光学 ISL，单条标称最高 200 Gbps,SpaceX / Starlink 官方技术页,as-of 2026-09-23,全球（型号级）,官方一手_无字节,无本地文件,UNVERIFIED,官方对现役代光学 ISL 的型号标称：数量 3 条、单条上限 200 Gbps,不得当有效容量、单星总吞吐或 ISL 利用率；不得表述为实测；不得跨代际混用
+ISL_NOMINAL_RATE_AVIATION_PAGE,每条光学链路最高 100 Gbps,SpaceX / Starlink business-aviation 页,as-of 2026-09-23,全球,官方一手_无字节,无本地文件,UNVERIFIED,同一厂商另一页面按 100 Gbps/链路 表述，与上一条构成跨页面口径冲突,不得在 100 与 200 Gbps 之间择一作为结论；不得当持续有效速率
+ISL_V3_DESIGN_RATE,6 x 400 Gbps 激光链路,SpaceX 官方 V3 页面,2026,全球,官方一手_无字节_设计说明,无本地文件,UNVERIFIED,下一代设计的公开目标值,不得当已发射或已服役 V1/V2 容量；不得与现役代混为同一组硬件
+OPERATOR_AGGREGATE_TRAFFIC,10Pb+ daily data traffic,SpaceX 官方,as-of 2026-09-23,全球,官方一手_无字节_聚合,无本地文件,UNVERIFIED,运营商口径的全球聚合量级；单位书写与地区译文不一致需复核,不得除以卫星数当单星真实 OD；跨多跳存在重复计量；不得当逐方向负载
+PLATFORM_SIM_ISL_RATE_DEFAULT,isl_rate_mbps = 1000.0（1 Gbps 恒定）,本项目 CODE/leo_sim/config.py:345,2026,N/A,模型推算_平台默认,CODE/leo_sim/config.py,code_sha256=57e86d4471af7a94b584202cb8b2418a92f6d2a7850a46b7e6c4e0696e489b7c（2026-09-24T16:05Z 冻结时刻实测；该值随他人提交而失效）,平台默认按 1 Gbps 恒定 ISL 建模,不得命名为实测 Starlink 激光链路
+PLATFORM_SIM_ISL_RATE_CORRIDOR,isl_rate_mbps = 10.0,CODE/leo_sim/profiles/t1_pressure_corridor.yaml,2026,N/A,模型推算_受控压力,CODE/leo_sim/profiles/t1_pressure_corridor.yaml,52dfe3d92c1e0e6cbd7281c8b4725d9889c5c2376848a22a5b25a980ed4c47a3,受控压力走廊的容量设定,不是真实容量；不得表述为运营网络结论
+PLATFORM_RF_MCS_PARAMS,26 GHz / 500 MHz / 10 W / mcs_table=LEGACY_DVBS2X,本项目 CODE/leo_sim/config.py:321-350,2026,型号无关,模型推算_遗留RF模型,CODE/leo_sim/config.py,同上 code_sha256,平台内存在一套遗留 RF/MCS 链路预算模型,不得用 RF 公式声称光学链路实测
+PACKET_LEN_STARLINK_FIREFOX,1471.64 B（论文表述为均值；Fig.3(c) trace 级统计）,"Singh et al., SpaceSec 2024",2024,Starlink 用户侧（75 网站 x 80 访问 x 4 配置）,二手整理_论文图表转述,无本地文件（上游 Zenodo record 10641853；WFdata75x80.zip MD5 689527862a162a1a5a448d05038e7a1b）,UNVERIFIED,可作为卫星网页访问样本的包长锚点,不得当全网全业务包级加权均值；不得当 ISL 内部转发包长；不得当 p99
+PACKET_LEN_STARLINK_TOR,1501.79 B（中位数，非均值）,"Singh et al., SpaceSec 2024",2024,Starlink 用户侧,二手整理_论文图表转述,同上,UNVERIFIED,同一论文另一配置的中位数,不得与 1471.64 作总体均值比较
+PACKET_LEN_GROUND_FIREFOX,中位 2188.94 B；p75 3254.31 B,"Singh et al., SpaceSec 2024",2024,地面主机侧,二手整理_论文图表转述,同上,UNVERIFIED,host capture 出现大于 1500 B MTU 的记录，提示 TCP offload 风险,不得当 wire 上物理 IP 包频次；不得据此断言该论文一定使用 offload
+PACKET_LEN_CAIDA_PASSIVE,dirA IPv4 均值 891 B；dirB 均值 372 B、中位 64 B,CAIDA（2019-01-17 NYC）,2019（数据）/报告页,纽约地面骨干,二手整理_网页统计,无本地文件（未取原始 pcap）,UNVERIFIED,一般 Internet 混合业务的大包/小包压力代理,不得写 Starlink 真实包大小；不得当 ISL 逐包 trace
+PACKET_LEN_1500B_REFERENCE,1500 B,无（人工情景）,N/A,N/A,模型推算_人工情景,逐包DDQN_包长与鲁棒性全网格.csv,025629fea1957a0b90e0ed5a1a456e8f73e465df085c4d4e3e3827b85f2b6b78,MTU 量级对照,不得当卫星平均包长
+PLATFORM_PACKET_BITS,"demand.packet_bits 默认 8,000,000 bit（=1 MB）；E0 工程基线与多数 profile 为 1,000,000 bit（=125 kB）；control_plane.packet_bits 一律 8,000 bit",本项目 CODE/leo_sim/config.py:281 及各 profile,2026,N/A,模型推算_平台设定,CODE/leo_sim/config.py 与 CODE/leo_sim/profiles/,同上 code_sha256,平台数据单元是聚合/大消息单元而非典型 IP 单包,不得当典型 Internet IP 单包；不得当任一真实卫星的请求率
+REGION_PERF_DEU_202609,下载 p20/p50/p80 = 184.670319 / 244.480469 / 303.02655 Mbps；上传 p50 = 35.138283；时延 p50 = 26.078136 ms,Starlink 公开地图指标（GitHub 镜像 clarkzjw/starlink-geoip-data）,2026-09 快照,德国,二手整理_官方指标镜像快照,官方Starlink地区性能_直接提取16行.csv,792bb1093842a8cd3b22d6894a79de1ac5e1bda3d3930773e2573af5f03d2454,该地区该月用户接入侧汇总性能水平,不得当单星输入业务 R；不得当 ISL 时延或利用率；不得跨地区做 ISL 推论
+REGION_PERF_JPN_202609,下载 p20/p50/p80 = 236.714066 / 296.412506 / 352.628113 Mbps；上传 p50 = 51.042187；时延 p50 = 28.87748 ms,同上,2026-09 快照,日本,二手整理_官方指标镜像快照,同上,792bb1093842a8cd3b22d6894a79de1ac5e1bda3d3930773e2573af5f03d2454,同德国行,同德国行
+REGION_PERF_8REGION_202503,8 地区；如德国下载 p50 = 178.134613 Mbps、时延 p50 = 29.192154 ms,同上,2025-03 快照,英/德/法/日/挪/尼日利亚/肯尼亚/新西兰,二手整理_官方指标镜像快照,同上,792bb1093842a8cd3b22d6894a79de1ac5e1bda3d3930773e2573af5f03d2454,与 2026-09 同口径的跨期对照,不得解释为对同一批终端的追踪改善
+REGION_PERF_UK_OFCOM,超 110k 活跃订阅；平均下载约 210 Mbps、上传约 20 Mbps,UK Ofcom Connected Nations 2025,2025,英国,官方一手_无字节,无本地文件,UNVERIFIED,UK 覆盖与终端服务量级,不得当 offered load 或 ISL 利用率；只代表 UK 当期人口
+ORBIT_ALT_3SAT_SNAPSHOT,平均高度 254.8278 / 337.2709 / 337.4269 km（历元 2026-09-22T13-14Z）,SpaceX 补充星历 / CelesTrak OMM，经 findstarlink/data 下游镜像,2026,全球（近期发射样本）,二手整理_下游镜像加自算半长轴,Starlink_补充轨道三星快照.csv,53cc2cdf1115e4918f5cb81bbb2c2cbc042a1a0f9c3a75a9d8b589b3b5ea1f77,真实轨道参数可用于指定历元推演,不得当运营星座典型高度分布；不得由平均运动反推 ISL 建立情况
+PLATFORM_SCENARIO_ALTITUDE,550 km / 53°（acceptance、smoke、corridor）；600 km / 98.6°（experiment_base、formal_exp1、mlab 基线、E0 工程基线）；780 km / 6x11（V3 报告假设）,本项目 profiles 与 V3 报告,2026,N/A,模型推算_研究假设,CODE/leo_sim/profiles/ 与 V3 07_模型和统计.json,5f5c8ba686bffd2642e49bcb8ca0aae34aba5908d306eea678c22f7f1eddc966,平台内并存多个互不相同的几何假设,不得合并到同一行；不得当 Starlink 实际布局
+HW_ESA_OPS_SAT,双核 ARM Cortex-A9 + Cyclone V FPGA；任务 2024-05 结束,ESA,2019-2024,在轨 LEO,官方一手_无字节,无本地文件,UNVERIFIED,真实在轨计算架构的存在性与代理硬件类型,不得当 Starlink 路由处理器；不得当 DDQN 运行时间
+HW_INTEL_PHISAT1,Myriad 2 VPU 执行 EO 图像推理,Intel,2020,在轨,官方一手_无字节,无本地文件,UNVERIFIED,在轨 AI 推理先例,不得当逐包 LEO 路由时延
+HW_ESA_GR740,四核 LEON4-FT 宇航级 CPU,ESA,2018-2021,元件级,官方一手_无字节_元件规范,无本地文件,UNVERIFIED,候选宇航处理器型号,缺板卡时钟与部署软件实测；不得直接换算决策耗时
+HW_AETHERO_DEIMOS,Jetson Orin 100 TOPS（厂商宣称已飞行）,Aethero（厂商新闻稿）,2024,在轨,二手整理_厂商声明无独立基准,无本地文件,UNVERIFIED,厂商宣称值,不得当电信路由器身份；不得由 TOPS 换算为 ms
+HW_NASA_HPSC,资格测试中,NASA,2026-03,未飞行,官方一手_无字节,无本地文件,UNVERIFIED,研制状态,不得当已部署在轨计算机
+MODEL_DDQN_NETWORK_SIZE,26->64->64->5；MAC=6080；params=6213；FP32 约 24.9 KB；约 12160 FLOPs 每次前向,本项目 CODE/leo_sim（经 V3 报告 04 节复述）,2026,N/A,模型推算_源码可复算,CODE/leo_sim/（网络定义）,code_sha256=57e86d4471af7a94b584202cb8b2418a92f6d2a7850a46b7e6c4e0696e489b7c（2026-09-24T16:05Z 冻结时刻实测；随他人提交失效）,网络算术量极小,不得由此推在轨毫秒数；不含状态构造、框架调用、线程调度、缓存访问、动作屏蔽与并发争用
+MODEL_DECISION_TIME_T,0.01 / 0.05 / 0.1 / 0.5 ms 均为 ASSUMED NOT MEASURED,本项目 V3 07_模型和统计.json:58,2026,N/A,模型推算_显式假设,逐跳星载路由_真实数据与全网格可行性报告_V3/07_模型和统计.json,5f5c8ba686bffd2642e49bcb8ca0aae34aba5908d306eea678c22f7f1eddc966,作为待测情景轴,不得声称任何实测 p50/p95/p99
+UNVERIFIED_100_VS_200_GBPS,同一厂商两页面分别写 100 与 200 Gbps/链路；无原始文件,（冲突未决）,N/A,N/A,未知,无,UNVERIFIED,确有跨页面口径冲突，需冻结并单列,不得择一作为结论
+UNVERIFIED_SPACESEC_RAW,未取得,（SpaceSec 2024 的 Zenodo 数据）,2024,N/A,未知,无（record 10641853 未下载）,UNVERIFIED,仅论文图表级转述可用,不得声称重新计算过原始包长分布或真实包间隔
+UNVERIFIED_STARFRAME_UDP,26.6 GB 用户侧物理帧；未下载,StarFrame-UDP,2025,Starlink 用户侧,未知,无（DOI 10.26249/FK2/I7BANY）,UNVERIFIED,仅数据集存在性与体量可引,不得报告其短时突发分位数；不得冒充 ISL 逐包数据
+UNVERIFIED_LENS,未下载大型月度归档,LENS,2024-2026,多地区终端,未知,无（github clarkzjw/LENS）,UNVERIFIED,仅仓库结构与发布方式可引,不得从终端 RTT 拆出 ISL 每跳队列
+UNVERIFIED_STARLINK_OWD,5.9 GB 未下载；1437 组双向；含 seq/time/OWD 列,（Zenodo 16275284）,2025,瑞典固定终端,未知,无,UNVERIFIED,仅数据集说明可引,不是每个星间链路的单向时延
+NEXASPHERE_ATHENS_7D,8857 个时延周期 / 1772 个吞吐周期；均 RTT 约 27 ms，P95 低于 41 ms；下载均值约 217 Mbps,数据集作者发布汇总（Zenodo 20796667）,2026-05,雅典,二手整理_读取元数据,无,UNVERIFIED,终端侧时延与吞吐量级,测速不等于自然业务负载；20 ping/60 s 无法观测毫秒级逐包突发
+ISL_INTERNAL_QUEUE_TELEMETRY,未获得,（目标数据）,N/A,N/A,未知,无,UNVERIFIED,无,不得用终端吞吐、RTT 或官方速率替代
+FLIGHT_CSV_QUALITY_KILL,93 行；RTT 中位 47 ms、P90 63 ms；元数据作者写 Lufthansa 而行内 SSID 为 airBaltic,GitHub Borgianni/starlink-flight-data,2025-07-11,航班,二手整理_已解析但元数据矛盾,无,UNVERIFIED,数据质量查杀案例,不得作正式物理参数标定

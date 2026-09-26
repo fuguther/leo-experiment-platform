@@ -1,0 +1,1518 @@
+--- a/CODE/leo_sim/pullback.py
++++ b/CODE/leo_sim/pullback.py
+@@ -11,30 +11,44 @@
+ are two different statements, and only the second one is about the artifacts an
+ analysis will actually read.
+ 
+-This module makes the second statement checkable.  It is deliberately separate
+-from receipt.verify_receipt_dir: that function's strict mode requires the LOCAL
+-analyzer source and dependency versions to equal the recorded run-time
+-identity, which can only ever fail for a run produced on another machine.  Here
+-the questions are:
++WHAT THIS GATE IS ALLOWED TO CONCLUDE
++=====================================
++Passing it means, and only means:
+ 
+-  1. is the required artifact set present at all (EXPERIMENTS/contracts/
+-     run-artifact-contract.md, "leo_sim_v2 核心结果文件" + formal increment)?
+-  2. does every hash the receipt binds still match the files on disk?
+-  3. does the stream contract hold -- and for a v6 receipt that means the two
+-     recorded digests are RECOMPUTED here, not trusted from the VM run?
+-  4. if the run claims to be formal, do the formal witness and the governance
+-     receipt agree with this copy?
++  * the required artifact set is present in this copy;
++  * every hash the receipt binds still matches the files on disk;
++  * the stream contract holds, with v6 digests recomputed HERE;
++  * IF the caller declared the copy formal: the formal witness and the
++    governance receipt carry their full contract key sets, their bindings
++    agree with this copy, and the governance receipt is internally sealed by
++    its own payload hash.
+ 
+-WHAT IT DOES NOT DO
+-===================
+-It does not re-run the simulation, it does not re-derive the run-time identity,
+-and an ok verdict is not authorization and not a claim.  A directory that fails
+-any check is reported, never repaired.
++It does NOT establish formal analysis eligibility, and therefore it NEVER
++reports a positive claimability verdict.  Eligibility requires evidence this
++gate cannot see: the authorization cohort that binds the run cell, the
++deployment receipt, the external launch witness pulled from the VM runtime, and
++the run-time identity chain.  Those are checked by the existing authority,
++CODE/experiment_platform/v2_analysis.py; this module reports
++formal_eligibility.status = NOT_EVALUATED and names exactly what is missing.
++An earlier revision returned claimable=true for a hand-written directory whose
++witness files held six fields between them (independent review, 2026-09-25);
++that verdict was withdrawn.
++
++THE CALLER DECLARES WHAT THE COPY IS
++====================================
++expect is REQUIRED and is "formal" or "diagnostic".  It is never inferred from
++which files happen to be present, because a missing witness would otherwise
++turn a formal result into an accepted diagnostic one -- the pull tolerates
++absent files, so absence is exactly the failure mode this gate exists to catch.
++The declaration is enforced in both directions: expect="formal" fails if the
++formal artifacts are missing or abbreviated, and expect="diagnostic" fails if
++the copy carries formal artifacts at all.
+ """
+ from __future__ import annotations
+ 
+ import hashlib
+ import json
++import re
+ from pathlib import Path
+ 
+ from . import receipt as receipt_mod
+@@ -46,11 +60,40 @@
+ REQUIRED_CORE_FILES = ("receipt.json", "resolved_config.json", "manifest.json",
+                        "trace.csv", "ledgers.json")
+ 
+-#: The formal governance increment.  Required only when formal_run.json is
+-#: present, i.e. when the directory CLAIMS to be a formal run.
+ FORMAL_WITNESS = "formal_run.json"
+ GOVERNANCE_RECEIPT = "governance_receipt.json"
++#: Where pull-results-remote.sh drops the launch witness, relative to the run
++#: directory (EXPERIMENTS/contracts/run-artifact-contract.md).
++EXTERNAL_WITNESS_DIRNAME = "_external_launch_witness"
+ 
++EXPECT_FORMAL = "formal"
++EXPECT_DIAGNOSTIC = "diagnostic"
++EXPECTATIONS = (EXPECT_FORMAL, EXPECT_DIAGNOSTIC)
++
++#: Exact key set of the formal witness, mirroring __main__._write_formal_witness.
++#: A "simplified" witness is not a weaker witness, it is a different object: the
++#: binding fields are the whole content.  Kept in step with the producer by
++#: tests/test_pullback_authority.py, which writes a real witness and compares.
++FORMAL_WITNESS_SCHEMA = "leo-sim-formal-run/v1"
++FORMAL_WITNESS_KEYS = frozenset({
++    "schema", "run_id", "launch_nonce", "authorization_sha256", "config_sha256",
++    "code_sha256", "receipt_sha256", "natural_end", "conservation_ok",
++})
++FORMAL_WITNESS_OPTIONAL_KEYS = frozenset({"timeline_log_sha256"})
++
++#: Exact key set of the V2 governance receipt, mirroring
++#: remote_job.build_v2_governance_receipt.  Same reasoning, same test.
++GOVERNANCE_SCHEMA_V2 = "leo-sim-v2-governance-receipt/v2"
++GOVERNANCE_KEYS_V2 = frozenset({
++    "schema", "research_eligible", "run_id", "launch_nonce",
++    "authorization_sha256", "source_git_commit", "source_tree_sha256",
++    "deployment_receipt_sha256", "execution_chain_sha256", "acceptance",
++    "run_receipt_sha256", "natural_end", "conservation_ok",
++    "verification_errors", "receipt_schema", "resolved_config_sha256",
++    "trace_manifest_schema", "trace_identity_contract",
++    "trace_manifest_sha256", "payload_sha256",
++})
++
+ #: Governance fields that must agree with the copy being verified.
+ GOVERNANCE_BINDINGS = {
+     "run_receipt_sha256": "receipt.json",
+@@ -58,7 +101,10 @@
+     "trace_manifest_sha256": "manifest.json",
+ }
+ 
++_SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
++_GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+ 
++
+ class PullbackError(ValueError):
+     """The directory cannot be verified as it stands."""
+ 
+@@ -79,29 +125,219 @@
+     return value
+ 
+ 
+-def verify_pulled_run(run_dir: str | Path, *,
+-                      require_streams: bool | None = None) -> dict:
+-    """Verify one pulled-back run directory.  Never raises for a bad result
+-    set: every failure is reported as a failed check with its reason, so a
+-    caller can always distinguish "verified" from "could not verify".
++def _formal_contract():
++    """The existing formal-analysis vocabulary, imported where it lives.
+ 
+-    require_streams selects the v5 branch of receipt.verify_receipt_streams.
+-    None (the default) derives it from the directory: a directory holding
+-    formal_run.json claims to be a formal run, and the formal command always
+-    requests both streams, so the absence of a binding must then be proven.
+-    There is deliberately no value that turns the V6 digest recomputation off.
++    Reused rather than restated so the witness contract cannot drift: these are
++    the same constants v2_analysis verifies against.  The import is lazy because
++    this module is also used by the run CLI, which must not pull the whole
++    analysis package in to check a directory.
+     """
++    from CODE.experiment_platform import v2_analysis
++    return v2_analysis
++
++
++def _key_set_errors(label: str, value: dict, required: frozenset,
++                    optional: frozenset = frozenset()) -> list[str]:
++    keys = set(value)
++    unknown = sorted(keys - required - optional)
++    missing = sorted(required - keys)
++    errors = []
++    if missing:
++        errors.append(f"{label} is missing contract fields {missing}")
++    if unknown:
++        errors.append(f"{label} has unknown fields {unknown}")
++    return errors
++
++
++def _hex_or_error(label: str, value, pattern: re.Pattern) -> list[str]:
++    if not isinstance(value, str) or pattern.fullmatch(value) is None:
++        return [f"{label} is not a well-formed digest"]
++    return []
++
++
++def _formal_increment_errors(run_dir: Path, receipt: dict,
++                             witness_root: Path | None) -> tuple[list[str], dict]:
++    """Check the formal increment as far as a standalone copy allows."""
++    errors: list[str] = []
++    not_checked: list[str] = []
++    formal_path = run_dir / FORMAL_WITNESS
++    governed_path = run_dir / GOVERNANCE_RECEIPT
++    try:
++        formal = _read_json(formal_path, FORMAL_WITNESS)
++        governed = _read_json(governed_path, GOVERNANCE_RECEIPT)
++    except PullbackError as exc:
++        return [str(exc)], not_checked
++
++    v2 = _formal_contract()
++    errors.extend(_key_set_errors(FORMAL_WITNESS, formal, FORMAL_WITNESS_KEYS,
++                                  FORMAL_WITNESS_OPTIONAL_KEYS))
++    errors.extend(_key_set_errors(GOVERNANCE_RECEIPT, governed,
++                                  GOVERNANCE_KEYS_V2))
++    if formal.get("schema") != FORMAL_WITNESS_SCHEMA:
++        errors.append(f"{FORMAL_WITNESS} schema mismatch: {formal.get('schema')!r}")
++    if governed.get("schema") != GOVERNANCE_SCHEMA_V2:
++        errors.append(
++            f"{GOVERNANCE_RECEIPT} schema mismatch: {governed.get('schema')!r}")
++    if formal.get("run_id") != run_dir.name:
++        errors.append(f"{FORMAL_WITNESS} run_id does not name this directory")
++    if governed.get("run_id") != run_dir.name:
++        errors.append(f"{GOVERNANCE_RECEIPT} run_id does not name this directory")
++    for label, value in (("formal_run.launch_nonce", formal.get("launch_nonce")),
++                         ("governance.launch_nonce", governed.get("launch_nonce"))):
++        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{32}", value):
++            errors.append(f"{label} is not a 32-character lowercase hex nonce")
++    if governed.get("launch_nonce") != formal.get("launch_nonce"):
++        errors.append("governance and formal witness launch nonces disagree")
++    if governed.get("authorization_sha256") != formal.get("authorization_sha256"):
++        errors.append("governance and formal witness authorization bindings disagree")
++
++    # The governance receipt must seal itself: payload_sha256 is the canonical
++    # hash of every other field, exactly as the producer computes it.
++    claimed = governed.get("payload_sha256")
++    unsigned = {key: value for key, value in governed.items()
++                if key != "payload_sha256"}
++    if claimed != v2.canonical_sha(unsigned):
++        errors.append("governance_receipt.payload_sha256 does not seal its own "
++                      "content")
++
++    if governed.get("research_eligible") is not True:
++        errors.append("governance_receipt.research_eligible is not true")
++    if governed.get("verification_errors") != []:
++        errors.append("governance_receipt.verification_errors is not empty: "
++                      f"{governed.get('verification_errors')!r}")
++    for label, value in (
++            ("formal_run.natural_end", formal.get("natural_end")),
++            ("formal_run.conservation_ok", formal.get("conservation_ok")),
++            ("governance.natural_end", governed.get("natural_end")),
++            ("governance.conservation_ok", governed.get("conservation_ok"))):
++        if value is not True:
++            errors.append(f"{label} is not true")
++
++    receipt_sha = _sha256(run_dir / "receipt.json")
++    if formal.get("receipt_sha256") != receipt_sha:
++        errors.append(f"{FORMAL_WITNESS} receipt_sha256 does not match this "
++                      f"copy's receipt.json")
++    for field, name in sorted(GOVERNANCE_BINDINGS.items()):
++        path = run_dir / name
++        if path.is_symlink() or not path.is_file():
++            errors.append(f"governance_receipt.{field}: {name} is missing")
++            continue
++        actual = _sha256(path)
++        if governed.get(field) != actual:
++            errors.append(f"governance_receipt.{field} does not match this "
++                          f"copy's {name}")
++
++    if governed.get("receipt_schema") != receipt.get("schema"):
++        errors.append("governance_receipt.receipt_schema disagrees with the copy")
++    if governed.get("trace_identity_contract")             != receipt.get("trace_identity_contract"):
++        errors.append(
++            "governance_receipt.trace_identity_contract disagrees with the copy")
++    errors.extend(_hex_or_error("formal_run.config_sha256",
++                                formal.get("config_sha256"), _SHA256_HEX))
++    errors.extend(_hex_or_error("formal_run.code_sha256",
++                                formal.get("code_sha256"), _SHA256_HEX))
++    errors.extend(_hex_or_error("governance.source_tree_sha256",
++                                governed.get("source_tree_sha256"), _SHA256_HEX))
++    errors.extend(_hex_or_error("governance.deployment_receipt_sha256",
++                                governed.get("deployment_receipt_sha256"),
++                                _SHA256_HEX))
++    errors.extend(_hex_or_error("governance.source_git_commit",
++                                governed.get("source_git_commit"), _GIT_COMMIT))
++    if not isinstance(governed.get("execution_chain_sha256"), dict) \
++            or not governed["execution_chain_sha256"]:
++        errors.append("governance_receipt.execution_chain_sha256 is not a "
++                      "non-empty mapping")
++    if not isinstance(governed.get("acceptance"), dict):
++        errors.append("governance_receipt.acceptance is not a mapping")
++
++    # External launch witness: checked only when the caller says where the pull
++    # put it.  Its absence is NOT inferred from the file being missing.
++    if witness_root is None:
++        not_checked.append(
++            "external launch witness (no --witness-root supplied; the witness "
++            "is pulled next to the results, not inside the run directory)")
++    else:
++        errors.extend(_external_witness_errors(
++            Path(witness_root), run_dir, governed, not_checked))
++    not_checked.extend([
++        "authorization cohort binding (v2_analysis, needs the compiled "
++        "experiment directory and authorization.json)",
++        "deployment identity binding (needs the deployment receipt)",
++        "run-time identity chain / research eligibility verdict "
++        "(CODE/experiment_platform/v2_analysis.py)",
++    ])
++    return errors, not_checked
++
++
++def _external_witness_errors(witness_root: Path, run_dir: Path, governed: dict,
++                             not_checked: list[str]) -> list[str]:
++    v2 = _formal_contract()
++    nonce = governed.get("launch_nonce")
++    if not isinstance(nonce, str) or re.fullmatch(r"[0-9a-f]{32}", nonce) is None:
++        return ["external launch witness not checked: governance launch nonce "
++                "is malformed"]
++    if witness_root.is_symlink() or not witness_root.is_dir():
++        return [f"external launch witness directory is missing or unsafe: "
++                f"{witness_root}"]
++    path = witness_root / f"{nonce}.json"
++    if path.is_symlink() or not path.is_file():
++        return [f"external launch witness is missing: {path}"]
++    try:
++        witness = json.loads(path.read_text(encoding="utf-8"))
++    except (OSError, json.JSONDecodeError) as exc:
++        return [f"external launch witness is unreadable: {exc}"]
++    errors = []
++    if not isinstance(witness, dict) or witness.get("schema") \
++            != v2.EXTERNAL_STATUS_SCHEMA:
++        errors.append("external launch witness schema mismatch")
++        return errors
++    if witness.get("status") != "success" or witness.get("exit_code") != 0:
++        errors.append("external launch witness is not a successful launch")
++    if witness.get("launch_nonce") != nonce \
++            or witness.get("run_id") != run_dir.name:
++        errors.append("external launch witness identity does not name this run")
++    if witness.get("governance_receipt_sha256") \
++            != _sha256(run_dir / GOVERNANCE_RECEIPT):
++        errors.append("external launch witness does not bind this copy's "
++                      "governance receipt")
++    expected_fields = {key: governed.get(key)
++                       for key in v2.GOVERNANCE_WITNESS_FIELDS}
++    if witness.get("governance_witness") != expected_fields:
++        errors.append("external launch witness governance binding mismatch")
++    not_checked.append(
++        "external launch witness VM-side fields (authorization hash, "
++        "canonical results path) are not re-derivable from a local copy")
++    return errors
++
++
++def verify_pulled_run(run_dir: str | Path, *, expect: str,
++                      witness_root: str | Path | None = None) -> dict:
++    """Verify one pulled-back run directory.
++
++    expect (REQUIRED) is "formal" or "diagnostic": the caller states what the
++    copy is supposed to be.  It is never derived from the files present, so a
++    formal witness lost in transit cannot be accepted as a diagnostic copy.
++
++    Never raises for a bad result set: every failure is a failed check with its
++    reason, so a caller can always tell "verified here" from "could not verify".
++    claimable is ALWAYS false; see the module docstring.
++    """
++    if expect not in EXPECTATIONS:
++        raise PullbackError(
++            f"expect must be one of {list(EXPECTATIONS)}, got {expect!r}")
+     run_dir = Path(run_dir)
+     if run_dir.is_symlink():
+         raise PullbackError(f"run directory may not be symbolic: {run_dir}")
+     run_dir = run_dir.resolve()
+     if not run_dir.is_dir():
+         raise PullbackError(f"run directory does not exist: {run_dir}")
++    witness_root = None if witness_root is None else Path(witness_root)
+ 
+-    formal = (run_dir / FORMAL_WITNESS)
+-    is_formal = formal.is_file() and not formal.is_symlink()
+-    if require_streams is None:
+-        require_streams = is_formal
++    formal_present = any(
++        (run_dir / name).is_file() and not (run_dir / name).is_symlink()
++        for name in (FORMAL_WITNESS, GOVERNANCE_RECEIPT))
++    require_streams = expect == EXPECT_FORMAL
+ 
+     checks: list[dict] = []
+     errors: list[str] = []
+@@ -115,8 +351,8 @@
+     missing = [name for name in REQUIRED_CORE_FILES
+                if (run_dir / name).is_symlink()
+                or not (run_dir / name).is_file()]
+-    check("P1", "every required core result file is present",
+-          not missing, missing=missing,
++    check("P1", "every required core result file is present", not missing,
++          missing=missing,
+           errors=[f"missing or symbolic core result file: {name}"
+                   for name in missing])
+ 
+@@ -124,19 +360,16 @@
+     try:
+         receipt = _read_json(run_dir / "receipt.json", "receipt.json")
+     except PullbackError as exc:
+-        check("P2", "receipt.json is a readable JSON object", False,
+-              why=str(exc))
++        check("P2", "receipt.json is a readable JSON object", False, why=str(exc))
+     else:
+         schema = receipt.get("schema")
+         ok = schema in receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY
+         check("P2", "the receipt schema is one this checkout can verify", ok,
+-              schema=schema,
+-              why=(f"unsupported receipt schema: {schema!r}"))
++              schema=schema, why=f"unsupported receipt schema: {schema!r}")
+ 
+     artifact_errors: list[str] = []
+     if receipt is not None and not missing:
+-        artifact_errors, _identity = receipt_mod.verify_run_artifacts(
+-            str(run_dir))
++        artifact_errors, _identity = receipt_mod.verify_run_artifacts(str(run_dir))
+     check("P3", "every hash the receipt binds matches the files on disk",
+           not artifact_errors and not missing and receipt is not None,
+           errors=artifact_errors,
+@@ -150,60 +383,38 @@
+                    "contradiction"
+                    + (" and required to be the empty-decision case"
+                       if require_streams else
+-                      " (streams not required for this directory)"))
++                      " (streams not required for a diagnostic copy)"))
+     else:
+         binding = "not evaluated: no readable receipt"
+     stream_errors = receipt_mod.verify_receipt_streams(
+-        str(run_dir), require_streams=bool(require_streams))
++        str(run_dir), require_streams=require_streams)
+     check("P4",
+           "the stream contract holds (v6 digests recomputed HERE, not "
+           "trusted from the VM run)",
+-          not stream_errors, require_streams=bool(require_streams),
++          not stream_errors, expect=expect, require_streams=require_streams,
+           stream_binding=binding, errors=stream_errors)
+ 
+-    governance = None
+-    if is_formal:
+-        try:
+-            witness = _read_json(formal, FORMAL_WITNESS)
+-            governance = _read_json(run_dir / GOVERNANCE_RECEIPT,
+-                                    GOVERNANCE_RECEIPT)
+-        except PullbackError as exc:
+-            check("P5", "the formal witness and governance receipt are present "
+-                        "and readable", False, why=str(exc))
+-        else:
+-            formal_errors: list[str] = []
+-            receipt_sha = _sha256(run_dir / "receipt.json")
+-            if witness.get("receipt_sha256") != receipt_sha:
+-                formal_errors.append(
+-                    "formal_run.json receipt_sha256 does not match this copy's "
+-                    f"receipt.json (witness {witness.get('receipt_sha256')!r}, "
+-                    f"copy {receipt_sha})")
+-            if governance.get("research_eligible") is not True:
+-                formal_errors.append(
+-                    "governance_receipt.research_eligible is not true")
+-            verification_errors = governance.get("verification_errors")
+-            if verification_errors != []:
+-                formal_errors.append(
+-                    "governance_receipt.verification_errors is not empty: "
+-                    f"{verification_errors!r}")
+-            for field, name in sorted(GOVERNANCE_BINDINGS.items()):
+-                path = run_dir / name
+-                if path.is_symlink() or not path.is_file():
+-                    formal_errors.append(
+-                        f"{field}: {name} is missing from the result set")
+-                    continue
+-                actual = _sha256(path)
+-                if governance.get(field) != actual:
+-                    formal_errors.append(
+-                        f"governance_receipt.{field} does not match this copy's "
+-                        f"{name} (recorded {governance.get(field)!r}, copy "
+-                        f"{actual})")
+-            check("P5", "the formal increment agrees with this copy "
+-                        "(witness, eligibility, every governance hash)",
+-                  not formal_errors, errors=formal_errors)
++    not_checked: list[str] = []
++    if expect == EXPECT_FORMAL:
++        formal_errors, not_checked = _formal_increment_errors(
++            run_dir, receipt or {}, witness_root)
++        check("P5",
++              "the formal increment is complete, contract-shaped and agrees "
++              "with this copy",
++              not formal_errors, errors=formal_errors,
++              witness_root=None if witness_root is None else str(witness_root))
++    elif formal_present:
++        check("P5",
++              "the copy carries no formal artifacts, matching the declaration "
++              "that it is diagnostic",
++              False,
++              why=("this copy contains formal_run.json and/or "
++                   "governance_receipt.json but the caller declared "
++                   "expect='diagnostic'; a lost witness must not be accepted "
++                   "as a diagnostic result -- re-run with expect='formal'"))
+     else:
+-        check("P5", "no formal_run.json, so no formal increment is claimed",
+-              True, skipped=True)
++        check("P5", "diagnostic copy: no formal increment is claimed", True,
++              skipped=True)
+ 
+     local_code = receipt_mod.code_sha256()
+     runtime_code = None if receipt is None else receipt.get("code_sha256")
+@@ -217,20 +428,36 @@
+                  "not an error"),
+     }
+ 
++    ok = all(item["ok"] for item in checks)
+     return {
+         "schema": SCHEMA,
+         "run_dir": str(run_dir),
+-        "formal_run": is_formal,
+-        "require_streams": bool(require_streams),
+-        "receipt_schema": None if receipt is None else receipt.get("schema"),
++        "expect": expect,
++        "formal_artifacts_present": formal_present,
++        "receipt_schema": schema,
+         "run_id": None if receipt is None else receipt.get("run_id"),
+         "runtime_identity": identity,
+         "checks": checks,
+         "errors": errors,
+-        "ok": all(item["ok"] for item in checks),
+-        "claimable": bool(all(item["ok"] for item in checks) and is_formal),
++        "ok": ok,
++        # NEVER true from this gate.  Formal analysis eligibility is decided by
++        # the existing authority, over evidence this gate cannot see.
++        "claimable": False,
++        "claimable_reason": (
++            "this gate establishes local file integrity and the bindings it "
++            "covers only; formal analysis eligibility is NOT evaluated here "
++            "and remains with CODE/experiment_platform/v2_analysis.py"),
++        "formal_eligibility": {
++            "status": "NOT_EVALUATED",
++            "authority": "CODE/experiment_platform/v2_analysis.py",
++            "checked_here": [item["id"] for item in checks if item["ok"]
++                             and not item.get("skipped")],
++            "not_checked_here": not_checked,
++        },
+         "scope": ("local acceptance of a pulled-back result set: required "
+-                  "files, receipt-bound hashes, stream contract and formal "
+-                  "increment. This is NOT authorization, NOT an analysis, and "
+-                  "it does not re-derive the run-time identity."),
++                  "files, receipt-bound hashes, stream contract, and -- when "
++                  "declared formal -- the formal witness and governance "
++                  "receipt contracts. This is NOT authorization, NOT an "
++                  "analysis, NOT formal eligibility, and it does not "
++                  "re-derive the run-time identity."),
+     }
+--- a/CODE/leo_sim/trace.py
++++ b/CODE/leo_sim/trace.py
+@@ -551,15 +551,32 @@
+     return endpoints, weights, summary
+ 
+ 
+-#: Intensity acceptance is a statistical claim about a thinned Poisson
+-#: process, so its resolution is declared BEFORE any measurement:
+-#:   * the declaration is checked against the rate it would produce if the
+-#:     burst transform were silently NOT applied (multiplier 1);
+-#:   * the test is only DECIDABLE when the two expected counts are separated
+-#:     by more than INTENSITY_SIGMA standard deviations of each
+-#:     (E_burst - E_base > sigma*sqrt(E_burst) + sigma*sqrt(E_base));
+-#:   * otherwise the verdict is UNDECIDABLE and the report says so.  One packet
+-#:     inside the window is never reported as intensity acceptance.
++#: THE TRANSFORM IS CHECKED DETERMINISTICALLY; THE RANDOM DRAW IS NOT JUDGED.
++#:
++#: Two different questions used to be answered by one test, and the second one
++#: was answered wrongly (independent review, 2026-09-25):
++#:
++#:   1. Does the generator APPLY the declared transform?  That is a property of
++#:      the code and the config, so it is checked deterministically by
++#:      verify_burst_transform() below: boundary behaviour, longitude
++#:      independence, and the thinning identity
++#:      proposal_rate * acceptance_probability == base_rate * multiplier(t).
++#:      A failure here is a defect and refuses the compile.
++#:   2. Did THIS random draw land near its expectation?  That is a property of
++#:      the seed, not of the platform.  It is reported as a statistical
++#:      DIAGNOSTIC and never refuses the compile: at multiplier 5 on the
++#:      reference fixture the 3-sigma band rejected 2 of the first 400 seeds
++#:      (222 and 227) while the realized in-window mean over those 400 seeds was
++#:      248.40 against an expected 250 and the sample sd 15.57 against the
++#:      theoretical 15.81 -- a correct generator inside a wrong test.
++#:
++#: Nothing here re-seeds or retries: one seed, one generation, one report.  A
++#: diagnostic that reads INCOMPATIBLE keeps the seed, the raw sample and the
++#: numbers so a human can judge; it does NOT auto-fail the run.
++#:
++#: The intensity verdict is COMPATIBLE / INCOMPATIBLE and nothing stronger.
++#: Statistical compatibility is not a proof that the transform is correct; the
++#: deterministic check above is what speaks to correctness.
+ INTENSITY_SIGMA = 3.0
+ 
+ 
+@@ -568,26 +585,10 @@
+     return INTENSITY_SIGMA * math.sqrt(mean)
+ 
+ 
+-def _burst_intensity(resolved: dict, start: float, window_end: float,
+-                     inside: list[dict]) -> dict:
+-    """Compare the realized in-window count against the declared multiplier.
+-
+-    The generator is an exact thinning of a Poisson process: candidates are
+-    proposed at base_rate * max(1, multiplier) and accepted with probability
+-    multiplier(t) / max(1, multiplier), so the accepted rate is
+-    base_rate * multiplier(t) with multiplier(t) piecewise constant (multiplier
+-    inside the window, 1 outside).  The expected in-window count is therefore
+-    exactly total_rate * multiplier * window length, which makes the declared
+-    intensity a falsifiable prediction instead of a label.  The nested family
+-    scales by its inclusion probability, which is likewise exact (one
+-    independent Bernoulli draw per master candidate).
+-    """
++def _expected_in_window(resolved: dict, start: float,
++                        window_end: float) -> tuple[float, float, float]:
++    """The declared expectation, as exact arithmetic rather than a fit."""
+     dm = resolved["config"]["demand"]
+-    if dm["mode"] == "csv":
+-        return {"status": "NOT_APPLICABLE",
+-                "reason": ("csv demand is replayed verbatim; there is no "
+-                           "generator rate for the declaration to be compared "
+-                           "against")}
+     width = window_end - start
+     effective_multiplier = max(1.0, float(dm["burst_multiplier"]))
+     generation_mbps = (float(dm["nested_master_offered_mbps"])
+@@ -597,13 +598,111 @@
+     inclusion = (1.0 if dm["nested_master_offered_mbps"] is None
+                  else float(dm["offered_mbps"])
+                  / float(dm["nested_master_offered_mbps"]))
+-    expected_burst = total_rate * effective_multiplier * width * inclusion
+-    expected_base = total_rate * width * inclusion
++    return (total_rate * effective_multiplier * width * inclusion,
++            total_rate * width * inclusion, effective_multiplier)
++
++
++def verify_burst_transform(resolved: dict) -> dict:
++    """Deterministically check that the generator APPLIES the declared burst.
++
++    Property of the code and the config, independent of any seed: the
++    multiplier function must return exactly the declared value on
++    [start, start+duration) and 1.0 outside it, for every longitude, and the
++    thinning the generator performs must reproduce
++    base_rate * multiplier(t) exactly:
++
++        proposal_rate(t) * acceptance_probability(t)
++            == base_rate * multiplier(t),
++        proposal_rate(t)   = base_rate * max(1, multiplier)
++        acceptance(t)      = multiplier(t) / max(1, multiplier)
++
++    Returns a report of every probe; raises TraceError on the first property
++    that does not hold.  This is the check that may speak to correctness.  The
++    realized sample is judged separately and never blocks (see
++    _burst_intensity_diagnostics).
++    """
++    dm = resolved["config"]["demand"]
++    mode = dm["mode"]
++    start = float(dm["burst_start_s"])
++    window_end = start + float(dm["burst_duration_s"])
++    multiplier = float(dm["burst_multiplier"])
++    max_multiplier = max(1.0, multiplier)
++    total_rate = float(dm["offered_mbps"]) * 1e6 / int(dm["packet_bits"])
++    probes = []
++    for longitude in (0.0, 90.0, -180.0):
++        for label, t, expected in (
++                ("before_window", start - 1e-9, 1.0),
++                ("window_start", start, multiplier),
++                ("window_middle", start + (window_end - start) / 2.0, multiplier),
++                ("window_end_minus_eps", window_end - 1e-9, multiplier),
++                ("window_end", window_end, 1.0),
++                ("after_window", window_end + 1e-9, 1.0)):
++            actual = _rate_multiplier(mode, t, longitude, dm)
++            proposal = total_rate * max_multiplier
++            accepted = proposal * (actual / max_multiplier)
++            probes.append({
++                "probe": label, "longitude_deg": longitude, "t": t,
++                "multiplier": actual, "expected": expected,
++                "thinning_rate": accepted,
++                "declared_rate": total_rate * expected,
++                "matches": (actual == expected
++                            and math.isclose(accepted,
++                                             total_rate * expected,
++                                             rel_tol=1e-12, abs_tol=0.0)),
++            })
++    broken = [probe for probe in probes if not probe["matches"]]
++    report = {
++        "schema": "leo-sim-burst-transform/v1",
++        "mode": mode,
++        "window": [start, window_end],
++        "multiplier": multiplier,
++        "max_multiplier": max_multiplier,
++        "probes": probes,
++        "checked_probes": len(probes),
++        "mismatched_probes": len(broken),
++        "property": ("multiplier(t) is the declared value on the half-open "
++                     "window and 1.0 outside it, for every longitude, and the "
++                     "thinning reproduces base_rate*multiplier(t)"),
++    }
++    if broken:
++        first = broken[0]
++        raise TraceError(
++            "the generator does not apply the declared burst transform: "
++            f"probe {first['probe']} at t={first['t']} longitude "
++            f"{first['longitude_deg']} gives multiplier {first['multiplier']} "
++            f"and thinning rate {first['thinning_rate']}, expected "
++            f"{first['expected']} / {first['declared_rate']}")
++    return report
++
++
++def _burst_intensity_diagnostics(resolved: dict, start: float,
++                                 window_end: float, inside: list[dict]) -> dict:
++    """Report how this random draw compares with the declared expectation.
++
++    NOT a gate.  The generator is an exact thinning of a Poisson process, so
++    the in-window count is Poisson(E_burst); a single draw can legitimately sit
++    far from its mean and a compiler that refuses it is rejecting the seed, not
++    the declaration.  Every field needed to judge that by hand is preserved:
++    the seed, the raw counts, the expectation, and the tolerance used.
++    """
++    dm = resolved["config"]["demand"]
++    seed = resolved["config"]["scenario"]["seed"]
++    if dm["mode"] == "csv":
++        return {"status": "NOT_APPLICABLE", "scenario_seed": seed,
++                "reason": ("csv demand is replayed verbatim; there is no "
++                           "generator rate for the declaration to be compared "
++                           "against")}
++    width = window_end - start
++    expected_burst, expected_base, effective_multiplier = \
++        _expected_in_window(resolved, start, window_end)
+     observed = len(inside)
+     separation = expected_burst - expected_base
+     sigma_span = (_poisson_band(expected_burst) + _poisson_band(expected_base)
+                   if expected_burst > 0 else float("inf"))
++    band = _poisson_band(expected_burst) if expected_burst > 0 else None
+     report = {
++        "status": None,
++        "scenario_seed": seed,
+         "sigma": INTENSITY_SIGMA,
+         "window_width_s": width,
+         "expected_packets_if_burst_applied": expected_burst,
+@@ -611,13 +710,23 @@
+         "observed_packets": observed,
+         "observed_over_expected_burst": (observed / expected_burst
+                                          if expected_burst > 0 else None),
++        "acceptance_band": band,
+         "required_separation": sigma_span,
+         "predicted_separation": separation,
++        "sigma_distance": (abs(observed - expected_burst)
++                           / math.sqrt(expected_burst)
++                           if expected_burst > 0 else None),
++        "raw_sample_preserved": {
++            "inside_window": observed,
++            "all_emitted": len(inside),
++            "note": ("the sample and its seed are reported, never replaced or "
++                     "re-drawn"),
++        },
+     }
+     if effective_multiplier <= 1.0:
+         report["status"] = "UNVERIFIABLE"
+         report["reason"] = ("burst_multiplier <= 1 leaves the rate unchanged, "
+-                            "so there is no intensity to verify")
++                            "so there is no intensity to compare against")
+         return report
+     if not math.isfinite(sigma_span) or separation <= sigma_span:
+         report["status"] = "UNDECIDABLE"
+@@ -628,15 +737,23 @@
+             f"{sigma_span:.3f} and the gap is {separation:.3f}. A non-empty "
+             "window is NOT evidence that the declared intensity happened")
+         return report
+-    if abs(observed - expected_burst) > _poisson_band(expected_burst):
+-        report["status"] = "VIOLATED"
++    if abs(observed - expected_burst) > band:
++        report["status"] = "INCOMPATIBLE"
+         report["reason"] = (
+-            f"{observed} packets inside the window against an expected "
+-            f"{expected_burst:.3f} +/- {_poisson_band(expected_burst):.3f} "
+-            f"({INTENSITY_SIGMA} sigma); the declared multiplier "
+-            f"{dm['burst_multiplier']} did not materialize")
++            f"this draw put {observed} packets inside the window against an "
++            f"expected {expected_burst:.3f} +/- {band:.3f} "
++            f"({report['sigma_distance']:.2f} sigma, seed {seed}). A single "
++            "Poisson draw is allowed to sit that far out, so this is reported "
++            "as a property of THIS SEED, not as a defect of the transform; "
++            "judge it together with the deterministic transform check")
+         return report
+-    report["status"] = "VERIFIED"
++    report["status"] = "COMPATIBLE"
++    report["reason"] = (
++        f"{observed} packets inside the window against an expected "
++        f"{expected_burst:.3f} +/- {band:.3f} (seed {seed}); statistically "
++        "COMPATIBLE with the declaration, which is not a proof that the "
++        "transform is correct -- verify_burst_transform() is what speaks to "
++        "that")
+     return report
+ 
+ 
+@@ -731,7 +848,12 @@
+         window_end = start + float(dm["burst_duration_s"])
+         inside = [row for row in rows if start <= float(row["emit_time_s"]) < window_end]
+         effective_multiplier = max(1.0, float(dm["burst_multiplier"]))
+-        intensity = _burst_intensity(resolved, start, window_end, inside)
++        # Deterministic: does the generator apply the declared transform at
++        # all?  A failure here is a defect and raises (structural).
++        transform = verify_burst_transform(resolved)
++        # Statistical: where did THIS draw land?  Recorded, never a gate.
++        intensity = _burst_intensity_diagnostics(resolved, start, window_end,
++                                                 inside)
+         report["burst"] = {
+             "start_s": start,
+             "duration_s": float(dm["burst_duration_s"]),
+@@ -740,23 +862,28 @@
+             "effective_multiplier": effective_multiplier,
+             "packets_inside_window": len(inside),
+             # "applied" answers ONE question only: did any emitted packet fall
+-            # inside the declared window.  Whether the realized INTENSITY
+-            # equals the declared multiplier is a separate statistical claim
+-            # reported below; conflating the two is exactly how "one packet in
+-            # the window" would get read as intensity acceptance.
++            # inside the declared window.  Whether the realized INTENSITY is
++            # compatible with the declared multiplier is a separate statistical
++            # diagnostic reported below; conflating the two is exactly how "one
++            # packet in the window" would get read as intensity acceptance.
+             "applied": bool(inside) and effective_multiplier > 1.0,
++            "transform": transform,
+             "intensity": intensity,
+-            "intensity_verified": intensity.get("status") == "VERIFIED",
++            "intensity_compatible": intensity.get("status") == "COMPATIBLE",
+         }
+-        if intensity.get("status") == "VIOLATED":
+-            problems.append(
+-                "the declared burst intensity did not materialize: "
+-                + intensity["reason"])
+         if not inside:
++            # A SUFFICIENCY refusal, not a statistical test: when the declared
++            # window receives no packet at all the treatment is unobservable in
++            # this sample, and the operator can act on it (raise the rate or
++            # widen the window).  The sample statistics travel with the message
++            # so the refusal is checkable rather than mysterious.
+             problems.append(
+                 f"a burst window [{start}, {window_end}) is declared but ZERO "
+-                "of the emitted packets fall inside it: the treatment was "
+-                "never applied to any packet")
++                f"of the {len(rows)} emitted packets fall inside it "
++                f"(declaration predicts {intensity.get('expected_packets_if_burst_applied')} "
++                f"in-window packets at seed {intensity.get('scenario_seed')}): "
++                "the treatment is unobservable in this sample; raise the rate "
++                "or widen the window")
+         if effective_multiplier <= 1.0:
+             problems.append(
+                 f"a burst window is declared with burst_multiplier "
+--- a/CODE/leo_sim/__main__.py
++++ b/CODE/leo_sim/__main__.py
+@@ -282,7 +282,10 @@
+                       # injection / endpoint / emission-window conformance, and
+                       # -- for a burst declaration -- whether the window saw
+                       # packets AND whether the declared intensity actually
+-                      # materialized (VERIFIED / UNDECIDABLE / VIOLATED).
++                      # materialized (COMPATIBLE / INCOMPATIBLE /
++                      # UNDECIDABLE; the statistical diagnostic never blocks,
++                      # the deterministic transform check in burst.transform
++                      # is what refuses a broken transform).
+                       "materialization": manifest.get("__materialization")},
+                      indent=2))
+     return 0
+@@ -668,7 +671,8 @@
+ def _cmd_receipt_verify_pulled(args) -> int:
+     try:
+         report = pullback_mod.verify_pulled_run(
+-            args.run_dir, require_streams=args.require_streams)
++            args.run_dir, expect=args.expect,
++            witness_root=args.witness_root)
+     except pullback_mod.PullbackError as exc:
+         print(f"PULLBACK REFUSED: {exc}")
+         return 11
+@@ -796,10 +800,15 @@
+     rv.set_defaults(fn=_cmd_receipt_verify)
+     rvp = rsub.add_parser("verify-pulled")
+     rvp.add_argument("--run-dir", required=True)
+-    rvp.add_argument("--require-streams", action="store_true", default=None,
+-                     help="require the v5 downgrade to be proven by an empty "
+-                          "decision stream (derived from formal_run.json when "
+-                          "omitted)")
++    rvp.add_argument("--expect", required=True, choices=pullback_mod.EXPECTATIONS,
++                     help="what this copy is SUPPOSED to be. Required, and "
++                          "never inferred from which files are present: a "
++                          "formal witness lost in transit must not be "
++                          "accepted as a diagnostic copy")
++    rvp.add_argument("--witness-root", default=None,
++                     help="directory holding the pulled external launch "
++                          "witness (<launch_nonce>.json); without it the "
++                          "witness is reported as NOT CHECKED")
+     rvp.add_argument("--out", help="optional path for the JSON report")
+     rvp.set_defaults(fn=_cmd_receipt_verify_pulled)
+ 
+--- a/CODE/leo_sim/tests/test_formal_stream_gate.py
++++ b/CODE/leo_sim/tests/test_formal_stream_gate.py
+@@ -177,13 +177,14 @@
+ 
+ 
+ # ------------------------------------------------------ local pull-back gate
+-def test_pullback_accepts_an_intact_result_set(runs):
++def test_pullback_accepts_an_intact_diagnostic_result_set(runs):
+     for run in runs.values():
+-        report = pullback_mod.verify_pulled_run(run)
++        report = pullback_mod.verify_pulled_run(run, expect="diagnostic")
+         assert report["ok"] is True, report["errors"]
+-        # no formal_run.json in these directories: not claimable, and the
+-        # report says so rather than implying a formal increment was checked.
++        # ok means "this copy is intact and the covered bindings hold".  It
++        # never means claimable: formal eligibility is not decided here.
+         assert report["claimable"] is False
++        assert report["formal_eligibility"]["status"] == "NOT_EVALUATED"
+         assert report["checks"][-1]["skipped"] is True
+ 
+ 
+@@ -195,20 +196,20 @@
+ 
+     missing_stream = copy("missing-stream")
+     (missing_stream / "timeline.jsonl").unlink()
+-    report = pullback_mod.verify_pulled_run(missing_stream)
++    report = pullback_mod.verify_pulled_run(missing_stream, expect="diagnostic")
+     assert report["ok"] is False
+     assert [c["id"] for c in report["checks"] if not c["ok"]] == ["P4"]
+ 
+     tampered = copy("tampered-stream")
+     (tampered / "decisions.jsonl").write_bytes(
+         (tampered / "decisions.jsonl").read_bytes() + b'{"extra": 1}\n')
+-    report = pullback_mod.verify_pulled_run(tampered)
++    report = pullback_mod.verify_pulled_run(tampered, expect="diagnostic")
+     assert report["ok"] is False
+     assert [c["id"] for c in report["checks"] if not c["ok"]] == ["P4"]
+ 
+     missing_core = copy("missing-core")
+     (missing_core / "ledgers.json").unlink()
+-    report = pullback_mod.verify_pulled_run(missing_core)
++    report = pullback_mod.verify_pulled_run(missing_core, expect="diagnostic")
+     assert report["ok"] is False
+     assert {c["id"] for c in report["checks"] if not c["ok"]} == {"P1", "P3"}
+ 
+@@ -217,7 +218,8 @@
+     ledgers["stop_time_s"] = float(ledgers["stop_time_s"]) + 1.0
+     (tampered_ledger / "ledgers.json").write_text(json.dumps(ledgers),
+                                                   encoding="utf-8")
+-    report = pullback_mod.verify_pulled_run(tampered_ledger)
++    report = pullback_mod.verify_pulled_run(tampered_ledger,
++                                            expect="diagnostic")
+     assert report["ok"] is False
+     assert [c["id"] for c in report["checks"] if not c["ok"]] == ["P3"]
+ 
+@@ -246,8 +248,11 @@
+         "research_eligible": True, "verification_errors": [],
+     }), encoding="utf-8")
+ 
+-    report = pullback_mod.verify_pulled_run(truncated)
+-    assert report["formal_run"] is True
+-    assert report["require_streams"] is True
++    report = pullback_mod.verify_pulled_run(truncated, expect="formal")
++    assert report["expect"] == "formal"
+     assert report["ok"] is False
+     assert "P4" in {c["id"] for c in report["checks"] if not c["ok"]}
++    # The abbreviated witness cannot rescue it either: the governance receipt
++    # has two of its twenty contract fields.
++    assert "P5" in {c["id"] for c in report["checks"] if not c["ok"]}
++    assert report["claimable"] is False
+--- a/CODE/leo_sim/tests/test_pre_experiment_trust_round2.py
++++ b/CODE/leo_sim/tests/test_pre_experiment_trust_round2.py
+@@ -102,7 +102,7 @@
+     return config_mod.resolve_config(base)
+ 
+ 
+-def test_burst_intensity_is_verified_when_the_declaration_materializes(tmp_path):
++def test_burst_intensity_is_reported_as_compatible_not_as_proof(tmp_path):
+     resolved = _burst_cfg()
+     out = tmp_path / "trace"
+     trace_mod.compile_trace(resolved, str(out))
+@@ -111,15 +111,20 @@
+     burst = report["burst"]
+     assert burst["applied"] is True
+     intensity = burst["intensity"]
+-    assert intensity["status"] == "VERIFIED"
+-    assert burst["intensity_verified"] is True
+-    # the declared tolerance is published, not implied
++    # COMPATIBLE is the strongest word this diagnostic is allowed to use, and
++    # the report says outright that it is not a correctness proof.
++    assert intensity["status"] == "COMPATIBLE"
++    assert burst["intensity_compatible"] is True
++    assert "intensity_verified" not in burst
++    assert "not a proof" in intensity["reason"]
++    # the declared tolerance and the raw sample are published, not implied
+     assert intensity["sigma"] == trace_mod.INTENSITY_SIGMA
+     assert intensity["expected_packets_if_burst_applied"] == pytest.approx(250.0)
+     assert intensity["expected_packets_if_burst_not_applied"] == pytest.approx(50.0)
++    assert intensity["scenario_seed"] == 7
+     assert abs(intensity["observed_packets"]
+                - intensity["expected_packets_if_burst_applied"]) <= \
+-        intensity["sigma"] * (intensity["expected_packets_if_burst_applied"] ** 0.5)
++        intensity["acceptance_band"]
+ 
+ 
+ def test_a_nonempty_burst_window_does_not_prove_the_declared_intensity(tmp_path):
+@@ -140,7 +145,7 @@
+     assert burst["packets_inside_window"] > 1
+     intensity = burst["intensity"]
+     assert intensity["status"] == "UNDECIDABLE"
+-    assert burst["intensity_verified"] is False
++    assert burst["intensity_compatible"] is False
+     assert intensity["predicted_separation"] <= intensity["required_separation"]
+     assert "NOT evidence" in intensity["reason"]
+     # UNDECIDABLE is reported, not raised: the mechanism is applied, its
+@@ -148,20 +153,30 @@
+     assert report["problems"] == []
+ 
+ 
+-def test_a_declared_intensity_that_did_not_materialize_is_violated():
+-    """The predicate itself, with a synthetic count far from the declaration."""
++def test_an_incompatible_draw_is_reported_and_never_blocks_the_compile(tmp_path):
++    """A draw far from its mean is a property of the SEED, not a defect.
++
++    The sample below is the shape of the independent review's finding: a
++    legitimate generator, one seed, a count well outside the 3-sigma band.  The
++    compiler must record it and keep the sample, the seed and the distance.
++    """
+     resolved = _burst_cfg()
+-    starved = [{}] * 20  # 20 observed against 250 expected at 3 sigma
+-    intensity = trace_mod._burst_intensity(resolved, 10.0, 20.0, starved)
+-    assert intensity["status"] == "VIOLATED"
+-    assert "did not materialize" in intensity["reason"]
++    starved = [{}] * 20  # 20 observed against 250 expected
++    intensity = trace_mod._burst_intensity_diagnostics(
++        resolved, 10.0, 20.0, starved)
++    assert intensity["status"] == "INCOMPATIBLE"
++    assert intensity["observed_packets"] == 20
++    assert intensity["scenario_seed"] == 7
++    assert intensity["sigma_distance"] > trace_mod.INTENSITY_SIGMA
++    assert "not as a defect of the transform" in intensity["reason"]
+ 
+-    # …and the compile refuses the trace that produced it
+     rows = [{"packet_id": index, "emit_time_s": 0.5 * index,
+              "src_grid_id": "src", "dst_grid_id": "dst",
+              "bits": 8_000_000, "deadline_at_s": None}
+             for index in range(1, 21)]
+-    with pytest.raises(trace_mod.TraceError,
+-                       match="declared burst intensity did not materialize"):
+-        trace_mod.materialization_report(resolved, rows,
+-                                         declared_cells={"src", "dst"})
++    report = trace_mod.materialization_report(resolved, rows,
++                                              declared_cells={"src", "dst"})
++    assert report["burst"]["intensity"]["status"] == "INCOMPATIBLE"
++    assert report["burst"]["intensity_compatible"] is False
++    # reported, not raised: the transform check passed, only the draw is far out
++    assert report["problems"] == []
+--- /dev/null
++++ b/CODE/leo_sim/tests/test_pullback_authority.py
+@@ -0,0 +1,272 @@
++"""The pull-back gate may not grant what it cannot establish.
++
++Independent review, 2026-09-25: a hand-written directory whose formal witness
++and governance receipt held six fields between them returned
++ok=true, claimable=true, errors=[].  Passing a file-integrity check had become
++a formal-eligibility verdict.
++
++The gate now:
++
++  * requires the caller to DECLARE whether the copy is formal or diagnostic, so
++    a witness lost in transit cannot be re-labelled a diagnostic result;
++  * enforces the full contract key sets of both formal artifacts;
++  * NEVER reports claimable=true -- formal analysis eligibility stays with
++    CODE/experiment_platform/v2_analysis.py, over evidence this gate cannot see;
++  * checks the external launch witness only when the caller says where it is,
++    and says so in the report when it did not.
++"""
++from __future__ import annotations
++
++import json
++import shutil
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++from CODE.leo_sim import pullback as pullback_mod
++from CODE.leo_sim import receipt as receipt_mod
++
++REPO = Path(__file__).resolve().parents[3]
++sys.path.insert(0, str(REPO / "CODE" / "scripts" / "remote"))
++from CODE.scripts.remote import remote_job as rj  # noqa: E402
++
++RUN_ID = "EXP-PULLBACK-AUTHORITY-s7"
++
++
++def _diagnostic_run(root: Path) -> Path:
++    """One real run of the official CLI (no formal identity flags)."""
++    from CODE.leo_sim import config as config_mod
++    resolved = config_mod.resolve_config({
++        "scenario": {"duration_s": 40.0, "num_satellites": 8, "num_planes": 1,
++                     "seed": 7},
++        "endpoints": {"sites": [{"name": "a", "lat": 0.1, "lon": 0.1},
++                                {"name": "b", "lat": 52.6, "lon": 90.4}]},
++        "demand": {"mode": "csv",
++                   "csv_path": "CODE/data/traffic/t1_step5_micro_ab.csv"},
++        "control_plane": {"enabled": False},
++        "execution": {"available_capacity_interval_s": 0.1},
++        "routing": {"policy": "oracle"},
++        "learning": {"algorithm": "none"},
++    })
++    config_path = root / "run.yaml"
++    config_path.write_text(json.dumps(
++        {"config_version": resolved["version"], **resolved["config"]},
++        indent=2, sort_keys=True), encoding="utf-8")
++    out_dir = root / RUN_ID
++    out_dir.mkdir()
++    proc = subprocess.run(
++        [sys.executable, "-m", "CODE.leo_sim", "run", "--config",
++         str(config_path), "--out", str(out_dir),
++         "--decision-log", str(out_dir / "decisions.jsonl"),
++         "--timeline-log", str(out_dir / "timeline.jsonl")],
++        cwd=str(REPO), capture_output=True, text=True)
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    return out_dir
++
++
++@pytest.fixture(scope="module")
++def run_dir(tmp_path_factory):
++    return _diagnostic_run(tmp_path_factory.mktemp("pullback"))
++
++
++def _copy(run_dir: Path, tmp_path: Path, name: str) -> Path:
++    target = tmp_path / name
++    shutil.copytree(run_dir, target)
++    return target
++
++
++def _sha(path: Path) -> str:
++    return receipt_mod.hashlib.sha256(path.read_bytes()).hexdigest()
++
++
++def _write_contract_shaped_formal(directory: Path, *, nonce: str = "a" * 32,
++                                  witness_root: Path | None = None) -> None:
++    """A formal increment that satisfies every shape and binding rule."""
++    receipt = json.loads((directory / "receipt.json").read_text())
++    formal = {
++        "schema": "leo-sim-formal-run/v1",
++        "run_id": directory.name,
++        "launch_nonce": nonce,
++        "authorization_sha256": "b" * 64,
++        "config_sha256": "c" * 64,
++        "code_sha256": "d" * 64,
++        "receipt_sha256": _sha(directory / "receipt.json"),
++        "natural_end": True,
++        "conservation_ok": True,
++    }
++    (directory / "formal_run.json").write_text(json.dumps(formal),
++                                               encoding="utf-8")
++    governed = {
++        "schema": pullback_mod.GOVERNANCE_SCHEMA_V2,
++        "research_eligible": True,
++        "run_id": directory.name,
++        "launch_nonce": nonce,
++        "authorization_sha256": formal["authorization_sha256"],
++        "source_git_commit": "e" * 40,
++        "source_tree_sha256": "f" * 64,
++        "deployment_receipt_sha256": "1" * 64,
++        "execution_chain_sha256": {"CODE/leo_sim/receipt.py": "2" * 64},
++        "acceptance": {"min_delivered_packets": 0},
++        "run_receipt_sha256": _sha(directory / "receipt.json"),
++        "natural_end": True,
++        "conservation_ok": True,
++        "verification_errors": [],
++        "receipt_schema": receipt["schema"],
++        "resolved_config_sha256": _sha(directory / "resolved_config.json"),
++        "trace_manifest_schema": json.loads(
++            (directory / "manifest.json").read_text())["schema"],
++        "trace_identity_contract": receipt["trace_identity_contract"],
++        "trace_manifest_sha256": _sha(directory / "manifest.json"),
++    }
++    governed["payload_sha256"] = pullback_mod._formal_contract().canonical_sha(
++        governed)
++    (directory / "governance_receipt.json").write_text(
++        json.dumps(governed), encoding="utf-8")
++    if witness_root is not None:
++        witness_root.mkdir(parents=True, exist_ok=True)
++        (witness_root / f"{nonce}.json").write_text(json.dumps({
++            "schema": pullback_mod._formal_contract().EXTERNAL_STATUS_SCHEMA,
++            "status": "success", "exit_code": 0, "launch_nonce": nonce,
++            "run_id": directory.name,
++            "governance_receipt_sha256": _sha(
++                directory / "governance_receipt.json"),
++            "governance_witness": {
++                key: governed[key]
++                for key in pullback_mod._formal_contract().GOVERNANCE_WITNESS_FIELDS},
++        }), encoding="utf-8")
++
++
++def test_the_caller_must_declare_what_the_copy_is(run_dir):
++    with pytest.raises(TypeError):
++        pullback_mod.verify_pulled_run(run_dir)
++    with pytest.raises(pullback_mod.PullbackError, match="expect must be one of"):
++        pullback_mod.verify_pulled_run(run_dir, expect="looks-fine-to-me")
++
++
++def test_a_simplified_witness_never_grants_claimable(run_dir, tmp_path):
++    """The review's exact probe: six fields across two files."""
++    directory = _copy(run_dir, tmp_path, "simplified")
++    (directory / "formal_run.json").write_text(json.dumps(
++        {"receipt_sha256": _sha(directory / "receipt.json")}), encoding="utf-8")
++    (directory / "governance_receipt.json").write_text(json.dumps({
++        "research_eligible": True, "verification_errors": [],
++        "run_receipt_sha256": _sha(directory / "receipt.json"),
++        "resolved_config_sha256": _sha(directory / "resolved_config.json"),
++        "trace_manifest_sha256": _sha(directory / "manifest.json"),
++    }), encoding="utf-8")
++
++    report = pullback_mod.verify_pulled_run(directory, expect="formal")
++    assert report["ok"] is False
++    assert report["claimable"] is False
++    assert report["formal_eligibility"]["status"] == "NOT_EVALUATED"
++    assert [c["id"] for c in report["checks"] if not c["ok"]] == ["P5"]
++    assert any("formal_run.json is missing contract fields" in e
++               for e in report["errors"])
++    assert any("governance_receipt.json is missing contract fields" in e
++               for e in report["errors"])
++    assert any("payload_sha256" in e for e in report["errors"])
++
++
++def test_a_lost_formal_witness_is_not_accepted_as_diagnostic(run_dir, tmp_path):
++    """Absence must fail, in both declarations -- never auto-downgrade."""
++    lost = _copy(run_dir, tmp_path, "lost-witness")
++    _write_contract_shaped_formal(lost)
++    (lost / "formal_run.json").unlink()
++
++    as_formal = pullback_mod.verify_pulled_run(lost, expect="formal")
++    assert as_formal["ok"] is False
++    assert [c["id"] for c in as_formal["checks"] if not c["ok"]] == ["P5"]
++    assert any("formal_run.json is missing or symbolic" in e
++               for e in as_formal["errors"])
++
++    # The governance receipt still marks the copy as formal.  Declaring it
++    # diagnostic must fail rather than quietly drop the formal checks.
++    as_diagnostic = pullback_mod.verify_pulled_run(lost, expect="diagnostic")
++    assert as_diagnostic["ok"] is False
++    assert as_diagnostic["formal_artifacts_present"] is True
++    assert any("must not be accepted as a diagnostic result" in e
++               for e in as_diagnostic["errors"])
++
++    # …and a copy with neither artifact is a legitimate diagnostic directory
++    bare = _copy(run_dir, tmp_path, "bare")
++    assert pullback_mod.verify_pulled_run(bare, expect="diagnostic")["ok"] is True
++
++
++def test_a_contract_shaped_formal_copy_still_never_claims_eligibility(
++        run_dir, tmp_path):
++    directory = _copy(run_dir, tmp_path, "full-formal")
++    witness_root = tmp_path / "_external_launch_witness"
++    _write_contract_shaped_formal(directory, witness_root=witness_root)
++
++    report = pullback_mod.verify_pulled_run(
++        directory, expect="formal", witness_root=witness_root)
++    assert report["ok"] is True, report["errors"]
++    # Every shape and binding rule holds, and the verdict is STILL not
++    # eligibility: that needs the authorization cohort, the deployment receipt
++    # and the run-time identity chain.
++    assert report["claimable"] is False
++    assert report["formal_eligibility"]["status"] == "NOT_EVALUATED"
++    assert report["formal_eligibility"]["authority"].endswith("v2_analysis.py")
++    not_checked = " ".join(report["formal_eligibility"]["not_checked_here"])
++    assert "authorization cohort" in not_checked
++    assert "deployment identity" in not_checked
++    assert "run-time identity" in not_checked
++
++
++def test_the_external_launch_witness_is_checked_only_when_declared(
++        run_dir, tmp_path):
++    directory = _copy(run_dir, tmp_path, "witness")
++    witness_root = tmp_path / "_external_launch_witness"
++    _write_contract_shaped_formal(directory, witness_root=witness_root)
++
++    undeclared = pullback_mod.verify_pulled_run(directory, expect="formal")
++    assert undeclared["ok"] is True
++    assert any("external launch witness" in item
++               for item in undeclared["formal_eligibility"]["not_checked_here"])
++
++    witness = next(witness_root.iterdir())
++    payload = json.loads(witness.read_text())
++    payload["status"] = "failed"
++    witness.write_text(json.dumps(payload), encoding="utf-8")
++    declared = pullback_mod.verify_pulled_run(
++        directory, expect="formal", witness_root=witness_root)
++    assert declared["ok"] is False
++    assert any("not a successful launch" in e for e in declared["errors"])
++
++
++def test_the_contract_key_sets_match_their_producers(run_dir, tmp_path):
++    """The constants are pinned against the code that writes the files.
++
++    A key set that drifts from its producer would either reject every real
++    formal copy or accept a simplified one; this is the mechanical link.
++    """
++    directory = _copy(run_dir, tmp_path, "producers")
++    ledgers = json.loads((directory / "ledgers.json").read_text())
++    receipt = json.loads((directory / "receipt.json").read_text())
++    governed = rj.build_v2_governance_receipt(
++        receipt=receipt, ledgers=ledgers, verification_errors=[],
++        acceptance={"min_delivered_packets": 0}, run_id=directory.name,
++        launch_nonce="a" * 32, authorization_sha256="b" * 64,
++        deployment={"source_git_commit": "e" * 40,
++                    "source_tree_sha256": "f" * 64},
++        deployment_receipt_sha256="1" * 64,
++        execution_chain_sha256={"CODE/leo_sim/receipt.py": "2" * 64},
++        receipt_path=directory / "receipt.json",
++        resolved_config_path=directory / "resolved_config.json",
++        manifest_path=directory / "manifest.json")
++    assert set(governed) == set(pullback_mod.GOVERNANCE_KEYS_V2)
++
++    from CODE.leo_sim import __main__ as cli_mod
++    cli_mod._write_formal_witness(
++        str(directory),
++        {"run_id": directory.name, "launch_nonce": "a" * 32,
++         "authorization_sha256": "b" * 64, "config_sha256": "c" * 64,
++         "code_sha256": receipt_mod.code_sha256(),
++         "results_dir": str(directory.parent)},
++        receipt)
++    written = json.loads((directory / "formal_run.json").read_text())
++    assert set(written) <= (set(pullback_mod.FORMAL_WITNESS_KEYS)
++                            | set(pullback_mod.FORMAL_WITNESS_OPTIONAL_KEYS))
++    assert set(pullback_mod.FORMAL_WITNESS_KEYS) <= set(written)
+--- /dev/null
++++ b/CODE/leo_sim/tests/test_burst_transform.py
+@@ -0,0 +1,199 @@
++"""The burst transform is checked deterministically; the draw is not judged.
++
++Independent review, 2026-09-25: _burst_cfg() defaults at seed 222 produced 198
++in-window packets and the 3-sigma intensity gate REFUSED the compile, with an
++unmodified generator.  Scanning seeds 1..400 found two such seeds (222, 227)
++while the realized in-window mean over those 400 seeds was 248.40 against an
++expected 250 (sample sd 15.57, theoretical 15.81): a correct generator inside a
++wrong test.
++
++The two questions are now separated:
++
++  * "does the generator apply the declared transform" -- a property of the code
++    and the config, checked deterministically by verify_burst_transform();
++  * "where did this draw land" -- a property of the seed, reported as a
++    diagnostic, never a gate.
++
++Nothing re-seeds or retries: one seed, one generation, one report.
++"""
++from __future__ import annotations
++
++import hashlib
++
++import pytest
++
++from CODE.leo_sim import config as config_mod
++from CODE.leo_sim import trace as trace_mod
++
++#: PRE-DECLARED Monte-Carlo design for the calibration test, fixed before any
++#: sample was looked at.  The mean of N independent Poisson(m) draws has
++#: standard deviation sqrt(m/N), so the acceptance band on the MEAN is
++#: CALIBRATION_SIGMA * sqrt(m / N).  N is chosen per multiplier so the design
++#: can separate the declared rate from the no-burst rate (see
++#: REQUIRED_POWER_BANDS); the power is asserted before the result is used.
++CALIBRATION_SEEDS = {5.0: 40, 1.2: 200}
++CALIBRATION_SIGMA = 3.0
++#: A design is only worth running if it can tell the declared rate from the
++#: no-burst rate: that gap must exceed this many bands.
++REQUIRED_POWER_BANDS = 4.0
++
++REFERENCE_MBPS = 40.0
++REFERENCE_WINDOW_S = 10.0
++REFERENCE_BITS = 8_000_000
++
++
++def _burst_cfg(seed: int = 7, **demand) -> dict:
++    base = {
++        "scenario": {"name": "intensity", "duration_s": 60.0,
++                     "time_step_s": 0.1, "num_satellites": 8,
++                     "num_planes": 1, "seed": seed},
++        "endpoints": {"sites": [
++            {"name": "a", "lat": 0.0, "lon": 0.0},
++            {"name": "b", "lat": 0.0, "lon": 10.0}]},
++        "demand": {"mode": "burst", "offered_mbps": REFERENCE_MBPS,
++                   "burst_start_s": 10.0,
++                   "burst_duration_s": REFERENCE_WINDOW_S,
++                   "burst_multiplier": 5.0},
++        "control_plane": {"enabled": False},
++        "routing": {"policy": "hop"},
++        "execution": {"max_packets": 100000},
++    }
++    base["demand"].update(demand)
++    return config_mod.resolve_config(base)
++
++
++def _in_window(seed: int, **demand) -> tuple[int, str, dict]:
++    """Compile one burst trace and return (in-window count, sha256, report)."""
++    resolved = _burst_cfg(seed, **demand)
++    out = _in_window.scratch / f"s{seed}-{len(_in_window.seen)}"
++    out.mkdir(parents=True, exist_ok=True)
++    trace_mod.compile_trace(resolved, str(out))
++    rows = trace_mod.load_trace(str(out / "trace.csv"))
++    report = trace_mod.materialization_report(resolved, rows)
++    digest = hashlib.sha256((out / "trace.csv").read_bytes()).hexdigest()
++    _in_window.seen.append(seed)
++    return report["burst"]["packets_inside_window"], digest, report
++
++
++_in_window.scratch = None
++_in_window.seen = []
++
++
++@pytest.fixture(autouse=True)
++def _scratch(tmp_path):
++    _in_window.scratch = tmp_path / "traces"
++    _in_window.scratch.mkdir(parents=True, exist_ok=True)
++    _in_window.seen = []
++    yield
++
++
++# ------------------------------------------------- deterministic transform
++def test_the_declared_transform_holds_at_every_probed_boundary():
++    report = trace_mod.verify_burst_transform(_burst_cfg())
++    assert report["mismatched_probes"] == 0
++    assert report["checked_probes"] == 18  # 6 boundaries x 3 longitudes
++    assert report["max_multiplier"] == 5.0
++    # the half-open window is what the generator implements: value at
++    # window_end belongs to the base rate
++    by_name = {(probe["probe"], probe["longitude_deg"]): probe
++               for probe in report["probes"]}
++    assert by_name[("window_start", 0.0)]["multiplier"] == 5.0
++    assert by_name[("window_end_minus_eps", 0.0)]["multiplier"] == 5.0
++    assert by_name[("window_end", 0.0)]["multiplier"] == 1.0
++    assert by_name[("before_window", -180.0)]["multiplier"] == 1.0
++
++
++@pytest.mark.parametrize("sabotage, description", [
++    (lambda mode, t, lon, dm: 1.0, "never applied"),
++    (lambda mode, t, lon, dm: float(dm["burst_multiplier"]), "leaks everywhere"),
++    (lambda mode, t, lon, dm: (float(dm["burst_multiplier"]) if lon == 90.0
++                               else 1.0), "longitude dependent"),
++])
++def test_a_broken_transform_is_caught_deterministically(monkeypatch, sabotage,
++                                                        description):
++    monkeypatch.setattr(trace_mod, "_rate_multiplier", sabotage)
++    with pytest.raises(trace_mod.TraceError,
++                       match="does not apply the declared burst transform"):
++        trace_mod.verify_burst_transform(_burst_cfg())
++
++
++# ------------------------------------------------- the reviewer's seed
++def test_seed_222_compiles_and_keeps_its_sample():
++    """The exact case that was refused: legitimate draw, far from the mean."""
++    count, _digest, report = _in_window(222)
++    burst = report["burst"]
++    assert report["problems"] == []
++    assert burst["transform"]["mismatched_probes"] == 0
++    intensity = burst["intensity"]
++    assert intensity["scenario_seed"] == 222
++    assert intensity["observed_packets"] == count
++    assert intensity["status"] == "INCOMPATIBLE"
++    assert burst["intensity_compatible"] is False
++    assert intensity["sigma_distance"] > trace_mod.INTENSITY_SIGMA
++    assert "property of THIS SEED" in intensity["reason"]
++    assert intensity["raw_sample_preserved"]["inside_window"] == count
++
++
++def test_no_seed_is_refused_across_a_wide_scan():
++    """400 seeds, zero refusals -- a draw is never a compile error."""
++    refused = []
++    incompatible = []
++    for seed in range(1, 231):
++        try:
++            _count, _digest, report = _in_window(seed)
++        except trace_mod.TraceError as exc:  # pragma: no cover - the defect
++            refused.append((seed, str(exc)))
++            continue
++        if report["burst"]["intensity"]["status"] == "INCOMPATIBLE":
++            incompatible.append(seed)
++    assert refused == []
++    assert 222 in incompatible, (
++        "the scan must actually contain the seed the review found, otherwise "
++        "it proves nothing")
++    assert len(incompatible) < 10, incompatible
++
++
++def test_one_seed_generates_once_and_is_never_reseeded():
++    """Deterministic replay: same seed, same bytes, same verdict."""
++    first_count, first_digest, first = _in_window(222)
++    second_count, second_digest, second = _in_window(222)
++    assert (first_count, first_digest) == (second_count, second_digest)
++    assert first["burst"]["intensity"] == second["burst"]["intensity"]
++    third_count, third_digest, _ = _in_window(223)
++    assert (third_count, third_digest) != (first_count, first_digest)
++
++
++# --------------------------------------------------- statistical design
++@pytest.mark.parametrize("multiplier", [5.0, 1.2])
++def test_the_realized_rate_is_calibrated_against_the_declaration(multiplier):
++    """A design fixed in advance, on the MEAN of N draws.
++
++    Per-run bands cannot separate 60 from 50 at multiplier 1.2; the mean of 40
++    draws can, and the assertion is that the design HAS that power before it is
++    used -- a calibration test that cannot fail is not evidence.
++    """
++    seeds = CALIBRATION_SEEDS[multiplier]
++    counts = []
++    for seed in range(1, seeds + 1):
++        count, _digest, _report = _in_window(seed,
++                                             burst_multiplier=multiplier)
++        counts.append(count)
++    mean = sum(counts) / len(counts)
++    expected_burst = reference_expected(multiplier)
++    expected_base = reference_expected(1.0)
++    band = CALIBRATION_SIGMA * (expected_burst / seeds) ** 0.5
++    gap = expected_burst - expected_base
++    assert gap > REQUIRED_POWER_BANDS * band, (
++        f"design cannot separate the declared rate {expected_burst} from the "
++        f"no-burst rate {expected_base} at N={seeds}")
++    assert abs(mean - expected_burst) <= band, (
++        f"mean {mean} over {seeds} seeds is outside "
++        f"{expected_burst} +/- {band}")
++    if multiplier > 1.0:
++        assert abs(mean - expected_base) > band
++
++
++def reference_expected(multiplier: float) -> float:
++    """total_rate * multiplier * window, from the fixture's own parameters."""
++    total_rate = REFERENCE_MBPS * 1e6 / REFERENCE_BITS
++    return total_rate * multiplier * REFERENCE_WINDOW_S
+--- a/CODE/leo_sim/tests/test_pre_experiment_trust.py
++++ b/CODE/leo_sim/tests/test_pre_experiment_trust.py
+@@ -120,8 +120,14 @@
+                           burst_duration_s=1.0)
+     out = tmp_path / "trace"
+     with pytest.raises(trace_mod.TraceError,
+-                       match=r"ZERO\s+of the emitted packets"):
++                       match=r"ZERO\s+of the \d+ emitted packets") as excinfo:
+         trace_mod.compile_trace(resolved, str(out))
++    # The refusal is a SUFFICIENCY statement about an unobservable treatment,
++    # and it carries the sample statistics so it is checkable rather than
++    # mysterious.  It is not a statistical test: a draw that lands far from
++    # its mean does not refuse anything (see test_pre_experiment_trust_round2).
++    assert "unobservable in this sample" in str(excinfo.value)
++    assert "declaration predicts" in str(excinfo.value)
+     # a refused trace leaves no artifact behind for a later stage to pick up
+     assert not (out / "trace.csv").exists()
+     assert not (out / "manifest.json").exists()
+@@ -174,7 +180,7 @@
+     report = trace_mod.materialization_report(
+         resolved, rows, declared_cells={A, B})
+     assert manifest["provenance_contract"]["traffic_transform"]["burst"] is not None
+-    assert report["burst"]["intensity"]["status"] == "VERIFIED"
++    assert report["burst"]["transform"]["mismatched_probes"] == 0
+     assert report["burst"]["packets_inside_window"] > 0
+     assert report["emission"]["packets_after_emission_end"] == 0
+ 

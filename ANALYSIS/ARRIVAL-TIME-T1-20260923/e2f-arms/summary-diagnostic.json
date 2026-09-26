@@ -1,0 +1,254 @@
+{
+ "schema": "leo-t1-e2f-diagnostic/v1",
+ "arms": [
+  {
+   "arm": "F1_offered_15",
+   "run_exit": 0,
+   "scene_check_exit": 0,
+   "scene_status": "ISL_PRESSURE_CANDIDATE",
+   "admission_rate": 1.0,
+   "access_clean": true,
+   "route_clean": true,
+   "downlink_clean": true,
+   "isl_pressure_ok": true,
+   "max_isl_utilization": 0,
+   "delta_t_arrival": {
+    "n": 13391,
+    "min_s": 0.001835367242371433,
+    "p50_s": 0.017669237265465654,
+    "p95_s": 0.017669237265465654,
+    "max_s": 0.017669237265465654
+   },
+   "f2_accounting": {
+    "node_process_spans_supplied": true,
+    "total_node_process_s": 0.0,
+    "total_decision_compute_s": 0.0,
+    "max_abs_residual_s": 4.440892098500626e-16,
+    "ok": true,
+    "checked_packets": 4463,
+    "unclosed_span_pids": 0,
+    "excluded_pids": [],
+    "span_pids": 0
+   }
+  },
+  {
+   "arm": "F1_offered_9",
+   "run_exit": 0,
+   "scene_check_exit": 0,
+   "scene_status": "ISL_PRESSURE_CANDIDATE",
+   "admission_rate": 1.0,
+   "access_clean": true,
+   "route_clean": true,
+   "downlink_clean": true,
+   "isl_pressure_ok": true,
+   "max_isl_utilization": 0,
+   "delta_t_arrival": {
+    "n": 8008,
+    "min_s": 0.0018353660783265724,
+    "p50_s": 0.017669237265465654,
+    "p95_s": 0.017669237265465654,
+    "max_s": 0.017669237265465654
+   },
+   "f2_accounting": {
+    "node_process_spans_supplied": true,
+    "total_node_process_s": 0.0,
+    "total_decision_compute_s": 0.0,
+    "max_abs_residual_s": 4.440892098500626e-16,
+    "ok": true,
+    "checked_packets": 2669,
+    "unclosed_span_pids": 0,
+    "excluded_pids": [],
+    "span_pids": 0
+   }
+  },
+  {
+   "arm": "F2_delay_0p05",
+   "run_exit": 0,
+   "scene_check_exit": 0,
+   "scene_status": "ISL_PRESSURE_CANDIDATE",
+   "admission_rate": 1.0,
+   "access_clean": true,
+   "route_clean": true,
+   "downlink_clean": true,
+   "isl_pressure_ok": true,
+   "max_isl_utilization": 0,
+   "delta_t_arrival": {
+    "n": 10573,
+    "min_s": 0.0018353687512462358,
+    "p50_s": 0.017669237265465654,
+    "p95_s": 0.017669237265465654,
+    "max_s": 0.017669237265465654
+   },
+   "f2_accounting": {
+    "node_process_spans_supplied": true,
+    "total_node_process_s": 528.6000000000561,
+    "total_decision_compute_s": 0.0,
+    "max_abs_residual_s": 4.440892098500626e-16,
+    "ok": true,
+    "checked_packets": 3524,
+    "unclosed_span_pids": 1,
+    "excluded_pids": [
+     "3528"
+    ],
+    "span_pids": 3527
+   }
+  },
+  {
+   "arm": "F2_delay_0p15",
+   "run_exit": 0,
+   "scene_check_exit": 0,
+   "scene_status": "ISL_PRESSURE_CANDIDATE",
+   "admission_rate": 1.0,
+   "access_clean": true,
+   "route_clean": true,
+   "downlink_clean": true,
+   "isl_pressure_ok": true,
+   "max_isl_utilization": 0,
+   "delta_t_arrival": {
+    "n": 10568,
+    "min_s": 0.001835367373677954,
+    "p50_s": 0.017669237265465654,
+    "p95_s": 0.017669237265465654,
+    "max_s": 0.017669237265465654
+   },
+   "f2_accounting": {
+    "node_process_spans_supplied": true,
+    "total_node_process_s": 1584.000000000011,
+    "total_decision_compute_s": 0.0,
+    "max_abs_residual_s": 4.440892098500626e-16,
+    "ok": true,
+    "checked_packets": 3520,
+    "unclosed_span_pids": 6,
+    "excluded_pids": [
+     "3521",
+     "3523",
+     "3525",
+     "3526",
+     "3527",
+     "3528"
+    ],
+    "span_pids": 3522
+   }
+  },
+  {
+   "arm": "F3_isl_rate_12p5",
+   "run_exit": 0,
+   "scene_check_exit": 0,
+   "scene_status": "ISL_PRESSURE_CANDIDATE",
+   "admission_rate": 1.0,
+   "access_clean": true,
+   "route_clean": true,
+   "downlink_clean": true,
+   "isl_pressure_ok": true,
+   "max_isl_utilization": 0,
+   "delta_t_arrival": {
+    "n": 10577,
+    "min_s": 0.0018353663739034687,
+    "p50_s": 0.017669237265465654,
+    "p95_s": 0.017669237265465654,
+    "max_s": 0.017669237265465654
+   },
+   "f2_accounting": {
+    "node_process_spans_supplied": true,
+    "total_node_process_s": 0.0,
+    "total_decision_compute_s": 0.0,
+    "max_abs_residual_s": 4.440892098500626e-16,
+    "ok": true,
+    "checked_packets": 3525,
+    "unclosed_span_pids": 0,
+    "excluded_pids": [],
+    "span_pids": 0
+   }
+  },
+  {
+   "arm": "F3_isl_rate_8",
+   "run_exit": 0,
+   "scene_check_exit": 0,
+   "scene_status": "ISL_PRESSURE_CANDIDATE",
+   "admission_rate": 1.0,
+   "access_clean": true,
+   "route_clean": true,
+   "downlink_clean": true,
+   "isl_pressure_ok": true,
+   "max_isl_utilization": 0,
+   "delta_t_arrival": {
+    "n": 10575,
+    "min_s": 0.0018353661631014262,
+    "p50_s": 0.017669237265465654,
+    "p95_s": 0.017669237265465654,
+    "max_s": 0.017669237265465654
+   },
+   "f2_accounting": {
+    "node_process_spans_supplied": true,
+    "total_node_process_s": 0.0,
+    "total_decision_compute_s": 0.0,
+    "max_abs_residual_s": 4.440892098500626e-16,
+    "ok": true,
+    "checked_packets": 3525,
+    "unclosed_span_pids": 0,
+    "excluded_pids": [],
+    "span_pids": 0
+   }
+  },
+  {
+   "arm": "NEG_no_queue",
+   "run_exit": 0,
+   "scene_check_exit": 0,
+   "scene_status": "NO_ISL_PRESSURE",
+   "admission_rate": 1.0,
+   "access_clean": true,
+   "route_clean": true,
+   "downlink_clean": true,
+   "isl_pressure_ok": false,
+   "max_isl_utilization": 0,
+   "delta_t_arrival": {
+    "n": 837,
+    "min_s": 0.0018353691489014778,
+    "p50_s": 0.017669237265465654,
+    "p95_s": 0.017669237265465654,
+    "max_s": 0.017669237265465654
+   },
+   "f2_accounting": {
+    "node_process_spans_supplied": true,
+    "total_node_process_s": 0.0,
+    "total_decision_compute_s": 0.0,
+    "max_abs_residual_s": 0.0,
+    "ok": true,
+    "checked_packets": 279,
+    "unclosed_span_pids": 0,
+    "excluded_pids": [],
+    "span_pids": 0
+   }
+  },
+  {
+   "arm": "base",
+   "run_exit": 0,
+   "scene_check_exit": 0,
+   "scene_status": "ISL_PRESSURE_CANDIDATE",
+   "admission_rate": 1.0,
+   "access_clean": true,
+   "route_clean": true,
+   "downlink_clean": true,
+   "isl_pressure_ok": true,
+   "max_isl_utilization": 0,
+   "delta_t_arrival": {
+    "n": 10576,
+    "min_s": 0.0018353659831209512,
+    "p50_s": 0.017669237265465654,
+    "p95_s": 0.017669237265465654,
+    "max_s": 0.017669237265465654
+   },
+   "f2_accounting": {
+    "node_process_spans_supplied": true,
+    "total_node_process_s": 0.0,
+    "total_decision_compute_s": 0.0,
+    "max_abs_residual_s": 4.440892098500626e-16,
+    "ok": true,
+    "checked_packets": 3525,
+    "unclosed_span_pids": 0,
+    "excluded_pids": [],
+    "span_pids": 0
+   }
+  }
+ ]
+}

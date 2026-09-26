@@ -1,0 +1,1044 @@
+{
+ "schema": "leo-e0-manifest/v1",
+ "generated_at": "2026-09-25T00:07:00+08:00",
+ "generated_by": "E0 取证子代理（只读取证）",
+ "task_book_ref": "任务书 v1.4 §8 交付物清单",
+ "frozen_identity": {
+  "code_sha256": {
+   "value": "9dea5140d14fe841711a665b84f9eaf0dd65d9c216467532a4bd4973117fe639",
+   "meaning": "最近一次正式实验（EXP-20260923-T1-STEP5-PRESSURE-R06，control+cd05 两 cell）被授权并实际执行的代码哈希",
+   "evidence": [
+    "leo-direct-sim/EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/authorization.json (authorized_cells[0].code_sha256 / [1].code_sha256)",
+    "leo-direct-sim/EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/run-manifest.json (line 34, line 69)",
+    "leo-direct-sim/ANALYSIS/EXP-20260923-T1-STEP5-PRESSURE-R06/v2-paired/analysis-manifest.json (line 129, line 7111)",
+    "VM CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/formal_run.json (code_sha256)"
+   ],
+   "history_within_deployment_source": [
+    {
+     "code_sha256": "72a2a6e4caea3be7e5e37a02644a59e8270c12f486074c67145f018da9e8ddf0",
+     "rounds": [
+      "EXP-20260923-T1-STEP5-MICRO-R01",
+      "EXP-20260923-T1-STEP5-MICRO-R02",
+      "EXP-20260923-T1-STEP5-MICRO-R03",
+      "EXP-20260923-T1-STEP5-PRESSURE-R01",
+      "EXP-20260923-T1-STEP5-PRESSURE-R02",
+      "EXP-20260923-T1-STEP5-PRESSURE-R03"
+     ],
+     "verification": "完整 64 位值已从 run-manifest.json 逐字提取（6 个 run-manifest：MICRO R01-R03 + PRESSURE R01-R03）"
+    },
+    {
+     "code_sha256": "9dea5140d14fe841711a665b84f9eaf0dd65d9c216467532a4bd4973117fe639",
+     "rounds": [
+      "EXP-20260923-T1-STEP5-MICRO-R04",
+      "EXP-20260923-T1-STEP5-MICRO-R05",
+      "EXP-20260923-T1-STEP5-MICRO-R06",
+      "EXP-20260923-T1-STEP5-PRESSURE-R04",
+      "EXP-20260923-T1-STEP5-PRESSURE-R05",
+      "EXP-20260923-T1-STEP5-PRESSURE-R06"
+     ],
+     "verification": "完整 64 位值已从 run-manifest.json + authorization.json + analysis-manifest.json 逐字提取；与最近正式实验授权一致"
+    }
+   ],
+   "code_sha256_drift_within_batch": {
+    "from": "72a2a6e4caea3be7e5e37a02644a59e8270c12f486074c67145f018da9e8ddf0",
+    "to": "9dea5140d14fe841711a665b84f9eaf0dd65d9c216467532a4bd4973117fe639",
+    "boundary": "EXP-20260923-T1-STEP5-* R03 -> R04",
+    "note": "同一 T1-STEP5 批次内 code_sha256 在 R03→R04 之间发生一次跳变；最近正式实验（R06）用的是 LATE 值"
+   }
+  },
+  "config_sha256_per_profile": {
+   "algorithm": "sha256( json.dumps(resolved_config['config'], ensure_ascii=False, sort_keys=True, separators=(',',':')) )  —— 即对「解析后的配置文档」做规范化 JSON 哈希，不是 YAML 文件字节哈希",
+   "algorithm_evidence": "leo-direct-sim/CODE/leo_sim/config.py:998 resolve_config() -> config.py:1025 sha = hashlib.sha256(canonical_json.encode('utf-8')).hexdigest()",
+   "verification": "本子代理用该算法在本机 4 个 run 目录重算，与各 run formal_run.json 记录的 config_sha256 全部一致",
+   "profiles": [
+    {
+     "profile": "EXP-20260923-T1-STEP5-PRESSURE-R06/control",
+     "config_sha256": "52dfe3d92c1e0e6cbd7281c8b4725d9889c5c2376848a22a5b25a980ed4c47a3",
+     "simulation_horizon_s": 600,
+     "provenance": "synthetic"
+    },
+    {
+     "profile": "EXP-20260923-T1-STEP5-PRESSURE-R06/cd05",
+     "config_sha256": "1391843c0a802c84bcda813218b6472efddd3d1291a11920406cdffcf8136e82",
+     "simulation_horizon_s": 600,
+     "provenance": "synthetic"
+    },
+    {
+     "profile": "EXP-20260923-T1-STEP5-MICRO-R06/control",
+     "config_sha256": "63aab05799a470ea1aa7033fbd7305962a563dc530bf19886421cefdb22d347e",
+     "simulation_horizon_s": 40,
+     "provenance": "synthetic"
+    },
+    {
+     "profile": "EXP-20260923-T1-STEP5-MICRO-R06/cd05",
+     "config_sha256": "869fc3d6e9215b8dc0a0f712d3940fd468883e4189048cbc926fad7c63677119",
+     "simulation_horizon_s": 40,
+     "provenance": "synthetic"
+    }
+   ],
+   "resolved_yaml_file_sha256_pressure_cd05": "db31faeb008e781c3514c0632f5fa0ccc2dee8eb66b0a605e91a552d294cdbb4",
+   "resolved_config_json_file_sha256_pressure_cd05": "2e1008a96767365f8cf57d8a45dd92fd44070364a8e1947b801b3b18af9e5f8d",
+   "caveat": "config_sha256 与 resolved YAML 文件字节哈希（db31faeb…）不是同一个值，冻结时必须两者都记录，不可互换"
+  },
+  "trace_sha256_per_cell": [
+   {
+    "cells": [
+     "EXP-20260923-T1-STEP5-PRESSURE-R06/control-s7",
+     "EXP-20260923-T1-STEP5-PRESSURE-R06/cd05-s7"
+    ],
+    "trace_sha256": "d7a0c67bb0eb35a71c54b018d50b5dd50df793fdc804cc81f883a7fbc01f3d65",
+    "trace_identity_sha256": "4e28833c8b693e023c0c4abad87e764fc7adef938a5fa43767914d650807e912",
+    "trace_identity_contract": "leo-sim-trace-identity/v3",
+    "trace_manifest_schema": "leo-sim-trace-manifest/v2",
+    "trace_schema": "leo-sim-trace/v1",
+    "record_count_relation": "两个 cell 的 trace_sha256 相同：trace 由 seed=7 的同一生成器产出，仅配置不同",
+    "trace_manifest_sha256": "f562c8ff4f30ebd80ba55fe51d54a00e8a7b3f7ce36b59741abf79e87f994108",
+    "simulation_horizon_s": 600,
+    "time_range_s": [
+     0.03868,
+     599.670041
+    ],
+    "policy": {
+     "provenance": "synthetic_generator",
+     "source_path": null,
+     "source_sha256": "",
+     "od_mapping_grid_deg": 0.25,
+     "od_mapping_aggregation_deg": 1
+    }
+   },
+   {
+    "cells": [
+     "EXP-20260923-T1-STEP5-MICRO-R06/control-s7",
+     "EXP-20260923-T1-STEP5-MICRO-R06/cd05-s7"
+    ],
+    "trace_sha256": "3423c86c17427cc4f76a28a936a8c85c44dccd7cd79a93fcd3aba0d482809a5c",
+    "trace_identity_sha256": "a101e0d5d182ada545d5dce5e411aec43ffcdbbebc4807dad1a7aba99469384a",
+    "simulation_horizon_s": 40
+   }
+  ],
+  "measurement": {
+   "measured_at_local": "2026-09-25T00:00:00+08:00 至 2026-09-25T00:07:00+08:00",
+   "measured_at_utc": "2026-09-24T16:00:00Z 至 2026-09-24T16:07:00Z",
+   "host": "本机 mac（取证侧）+ ssh 只读查询 cuda-liguang13",
+   "method": "deployment.json 逐条 sha256 重算 + git plumbing + 只读文件读取；未执行任何实验、未写入任何仓库"
+  },
+  "head_at_measurement": {
+   "leo_direct_sim": {
+    "path": "/Users/lge/Desktop/topic/leo-direct-sim",
+    "head": "241627856886934cbbf2a0820982bef2018e6249",
+    "branch": "main",
+    "worktree_clean": true,
+    "worktree_dirty_entries": 2,
+    "dirty_detail": [
+     "?? ANALYSIS/EXP-20260923-T1-STEP5-MICRO-R06/",
+     "?? ANALYSIS/EXP-20260923-T1-STEP5-PRESSURE-R06/"
+    ],
+    "note": "2 项均为 untracked 目录（本机新生成的分析产物），tracked 文件无改动 → 视为工作树干净"
+   },
+   "leo_experiment_platform": {
+    "path": "/Users/lge/Desktop/topic/leo-experiment-platform",
+    "head": "98c858f642aeca8056d215224b20783b00354026",
+    "branch": "chore/retire-dead-lines-q0-tiny",
+    "worktree_clean_at_0000": true,
+    "worktree_clean_at_0006": false,
+    "worktree_dirty_entries_at_0006": 7,
+    "dirty_detail_at_0006": [
+     " M CODE/leo_sim/__main__.py",
+     " M CODE/leo_sim/receipt.py",
+     " M CODE/leo_sim/tests/test_pairing_trace_identity.py",
+     " M CODE/leo_sim/tests/test_review_residuals.py",
+     " M CODE/scripts/remote/pull-results-remote.sh",
+     " M CODE/scripts/remote/remote_job.py",
+     "?? CODE/work/WP-LEO-V2-T1-TRUST-CHAIN-V6/round3/"
+    ],
+    "note": "取证窗口内该仓库由 0 项变为 7 项：存在并发写入者（见 provenance_caveats）"
+   }
+  }
+ },
+ "repositories": {
+  "platform_repository": {
+   "name": "leo-experiment-platform",
+   "path": "/Users/lge/Desktop/topic/leo-experiment-platform",
+   "origin": "https://github.com/fuguther/leo-experiment-platform.git",
+   "branch": "chore/retire-dead-lines-q0-tiny",
+   "head": "98c858f642aeca8056d215224b20783b00354026",
+   "head_subject": "docs: 冻结 round3 判据（12 条，按 S-1 回退后的最终状态）",
+   "main": "bd4a9e0",
+   "contains_vm_deployed_commit_046eea3": false,
+   "contains_3aa2890": true,
+   "head_vs_3aa2890": "3aa2890 是 HEAD 的祖先，中间 2 个提交（c2e18a8, 98c858f）",
+   "task_book_declared_head": "3aa2890",
+   "task_book_head_is_stale": true,
+   "role": "工程/平台侧仓库；与 VM 部署无同源关系",
+   "drift_baseline_eligible": false,
+   "drift_baseline_reason": "该仓库不含部署源 commit 046eea3（git merge-base --is-ancestor 报 fatal: Not a valid commit name），与之比对会得到 524 项「缺失」的假象（实为仓库不同，不是漂移）。平台仓库不能作漂移基准。"
+  },
+  "deployment_source_repository": {
+   "name": "leo-direct-sim",
+   "path": "/Users/lge/Desktop/topic/leo-direct-sim",
+   "origin": "https://github.com/fuguther/leo-direct-sim.git",
+   "branch": "main",
+   "head": "241627856886934cbbf2a0820982bef2018e6249",
+   "deployed_commit": "046eea3549f7089118d85efc3300b6d20e6a3c21",
+   "head_minus_deployed_commits": 3,
+   "delta_commits": [
+    "94631d1 feat: frozen 决策账本分离四个时间对象（T1 下一阶段 ①，规则20 UNSATISFIED） (#219)",
+    "549acd8 exp: 关闭审查步5 两道门（利用率独立重算 / 包级时延分解），附证据链与三条限制 (#220)",
+    "2416278 audit: 平台科研可用性审查与实验链闭环（含 F2 CLI/时延分离修复；审阅门两轮 BLOCK → R03） (#221)"
+   ],
+   "role": "VM 部署（deployment.json）与最近一次正式实验的代码源；本机存在同名克隆，是唯一可做漂移比对的本机副本",
+   "drift_baseline_eligible": true,
+   "drift_result_summary": {
+    "manifest_files": 880,
+    "identical": 867,
+    "local_modified": 12,
+    "missing_locally": 1,
+    "local_extra_in_deployed_dirs": 219
+   }
+  }
+ },
+ "vm_deployment": {
+  "host": "cuda-liguang13",
+  "ssh_alias": "vm",
+  "workspace_dir": "/data/论文/leo-direct-sim",
+  "workspace_is_git_repo": false,
+  "receipt_path": "/data/论文/leo-direct-sim/.remote_runtime/deployment.json",
+  "receipt_bytes": 175706,
+  "schema_version": 2,
+  "deployed_at": "2026-09-24T14:04:54+08:00",
+  "source_git_branch": "main",
+  "source_git_commit": "046eea3549f7089118d85efc3300b6d20e6a3c21",
+  "source_git_dirty": false,
+  "source_tree_sha256": "5a0ce1681daa826802a9cbe48fb11fd774cf03a8cd5cac92c5883784bdf6de5d",
+  "receipt_sha256": "356bdf34a1f38372593f7f84da5875888765f62958ef105b2fd8985e394455b7",
+  "deployed_dirs": [
+   "ANALYSIS",
+   "CODE",
+   "EXPERIMENTS",
+   "LITERATURE",
+   "PAPER"
+  ],
+  "deployed_files_count": 880,
+  "deployed_files_top_level_count": 7,
+  "deployment_commit_file": {
+   "path": ".deployment_commit",
+   "bytes": 41,
+   "sha256": "2e5c83fd86b9671be5d9bc6c2a412dfc2169596e0a4ec916d9c172f66a5299cc",
+   "exists_on_vm_only": true
+  },
+  "self_check": {
+   "files_rehashed_on_vm": 880,
+   "mismatches": 0,
+   "verdict": "deployment.json 对其记录的 880 个文件的哈希 100% 自洽"
+  }
+ },
+ "last_formal_run": {
+  "run_id": "EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7",
+  "session_name": "EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7_e2fc714beb59",
+  "execution_class": "FORMAL_EXPERIMENT",
+  "runtime_kind": "leo_sim_v2",
+  "launch_nonce": "e2fc714beb593b9c472ba020424d0e17",
+  "host": "cuda-liguang13",
+  "started_at": "2026-09-24T14:07:11+08:00",
+  "finished_at": "2026-09-24T14:07:31+08:00",
+  "launched_at": "2026-09-24T14:07:10+08:00",
+  "exit_code": 0,
+  "status": "success",
+  "failure_stage": null,
+  "error": null,
+  "research_eligible": true,
+  "config_sha256": "1391843c0a802c84bcda813218b6472efddd3d1291a11920406cdffcf8136e82",
+  "authorization_sha256": "60390989c7f96a8f78dbdf3d73a5afee0f3094cee7786f21ba3368ba272484bf",
+  "governance_receipt_sha256": "ad0faed5807eb3b9e670460eff0ace4fa06b56f402263f3f47945ffc6212c4b9",
+  "run_receipt_sha256": "c7c412b95e79bcef3466ffeef4fe121bd87853ccaf07ab0b0012f1bc46c84547",
+  "resolved_config_sha256": "2e1008a96767365f8cf57d8a45dd92fd44070364a8e1947b801b3b18af9e5f8d",
+  "trace_manifest_sha256": "f562c8ff4f30ebd80ba55fe51d54a00e8a7b3f7ce36b59741abf79e87f994108",
+  "command": "/data/liguang13/conda-envs/leo-i39/bin/python3 -m CODE.leo_sim run --config '/data/论文/leo-direct-sim/EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/resolved/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7.leo-sim.yaml' --out '/data/论文/leo-direct-sim/CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7' --authorization '/data/论文/leo-direct-sim/EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/authorization.json' --launch-nonce e2fc714beb593b9c472ba020424d0e17 --expect-run-id EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7",
+  "evidence": [
+   ".remote_runtime/current_status.json",
+   ".remote_runtime/launches/e2fc714beb593b9c472ba020424d0e17.json",
+   "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/formal_run.json",
+   "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/governance_receipt.json"
+  ],
+  "batch_note": "current_status.json 只保留最近一次；同一批次 VM CODE/Results/ 下共 4 个 run 目录：EXP-20260923-T1-STEP5-{MICRO,PRESSURE}-R06-{control,cd05}-s7",
+  "artifacts": [
+   {
+    "path": "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/formal_run.json",
+    "bytes": 556,
+    "local_copy": true,
+    "local_path": "/Users/lge/Desktop/topic/leo-direct-sim/CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/formal_run.json",
+    "local_match": "byte-identical"
+   },
+   {
+    "path": "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/governance_receipt.json",
+    "bytes": 2027,
+    "local_copy": true,
+    "local_match": "byte-identical"
+   },
+   {
+    "path": "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/ledgers.json",
+    "bytes": 43303774,
+    "local_copy": true,
+    "local_match": "byte-identical"
+   },
+   {
+    "path": "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/manifest.json",
+    "bytes": 1929,
+    "local_copy": true,
+    "local_match": "byte-identical"
+   },
+   {
+    "path": "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/receipt.json",
+    "bytes": 304668,
+    "local_copy": true,
+    "local_match": "byte-identical"
+   },
+   {
+    "path": "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/resolved_config.json",
+    "bytes": 5214,
+    "local_copy": true,
+    "local_match": "byte-identical"
+   },
+   {
+    "path": "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/trace.csv",
+    "bytes": 218198,
+    "local_copy": true,
+    "local_match": "byte-identical"
+   },
+   {
+    "path": "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/step5-recompute.json",
+    "bytes": 1363812,
+    "local_copy": false,
+    "local_match": "MISSING_LOCALLY"
+   },
+   {
+    "path": "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/step5-witness.json",
+    "bytes": 157578,
+    "local_copy": false,
+    "local_match": "MISSING_LOCALLY"
+   }
+  ],
+  "artifacts_total": 9,
+  "artifacts_copied_locally": 7,
+  "artifacts_missing_locally": [
+   "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/step5-recompute.json",
+   "CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/step5-witness.json"
+  ],
+  "missing_locally_across_batch": 8,
+  "missing_locally_reason": "本机 CODE/Results 副本 mtime 集中在 2026-09-24T14:08:03–14:08:05；VM 侧 step5-recompute.json/step5-witness.json mtime 为 14:10（由 CODE/Results/_step5_diagnostic/ 在 14:09–14:10 的诊断步生成），晚于本机拉取时刻 → 天然缺失",
+  "vm_only_result_dirs": [
+   "CODE/Results/_run_receipts/",
+   "CODE/Results/_step5_diagnostic/"
+  ],
+  "local_only_result_dirs": [
+   "CODE/Results/_external_launch_witness/"
+  ],
+  "logs_byte_identical": [
+   {
+    "file": "EXP-20260923-T1-STEP5-MICRO-R06-cd05-s7_efde12df83aa.log",
+    "sha256": "e7fdb77960b00113409360349064053a0face7e816ab060bde8b84528cd6c676"
+   },
+   {
+    "file": "exp-20260923-t1-step5-micro-r06-control-s7_602493c66908.log",
+    "sha256": "a8032484ec5a824539a65018901e4bb9881f2859ca8c48c96a0bb8cfd3a9062a"
+   },
+   {
+    "file": "EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7_e2fc714beb59.log",
+    "sha256": "acacae4076f629b997d7958cb6a877000cff21cabdd5ed94cfa67b3368801c0b"
+   },
+   {
+    "file": "EXP-20260923-T1-STEP5-PRESSURE-R06-control-s7_7095fc6dad5e.log",
+    "sha256": "bb21858ac3c02ffba122a42a29455872146622370aef01904f52592fd5ccb32f"
+   }
+  ]
+ },
+ "local_only_artifacts": {
+  "status": "LOCAL_ONLY",
+  "generation_host": null,
+  "generation_command": "python3 -m CODE.experiment_platform.v2_analysis --experiment <EXP> --authorization <auth.json> --out ANALYSIS/<EXP>/v2-paired （RUNBOOK 记载的命令形态；未能确证实际执行主机）",
+  "vm_path_exists": false,
+  "vm_evidence": "VM 上 os.path.exists('ANALYSIS/EXP-20260923-T1-STEP5-PRESSURE-R06') = False；find /data -maxdepth 4 -name 'EXP-20260923-T1-STEP5-*' -not -path '*/CODE/Results/*' 只返回 EXPERIMENTS/ 下的配置目录，无 ANALYSIS 目录；VM ANALYSIS/ 最新到 EXP-20260829-GLOBAL-PRESSURE-BRACKET-R02",
+  "artifacts": [
+   {
+    "path": "ANALYSIS/EXP-20260923-T1-STEP5-PRESSURE-R06/v2-paired/analysis-manifest.json",
+    "bytes": 558519,
+    "sha256": null
+   },
+   {
+    "path": "ANALYSIS/EXP-20260923-T1-STEP5-PRESSURE-R06/v2-paired/claim-gate.json",
+    "bytes": 680,
+    "sha256": null
+   },
+   {
+    "path": "ANALYSIS/EXP-20260923-T1-STEP5-PRESSURE-R06/v2-paired/report.md",
+    "bytes": 1486,
+    "sha256": null
+   },
+   {
+    "path": "ANALYSIS/EXP-20260923-T1-STEP5-PRESSURE-R06/v2-paired/summary.json",
+    "bytes": 810,
+    "sha256": null
+   },
+   {
+    "path": "ANALYSIS/EXP-20260923-T1-STEP5-MICRO-R06/v2-paired/analysis-manifest.json",
+    "bytes": 59052,
+    "sha256": null
+   },
+   {
+    "path": "ANALYSIS/EXP-20260923-T1-STEP5-MICRO-R06/v2-paired/claim-gate.json",
+    "bytes": 677,
+    "sha256": null
+   },
+   {
+    "path": "ANALYSIS/EXP-20260923-T1-STEP5-MICRO-R06/v2-paired/report.md",
+    "bytes": 1522,
+    "sha256": null
+   },
+   {
+    "path": "ANALYSIS/EXP-20260923-T1-STEP5-MICRO-R06/v2-paired/summary.json",
+    "bytes": 807,
+    "sha256": null
+   }
+  ],
+  "local_root": "/Users/lge/Desktop/topic/leo-direct-sim/",
+  "mtime": "2026-09-24T14:08:32",
+  "content_facts": {
+   "pressure_report_status": "VERIFIED",
+   "verified_runs": 2,
+   "primary_metric": "e2e_delay_mean_s",
+   "claim_status": "READY_FOR_INDEPENDENT_CLAIM_REVIEW",
+   "planned_contrast": {
+    "name": "cd05_vs_control",
+    "left_arm": "control",
+    "right_arm": "cd05",
+    "n_pairs": 1,
+    "mean_difference": -0.14801011167936323
+   },
+   "cannot_claim": [
+    "any algorithmic superiority, information value, learning value or new-mechanism contribution",
+    "an effect-size, performance curve, threshold, or causal claim about compute delay",
+    "real subscriber traffic or a calibrated demand model",
+    "reproduction of the #212 scripted-geometry micro-mechanism fixture (this batch uses real Walker geometry)"
+   ]
+  },
+  "caveat": "sha256 字段为 null：本次只核了字节数，未逐文件计算这 8 个产物的哈希；且其生成主机未取证（VM 无此目录、本机 mtime 与 RUNBOOK 的 v2_analysis 步骤吻合，但无法排除别处生成后拷入）。作为 REAL 门证据前必须先补生成溯源。"
+ },
+ "authorization_chain": {
+  "authorization_path_convention": "EXPERIMENTS/<EXP-ID>/authorization.json（不在 CODE/Results 下；CODE/Results 只放 run 产物与 governance_receipt.json）",
+  "last_authorization_path": "/data/论文/leo-direct-sim/EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/authorization.json",
+  "last_authorization_bytes": 9798,
+  "last_authorization_file_sha256": "60390989c7f96a8f78dbdf3d73a5afee0f3094cee7786f21ba3368ba272484bf",
+  "file_sha256_equals_status_authorization_sha256": true,
+  "schema": "experiment-execution-authorization/v1",
+  "status": "AUTHORIZED",
+  "payload_sha256": "f1100b62958c2796228a7f3b62ac64427bfa4b8f28dcf13701c0db4416590435",
+  "payload_sha256_algorithm": "sha256(canonical_json(authorization 去掉 payload_sha256 字段自身))，canonical = json.dumps(ensure_ascii=False, sort_keys=True, separators=(',',':'))；已实测复算一致",
+  "experiment_id": "EXP-20260923-T1-STEP5-PRESSURE-R06",
+  "experiment_dir": "EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06",
+  "authorized_cells": [
+   "EXP-20260923-T1-STEP5-PRESSURE-R06-control-s7",
+   "EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7"
+  ],
+  "pairing_key": "s7",
+  "phase": "non_learning",
+  "trace_seed": 7,
+  "controlled_signature": "8e0e825314978e0021573222e09af6e8049267113cee991273d53aecdfb67442",
+  "execution_chain_sha256": {
+   "CODE/experiment_platform/authorize_experiment.py": "14f6d5ebc8f913764045c112b0b10ba3c3871f8820b7e2d3c1fa47ac9a72aebb",
+   "CODE/experiment_platform/v2_analysis.py": "1085a5bf5618eb06fd0e79e91071ceaf237c6860c9e6185cd6b4920cb7bb2135",
+   "CODE/experiment_platform/v2_serial_gate.py": "a139f232236acf921874e177817361288f0799f58f78e12a00d4ea3fce7953a3",
+   "CODE/scripts/remote/deployment_guard.py": "c1580fdc42c3fdd5c650304998688d8ccdf69825c0070c65ba5b8c59c063973b",
+   "CODE/scripts/remote/remote_job.py": "e52ac7b16ca6755163a50b21684092bb2812b3c06d13e042628d33a969c53563",
+   "CODE/scripts/remote/run-remote.sh": "9b78a509fb5deb63c270247588b6390c3ec82f1c67ee983272174fedc5ad24e3"
+  },
+  "execution_chain_verification": "6 个文件在 VM 上实测 sha256，与授权书记录 100% 一致",
+  "verification_policy": {
+   "recompute_work_finalization": true,
+   "require_all_bound_artifact_hashes": true,
+   "require_current_scenario_source_hashes": true,
+   "require_current_trace_input_hashes": true,
+   "require_exact_matrix_cohort": true,
+   "require_exact_run_config_hash": true
+  },
+  "work_finalization": {
+   "work_id": "WP-LEO-V2-T1-STEP5-GATE-EVIDENCE",
+   "revision": 6,
+   "finalization_path": "CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/finalization.json",
+   "finalization_sha256": "53a061c33dc8cfe5271a15d9a104727ad109c59c9593abb22871eff1b6885968",
+   "brief_sha256": "2ed2521544140cb93b790ba3adc54d851c37a658efbc97f16869c2e6405272",
+   "decision_sha256": "21f10701182d9f5f61ecd4ef2a4580fadf20aff0980a2d50603ccc0aedb626e0"
+  },
+  "issuer_script": {
+   "path": "CODE/experiment_platform/authorize_experiment.py",
+   "bytes": 28799,
+   "sha256": "14f6d5ebc8f913764045c112b0b10ba3c3871f8820b7e2d3c1fa47ac9a72aebb",
+   "cli": [
+    "--experiment <Path> required",
+    "--finalization <Path> required",
+    "--out <Path> required",
+    "--root <Path> default=PROJECT_ROOT"
+   ],
+   "required_review_roles": [
+    "cold_start",
+    "satellite_drl",
+    "adversarial"
+   ],
+   "docstring_contract": "An authorization is derived evidence, not an approval string. Issuance and runtime verification both recompute the underlying work finalization, receipt hashes, experiment artifact hashes, manifest identities, and canonical config hashes. Any changed or missing input fails closed.",
+   "command": "python3 -m CODE.experiment_platform.authorize_experiment --experiment EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06 --finalization CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/finalization.json --out EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/authorization.json"
+  },
+  "rerun_prerequisites": [
+   "1 干净部署：source_git_dirty=false 的源码树经 CODE/scripts/remote/push-remote.sh + deployment_guard.py 重新部署并刷新 deployment.json（receipt_sha256 会变）",
+   "2 work finalization：CODE/work/<WP>/<Rxx>/ 下 brief/decision/finalization.json 齐备且 revision 递增",
+   "3 三角色审阅通过：cold_start / satellite_drl / adversarial",
+   "4 重新签发授权（必须在部署完成后执行，否则 execution_chain_sha256 对不上）",
+   "5 实验编译产物齐备：request.json / compile-report.json / run-manifest.json / resolved/*.yaml",
+   "6 发射：CODE/scripts/remote/run-remote.sh --runtime-kind leo_sim_v2 --config <resolved.yaml> --authorization <authorization.json> --session <name>，解释器 /data/liguang13/conda-envs/leo-i39/bin/python3",
+   "7 后处理：python3 -m CODE.experiment_platform.v2_analysis --experiment <EXP> --authorization <auth.json> --out ANALYSIS/<EXP>/v2-paired",
+   "8 若要严格可比 046eea3：需显式检出该提交（当前本机与 VM 都不是该提交的工作树）",
+   "launcher 配置：本机 CODE/scripts/remote/remote.env（404 B, mode 600, gitignored, 键 REMOTE_HOST_ALIAS）"
+  ]
+ },
+ "recompute_commands": [
+  {
+   "id": "rc-trace-file-hash",
+   "purpose": "复算 trace SHA（run 内 trace.csv 文件字节哈希）",
+   "command": "cd /data/论文/leo-direct-sim/CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7 && sha256sum trace.csv",
+   "expected_output_sha256": "d7a0c67bb0eb35a71c54b018d50b5dd50df793fdc804cc81f883a7fbc01f3d65",
+   "writes": false
+  },
+  {
+   "id": "rc-config-canonical-hash",
+   "purpose": "复算 config_sha256（解析后配置文档的规范化 JSON 哈希）",
+   "command": "cd /Users/lge/Desktop/topic/leo-direct-sim && python3 -c \"import json,hashlib;rc=json.load(open('CODE/Results/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7/resolved_config.json'));print(hashlib.sha256(json.dumps(rc['config'],ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest())\"",
+   "expected_output_sha256": "1391843c0a802c84bcda813218b6472efddd3d1291a11920406cdffcf8136e82",
+   "writes": false
+  },
+  {
+   "id": "rc-deployment-selfcheck",
+   "purpose": "复算 VM 部署自洽性（880 条记录逐条重算哈希）",
+   "command": "ssh vm 'cd /data/论文/leo-direct-sim && python3 -c \"import json,hashlib;d=json.load(open(\\\".remote_runtime/deployment.json\\\"));bad=[f[\\\"path\\\"] for f in d[\\\"deployed_files\\\"] if hashlib.sha256(open(f[\\\"path\\\"],\\\"rb\\\").read()).hexdigest()!=f[\\\"sha256\\\"]];print(len(bad),bad[:5])\"'",
+   "expected_output": "0 []",
+   "writes": false
+  },
+  {
+   "id": "rc-drift-vs-local",
+   "purpose": "复算本机镜像与 VM 部署的逐文件漂移（期望 867 一致 / 12 已改 / 1 缺失）",
+   "command": "cd /Users/lge/Desktop/topic/leo-direct-sim && python3 /tmp/e0_compare.py",
+   "expected_output_summary": "IDENTICAL=867 LOCAL_MODIFIED=12 MISSING_LOCALLY=1 LOCAL_EXTRA=219",
+   "writes": false,
+   "dependency_note": "/tmp/e0_compare.py 由本子代理生成，若已清理需按笔记 §4.1 重建"
+  },
+  {
+   "id": "rc-authorization-payload",
+   "purpose": "复算授权书 payload_sha256",
+   "command": "cd /data/论文/leo-direct-sim && python3 -c \"import json,hashlib;d=json.load(open('EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/authorization.json'));d.pop('payload_sha256');print(hashlib.sha256(json.dumps(d,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest())\"",
+   "expected_output_sha256": "f1100b62958c2796228a7f3b62ac64427bfa4b8f28dcf13701c0db4416590435",
+   "writes": false
+  },
+  {
+   "id": "rc-config-validate",
+   "purpose": "只读校验 resolved 配置（VM，正式环境解释器）",
+   "command": "ssh vm '/data/liguang13/conda-envs/leo-i39/bin/python3 -m CODE.leo_sim config validate EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/resolved/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7.leo-sim.yaml --show'",
+   "writes": false
+  },
+  {
+   "id": "rc-dry-run",
+   "purpose": "E2 非写盘 smoke（--dry-run 明确不写产物）",
+   "command": "ssh vm '/data/liguang13/conda-envs/leo-i39/bin/python3 -m CODE.leo_sim run --config EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/resolved/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7.leo-sim.yaml --dry-run'",
+   "writes": false
+  },
+  {
+   "id": "rc-local-smoke",
+   "purpose": "本机 mac 非学习臂 smoke（无 TF；-B 禁止写 __pycache__；--out 指向仓库外）",
+   "command": "cd /Users/lge/Desktop/topic/leo-direct-sim && python3 -B -m CODE.leo_sim run --config EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/resolved/EXP-20260923-T1-STEP5-PRESSURE-R06-cd05-s7.leo-sim.yaml --out /tmp/e2-smoke --dry-run",
+   "writes": false,
+   "note": "本机 Python 3.14.2、无 tensorflow；非学习臂因 learning.py:28 的惰性可选导入可运行"
+  },
+  {
+   "id": "rc-v2-analysis",
+   "purpose": "重跑配对分析（会写 ANALYSIS/<EXP>/v2-paired，属写盘操作，仅在正式流程中执行）",
+   "command": "ssh vm 'cd /data/论文/leo-direct-sim && /data/liguang13/conda-envs/leo-i39/bin/python3 -m CODE.experiment_platform.v2_analysis --experiment EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06 --authorization EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/authorization.json --out ANALYSIS/EXP-20260923-T1-STEP5-PRESSURE-R06/v2-paired'",
+   "writes": true
+  },
+  {
+   "id": "rc-issue-authorization",
+   "purpose": "重新签发执行授权（写 EXPERIMENTS/<EXP>/authorization.json；必须先完成部署与 finalization）",
+   "command": "ssh vm 'cd /data/论文/leo-direct-sim && /data/liguang13/conda-envs/leo-i39/bin/python3 -m CODE.experiment_platform.authorize_experiment --experiment EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06 --finalization CODE/work/WP-LEO-V2-T1-STEP5-GATE-EVIDENCE/R06/finalization.json --out EXPERIMENTS/EXP-20260923-T1-STEP5-PRESSURE-R06/authorization.json'",
+   "writes": true
+  }
+ ],
+ "provenance_caveats": [
+  {
+   "id": "caveat-code-sha-drift-concurrent-writes",
+   "severity": "HIGH",
+   "title": "并发写入导致的 code_sha256 漂移",
+   "claimed_timeline_from_parent": [
+    "2a114890",
+    "c694fb0d",
+    "57e86d44"
+   ],
+   "verification_of_claimed_timeline": [
+    {
+     "prefix": "2a114890",
+     "status": "VERIFIED",
+     "full_value": "2a114890e8b11e429fec45a6b1efcb81c1d80a8e195a9c9407a250d218f16dbe",
+     "found_in": [
+      "leo-experiment-platform/out/s3/receipt.json",
+      "leo-experiment-platform/out/e2-corridor-diag-20260925/receipt.json",
+      "leo-experiment-platform/out/e2-v2-q4g_f35/receipt.json"
+     ],
+     "first_seen_mtime": "2026-09-24T22:40:12"
+    },
+    {
+     "prefix": "c694fb0d",
+     "status": "UNVERIFIED",
+     "full_value": null,
+     "reason": "对 /Users/lge/Desktop/topic 全树（json/md/txt）检索 0 命中；对 leo-direct-sim 与 VM 检索 0 命中。无法确认该值存在或其含义。"
+    },
+    {
+     "prefix": "57e86d44",
+     "status": "UNVERIFIED",
+     "full_value": null,
+     "reason": "同 c694fb0d：全树 0 命中，无法确认。"
+    }
+   ],
+   "verified_timeline_platform_out": [
+    {
+     "mtime": "2026-09-24T20:25:08",
+     "code_sha256": "ffcad9fca16136cd5206942f4340d998fc3a0a814fe0b6d9aa97d72efd00d82e",
+     "example_path": "leo-experiment-platform/out/smoke/receipt.json",
+     "files": 1
+    },
+    {
+     "mtime": "2026-09-24T20:27:44",
+     "code_sha256": "4402081fe33c10570218a36257a3116eebeb757356d64258d482884a34a33def",
+     "example_path": "leo-experiment-platform/out/probe/receipt.json",
+     "files": 3
+    },
+    {
+     "mtime": "2026-09-24T21:48:04",
+     "code_sha256": "469924bb82c14ffda4beedec3e73ea081d78b4604b9802f3477ba4a19d396a5e",
+     "example_path": "leo-experiment-platform/out/c1/receipt.json",
+     "files": 8
+    },
+    {
+     "mtime": "2026-09-24T21:48:57",
+     "code_sha256": "50e45c74947cca457f840e782edf69ff9f3936a11952f9839e4dd6e7809ac7fb",
+     "example_path": "leo-experiment-platform/out/f-v5/receipt.json",
+     "files": 4
+    },
+    {
+     "mtime": "2026-09-24T22:08:56",
+     "code_sha256": "312f598acdc5f1e236e9575bd7e017b6e5a1d6ddca58fa724d557c843d4422e7",
+     "example_path": "leo-experiment-platform/out/r2-probe/receipt.json",
+     "files": 2
+    },
+    {
+     "mtime": "2026-09-24T22:40:12",
+     "code_sha256": "2a114890e8b11e429fec45a6b1efcb81c1d80a8e195a9c9407a250d218f16dbe",
+     "example_path": "leo-experiment-platform/out/s3/receipt.json",
+     "files": 9
+    }
+   ],
+   "verified_timeline_deployment_source": [
+    {
+     "code_sha256_prefix": "72a2a6e4caea3be7",
+     "rounds": [
+      "EXP-20260923-T1-STEP5-MICRO-R01",
+      "R02",
+      "R03"
+     ]
+    },
+    {
+     "code_sha256": "9dea5140d14fe841711a665b84f9eaf0dd65d9c216467532a4bd4973117fe639",
+     "rounds": [
+      "EXP-20260923-T1-STEP5-MICRO-R04",
+      "R05",
+      "R06",
+      "EXP-20260923-T1-STEP5-PRESSURE-R04",
+      "R05",
+      "R06"
+     ]
+    }
+   ],
+   "live_evidence_of_concurrent_writes": {
+    "leo_experiment_platform_worktree_at_0000": "clean (0 entries)",
+    "leo_experiment_platform_worktree_at_0006": "7 entries (6 modified + 1 untracked CODE/work/WP-LEO-V2-T1-TRUST-CHAIN-V6/round3/)",
+    "modified_files": [
+     "CODE/leo_sim/__main__.py",
+     "CODE/leo_sim/receipt.py",
+     "CODE/leo_sim/tests/test_pairing_trace_identity.py",
+     "CODE/leo_sim/tests/test_review_residuals.py",
+     "CODE/scripts/remote/pull-results-remote.sh",
+     "CODE/scripts/remote/remote_job.py"
+    ],
+    "head_stable": true,
+    "note": "取证窗口内（00:00→00:06）平台仓库工作树由干净变为 7 项改动，且 HEAD 未变 → 存在正在编辑该仓库的并发写入者；这就是 code_sha256 漂移的直接机制：同一批 E2 产物在 out/（gitignored）中留下 6 个不同的 code_sha256，随源码被并发修改而递增。"
+   },
+   "scope_of_impact": "该漂移发生在「平台仓库 + out/（gitignored 的 E2 探索产物）」这条活动线上，**不影响** E0 冻结身份：E0 的 code_sha256 与部署身份取自 leo-direct-sim@046eea3（部署源），与该仓库无关。但任何引用平台仓库 out/ 产物做论据的结论必须带 code_sha256 一起引用，否则不可复算。"
+  },
+  {
+   "id": "caveat-null-fields",
+   "severity": "MEDIUM",
+   "title": "null 字段及原因",
+   "null_fields": [
+    {
+     "field": "local_only_artifacts.generation_host",
+     "value": null,
+     "reason": "VM 无 ANALYSIS/EXP-20260923-* 目录；本机 mtime 与 RUNBOOK 的 v2_analysis 步骤吻合，但无法确证生成主机，也无法排除别处生成后拷入。"
+    },
+    {
+     "field": "local_only_artifacts.generation_command",
+     "value": null,
+     "reason": "同上：RUNBOOK 记载了命令形态，但未找到实际执行记录（无 shell history / 日志证据）。"
+    },
+    {
+     "field": "local_only_artifacts.artifacts[].sha256",
+     "value": null,
+     "reason": "本次只核了 8 个本机专属产物的字节数，未逐文件计算 sha256。"
+    },
+    {
+     "field": "last_formal_run.failure_stage / error",
+     "value": null,
+     "reason": "非未知：current_status.json 明确记录 failure_stage=null, error=null（运行成功）。"
+    },
+    {
+     "field": "provenance_caveats[0].verification_of_claimed_timeline[1..2].full_value",
+     "value": null,
+     "reason": "c694fb0d / 57e86d44 全树 0 命中，无法验证。"
+    }
+   ]
+  },
+  {
+   "id": "caveat-task-book-head-stale",
+   "severity": "HIGH",
+   "title": "任务书记载的 HEAD 3aa2890 与「本机仓库」指向均需更正",
+   "detail": "任务书称仓库为 leo-experiment-platform（分支 chore/retire-dead-lines-q0-tiny，HEAD 3aa2890）。实测：该分支 HEAD 已是 98c858f（3aa2890 之后 2 个提交）；且该仓库不含部署源 commit 046eea3，不是 VM 部署与最近正式实验的代码源。部署源是 leo-direct-sim@046eea3（本机同名克隆现为 main=2416278，领先 3 个提交）。E0 的 code SHA 基准须由主会话裁定并在 manifest 中唯一化。"
+  },
+  {
+   "id": "caveat-local-drift-not-contamination",
+   "severity": "MEDIUM",
+   "title": "本机镜像与 VM 部署的差异是版本前进，不是工作树污染",
+   "detail": "leo-direct-sim 本机副本 880 项中 867 项逐字节一致、12 项不同、1 项缺失（.deployment_commit，VM 专属）。12 项差异 100% 落在 git diff --name-only 046eea3..2416278 的 60 文件改动集内（实测 all_12_in_diff=True, not_in_diff=[]），且本机工作树相对自身 HEAD 干净 → 差异 = 部署后本地前进 3 个提交。含义：046eea3 的代码在本机当前工作树中不存在，复现须显式检出该提交。"
+  },
+  {
+   "id": "caveat-unverified-remainder",
+   "severity": "LOW",
+   "title": "其余未取证项",
+   "items": [
+    "leo-experiment-platform 与 leo-direct-sim 两仓库的分工/迁移状态未取证（参见 /Users/lge/Desktop/topic/MIGRATION-TASK.md）",
+    "run-remote.sh (8828 B) 与 remote_job.py (36506 B) 的完整参数面未逐行通读",
+    ".remote_runtime/launches/ 下 24 个 launch 记录未逐个解析，更早的正式实验身份未重建",
+    "VM 上 out/ 与 .pytest_cache/ 的内容未核（不在 5 个部署目录内）"
+   ]
+  },
+  "H1 判定为阴性（全缓存注入 3528/3528 零翻转；队列差 ≈ 决策余量/15）。记录面扩展补丁已 5/5 验收但未应用到仓库，待 owner 决定；扩展 C（到达时刻真值）未实现，O3 可用性通道未完全排除。"
+ ],
+ "e1_e3_artifacts": {
+  "generated_at": "2026-09-24T17:39:39.421483+00:00",
+  "note": "最终登记（E0–E3；含记录面扩展补丁与验证脚本）",
+  "file_count": 60,
+  "files": [
+   {
+    "path": "00-repository-and-source-audit.md",
+    "bytes": 54343,
+    "sha256": "49b36166c6d678ca90da56d3a71c94e9eaaece49bf6b1e7cf05a8e8d821a23e2"
+   },
+   {
+    "path": "00b-real-world-source-ledger.csv",
+    "bytes": 11028,
+    "sha256": "af133de00216ad0c230a709f1da58d1610432ef38dfc1b58ecaf3888869324d7"
+   },
+   {
+    "path": "00c-packetization-and-hardware-bench.md",
+    "bytes": 16314,
+    "sha256": "b792ab4e1894ee681cb8ef681585657e0b477e4f5534b30859b7a0b752447cbe"
+   },
+   {
+    "path": "00d-realism-gates.md",
+    "bytes": 17800,
+    "sha256": "3c95f819179414276e2a01d82e7a38c502dd6ecb15c9a9bee46bde220cf5d558"
+   },
+   {
+    "path": "00e-field-time-and-information-permission-table.md",
+    "bytes": 17571,
+    "sha256": "e8087cc37857238a6666cd5b77029d10003ad27a2054912b8e463235b929c3b8"
+   },
+   {
+    "path": "01-e1-validation-record.md",
+    "bytes": 10270,
+    "sha256": "3126ef9bcb8ec17fab7dfc7b9eb5aa4c3b7c9f2e1c028cf75b0065467bfc669b"
+   },
+   {
+    "path": "01-formal-model.md",
+    "bytes": 8446,
+    "sha256": "5d36d132a27b85ed60f8266885d9db00cc1c4f14bd23f25d11c9fbf8303e59e0"
+   },
+   {
+    "path": "02-scene-and-pressure-audit.md",
+    "bytes": 13811,
+    "sha256": "d3157993b74b0af353161b243f35d94e095ecddd403b9ec2f8e0e85694f9e336"
+   },
+   {
+    "path": "02b-three-factor-one-at-a-time.md",
+    "bytes": 13910,
+    "sha256": "86fe28eab74cb2ec8327f25ebdcbcc0420edd1cc18c4ff8e5fae85d80a32338c"
+   },
+   {
+    "path": "03-preregistration.md",
+    "bytes": 14180,
+    "sha256": "10db67679343b46d6e33942bee6429d22579f449e31a1327b655f38c25fb3f52"
+   },
+   {
+    "path": "04-counterfactual-validation.md",
+    "bytes": 10978,
+    "sha256": "a114de828811767173f60da37011691f30d1b5df2d324bf0bd1944e8cbb89a19"
+   },
+   {
+    "path": "05-results-and-negative-findings.md",
+    "bytes": 25160,
+    "sha256": "5dac3838a30e2c3f2d24a5eb311d3a10d58cfa907f8cc212c20242a33614af34"
+   },
+   {
+    "path": "06-decision-gate.md",
+    "bytes": 12629,
+    "sha256": "9303dc5eddad0e02575db959fec382763e518977b894f36ce306dd0dff7b0ff1"
+   },
+   {
+    "path": "07-caliber-decisions.md",
+    "bytes": 4343,
+    "sha256": "0dc78775458a589b9f23b182b214df60110f1447245372593e28da0af1578e4b"
+   },
+   {
+    "path": "08-recording-gap-proposal.md",
+    "bytes": 11786,
+    "sha256": "fd602d033b2c2a3e7881a9e7d867fd5103697f5f5b58c2ec6ae28baf0ea948c8"
+   },
+   {
+    "path": "README.md",
+    "bytes": 6680,
+    "sha256": "1cebcdb9b943fd87725a381e33a7af053ebc98a2f3d8ecd8eec069d03ba37c76"
+   },
+   {
+    "path": "e1-report-frozen-mode-seed7.json",
+    "bytes": 5552,
+    "sha256": "b3d944bf6a74f75c916eb3ef2e9385f4647ef3e5395d9947b03b611df0584176"
+   },
+   {
+    "path": "e1-report-t1_pressure_corridor_v2_seed7.json",
+    "bytes": 5552,
+    "sha256": "bf95471dbc16b24fc9665495032f83c7ec8d41bcd38ccbaf067dc1ed55504f70"
+   },
+   {
+    "path": "e1_eta_validation.py",
+    "bytes": 20646,
+    "sha256": "706d103554a8b96d1e7340e1730872ef7f494916f3ddee213859edf002537e8c"
+   },
+   {
+    "path": "e2f-arms/F1_offered_15.config.json",
+    "bytes": 4361,
+    "sha256": "8dd1a8d394e44dc3b600b66bf662214dc5642d2f0740ecfd307761713ed06391"
+   },
+   {
+    "path": "e2f-arms/F1_offered_15.resolved.json",
+    "bytes": 8667,
+    "sha256": "365ac9db0b2db95a9ef8660bbb68bde7bdfb46b89be576c261c692cd7da09fe1"
+   },
+   {
+    "path": "e2f-arms/F1_offered_9.config.json",
+    "bytes": 4360,
+    "sha256": "7790a39fcbb65d963db04cae15e6ed789071d85983b74eb27ebcfb18bc494b70"
+   },
+   {
+    "path": "e2f-arms/F1_offered_9.resolved.json",
+    "bytes": 8665,
+    "sha256": "9fd7175780e9962812457bb82464f6528b2bd90a9a4ea08ffabeb80491e1ab28"
+   },
+   {
+    "path": "e2f-arms/F2_delay_0p05.config.json",
+    "bytes": 4362,
+    "sha256": "85b1bd366a605020f4583824b8cee6bab9e4295c6f6dfeea1e64fb7ed094e5c4"
+   },
+   {
+    "path": "e2f-arms/F2_delay_0p05.resolved.json",
+    "bytes": 8669,
+    "sha256": "07480f6f1de30f6824d32acebc97a905f2f512c45a0704bcce75752dab0bc456"
+   },
+   {
+    "path": "e2f-arms/F2_delay_0p15.config.json",
+    "bytes": 4362,
+    "sha256": "7babe838afc03e8c1fa3a8a012ef30ef5ecafd95df4cb8c402733ef4d54b5c00"
+   },
+   {
+    "path": "e2f-arms/F2_delay_0p15.resolved.json",
+    "bytes": 8669,
+    "sha256": "1b2d2597b9980cfb0fba01428cd139c609391841980a6bb1e751e46c0e1a0808"
+   },
+   {
+    "path": "e2f-arms/F3_isl_rate_12p5.config.json",
+    "bytes": 4361,
+    "sha256": "1bc9675705758418face5e2d21b1e3855cc4a642b16af8d7bcb8f46334ebc378"
+   },
+   {
+    "path": "e2f-arms/F3_isl_rate_12p5.resolved.json",
+    "bytes": 8667,
+    "sha256": "9ea35b4bb7fbf5f0de414a6b53523ce180e45f5dfe0b59cfe10c59d9f95fcecb"
+   },
+   {
+    "path": "e2f-arms/F3_isl_rate_8.config.json",
+    "bytes": 4360,
+    "sha256": "2b0fd1d5b9befb3a02b3add7ac18e35f2f74731ea8126962e0a9c1369e667b40"
+   },
+   {
+    "path": "e2f-arms/F3_isl_rate_8.resolved.json",
+    "bytes": 8665,
+    "sha256": "1a106a42d601afed725123d5e96adfcdc8ac66a0ca2680cf06802c07e949d97a"
+   },
+   {
+    "path": "e2f-arms/NEG_no_queue.config.json",
+    "bytes": 4360,
+    "sha256": "c1c75bdba0839c73228b20cb609028882ac1c99e50c3c5334dc9d7c247a3d55c"
+   },
+   {
+    "path": "e2f-arms/NEG_no_queue.resolved.json",
+    "bytes": 8665,
+    "sha256": "bab9cd8fb5bf082e5428d33f26d2a5353a0b3d7941077032125afe2a1bcf2075"
+   },
+   {
+    "path": "e2f-arms/base.config.json",
+    "bytes": 4361,
+    "sha256": "232998e056cde1787a856b65d3fc435e13aa4bd8d374cbf8b9cfebfad3140efa"
+   },
+   {
+    "path": "e2f-arms/base.resolved.json",
+    "bytes": 8667,
+    "sha256": "4a0ab92f0bfff10a31e1a83306f5a2913da38cb4d384c018195d56c52e067aa7"
+   },
+   {
+    "path": "e2f-arms/summary-diagnostic.json",
+    "bytes": 6350,
+    "sha256": "1bf8eb65b6607c9af993b15883f22ad3bc383e6dbdc501d56a503bf539a8016e"
+   },
+   {
+    "path": "e2f-arms/summary.json",
+    "bytes": 2822,
+    "sha256": "3504eda24a69cd917dc74dd762a684191ef72095e5c41ba19b59e76c3bc9f59e"
+   },
+   {
+    "path": "e2f_arms.py",
+    "bytes": 5907,
+    "sha256": "06647d6bc362ae131d1aaedb0852faaf4762fd3b31cfd3d9405b0af5c311e347"
+   },
+   {
+    "path": "e2f_run.py",
+    "bytes": 7452,
+    "sha256": "7b00aa5240e251fe06fead1d32da59e036017f77f2a74cc6f3f6bb96dfab0987"
+   },
+   {
+    "path": "e3-arms-compare.json",
+    "bytes": 356,
+    "sha256": "58df4eb11c38add6e4e8dd2edde4f69d0f3d40e3ea2f7cb07ba4012d0c5ca219"
+   },
+   {
+    "path": "e3-placebo.json",
+    "bytes": 208,
+    "sha256": "ea9e2953ab848d1a8039aa7057690a9b9972cff4755fb9a747398691af4e977a"
+   },
+   {
+    "path": "e3-report-first-round.json",
+    "bytes": 4791,
+    "sha256": "0703fd317f63a04204f4aa6e70065533adb317b1e3adcfc3fe5343fbe029ad53"
+   },
+   {
+    "path": "e3-scorer-fidelity-probe.json",
+    "bytes": 458,
+    "sha256": "a1cbb2dade2fefbb802f88bd3f00738f7829fce671882c4df6d88325396242e1"
+   },
+   {
+    "path": "e3_arms_compare.py",
+    "bytes": 7058,
+    "sha256": "88e94c9059cce39c73231295535a1effbd6dc7eb45c2594e816529bf84cdd54c"
+   },
+   {
+    "path": "e3_full_cache_compare.py",
+    "bytes": 5808,
+    "sha256": "1a7b169db8048fe8c2696722202af62c5d695ca5f1e05a7ebcebe7a21997ac47"
+   },
+   {
+    "path": "e3_o3_probe.py",
+    "bytes": 9272,
+    "sha256": "fecbd2e4256d2f90b6b798a72077ac7947d049820fd8804b657e883fd39a47fa"
+   },
+   {
+    "path": "e3_placebo.py",
+    "bytes": 7121,
+    "sha256": "5994441584ac29b6fd4da3d8029121aee9a23492c8d1303fa9116ffe5969e893"
+   },
+   {
+    "path": "e3_regret.py",
+    "bytes": 9890,
+    "sha256": "e7a4e8318e40f72dfc1162b7990498082710299aeb1fef1398d627fded8a104c"
+   },
+   {
+    "path": "e3_scorer.py",
+    "bytes": 7110,
+    "sha256": "d3dcff8c02c63ddb711da43f683dc3542cfd4daac61e0faf4a48495840c9d7d8"
+   },
+   {
+    "path": "full-cache-compare.json",
+    "bytes": 213,
+    "sha256": "ead4cc4922e06bc7177372e57e393f8b8f6c10c04e98f0b8945479da1500f6c1"
+   },
+   {
+    "path": "hi18-arms.json",
+    "bytes": 356,
+    "sha256": "65d8eb1a8674987f14f694c0de4f281285887e3e7f87a49c7d0c794b4c6421c8"
+   },
+   {
+    "path": "hi18-placebo.json",
+    "bytes": 208,
+    "sha256": "e0b4dc9d3a53f2560d2df7399806fcdfbe95b9fbaed4a10cb1eaf19fe6b99a76"
+   },
+   {
+    "path": "profiles/linkgen_generic_rf_mcs_1g.yaml",
+    "bytes": 1581,
+    "sha256": "c8a5624449631a448f0a5de63511939cec28f173796cae6f025332112456fa84"
+   },
+   {
+    "path": "profiles/linkgen_published_optical_100g.yaml",
+    "bytes": 2027,
+    "sha256": "468923abdedee16d1ca654736a5a4e651c94de869e2f5d7204c9e37573e20981"
+   },
+   {
+    "path": "profiles/t1_pressure_corridor_v2.yaml",
+    "bytes": 2717,
+    "sha256": "98c082a90f571a8d414e3c37d7d60ecefe62e84546b07e26d8c1c45a1443803d"
+   },
+   {
+    "path": "r5_packetization_check.py",
+    "bytes": 4390,
+    "sha256": "1f03071938c7edb1eb7cf0ab9e8b62635678f00204772b5f768873cded1c863b"
+   },
+   {
+    "path": "recording-extension.patch",
+    "bytes": 2262,
+    "sha256": "02441e5c79a5f87b9827bafe15e3a7ae3587c29f0ac356165f3917f7dce62d4b"
+   },
+   {
+    "path": "screenshot-review-matrix.md",
+    "bytes": 7031,
+    "sha256": "f069a84f19f74046352941674c2041e085286b4f37352932fe331055906e0877"
+   },
+   {
+    "path": "verify-recording-extension.json",
+    "bytes": 703,
+    "sha256": "727630ab19767a02d38e5c54d316372b230e91359268ab2d4900beca517773d8"
+   },
+   {
+    "path": "verify_recording_extension.py",
+    "bytes": 5705,
+    "sha256": "85ddad3f7d4b4a8320edfb55bdac26c0d636db26019b9c5ee1b3a2921fe7e8e9"
+   }
+  ]
+ }
+}

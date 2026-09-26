@@ -1,0 +1,118 @@
+{
+  "schema": "leo-sim-round4-evidence/v1",
+  "date": "2026-09-25",
+  "fix_1_zero_packet_burst": {
+    "repo_change": "CODE/leo_sim/trace.py materialization_report: the zero-packet-in-window refusal was replaced by a diagnostic",
+    "named_reproduction": {
+      "config": "mode=burst, offered_mbps=0.16, packet_bits=8000000, burst_start_s=10, burst_duration_s=10, burst_multiplier=5, scenario.seed=1, duration_s=60, 8 satellites / 1 plane, control_plane disabled, routing.policy=hop",
+      "before": {
+        "source": "round-3 code, reproduced in a shadow tree outside the repository (/Users/lge/Desktop/topic/leo-before-shadow-zero-packet) whose only difference from the current trace.py is this one hunk",
+        "result": "REFUSED",
+        "error": "trace materialization does not match the resolved config: a burst window [10.0, 20.0) is declared but ZERO of the 3 emitted packets fall inside it (declaration predicts 1.0 in-window packets at seed 1): the treatment is unobservable in this sample; raise the rate or widen the window"
+      },
+      "after": {
+        "result": "COMPILED",
+        "problems": [],
+        "packets_emitted": 3,
+        "packets_inside_window": 0,
+        "applied": false,
+        "applied_reason": "NO_PACKET_IN_WINDOW",
+        "transform_mismatched_probes": 0,
+        "intensity_status": "UNDECIDABLE",
+        "expected_packets_if_burst_applied": 1,
+        "expected_packets_if_burst_not_applied": 0.2,
+        "raw_sample_preserved": {
+          "inside_window": 0,
+          "all_emitted": 3
+        },
+        "trace_sha256": "2040b658ba482ac65a62a15a5ee8368d314d8d86507abcb5d8ed0e44af63e4f7"
+      }
+    },
+    "structural_checks_retained": [
+      "burst declared under demand.mode=uniform -> ConfigError",
+      "burst window extending past demand.emission_end_s -> ConfigError",
+      "burst_multiplier <= 1 -> TraceError, no trace.csv/manifest.json written",
+      "a _rate_multiplier that never applies the multiplier -> TraceError",
+      "packet bits mismatch / self-loop / undeclared endpoint / emit after emission end -> TraceError"
+    ],
+    "no_new_gate": "Independent review C4 searched for a flag, environment variable, threshold or allow-list that could re-introduce the refusal indirectly: none found; no production consumer reads packets_inside_window / applied / intensity_compatible.",
+    "no_seed_retry": "Same config compiled twice -> identical trace.csv sha256 (2040b658...); scenario.seed=2 -> e755cddc...; exactly one rng.streams call per compile; the only loop is the thinning proposal loop.",
+    "defect_found_by_review_and_fixed": {
+      "field": "burst.intensity.raw_sample_preserved.all_emitted",
+      "was": "len(inside) -- always equal to inside_window, reported 0 emitted for a 3-packet trace",
+      "now": "the caller passes the emitted packet count (len(rows)); verified as 3",
+      "re_review": "round4/review-A2-delta.json D1 PASS"
+    },
+    "tests_updated": {
+      "renamed": "test_a_declared_burst_that_no_packet_observes_is_refused_by_compile -> test_a_declared_burst_that_no_packet_observes_is_reported_not_refused",
+      "fixture": "now the named reproduction (the old 1e-6 Mbps fixture produced an EMPTY trace and could not discriminate)",
+      "assertions": "one-for-one mapping of the old assertions plus all_emitted == len(rows) and applied_reason",
+      "scan": "SCAN_SEEDS = 400 (was a docstring claim of 400 over a range(1,231) loop) and asserts BOTH 222 and 227 are INCOMPATIBLE"
+    }
+  },
+  "fix_2_freeze_scope": {
+    "artifact": "CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/round3/FREEZE-SCOPE.md",
+    "generator": "CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/round4/generate_freeze_scope.py",
+    "sections": {
+      "runtime_code_hash_coverage": {
+        "function": "receipt.code_sha256()",
+        "rule": "non-recursive glob CODE/leo_sim/*.py, name + sha256(bytes) per file, sorted by name",
+        "files": 31,
+        "aggregate": "693796433f1e98ecb8c039c4725476df9fbd48795df2a0da98d87d73a726d974"
+      },
+      "execution_chain_hash_coverage": {
+        "function": "governance.execution_chain_sha256()",
+        "paths": 6,
+        "aggregate_rule": "sha256(json.dumps(mapping, sort_keys=True, separators=(\",\", \":\")))",
+        "aggregate": "d3f283d49dad4ef716a7ccf72342a572243133901d77b46cce616bda186f1e15"
+      },
+      "version_reproduction_dependencies": {
+        "tests": 8,
+        "others": 2,
+        "note": "tests must be frozen but are NOT inside the non-recursive code_sha256 coverage; the hash algorithm was not changed"
+      },
+      "freeze_set": {
+        "files": 20,
+        "aggregate_rule": "sha256 over sorted \"<path>NUL<sha256>NL\" records",
+        "aggregate": "e1b75b8b7ccd9dac3daff7a53b54423450db9a5569d6081899aa48252750e9ad"
+      }
+    },
+    "defect_found_by_review_and_fixed": {
+      "was": "section 1 cited CODE/leo_sim/receipt.py:152-158 for code_sha256, which is stale (the function spans 160-167)",
+      "now": "function_lines() derives the range from the source; the delta reviewer proved it follows an edit by inserting 3 lines in a /tmp copy and observing 160-167 -> 163-170",
+      "re_review": "round4/review-B2-delta.json D2/D3 PASS"
+    },
+    "other_review_nits_fixed": [
+      "header wording now separates generated sections 1-3 from hand-maintained sections 4-5",
+      "the execution-chain aggregate rule now states the separators (default separators give a different value)",
+      "section 5 no longer hard-codes the path count",
+      "the generator now self-checks that its file list reproduces receipt.code_sha256()",
+      "the same stale citation was corrected in HASH-IMPACT.md and REPORT.md",
+      "the pre-change shadow tree (a full platform copy) was moved out of the repository"
+    ]
+  },
+  "freeze_commit": {
+    "sha": "324c8ee882f243f59718df8864e7cddcf63481b6",
+    "branch": "freeze/pre-experiment-trust-r1",
+    "files": 20,
+    "stat": "3365 insertions(+), 68 deletions(-)",
+    "instance_commit": "1b8ef91081accc2c989e6620d1b41678d0064df2",
+    "verification": "git show --name-only 324c8ee8 == FREEZE-SCOPE section 3 (symmetric difference EMPTY); every committed file hashes to the documented value; git status --untracked-files=all empty after commit",
+    "pushed": false,
+    "pr_created": false
+  },
+  "reviews": {
+    "round4/review-A-zero-packet.json": "PASS (C1-C8), 1 real defect + 4 weaknesses",
+    "round4/review-A2-delta.json": "PASS (D1-D6)",
+    "round4/review-B-freeze-scope.json": "FAIL on C2 (stale line citation) + 3 weaknesses",
+    "round4/review-B2-delta.json": "PASS (D1-D6)",
+    "round4/coldstart-review.json": "see the report; the cold-start review of the frozen commit",
+    "independence_disclosure": "all reviewers are independent sessions of the same model family, not human or institutional review (platform limitation L13/L20)"
+  },
+  "vm": {
+    "connection": "USABLE (verified this round; the earlier no-VM conclusion was an inference from the local absence of /data and was wrong)",
+    "deployment": "BLOCKED by the deployment contract: this repository is a strict subset of the canonical workspace",
+    "end_to_end": "NOT RUN",
+    "detail": "round4/vm-connection-report.json"
+  }
+}

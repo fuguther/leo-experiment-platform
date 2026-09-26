@@ -1,0 +1,194 @@
+{
+ "scenario": {
+  "name": "t1-pressure-corridor",
+  "duration_s": 300.0,
+  "time_step_s": 0.1,
+  "num_satellites": 24,
+  "num_planes": 3,
+  "altitude_km": 550.0,
+  "inclination_deg": 53.0,
+  "min_elevation_deg": 5,
+  "seed": 7,
+  "geometry_epoch_s": 0.0
+ },
+ "endpoints": {
+  "grid_deg": 0.25,
+  "aggregation_deg": 1.0,
+  "sites": [
+   {
+    "name": "equator",
+    "lat": 0.1,
+    "lon": 0.1,
+    "demand_weight": 1.0
+   },
+   {
+    "name": "north",
+    "lat": 52.6,
+    "lon": 90.4,
+    "demand_weight": 1.0
+   }
+  ],
+  "mlab_auto": false,
+  "mlab_max_sites": 64
+ },
+ "demand": {
+  "mode": "uniform",
+  "offered_mbps": 15.0,
+  "emission_end_s": null,
+  "packet_bits": 1000000,
+  "deadline_s": null,
+  "csv_path": null,
+  "population_path": null,
+  "source_population_exponent": 1.0,
+  "destination_population_exponent": 1.0,
+  "gravity_alpha": 1.5,
+  "gravity_d_floor_km": 500.0,
+  "hotspot_fraction": 0.1,
+  "hotspot_concentration": 0.8,
+  "burst_start_s": null,
+  "burst_duration_s": null,
+  "burst_multiplier": 2.0,
+  "diurnal_amplitude": 0.5,
+  "diurnal_phase_h": 12.0,
+  "temporal_model": "constant",
+  "utc_start_hour": 0.0,
+  "population_destination_sampler": "scan",
+  "destination_rejection_max_draws": 10000,
+  "nested_master_offered_mbps": null
+ },
+ "access": {
+  "unavailable_policy": "queue",
+  "slots_per_satellite": 4,
+  "uplink_rate_mbps": 1000.0,
+  "downlink_rate_mbps": 1000.0,
+  "uplink_queue_bits": 4000000000,
+  "downlink_queue_bits": 4000000000,
+  "drr_quantum_bits": 1000000,
+  "association": "bbm",
+  "hysteresis_deg": 1.0,
+  "min_dwell_s": 1.0,
+  "acquisition_delay_s": 0.1,
+  "retiring_link_limit": 4,
+  "retirement_deadline_s": 5.0,
+  "dual_connect": false,
+  "slot_lease_s": 10.0,
+  "idle_release_s": 1.0,
+  "holding_queue_bits": 64000000
+ },
+ "links": {
+  "rate_model": "constant",
+  "mcs_table": "legacy-dvbs2x",
+  "rf_isl": {
+   "frequency_hz": 26000000000.0,
+   "bandwidth_hz": 500000000.0,
+   "max_ptx_w": 10.0,
+   "antenna_diameter_tx_m": 0.26,
+   "antenna_diameter_rx_m": 0.26,
+   "pointing_loss_db": 0.3,
+   "noise_figure_db": 2.0,
+   "noise_temperature_k": 290.0,
+   "min_rate_bps": 10000.0
+  },
+  "rf_uplink": {
+   "frequency_hz": 30000000000.0,
+   "bandwidth_hz": 500000000.0,
+   "max_ptx_w": 20.0,
+   "antenna_diameter_tx_m": 0.33,
+   "antenna_diameter_rx_m": 0.26,
+   "pointing_loss_db": 0.3,
+   "noise_figure_db": 2.0,
+   "noise_temperature_k": 290.0,
+   "min_rate_bps": 10000.0
+  },
+  "rf_downlink": {
+   "frequency_hz": 20000000000.0,
+   "bandwidth_hz": 500000000.0,
+   "max_ptx_w": 10.0,
+   "antenna_diameter_tx_m": 0.26,
+   "antenna_diameter_rx_m": 0.26,
+   "pointing_loss_db": 0.3,
+   "noise_figure_db": 2.0,
+   "noise_temperature_k": 290.0,
+   "min_rate_bps": 10000.0
+  },
+  "isl_rate_mbps": 10.0,
+  "isl_queue_bits": 256000000,
+  "isl_dirs": [
+   "N",
+   "S",
+   "E",
+   "W"
+  ],
+  "max_isl_km": 6000.0,
+  "geometry_loss": true,
+  "ge_enabled": false,
+  "ge_gsl": {
+   "mean_good_s": 300.0,
+   "mean_bad_s": 1.0
+  },
+  "ge_isl": {
+   "mean_good_s": 900.0,
+   "mean_bad_s": 0.5
+  }
+ },
+ "topology": {
+  "recompute_interval_s": null,
+  "matching": "markovian"
+ },
+ "control_plane": {
+  "enabled": true,
+  "vis_k": 2,
+  "ttl_s": 10.0,
+  "advertise_interval_s": 2.0,
+  "packet_bits": 8000,
+  "priority": "nonpreemptive_priority"
+ },
+ "routing": {
+  "policy": "hop",
+  "max_hops": 16,
+  "learning_enabled": false,
+  "contract": "C3"
+ },
+ "learning": {
+  "algorithm": "none",
+  "mode": "train",
+  "seed": null,
+  "obs_hops": null,
+  "checkpoint_path": null,
+  "checkpoint_sha256": null,
+  "checkpoint_metadata_sha256": null,
+  "resume_path": null,
+  "resume_sha256": null,
+  "gamma": 0.99,
+  "lr": 0.001,
+  "batch_size": 64,
+  "replay_size": 50000,
+  "target_update_interval": 500,
+  "reward": "queue",
+  "reward_w1": 20.0,
+  "reward_beta": 200.0,
+  "forward_step_penalty": -20.0,
+  "arrive_reward": 50.0,
+  "qlearning_alpha": 0.25,
+  "epsilon_start": 1.0,
+  "epsilon_end": 0.05,
+  "epsilon_decay_s": 300.0,
+  "fast_train": true
+ },
+ "execution": {
+  "max_events": 20000000,
+  "max_entities": 20000,
+  "max_packets": 200000,
+  "monitor": false,
+  "dry_run": false,
+  "available_capacity_interval_s": 1.0,
+  "compute_delay_s": 0.0,
+  "decision_observation_mode": "refresh",
+  "node_process_delay_s": 0.0
+ },
+ "outputs": {
+  "out_dir": "leo_sim_out/t1-pressure-corridor",
+  "trace_path": null,
+  "plotting": false
+ }
+}

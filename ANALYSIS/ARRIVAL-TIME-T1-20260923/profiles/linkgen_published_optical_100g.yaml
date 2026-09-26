@@ -1,0 +1,63 @@
+# REAL-LINK-GENERATION 门 · profile B：published-optical-ISL（运营商标称 100 Gbps）
+
+# 用途：与 linkgen_generic_rf_mcs_1g.yaml 配对，构成任务书 §R7 要求的「明确分 profile」。
+# 本 profile 使用 rate_model: constant + isl_rate_mbps = 100000（= 100 Gbps），
+#   这是一个**固定速率容量诊断（optical-capacity diagnostic）**，不是实测。
+# 未决事项（不擅自替定，等 owner 裁定）：
+#   * Starlink 单链路标称存在三种口径：100 Gbps（v1.4 §R3 + 证据台账 L1）、
+#     200 Gbps（对话正文 A28/A35/A36 与《直接数据提取与适用边界.md》）、
+#     6 x 400 Gbps（V3 设计）。本 profile 暂取 100 Gbps，裁定后须同步修改。
+#   * 100 Gbps 是厂商标称链路能力，不等于任意时间/方向满速。
+# 禁止：不得用 RF-MCS 公式背书光学链路；不得把本 profile 的利用率当作实测占用率。
+# 场景：沿用 T1 受控压力走廊 v2（注意：该速率下走廊不会产生 ISL 压力，本 profile 仅作容量参照）。
+
+config_version: leo-sim-config/v1
+scenario:
+  name: t1-pressure-corridor
+  duration_s: 300.0
+  time_step_s: 0.1
+  num_satellites: 24
+  num_planes: 3
+  seed: 7
+  min_elevation_deg: 5
+endpoints:
+  sites:
+  - name: equator
+    lat: 0.1
+    lon: 0.1
+    demand_weight: 1.0
+  - name: north
+    lat: 52.6
+    lon: 90.4
+    demand_weight: 1.0
+demand:
+  mode: uniform
+  offered_mbps: 12.0
+  packet_bits: 1000000
+access:
+  unavailable_policy: queue
+  uplink_rate_mbps: 1000.0
+  downlink_rate_mbps: 1000.0
+  association: bbm
+  uplink_queue_bits: 4000000000
+  downlink_queue_bits: 4000000000
+links:
+  rate_model: constant
+  isl_rate_mbps: 100000.0
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 2.0
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  max_events: 20000000
+  max_entities: 20000
+  max_packets: 200000
+  available_capacity_interval_s: 1.0
+outputs:
+  out_dir: leo_sim_out/t1-pressure-corridor
+  plotting: false

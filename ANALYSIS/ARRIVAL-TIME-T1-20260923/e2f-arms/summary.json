@@ -1,0 +1,107 @@
+{
+ "schema": "leo-t1-e2f-arms/v1",
+ "profile": "CODE/leo_sim/profiles/t1_pressure_corridor_v2.yaml",
+ "arms": [
+  {
+   "arm": "base",
+   "axis": "baseline",
+   "config_sha256": "56612d44ba4494992be3696fbd31d8784a43ab20b8faf1c05b55469139a5cc0b",
+   "changed_fields_vs_base": [],
+   "allowed_fields": [],
+   "unexpected_changes": [],
+   "strict_single_factor": true
+  },
+  {
+   "arm": "F1_offered_9",
+   "axis": "F1_background_traffic",
+   "config_sha256": "d92ebf404cc569463e64cd61416da45df9b7be0cc75ca3baa80ed8d2723b35b2",
+   "changed_fields_vs_base": [
+    "demand.offered_mbps"
+   ],
+   "allowed_fields": [
+    "demand.offered_mbps"
+   ],
+   "unexpected_changes": [],
+   "strict_single_factor": true
+  },
+  {
+   "arm": "F1_offered_15",
+   "axis": "F1_background_traffic",
+   "config_sha256": "15831597dacec8f0a164382346e5ddfffe09dc0b3ce9e3a8224595ddb4fb4e17",
+   "changed_fields_vs_base": [
+    "demand.offered_mbps"
+   ],
+   "allowed_fields": [
+    "demand.offered_mbps"
+   ],
+   "unexpected_changes": [],
+   "strict_single_factor": true
+  },
+  {
+   "arm": "F2_delay_0p05",
+   "axis": "F2_forwarding_efficiency",
+   "config_sha256": "5481245d10cc575c4829b9011c8b5debb906da492094ecdb3fdf572390b82fc4",
+   "changed_fields_vs_base": [
+    "execution.node_process_delay_s"
+   ],
+   "allowed_fields": [
+    "execution.node_process_delay_s"
+   ],
+   "unexpected_changes": [],
+   "strict_single_factor": true
+  },
+  {
+   "arm": "F2_delay_0p15",
+   "axis": "F2_forwarding_efficiency",
+   "config_sha256": "dc67553008ac615a14de9e87fe667197341aa68a8c3b884da13bc3cc61475338",
+   "changed_fields_vs_base": [
+    "execution.node_process_delay_s"
+   ],
+   "allowed_fields": [
+    "execution.node_process_delay_s"
+   ],
+   "unexpected_changes": [],
+   "strict_single_factor": true
+  },
+  {
+   "arm": "F3_isl_rate_8",
+   "axis": "F3_link_bandwidth",
+   "config_sha256": "a65e8ea2eb52310a58ce2ccb442bbbe246add0f5667484839870650125955a6c",
+   "changed_fields_vs_base": [
+    "links.isl_rate_mbps"
+   ],
+   "allowed_fields": [
+    "links.isl_rate_mbps"
+   ],
+   "unexpected_changes": [],
+   "strict_single_factor": true
+  },
+  {
+   "arm": "F3_isl_rate_12p5",
+   "axis": "F3_link_bandwidth",
+   "config_sha256": "2cd3863d6dce24e2416b891dab86f2046cb6709c0b7b2227144eff16599f8165",
+   "changed_fields_vs_base": [
+    "links.isl_rate_mbps"
+   ],
+   "allowed_fields": [
+    "links.isl_rate_mbps"
+   ],
+   "unexpected_changes": [],
+   "strict_single_factor": true
+  },
+  {
+   "arm": "NEG_no_queue",
+   "axis": "negative_control",
+   "config_sha256": "1894b6a759707b9d8ce37315c5c506139997b878fe0eab28305f55f54d1ba8ca",
+   "changed_fields_vs_base": [
+    "demand.offered_mbps"
+   ],
+   "allowed_fields": [
+    "demand.offered_mbps"
+   ],
+   "unexpected_changes": [],
+   "strict_single_factor": true
+  }
+ ],
+ "strict_single_factor_overall": true
+}

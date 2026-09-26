@@ -1,0 +1,15 @@
+{
+  "zero_count_rejection": {
+    "seed": 1,
+    "offered_mbps": 0.16,
+    "packet_bits": 8000000,
+    "expected_in_window": 1.0,
+    "error": "trace materialization does not match the resolved config: a burst window [10.0, 20.0) is declared but ZERO of the 3 emitted packets fall inside it (declaration predicts 1.0 in-window packets at seed 1): the treatment is unobservable in this sample; raise the rate or widen the window"
+  },
+  "hash_scope": {
+    "code_sha256": "61d48a7dbab79cfae9c8aa49853ccd223cf616d189675dcde9459334297401e4",
+    "included_file_count": 31,
+    "includes_tests": false,
+    "source_rule": "sorted(pkg.glob(\"*.py\"))"
+  }
+}

@@ -1,0 +1,263 @@
+{
+ "schema": "leo-t1-e3-exploratory/v1",
+ "policy": "capacity",
+ "penalty_s": 10.0,
+ "delivered_arrivals_threshold": 2,
+ "snapshots": [
+  {
+   "decision_id": 204,
+   "legal": [
+    "N",
+    "S"
+   ],
+   "chosen": "S",
+   "pid": 19,
+   "O0_values": {
+    "N": 0,
+    "S": 0
+   },
+   "branches": {
+    "S": {
+     "status": "ok",
+     "source": "baseline_run",
+     "O1_values": {
+      "N": 96000.0,
+      "S": 96000.0
+     },
+     "O3_value_for_this_branch": 0,
+     "contended_direction": "S",
+     "cost_s": 0.23818638678196624,
+     "delivered": true,
+     "arrivals": 4
+    },
+    "N": {
+     "status": "ok",
+     "source": "forced_replay",
+     "branch_states_identical": true,
+     "legal_at_branch_point": true,
+     "action_changed": true,
+     "O1_values": {
+      "N": 96000.0,
+      "S": 96000.0
+     },
+     "O3_value_for_this_branch": null,
+     "contended_direction": null,
+     "cost_s": 297.957567955381,
+     "delivered": true,
+     "arrivals": 2
+    }
+   }
+  },
+  {
+   "decision_id": 205,
+   "legal": [
+    "N",
+    "S"
+   ],
+   "chosen": "N",
+   "pid": 20,
+   "O0_values": {
+    "N": 0,
+    "S": 0
+   },
+   "branches": {
+    "N": {
+     "status": "ok",
+     "source": "baseline_run",
+     "O1_values": {
+      "N": 96000.0,
+      "S": 96000.0
+     },
+     "O3_value_for_this_branch": 0,
+     "contended_direction": "N",
+     "cost_s": 0.23818427226668826,
+     "delivered": true,
+     "arrivals": 4
+    },
+    "S": {
+     "status": "ok",
+     "source": "forced_replay",
+     "branch_states_identical": true,
+     "legal_at_branch_point": true,
+     "action_changed": true,
+     "O1_values": {
+      "N": 96000.0,
+      "S": 96000.0
+     },
+     "O3_value_for_this_branch": null,
+     "contended_direction": null,
+     "cost_s": 297.90283058452786,
+     "delivered": true,
+     "arrivals": 2
+    }
+   }
+  },
+  {
+   "decision_id": 206,
+   "legal": [
+    "N",
+    "S"
+   ],
+   "chosen": "N",
+   "pid": 2,
+   "O0_values": {
+    "N": 0,
+    "S": 0
+   },
+   "branches": {
+    "N": {
+     "status": "ok",
+     "source": "baseline_run",
+     "O1_values": {
+      "N": 96000.0,
+      "S": 96000.0
+     },
+     "O3_value_for_this_branch": 1000000,
+     "contended_direction": "N",
+     "cost_s": 0.3353536092284508,
+     "delivered": true,
+     "arrivals": 4
+    },
+    "S": {
+     "status": "ok",
+     "source": "forced_replay",
+     "branch_states_identical": true,
+     "legal_at_branch_point": true,
+     "action_changed": true,
+     "O1_values": {
+      "N": 96000.0,
+      "S": 96000.0
+     },
+     "O3_value_for_this_branch": null,
+     "contended_direction": null,
+     "cost_s": 297.8999999999997,
+     "delivered": true,
+     "arrivals": 2
+    }
+   }
+  }
+ ],
+ "summary": [
+  {
+   "decision_id": 204,
+   "legal": [
+    "N",
+    "S"
+   ],
+   "chosen": "S",
+   "costs_s": {
+    "S": 0.23818638678196624,
+    "N": 297.957567955381
+   },
+   "best_cost_s": 0.23818638678196624,
+   "arms": {
+    "O0": {
+     "values": {
+      "N": 0,
+      "S": 0
+     },
+     "pick": "N",
+     "regret_s": 297.71938156859903
+    },
+    "O1": {
+     "values": {
+      "S": 96000.0,
+      "N": 96000.0
+     },
+     "pick": "N",
+     "regret_s": 297.71938156859903
+    },
+    "O3": {
+     "values": {
+      "S": 0,
+      "N": null
+     },
+     "pick": "S",
+     "regret_s": 0.0
+    }
+   },
+   "exploratory_regret_O1_minus_O3": 297.71938156859903
+  },
+  {
+   "decision_id": 205,
+   "legal": [
+    "N",
+    "S"
+   ],
+   "chosen": "N",
+   "costs_s": {
+    "N": 0.23818427226668826,
+    "S": 297.90283058452786
+   },
+   "best_cost_s": 0.23818427226668826,
+   "arms": {
+    "O0": {
+     "values": {
+      "N": 0,
+      "S": 0
+     },
+     "pick": "N",
+     "regret_s": 0.0
+    },
+    "O1": {
+     "values": {
+      "N": 96000.0,
+      "S": 96000.0
+     },
+     "pick": "N",
+     "regret_s": 0.0
+    },
+    "O3": {
+     "values": {
+      "N": 0,
+      "S": null
+     },
+     "pick": "N",
+     "regret_s": 0.0
+    }
+   },
+   "exploratory_regret_O1_minus_O3": 0.0
+  },
+  {
+   "decision_id": 206,
+   "legal": [
+    "N",
+    "S"
+   ],
+   "chosen": "N",
+   "costs_s": {
+    "N": 0.3353536092284508,
+    "S": 297.8999999999997
+   },
+   "best_cost_s": 0.3353536092284508,
+   "arms": {
+    "O0": {
+     "values": {
+      "N": 0,
+      "S": 0
+     },
+     "pick": "N",
+     "regret_s": 0.0
+    },
+    "O1": {
+     "values": {
+      "N": 96000.0,
+      "S": 96000.0
+     },
+     "pick": "N",
+     "regret_s": 0.0
+    },
+    "O3": {
+     "values": {
+      "N": 1000000,
+      "S": null
+     },
+     "pick": "N",
+     "regret_s": 0.0
+    }
+   },
+   "exploratory_regret_O1_minus_O3": 0.0
+  }
+ ],
+ "note": "探索性：对照为 O0/O1/O3，**不是** O2strong；O2（共同未来真值）平台未记录，故主指标的确认性比较不可执行。事实分支取自基线运行（选中动作不可重放）。"
+}

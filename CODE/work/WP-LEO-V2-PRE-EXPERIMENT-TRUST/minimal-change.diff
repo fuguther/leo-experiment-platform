@@ -1,0 +1,792 @@
+--- a/CODE/leo_sim/__main__.py
++++ b/CODE/leo_sim/__main__.py
+@@ -24,7 +24,8 @@
+ from . import config as config_mod
+ from . import decision_ledger
+ from . import governance, kernel, learning, platform_check as platform_check_mod
+-from . import receipt as receipt_mod, trace as trace_mod
++from . import receipt as receipt_mod, recompute as recompute_mod
++from . import trace as trace_mod
+ 
+ 
+ def _load(path: str) -> dict:
+@@ -645,6 +646,25 @@
+     return 0
+ 
+ 
++def _cmd_recompute(args) -> int:
++    try:
++        report = recompute_mod.recompute_run(args.run_dir)
++    except recompute_mod.RecomputeError as exc:
++        print(f"RECOMPUTE REFUSED: {exc}")
++        return 10
++    if args.out:
++        target = Path(args.out)
++        if target.is_symlink():
++            print(f"RECOMPUTE REFUSED: output may not be symbolic: {target}")
++            return 10
++        target.parent.mkdir(parents=True, exist_ok=True)
++        target.write_text(json.dumps(report, ensure_ascii=False, indent=2,
++                                     sort_keys=True) + "\n", encoding="utf-8")
++        report = {**report, "wrote": str(target)}
++    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
++    return 0 if report["ok"] else 10
++
++
+ def _cmd_acceptance_run(args) -> int:
+     try:
+         summary = acceptance_mod.run_acceptance(args.out)
+@@ -749,6 +769,13 @@
+     cr.add_argument("--out", required=True)
+     cr.set_defaults(fn=_cmd_compare_run)
+ 
++    p = sub.add_parser("recompute")
++    p.add_argument("--run-dir", required=True,
++                   help="a persisted run directory (receipt/resolved/ledgers/"
++                        "timeline)")
++    p.add_argument("--out", help="optional path for the JSON report")
++    p.set_defaults(fn=_cmd_recompute)
++
+     p = sub.add_parser("platform")
+     psub = p.add_subparsers(dest="sub", required=True)
+     pc = psub.add_parser("check")
+--- a/CODE/leo_sim/config.py
++++ b/CODE/leo_sim/config.py
+@@ -571,6 +571,20 @@
+         dm["burst_start_s"] is not None
+         or dm["burst_duration_s"] is not None
+     )
++    if burst_declared and dm["mode"] not in {"burst", "mlab"}:
++        # The transform exists ONLY in _rate_multiplier() for mode in
++        # {burst, mlab} (trace.py:302-307).  Declaring the window under any
++        # other mode used to resolve happily and then be silently dropped:
++        # the manifest published traffic_transform.burst = null while the
++        # resolved config still carried burst_start_s, so nothing downstream
++        # could separate "no burst intended" from "burst intended and lost".
++        # Measured 2026-09-25: demand.mode=uniform + burst [2,4) resolved and
++        # compiled with traffic_transform.burst = null and no diagnostic.
++        raise ConfigError(
++            "demand.burst_start_s/burst_duration_s are declared but "
++            f"demand.mode={dm['mode']} never applies the burst transform; "
++            "the window would be silently dropped. Use demand.mode=burst or "
++            "demand.mode=mlab, or remove the burst window")
+     if dm["mode"] in {"burst", "mlab"} and (
+             dm["mode"] == "burst" or burst_declared):
+         if dm["burst_start_s"] is None or dm["burst_duration_s"] is None:
+@@ -579,14 +593,25 @@
+                 "burst_duration_s")
+         if dm["burst_start_s"] < 0 or dm["burst_duration_s"] <= 0:
+             raise ConfigError("burst window invalid")
+-        # a burst window that never intersects [0, duration_s] would silently
+-        # run the whole experiment at multiplier 1 while still declaring the
+-        # burst mechanism: fail closed on a non-observed treatment
+-        if not (dm["burst_start_s"] < sc["duration_s"]
+-                and dm["burst_start_s"] + dm["burst_duration_s"] > 0):
++        # The window must lie inside the interval in which packets are
++        # actually emitted, not merely intersect the scenario horizon.  The
++        # historical check used scenario.duration_s only, so a window placed
++        # after demand.emission_end_s passed validation and then produced
++        # ZERO packets inside it: the run was a plain baseline while the
++        # manifest still declared a burst.  Measured 2026-09-25:
++        # emission_end_s=20 with the window at [30, 40) gave 100 packets,
++        # 0 inside the window, and realized offered load == target 40 Mbps.
++        emitted_until = (float(sc["duration_s"])
++                         if dm["emission_end_s"] is None
++                         else float(dm["emission_end_s"]))
++        window_end = dm["burst_start_s"] + dm["burst_duration_s"]
++        if window_end > emitted_until:
+             raise ConfigError(
+-                "burst window must intersect the scenario horizon "
+-                "[0, duration_s]")
++                "burst window [burst_start_s, burst_start_s+burst_duration_s) "
++                f"= [{dm['burst_start_s']}, {window_end}) must lie inside the "
++                f"emission window [0, {emitted_until}] "
++                "(demand.emission_end_s, or scenario.duration_s when unset); "
++                "a window that extends past it is only partially applied")
+     if dm["deadline_s"] is not None and dm["deadline_s"] <= 0:
+         raise ConfigError("demand.deadline_s must be > 0 when set")
+     if dm["gravity_alpha"] <= 0 or dm["gravity_d_floor_km"] <= 0:
+--- a/CODE/leo_sim/matrix.py
++++ b/CODE/leo_sim/matrix.py
+@@ -13,6 +13,11 @@
+ from pathlib import Path
+ from typing import Any
+ 
++from CODE.experiment_platform.primary_metrics import (
++    SUPPORTED_PRIMARY_METRICS,
++    UTILIZATION_PRIMARY_METRICS,
++)
++
+ from . import config as config_mod
+ from . import governance
+ 
+@@ -25,6 +30,7 @@
+ PHASES = {"training", "evaluation", "train", "eval", "non_learning"}
+ LINEAGE_MODES = {"new_training", "evaluation_only", "not_applicable"}
+ SUPPORTED_PAIRED_BY = {"pairing_key"}
++DESIGN_POLICIES = {"strict", "exploratory_multi_factor"}
+ STOCHASTIC_IDENTITY_PATHS = {
+     "scenario.seed", "learning.seed",
+     "learning.checkpoint_path", "learning.checkpoint_sha256",
+@@ -181,6 +187,17 @@
+     for key in ("primary_metric", "estimand"):
+         if not isinstance(analysis[key], str) or not analysis[key]:
+             raise MatrixError(f"analysis.{key} must be a non-empty string")
++    # A non-empty string is not a contract.  The analyzer dispatches over a
++    # fixed vocabulary (experiment_platform/primary_metrics.py); before this
++    # check existed a metric outside it compiled to
++    # COMPILED_REVIEW_REQUIRED with errors=[], was authorized, deployed and
++    # run, and only then raised "unsupported V2 primary metric" (audit B4:
++    # 20 of the 23 catalog ids, 10 of them marked eligible_as_primary).
++    metric = analysis["primary_metric"]
++    if metric not in SUPPORTED_PRIMARY_METRICS:
++        raise MatrixError(
++            f"analysis.primary_metric {metric!r} is not one the V2 analyzer "
++            f"can compute; supported: {sorted(SUPPORTED_PRIMARY_METRICS)}")
+     if analysis["paired_by"] != ["pairing_key"]:
+         raise MatrixError("unsupported paired_by; v1 supports only ['pairing_key']")
+     contrasts = analysis["planned_contrasts"]
+@@ -217,6 +234,58 @@
+                 "analysis.decision_contract.path must be a safe "
+                 "CODE/work/... JSON path")
+     return analysis
++
++
++def _validate_design(value: Any) -> dict[str, Any]:
++    """The optional declaration that makes a single-factor claim checkable.
++
++    The V2 request contract had no place to say "this contrast changes one
++    factor", so the strict rule lived only in the legacy compiler
++    (compile_experiment.py:462) and on the retained, formally executable V2
++    route a multi-factor treatment compiled with no signal at all (audit
++    B12).  Declaring the policy is opt-in: a request without it behaves
++    exactly as before.  What the declaration buys is mechanical
++    verification against the RESOLVED cell configurations, in
++    _design_check below - not a promise about the request text.
++    """
++    design = _expect_keys(value, {"one_change_policy", "factor_changed"},
++                          "design")
++    policy = design["one_change_policy"]
++    if policy not in DESIGN_POLICIES:
++        raise MatrixError(
++            f"design.one_change_policy must be one of {sorted(DESIGN_POLICIES)}")
++    declared = design["factor_changed"]
++    if not isinstance(declared, list) or not declared:
++        raise MatrixError("design.factor_changed must be a non-empty list")
++    normalized = [_dotted_path(path, "design.factor_changed")
++                  for path in declared]
++    if len(set(normalized)) != len(normalized):
++        raise MatrixError("design.factor_changed contains duplicates")
++    if policy == "strict" and len(normalized) != 1:
++        raise MatrixError(
++            "design.one_change_policy=strict requires exactly one "
++            "factor_changed path")
++    return {"one_change_policy": policy, "factor_changed": normalized}
++
++
++def _leaf_diff(left: Any, right: Any, prefix: str = "") -> set[str]:
++    """Dotted paths whose resolved values differ between two configs.
++
++    A path present on one side only counts as differing, so a key silently
++    added by an arm override cannot hide behind an absent counterpart.
++    """
++    paths: set[str] = set()
++    if isinstance(left, dict) and isinstance(right, dict):
++        for key in set(left) | set(right):
++            child = f"{prefix}.{key}" if prefix else str(key)
++            if key not in left or key not in right:
++                paths.add(child)
++                continue
++            paths |= _leaf_diff(left[key], right[key], child)
++        return paths
++    if left != right:
++        paths.add(prefix)
++    return paths
+ 
+ 
+ def _validate_claim_boundary(value: Any) -> dict[str, Any]:
+@@ -234,7 +303,7 @@
+         "common_config", "arms", "cells", "acceptance", "analysis",
+         "claim_boundary",
+     }
+-    allowed = required | {"execution_policy"}
++    allowed = required | {"execution_policy", "design"}
+     if not isinstance(request, dict):
+         raise MatrixError("matrix request must be a mapping")
+     unknown = set(request) - allowed
+@@ -257,6 +326,9 @@
+         if execution_policy["mode"] != "serial_fail_closed":
+             raise MatrixError(
+                 "execution_policy.mode must be serial_fail_closed")
++    design = request.get("design")
++    if design is not None:
++        design = _validate_design(design)
+     finalization = request["work_finalization"]
+     if (not isinstance(finalization, str) or not finalization.startswith("CODE/work/")
+             or not finalization.endswith("/finalization.json")
+@@ -352,6 +424,7 @@
+         **request,
+         **({"execution_policy": execution_policy}
+            if execution_policy is not None else {}),
++        **({"design": design} if design is not None else {}),
+         "arms": normalized_arms,
+         "cells": normalized_cells,
+     }
+@@ -421,7 +494,8 @@
+     return f"{experiment_id}-{cell['arm_id']}-{suffix}"
+ 
+ 
+-def _resolve_cells(request: dict[str, Any], project_root: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
++def _resolve_cells(request: dict[str, Any], project_root: Path) -> tuple[
++        dict[str, Any], list[dict[str, Any]], dict[str, Any] | None]:
+     validated = validate_request(request)
+     arm_by_id = {arm["arm_id"]: arm for arm in validated["arms"]}
+     all_intervention_paths = {
+@@ -464,9 +538,112 @@
+             "config_path": f"resolved/{cell['run_id']}.leo-sim.yaml",
+         })
+     _validate_pairing_contract(validated, rows)
+-    return validated, rows
++    _validate_capacity_sampling(validated, rows)
++    design_check = _design_check(validated, rows)
++    return validated, rows, design_check
++
++
++def _design_check(request: dict[str, Any],
++                  rows: list[dict[str, Any]]) -> dict[str, Any] | None:
++    """Verify a declared one-change policy against the RESOLVED cell configs.
++
++    Counted from the resolved configurations of the cells that are actually
++    planned, so an override hidden in cells[].config_overrides (which the arm
++    level cannot see) is counted too.  STOCHASTIC_IDENTITY_PATHS are excluded
++    because a paired contrast is REQUIRED to share trace identity and is
++    explicitly allowed to differ in learning seed/checkpoint: those are
++    re-execution identity, not treatment factors (same projection the
++    controlled_signature uses).
++
++    Returns None when the request declares nothing, so a request without a
++    design block derives exactly the documents it derived before.
++    """
++    design = request.get("design")
++    if design is None:
++        return None
++    contrast_by_arms = {
++        frozenset((contrast["left_arm"], contrast["right_arm"])): contrast
++        for contrast in request["analysis"]["planned_contrasts"]
++    }
++    by_pair: dict[str, list[dict[str, Any]]] = {}
++    for row in rows:
++        by_pair.setdefault(row["pairing_key"], []).append(row)
++    observed: dict[str, list[frozenset[str]]] = {}
++    for _pairing_key, group in sorted(by_pair.items()):
++        if len(group) != 2:
++            continue
++        contrast = contrast_by_arms.get(frozenset(row["arm_id"] for row in group))
++        if contrast is None:
++            continue
++        left, right = group
++        changed = frozenset(_leaf_diff(left["config"]["config"],
++                                       right["config"]["config"])
++                            - STOCHASTIC_IDENTITY_PATHS)
++        observed.setdefault(contrast["name"], []).append(changed)
+ 
++    declared = set(design["factor_changed"])
++    strict = design["one_change_policy"] == "strict"
++    summary: dict[str, Any] = {}
++    for name, variants in sorted(observed.items()):
++        if len(set(variants)) != 1:
++            raise MatrixError(
++                f"contrast {name}: its pairing keys resolve to different "
++                f"changed-path sets {sorted(sorted(v) for v in set(variants))}; "
++                "a contrast must change the same factors in every pairing key")
++        changed = sorted(variants[0])
++        summary[name] = changed
++        if strict and set(changed) != declared:
++            raise MatrixError(
++                f"contrast {name} declares one_change_policy=strict with "
++                f"factor_changed={sorted(declared)} but the resolved "
++                f"configurations differ in {changed}; the single-factor claim "
++                "is not supported by the compiled cells")
++    if strict and not observed:
++        raise MatrixError(
++            "design.one_change_policy=strict declared but no planned contrast "
++            "could be measured")
++    return {
++        "schema": "leo-sim-matrix-design-check/v1",
++        "one_change_policy": design["one_change_policy"],
++        "declared_factor_changed": sorted(declared),
++        "observed_changed_paths_by_contrast": summary,
++        "single_factor_verified": bool(strict and len(observed) == 1
++                                       and all(len(v) == 1
++                                               for v in summary.values())),
++    }
+ 
++
++def _validate_capacity_sampling(request: dict[str, Any],
++                                rows: list[dict[str, Any]]) -> None:
++    """A utilization endpoint needs a sampled available-capacity denominator.
++
++    With execution.available_capacity_interval_s null the kernel records no
++    availability windows at all, metrics.summarize falls back to the
++    service-window capacity as the denominator, and every successfully served
++    link reads ~1.0 with available_samples == 0 (metrics.py:334-340; measured
++    2026-09-25 on the micro fixture: utilization 0.9999999999999992,
++    available_samples 0).  The analyzer then either averages that fabricated
++    ratio into the reported endpoint or aborts in isl_pressure - in both cases
++    only after every run has been paid for.  Refuse at compile time instead.
++    """
++    metric = request["analysis"]["primary_metric"]
++    if metric not in UTILIZATION_PRIMARY_METRICS:
++        return
++    unsampled = [
++        row["run_id"] for row in rows
++        if row["config"]["config"]["execution"][
++            "available_capacity_interval_s"] is None
++    ]
++    if unsampled:
++        raise MatrixError(
++            f"analysis.primary_metric {metric!r} is a link-utilization ratio, "
++            "which does not exist unless available capacity is sampled; "
++            "execution.available_capacity_interval_s is null in "
++            f"{unsampled}. Without it the reported utilization is the "
++            "service-window fallback (~1.0 for any served link, "
++            "available_samples=0), not a measurement")
++
++
+ def _validate_pairing_contract(request: dict[str, Any],
+                                rows: list[dict[str, Any]]) -> None:
+     """Validate the executable v1 paired comparison contract.
+@@ -559,8 +736,15 @@
+             for raw in sorted(paths)}
+ 
+ 
+-def _design_accounting(rows: list[dict[str, Any]]) -> dict[str, Any]:
+-    """Count unique resolved configurations separately from re-executions."""
++def _design_accounting(rows: list[dict[str, Any]],
++                       design_check: dict[str, Any] | None = None) -> dict[str, Any]:
++    """Count unique resolved configurations separately from re-executions.
++
++    The one-change verification is attached ONLY when the request declared a
++    design policy.  A request without one therefore derives byte-identical
++    documents to before, which is what keeps every already-compiled matrix and
++    already-issued receipt verifiable by this same code.
++    """
+     run_ids_by_config: dict[str, list[str]] = {}
+     for row in rows:
+         run_ids_by_config.setdefault(row["config_sha256"], []).append(
+@@ -571,7 +755,7 @@
+         if len(run_ids) > 1
+     ]
+     unique = len(run_ids_by_config)
+-    return {
++    accounting = {
+         "schema": "leo-sim-matrix-design-accounting/v1",
+         "planned_cells": len(rows),
+         "unique_resolved_configurations": unique,
+@@ -580,6 +764,9 @@
+         "independent_condition_rule": (
+             "one independent condition per unique resolved config SHA256"),
+     }
++    if design_check is not None:
++        accounting["one_change_policy_check"] = design_check
++    return accounting
+ 
+ 
+ def _reject_symlink_ancestors(path: Path, stop: Path) -> None:
+@@ -732,6 +919,22 @@
+             "Exact re-executions are repeatability evidence only and do not "
+             "increase the independent-condition count.", "",
+         ])
++    check = (design_accounting or {}).get("one_change_policy_check")
++    if check is not None:
++        lines.extend([
++            "## One-change policy", "",
++            f"Declared policy: `{check['one_change_policy']}`; declared "
++            f"factor(s): {', '.join(check['declared_factor_changed'])}.", "",
++        ])
++        for name, changed in sorted(
++                check["observed_changed_paths_by_contrast"].items()):
++            lines.append(
++                f"- contrast `{name}`: changed paths "
++                f"{', '.join(changed) if changed else '(none)'}")
++        lines.extend(["",
++            "Changed paths are counted from the RESOLVED configurations of the "
++            "planned cells, excluding stochastic identity paths.", "",
++        ])
+     if serial:
+         lines.extend([
+             "Execution policy: `serial_fail_closed`. The canonical runner applies a "
+@@ -841,8 +1044,8 @@
+         raise MatrixError(f"request unreadable: {exc}") from exc
+     validated = validate_request(request)
+     decision_contract = _load_decision_contract(project_root, validated)
+-    validated, rows = _resolve_cells(validated, project_root)
+-    design_accounting = _design_accounting(rows)
++    validated, rows, design_check = _resolve_cells(validated, project_root)
++    design_accounting = _design_accounting(rows, design_check)
+     out_dir = _canonical_experiment_dir(project_root,
+                                          validated["experiment_id"], out_dir)
+     if out_dir.is_symlink():
+@@ -959,8 +1162,9 @@
+             manifest.get("common_config_sha256") != canonical_sha(request["common_config"]) or \
+             manifest.get("arms") != request["arms"]:
+         raise MatrixError("matrix manifest identity/state mismatch")
+-    _, rows = _resolve_cells(request, root)
+-    design_accounting = None if legacy_report else _design_accounting(rows)
++    _, rows, design_check = _resolve_cells(request, root)
++    design_accounting = (None if legacy_report
++                         else _design_accounting(rows, design_check))
+     if not legacy_report and report["design_accounting"] != design_accounting:
+         raise MatrixError("matrix compile report design accounting mismatch")
+     expected_cells = [{key: row[key] for key in (
+--- a/CODE/leo_sim/metrics_independent.py
++++ b/CODE/leo_sim/metrics_independent.py
+@@ -472,16 +472,16 @@
+     utilization, status, ...}}.
+ 
+     available_capacity_bits and utilization are the *sampled* physical
+-    availability; both are None when the run recorded no availability sample at
+-    all, and status is then DEGENERATE_DENOMINATOR.  The service-window
++    availability; both are None, with status DEGENERATE_DENOMINATOR, whenever
++    the denominator does not exist for that link -- either because the run
++    sampled no availability at all, or because this particular link has no
++    availability window.  Neither case publishes a number.  The service-window
+     fallback ratio is reported separately as fallback_utilization so a reader
+     can never mistake it for a measurement (it is ~1.0 by construction).
+ 
+-    Raises IndependentMetricsError for a tampered capacity_bits, for overlapping
+-    or duplicated available windows, for a link whose served bits exceed its
+-    sampled available capacity (sum(served) <= sum(available)), and for a link
+-    with served_bits > 0 that has no availability coverage while availability
+-    was sampled at all.
++    Raises IndependentMetricsError for a tampered capacity_bits, for
++    overlapping or duplicated available windows, and for a link whose served
++    bits exceed its sampled available capacity (sum(served) <= sum(available)).
+     """
+     records = _scan_packet_events(_mapping_list(packet_events, "packet_events"))
+     service_windows = _mapping_list(service_windows, "service_windows")
+@@ -523,12 +523,32 @@
+             entry["status"] = STATUS_DEGENERATE
+             entry["fallback_utilization"] = min(
+                 1.0, served / capacity if capacity else 0.0)
+-        else:
+-            if served > 0 and available is None:
++        elif available is None:
++            # Availability WAS sampled somewhere in this run, but this link
++            # has no availability window at all, so its denominator does not
++            # exist.  A link that SERVED something stays the loud error it
++            # always was: those bits are missing from every denominator.
++            # A link that served nothing used to fall through with
++            # available_bits = 0.0 and be published as status=OK /
++            # utilization=0.0 / available_samples=0 -- i.e. the module that
++            # exists to catch fabricated denominators fabricated one, and
++            # cross-checking against production could not see it (production
++            # reads 0.0 there too).  Measured 2026-09-25: a stalled service
++            # window on isl:1:2 returned status OK, utilization 0.0,
++            # available_capacity_bits 0.0 while isl:0:1 was covered.  A
++            # missing denominator is a missing number whether or not anything
++            # was served.
++            if served > 0:
+                 raise IndependentMetricsError(
+                     f"served link {link_id} has no available-capacity "
+                     f"coverage: {served} served bits are missing from the "
+                     f"denominator")
++            entry["available_capacity_bits"] = None
++            entry["utilization"] = None
++            entry["status"] = STATUS_DEGENERATE
++            entry["fallback_utilization"] = min(
++                1.0, served / capacity if capacity else 0.0)
++        else:
+             if served > available_bits * (1.0 + CAPACITY_REL_TOL):
+                 raise IndependentMetricsError(
+                     f"link {link_id}: served bits {served} exceed sampled "
+--- a/CODE/leo_sim/trace.py
++++ b/CODE/leo_sim/trace.py
+@@ -549,8 +549,127 @@
+         "source_weighting": "measured_outgoing_throughput",
+     }
+     return endpoints, weights, summary
++
++
++def materialization_report(resolved: dict, rows: list[dict],
++                           declared_cells: set | None = None) -> dict:
++    """Mechanically check the EMITTED trace against what the config declared.
++
++    The manifest records what was ASKED FOR (target load, declared burst
++    window, declared packet size).  Until this function existed nothing
++    compared those declarations with the rows that were actually written, so a
++    declaration that never materialized - a burst window past the emission
++    horizon, a burst window under a mode that ignores it, a packet size the
++    generator does not use - reached the receipt unremarked.  Every rule below
++    raises TraceError instead of annotating: the trace is the experiment's
++    input, and an input whose treatment did not happen cannot be repaired
++    downstream.
++
++    rows is the serialized row list (the same dicts validate_packet_rows and
++    load_trace accept), so the check runs on the exact values written to disk.
++    The returned report is evidence; it is deliberately NOT added to
++    manifest.json, whose key set is a frozen part of the receipt contract.
++    """
++    cfg = resolved["config"]
++    sc, dm, ep = cfg["scenario"], cfg["demand"], cfg["endpoints"]
++    mode = dm["mode"]
++    duration = float(sc["duration_s"])
++    emission_end = (duration if dm["emission_end_s"] is None
++                    else float(dm["emission_end_s"]))
++    declared_bits = int(dm["packet_bits"])
++    if declared_cells is None and mode != "csv":
++        declared_cells = {site["agg_grid_id"] for site in _endpoints(cfg)}
+ 
++    times = [float(row["emit_time_s"]) for row in rows]
++    bits = [int(row["bits"]) for row in rows]
++    sources = {row["src_grid_id"] for row in rows}
++    destinations = {row["dst_grid_id"] for row in rows}
+ 
++    report: dict = {
++        "schema": "leo-sim-trace-materialization/v1",
++        "mode": mode,
++        "packets": len(rows),
++        "offered_bits": sum(bits),
++        "packet_bits": {
++            "declared": declared_bits,
++            "observed_distinct": sorted(set(bits)),
++            "declaration_applies": mode != "csv",
++        },
++        "emission": {
++            "emission_end_s": emission_end,
++            "first_emit_s": times[0] if times else None,
++            "last_emit_s": times[-1] if times else None,
++            "packets_after_emission_end": sum(
++                1 for value in times if value > emission_end),
++        },
++        "endpoints": {
++            "distinct_sources": len(sources),
++            "distinct_destinations": len(destinations),
++            "declared_cells": len(declared_cells) if declared_cells else None,
++            "sources_outside_declared": (sorted(sources - declared_cells)
++                                         if declared_cells else []),
++            "destinations_outside_declared": (sorted(destinations - declared_cells)
++                                              if declared_cells else []),
++            "self_loops": sum(1 for row in rows
++                              if row["src_grid_id"] == row["dst_grid_id"]),
++        },
++        "burst": None,
++    }
++
++    problems: list[str] = []
++    if report["emission"]["packets_after_emission_end"]:
++        problems.append(
++            f"{report['emission']['packets_after_emission_end']} packet(s) "
++            f"emitted after the emission window ends at {emission_end}")
++    if mode != "csv" and set(bits) - {declared_bits}:
++        problems.append(
++            f"emitted packet sizes {sorted(set(bits))} do not match the "
++            f"declared demand.packet_bits {declared_bits}")
++    if report["endpoints"]["self_loops"]:
++        problems.append(
++            f"{report['endpoints']['self_loops']} packet(s) whose source and "
++            "destination are the same aggregate cell")
++    for label, outside in (("source", report["endpoints"]["sources_outside_declared"]),
++                           ("destination",
++                            report["endpoints"]["destinations_outside_declared"])):
++        if outside:
++            problems.append(
++                f"emitted {label} cell(s) {outside} are outside the resolved "
++                "endpoint set")
++
++    if mode in ("burst", "mlab") and dm["burst_start_s"] is not None:
++        start = float(dm["burst_start_s"])
++        window_end = start + float(dm["burst_duration_s"])
++        inside = [row for row in rows if start <= float(row["emit_time_s"]) < window_end]
++        effective_multiplier = max(1.0, float(dm["burst_multiplier"]))
++        report["burst"] = {
++            "start_s": start,
++            "duration_s": float(dm["burst_duration_s"]),
++            "end_s": window_end,
++            "multiplier": float(dm["burst_multiplier"]),
++            "effective_multiplier": effective_multiplier,
++            "packets_inside_window": len(inside),
++            "applied": bool(inside) and effective_multiplier > 1.0,
++        }
++        if not inside:
++            problems.append(
++                f"a burst window [{start}, {window_end}) is declared but ZERO "
++                "of the emitted packets fall inside it: the treatment was "
++                "never applied to any packet")
++        if effective_multiplier <= 1.0:
++            problems.append(
++                f"a burst window is declared with burst_multiplier "
++                f"{dm['burst_multiplier']} <= 1.0, which leaves the emission "
++                "rate unchanged: the declaration is a no-op treatment")
++
++    report["problems"] = problems
++    if problems:
++        raise TraceError(
++            "trace materialization does not match the resolved config: "
++            + "; ".join(problems))
++    return report
++
++
+ def compile_trace(resolved: dict, out_dir: str) -> dict:
+     """Compile an immutable trace. Returns the manifest dict."""
+     cfg = resolved["config"]
+@@ -817,12 +936,20 @@
+          (_serialized_time(float(dl)) if dl != "" else ""))
+         for pid, t, s, d, bits, dl in rows
+     ]
+-    validate_packet_rows(
+-        [{"packet_id": pid, "emit_time_s": float(t), "src_grid_id": s,
+-          "dst_grid_id": d, "bits": int(bits),
+-          "deadline_at_s": (float(dl) if dl != "" else None)}
+-         for pid, t, s, d, bits, dl in serialized_rows],
+-        horizon_s=duration, max_packets=max_packets)
++    packet_rows = [
++        {"packet_id": pid, "emit_time_s": float(t), "src_grid_id": s,
++         "dst_grid_id": d, "bits": int(bits),
++         "deadline_at_s": (float(dl) if dl != "" else None)}
++        for pid, t, s, d, bits, dl in serialized_rows
++    ]
++    validate_packet_rows(packet_rows, horizon_s=duration,
++                         max_packets=max_packets)
++    # Input materialization gate.  The rows checked here are the exact
++    # serialized values that go to trace.csv, and the check runs BEFORE any
++    # artifact is written, so a refused trace leaves no trace.csv or
++    # manifest.json behind for a downstream stage to pick up.
++    materialization_report(resolved, packet_rows,
++                           declared_cells={e["agg_grid_id"] for e in endpoints})
+ 
+     trace_path = out / "trace.csv"
+     with open(trace_path, "w", newline="", encoding="utf-8") as fh:
+--- a/CODE/leo_sim/tests/test_config.py
++++ b/CODE/leo_sim/tests/test_config.py
+@@ -75,35 +75,97 @@
+         })
+ 
+ 
+-def test_burst_window_must_intersect_scenario_horizon():
++def test_burst_window_must_lie_inside_the_emission_window():
++    """A window that only INTERSECTS the horizon is not enough.
++
++    The historical rule compared the window with scenario.duration_s alone, so
++    a window placed after demand.emission_end_s passed validation and then
++    produced zero packets inside it: the manifest still declared a burst while
++    the run was a plain baseline (measured 2026-09-25: emission_end_s=20 with
++    the window at [30, 40) gave 100 packets, none of them inside the window).
++    """
+     base = {
+         "scenario": {"duration_s": 120.0},
+         "demand": {"mode": "burst", "burst_start_s": 121.0,
+                    "burst_duration_s": 10.0, "burst_multiplier": 5.0},
+     }
+-    with pytest.raises(config.ConfigError, match="intersect"):
++    with pytest.raises(config.ConfigError, match="must lie inside the emission window"):
+         config.resolve_config(base)
+     # window starting exactly at the horizon is also out of [0, duration)
+     base["demand"]["burst_start_s"] = 120.0
+-    with pytest.raises(config.ConfigError, match="intersect"):
++    with pytest.raises(config.ConfigError, match="must lie inside the emission window"):
+         config.resolve_config(base)
+-    # an intersecting window (including zero-length overlap edge) is valid
++    # a window that STARTS inside but ends past the horizon is only partially
++    # applied and is refused for the same reason
++    base["demand"]["burst_start_s"] = 115.0
++    with pytest.raises(config.ConfigError, match="partially applied"):
++        config.resolve_config(base)
++    # a window fully inside the horizon is valid
+     base["demand"]["burst_start_s"] = 110.0
+     ok = config.resolve_config(base)
+     assert ok["config"]["demand"]["mode"] == "burst"
+ 
+ 
+-def test_mlab_burst_requires_complete_intersecting_window():
++def test_burst_window_is_measured_against_the_emission_end_not_the_horizon():
++    def cfg(emission_end, start, duration):
++        return {
++            "scenario": {"duration_s": 60.0},
++            "demand": {"mode": "burst", "emission_end_s": emission_end,
++                       "burst_start_s": start, "burst_duration_s": duration,
++                       "burst_multiplier": 5.0},
++        }
++    # entirely after the last emitted packet
++    with pytest.raises(config.ConfigError, match="must lie inside the emission window"):
++        config.resolve_config(cfg(20.0, 30.0, 10.0))
++    # half of the declared window is unreachable
++    with pytest.raises(config.ConfigError, match="must lie inside the emission window"):
++        config.resolve_config(cfg(20.0, 15.0, 10.0))
++    # touching the emission end exactly is inside
++    accepted = config.resolve_config(cfg(20.0, 10.0, 10.0))
++    assert accepted["config"]["demand"]["burst_duration_s"] == 10.0
++
++
++def test_a_burst_window_under_a_mode_that_ignores_it_is_refused():
++    """Only mode in {burst, mlab} applies the transform (trace._rate_multiplier).
++
++    Every other mode used to resolve with the window still in the resolved
++    config and traffic_transform.burst = null in the manifest, so nothing
++    downstream could distinguish "no burst intended" from "burst intended and
++    dropped" (audit L18).
++    """
++    for mode in ("uniform", "gravity", "hotspot", "diurnal", "csv",
++                 "population_gravity"):
++        demand = {"mode": mode, "burst_start_s": 1.0, "burst_duration_s": 2.0}
++        if mode == "csv":
++            demand["csv_path"] = "CODE/data/traffic/t1_step5_micro_ab.csv"
++        elif mode == "population_gravity":
++            demand["population_path"] = "CODE/data/geoip/GPW_2020.tif"
++        with pytest.raises(config.ConfigError, match="never applies the burst transform"):
++            config.resolve_config({"demand": demand})
++    # the same window under a mode that does apply it resolves
++    ok = config.resolve_config({"demand": {
++        "mode": "burst", "burst_start_s": 1.0, "burst_duration_s": 2.0,
++        "burst_multiplier": 5.0}})
++    assert ok["config"]["demand"]["burst_start_s"] == 1.0
++
++
++def test_mlab_burst_requires_complete_window_inside_the_emission_window():
+     with pytest.raises(config.ConfigError, match="mode=mlab"):
+         config.resolve_config({
+             "demand": {"mode": "mlab", "burst_start_s": 1.0},
+         })
+-    with pytest.raises(config.ConfigError, match="intersect"):
++    with pytest.raises(config.ConfigError, match="must lie inside the emission window"):
+         config.resolve_config({
+             "scenario": {"duration_s": 10.0},
+             "demand": {"mode": "mlab", "burst_start_s": 10.0,
+                        "burst_duration_s": 1.0},
+         })
++    with pytest.raises(config.ConfigError, match="must lie inside the emission window"):
++        config.resolve_config({
++            "scenario": {"duration_s": 60.0},
++            "demand": {"mode": "mlab", "emission_end_s": 20.0,
++                       "burst_start_s": 30.0, "burst_duration_s": 10.0},
++        })
+ 
+ 
+ def test_learning_eval_requires_sha_bound_checkpoint():
+--- a/CODE/experiment_platform/v2_analysis.py
++++ b/CODE/experiment_platform/v2_analysis.py
+@@ -47,6 +47,10 @@
+ 
+ from CODE.experiment_platform import authorize_experiment
+ from CODE.experiment_platform import isl_pressure
++from CODE.experiment_platform.primary_metrics import (
++    SUPPORTED_PRIMARY_METRICS,
++    UTILIZATION_PRIMARY_METRICS,
++)
+ from CODE.leo_sim import metrics as metrics_mod
+ from CODE.leo_sim import receipt as receipt_mod
+ 
+@@ -226,6 +230,13 @@
+ 
+ def _metric_from_result(receipt: dict[str, Any], ledgers: dict[str, Any],
+                         primary: str) -> float:
++    # The compiler reads this same set (matrix._validate_analysis), so an
++    # unsupported metric can no longer be compiled, authorized, deployed and
++    # run before anyone notices.  The guard is kept here as well because this
++    # function is the analyzer's own entry point: a caller that reaches it
++    # with a metric outside the vocabulary gets the same verdict.
++    if primary not in SUPPORTED_PRIMARY_METRICS:
++        raise V2AnalysisError(f"unsupported V2 primary metric: {primary}")
+     totals = receipt.get("totals")
+     fate_counts = receipt.get("fate_counts")
+     if not isinstance(totals, dict) or not isinstance(fate_counts, dict):

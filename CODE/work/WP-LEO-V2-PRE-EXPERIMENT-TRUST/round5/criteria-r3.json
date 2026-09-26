@@ -1,0 +1,86 @@
+{
+  "work_id": "WP-LEO-V2-FREEZE-COLDSTART-R3",
+  "round": 3,
+  "frozen_at_sha": "b38ded0e1a220322a257cd58686e39ece7554f18",
+  "frozen_code_sha256": "2f74241f4832e26e9d81a8865d2858bb150bc21861e9755e0d23081ac7159e4c",
+  "coldstart_checkout": "/Users/lge/Desktop/topic/leo-r3clone",
+  "scope": "独立冷启动复核冻结提交 b38ded0e：在真 clone 中核对身份、跑全量测试、并证伪/确认本轮的三个新修复。",
+  "not_in_scope": "不改动仓库；不部署；不运行正式实验。",
+  "author_disclosure": "判据与冻结提交由同一作者产出；作者自检不算复核。本轮把检出从 linked worktree 换成了真正的 clone，以关闭上一轮记录的弱点。",
+  "criteria": [
+    {
+      "id": "C1",
+      "statement": "冻结提交身份与记录一致，且检出是独立 clone",
+      "check": "git rev-parse HEAD == b38ded0e1a220322a257cd58686e39ece7554f18；.git 是目录而非指针；git status --porcelain --untracked-files=all 与 --ignored 均为空",
+      "touches": [
+        "CODE/"
+      ]
+    },
+    {
+      "id": "C2",
+      "statement": "运行代码哈希与记录一致且由冻结字节算出",
+      "check": "python3 -c 'from CODE.leo_sim.receipt import code_sha256; print(code_sha256())' == 2f74241f4832e26e9d81a8865d2858bb150bc21861e9755e0d23081ac7159e4c；在 /tmp 副本上改一个 CODE/leo_sim/*.py 后该值变化",
+      "touches": [
+        "CODE/leo_sim/"
+      ]
+    },
+    {
+      "id": "C3",
+      "statement": "在 clone 内跑全量测试 0 failed",
+      "check": "PYTHONDONTWRITEBYTECODE=1 python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q -p no:cacheprovider（cwd = clone）",
+      "touches": [
+        "CODE/"
+      ]
+    },
+    {
+      "id": "C4",
+      "statement": "提交只含 FREEZE-SCOPE §3 列出的路径，无研究材料/结果/授权",
+      "check": "git show --name-only b38ded0e 与 FREEZE-SCOPE.md §3 的路径集合相等；且不含 ANALYSIS/、CODE/Results/、EXPERIMENTS/、authorization.json",
+      "touches": [
+        "CODE/"
+      ]
+    },
+    {
+      "id": "C5",
+      "statement": "命名的零包突发案例编译通过且诊断完整",
+      "check": "seed 1 / 0.16 Mbps / 8 Mbit / 窗 [10,20) / ×5：编译成功、3 包、窗内 0、all_emitted == 3、applied_reason == NO_PACKET_IN_WINDOW",
+      "touches": [
+        "CODE/leo_sim/trace.py"
+      ]
+    },
+    {
+      "id": "C6",
+      "statement": "结构检查仍拒绝；无换种子重试",
+      "check": "mode=uniform+窗口 -> ConfigError；窗口越过 emission_end_s -> ConfigError；multiplier<=1 -> TraceError 且无产物；破坏 _rate_multiplier -> TraceError；同配置两次编译 trace.csv sha256 相同",
+      "touches": [
+        "CODE/leo_sim/trace.py",
+        "CODE/leo_sim/config.py"
+      ]
+    },
+    {
+      "id": "C7",
+      "statement": "（本轮新增，重点证伪）变换检查对真实生成是完备的，而非抽样",
+      "check": "把 _rate_multiplier 换成\"只在端点无理经度处泄漏、其余（含 1 度网格）正确\"的函数后，compile_trace 必须拒绝；并核对报告里的 checked_longitudes 与 longitude_source",
+      "touches": [
+        "CODE/leo_sim/trace.py"
+      ]
+    },
+    {
+      "id": "C8",
+      "statement": "（本轮新增）csv 模式端点无经纬度不再炸",
+      "check": "csv 模式的配置能编译通过；带 sites 的 burst 配置仍得到完整经度集（checked_longitudes == 站点经度）",
+      "touches": [
+        "CODE/leo_sim/trace.py"
+      ]
+    },
+    {
+      "id": "C9",
+      "statement": "（本轮新增）旧授权守卫是真的在守",
+      "check": "tests/test_stale_authorization_guard.py 通过；并说明若平台不再拒绝该旧授权，该测试是否会失败",
+      "touches": [
+        "CODE/experiment_platform/tests/test_stale_authorization_guard.py"
+      ]
+    }
+  ],
+  "note": "本轮之后的所有修改（时间扫掠、longitude_source 措辞、旧授权守卫加强、FREEZE-SCOPE 与判据纳入提交）属于 R4 修订；本判据文件是 R3 时刻的快照。"
+}

@@ -1,0 +1,87 @@
+{
+  "work_id": "WP-LEO-V2-FREEZE-COLDSTART-R1",
+  "round": 1,
+  "frozen_at_sha": "324c8ee882f243f59718df8864e7cddcf63481b6",
+  "frozen_code_sha256": "693796433f1e98ecb8c039c4725476df9fbd48795df2a0da98d87d73a726d974",
+  "frozen_execution_chain_aggregate": "d3f283d49dad4ef716a7ccf72342a572243133901d77b46cce616bda186f1e15",
+  "frozen_freeze_set_aggregate": "e1b75b8b7ccd9dac3daff7a53b54423450db9a5569d6081899aa48252750e9ad",
+  "coldstart_checkout": "/Users/lge/Desktop/topic/leo-coldstart",
+  "scope": "独立冷启动复核冻结提交 324c8ee8：核对身份、在全新检出中跑冻结测试、证明不依赖原工作树的未跟踪文件、并尝试证伪两处小修。",
+  "not_in_scope": "不改动仓库；不部署；不运行正式实验；不评价研究方法。",
+  "author_disclosure": "本判据与冻结提交由同一作者产出。作者自检不能冒充独立复核；本条目的价值取决于审阅者是否真的在全新检出里独立重跑，而不是复述本文。",
+  "criteria": [
+    {
+      "id": "F1",
+      "statement": "冻结提交身份与记录一致",
+      "check": "cd 冷启动检出 && git rev-parse HEAD == 324c8ee882f243f59718df8864e7cddcf63481b6 且 git status --porcelain --untracked-files=all 为空",
+      "touches": [
+        "CODE/"
+      ]
+    },
+    {
+      "id": "F2",
+      "statement": "运行代码哈希与记录一致，且由冻结文件本身算出",
+      "check": "冷启动检出中 python3 -c 'from CODE.leo_sim.receipt import code_sha256; print(code_sha256())' == 693796433f1e98ecb8c039c4725476df9fbd48795df2a0da98d87d73a726d974",
+      "touches": [
+        "CODE/leo_sim/"
+      ]
+    },
+    {
+      "id": "F3",
+      "statement": "执行链哈希与记录一致",
+      "check": "governance.execution_chain_sha256() 的 sort_keys+compact JSON 聚合 == d3f283d49dad4ef716a7ccf72342a572243133901d77b46cce616bda186f1e15",
+      "touches": [
+        "CODE/leo_sim/governance.py"
+      ]
+    },
+    {
+      "id": "F4",
+      "statement": "冻结检出不含任何未跟踪文件，测试不依赖原工作树",
+      "check": "在冷启动检出中运行全部测试（PYTHONDONTWRITEBYTECODE=1 python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q），0 failed；并检查测试引用的路径不落在检出之外",
+      "touches": [
+        "CODE/"
+      ]
+    },
+    {
+      "id": "F5",
+      "statement": "零包突发不再拒绝编译，且诊断完整（证伪尝试）",
+      "check": "在冷启动检出中复现 seed 1 / 0.16 Mbps / 8 Mbit / 窗 [10,20) / 倍率 5：编译通过、窗内 0 包、raw_sample_preserved.all_emitted == 发出的包数(3)、applied_reason == NO_PACKET_IN_WINDOW",
+      "touches": [
+        "CODE/leo_sim/trace.py"
+      ]
+    },
+    {
+      "id": "F6",
+      "statement": "结构检查仍然拒绝（证伪尝试）",
+      "check": "同一检出中：burst 声明于 mode=uniform -> ConfigError；窗口越过 emission_end_s -> ConfigError；burst_multiplier<=1 -> TraceError 且不落产物；被破坏的 _rate_multiplier -> TraceError",
+      "touches": [
+        "CODE/leo_sim/trace.py",
+        "CODE/leo_sim/config.py"
+      ]
+    },
+    {
+      "id": "F7",
+      "statement": "不存在换种子重试；同种子逐字节可复现（证伪尝试）",
+      "check": "同配置编译两次 trace.csv sha256 相同；seed 改变则不同；编译路径中 rng.streams 只被调用一次",
+      "touches": [
+        "CODE/leo_sim/trace.py"
+      ]
+    },
+    {
+      "id": "F8",
+      "statement": "FREEZE-SCOPE.md 的声明与冻结文件一致（文档不在提交内，需按提交内容核对）",
+      "check": "用冻结检出的函数重新计算：CODE/leo_sim/*.py 非递归集合的逐文件 sha256 与聚合、执行链 6 路径与聚合；并与 CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/round3/FREEZE-SCOPE.md（原工作树）中的表格比对",
+      "touches": [
+        "CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/round3/FREEZE-SCOPE.md"
+      ]
+    },
+    {
+      "id": "F9",
+      "statement": "提交只含被冻结的 20 个路径，未混入研究材料、结果目录或旧授权",
+      "check": "git show --stat 324c8ee8 的文件清单与 FREEZE-SCOPE.md §3 的 20 个路径完全一致；且 git show --name-only 中不含 ANALYSIS/、CODE/Results/、EXPERIMENTS/、authorization.json",
+      "touches": [
+        "CODE/"
+      ]
+    }
+  ]
+}

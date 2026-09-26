@@ -1,0 +1,11 @@
+{
+ "schema": "leo-t1-e3-arms-compare/v1",
+ "compared": 5395,
+ "O0_vs_O1_pick_same": 5395,
+ "pick_changed": 0,
+ "availability_gain_inf_to_finite": 0,
+ "availability_loss_finite_to_inf": 0,
+ "snapshots_with_ties_in_O0": 0,
+ "changed_samples": [],
+ "note": "O0 评分器已自证（200/200 与内核一致）；O1 注入点为首跳 peer 的广告队列。"
+}

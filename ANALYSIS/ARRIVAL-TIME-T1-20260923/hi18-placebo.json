@@ -1,0 +1,9 @@
+{
+ "schema": "leo-t1-e3-placebo/v1",
+ "compared": 5395,
+ "O0_eq_O1": 5395,
+ "O0_eq_placebo": 5395,
+ "placebo_changed_pick": 0,
+ "placebo_sensitivity": "scorer INSENSITIVE to injected values",
+ "samples": []
+}

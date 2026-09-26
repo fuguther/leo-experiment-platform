@@ -1,0 +1,85 @@
+{
+  "schema": "leo-sim-round3-evidence/v1",
+  "F1_pullback_authority": {
+    "before": {
+      "directory": "hand-written formal_run.json (1 key) + governance_receipt.json (5 keys)",
+      "ok": true,
+      "claimable": true,
+      "errors": []
+    },
+    "after_minimal_witness": {
+      "expect": "formal",
+      "ok": false,
+      "claimable": false,
+      "claimable_reason": "this gate establishes local file integrity and the bindings it covers only; formal analysis eligibility is NOT evaluated here and remains with CODE/experiment_platform/v2_analysis.py",
+      "failed_checks": [
+        "P5"
+      ],
+      "first_errors": [
+        "formal_run.json is missing contract fields ['authorization_sha256', 'code_sha256', 'config_sha256', 'conservation_ok', 'launch_nonce', 'natural_end', 'run_id', 'schema']",
+        "governance_receipt.json is missing contract fields ['acceptance', 'authorization_sha256', 'conservation_ok', 'deployment_receipt_sha256', 'execution_chain_sha256', 'launch_nonce', 'natural_end', 'payload_sha256', 'receipt_schema', 'run_id', 'schema', 'source_git_commit', 'source_tree_sha256', 'trace_identity_contract', 'trace_manifest_schema']",
+        "formal_run.json schema mismatch: None"
+      ]
+    },
+    "after_lost_witness_declared_formal": {
+      "ok": false,
+      "first_error": "formal_run.json is missing or symbolic: /Users/lge/Desktop/topic/leo-experiment-platform/CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/_r3ev/lost-witness/formal_run.json"
+    },
+    "after_lost_witness_declared_diagnostic": {
+      "ok": false,
+      "formal_artifacts_present": true,
+      "first_error": "this copy contains formal_run.json and/or governance_receipt.json but the caller declared expect='diagnostic'; a lost witness must not be accepted as a diagnostic result -- re-run with expect='formal'"
+    },
+    "after_bare_diagnostic": {
+      "ok": true,
+      "claimable": false,
+      "formal_eligibility": "NOT_EVALUATED"
+    }
+  },
+  "F2_burst_intensity": {
+    "before": {
+      "seed_222": "REFUSED: 198 packets inside the window against an expected 250.000 +/- 47.434 (3.0 sigma)",
+      "seeds_1_60_refused": [],
+      "seeds_1_400_refused": [
+        222,
+        227
+      ],
+      "false_positive_rate": 0.005,
+      "in_window_mean_400": 248.402,
+      "theoretical_sd": 15.761,
+      "in_window_sd_400": 15.565
+    },
+    "after": {
+      "seeds_1_400_refused": [],
+      "seed_222_status": "INCOMPATIBLE",
+      "seed_227_status": "INCOMPATIBLE",
+      "incompatible_seeds": [
+        222,
+        227
+      ],
+      "in_window_mean_400": 248.417,
+      "in_window_sd_400": 15.982,
+      "calibration": {
+        "5.0": {
+          "seeds": 40,
+          "mean": 246.4,
+          "expected": 250.0,
+          "band": 7.5,
+          "within_band": true
+        },
+        "1.2": {
+          "seeds": 200,
+          "mean": 60.37,
+          "expected": 60.0,
+          "band": 1.643,
+          "within_band": true
+        }
+      },
+      "transform_sabotage_caught": [
+        "never applied",
+        "leaks everywhere",
+        "longitude dependent"
+      ]
+    }
+  }
+}

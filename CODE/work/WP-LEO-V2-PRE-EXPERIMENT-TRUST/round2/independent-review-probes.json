@@ -1,0 +1,38 @@
+{
+  "minimal_formal_metadata": {
+    "ok": true,
+    "claimable": true,
+    "errors": [],
+    "witness_keys": [
+      "receipt_sha256"
+    ],
+    "governance_keys": [
+      "research_eligible",
+      "verification_errors",
+      "run_receipt_sha256",
+      "resolved_config_sha256",
+      "trace_manifest_sha256"
+    ],
+    "missing": [
+      "schema",
+      "run_id",
+      "launch_nonce",
+      "deployment_receipt",
+      "external_launch_witness",
+      "authorization_binding"
+    ]
+  },
+  "legitimate_generator_rejected": {
+    "seed": 222,
+    "error": "trace materialization does not match the resolved config: the declared burst intensity did not materialize: 198 packets inside the window against an expected 250.000 +/- 47.434 (3.0 sigma); the declared multiplier 5.0 did not materialize",
+    "configuration": "_burst_cfg defaults; only scenario.seed changed",
+    "generator_modified": false
+  },
+  "checked_seeds": 222,
+  "seed222_public_config_confirmation": {
+    "seed": 222,
+    "config_reresolved": true,
+    "error": "trace materialization does not match the resolved config: the declared burst intensity did not materialize: 198 packets inside the window against an expected 250.000 +/- 47.434 (3.0 sigma); the declared multiplier 5.0 did not materialize",
+    "generator_modified": false
+  }
+}

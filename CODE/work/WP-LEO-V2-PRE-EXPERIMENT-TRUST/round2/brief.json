@@ -1,0 +1,64 @@
+{
+  "schema": "agent-work-package/v2",
+  "work_id": "WP-LEO-V2-PRE-EXPERIMENT-TRUST-R2",
+  "revision": 1,
+  "parent_revision": null,
+  "producer_id": "producer:leo-experiment-platform-agent",
+  "producer_session_id": "S-pre-experiment-trust-r2",
+  "objective": "关闭 R11 的两处入口层缺口（正式运行链的流契约、结果拉回的本地验收），并修掉第一轮验收发现的两个漏检点（recompute 生产读数缺字段静默通过、突发强度未被判定）。",
+  "frozen_identity": {
+    "head": "98c858f642aeca8056d215224b20783b00354026",
+    "commit_sha": null,
+    "code_sha256": "681a10b1c71f14f3b266ddd1fa9d841f4bf2096d379f7aa6ed78bb27a1bcc02b",
+    "execution_chain_sha256": "d3f283d49dad4ef716a7ccf72342a572243133901d77b46cce616bda186f1e15",
+    "caveat": "任务书禁止提交，因此没有 commit SHA 可冻结。revision 与 code_sha256/execution_chain_sha256 是本轮唯一的可冻结身份；这一点限制了本轮能得到的复核强度（见 cannot_claim）。"
+  },
+  "allowed_inputs": [
+    "CODE/leo_sim/receipt.py",
+    "CODE/leo_sim/pullback.py",
+    "CODE/leo_sim/recompute.py",
+    "CODE/leo_sim/trace.py",
+    "CODE/leo_sim/__main__.py",
+    "CODE/scripts/remote/remote_job.py",
+    "CODE/leo_sim/tests/test_formal_stream_gate.py",
+    "CODE/leo_sim/tests/test_pre_experiment_trust_round2.py",
+    "CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/round2/criteria.json",
+    "CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/round2/PROCEDURE.md",
+    "CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/HASH-IMPACT.md",
+    "CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/evidence/formal-repro.json",
+    "CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/tools/repro_formal_streams.py",
+    "CODE/work/WP-LEO-V2-T1-TRUST-CHAIN-V6/round3/review-{cold_start,adversarial,satellite_drl}.json"
+  ],
+  "excluded_inputs": [
+    "ANALYSIS/ARRIVAL-TIME-T1-20260923/（与本轮无关的唯一研究材料）",
+    "CODE/work/WP-LEO-V2-T1-TRUST-CHAIN-V6/round3 以外的历史回执（只作为引用，不作为判据依据）"
+  ],
+  "deliverables": [
+    "零决策/非零决策两条正式入口复现记录",
+    "拉回本地验收入口与其缺失/篡改反例",
+    "recompute 缺字段与突发强度的负例",
+    "更新后的放行表与哈希影响清单"
+  ],
+  "cannot_claim": [
+    "不能声称正式链路已打通：没有 VM，没有 deployment_receipt、外部启动证人与 governance_receipt.json。",
+    "不能声称本轮经过独立冷启动复核：材料刚产出，且没有 commit SHA 可冻结给审阅者。",
+    "不能声称入口层改动已被合并门接受：未提交、未推送。",
+    "不能声称突发强度已被普遍验证：只有具备足够样本的实验才可判定，其余为 UNDECIDABLE。"
+  ],
+  "acceptance": [
+    "criteria.json 的 18 条逐条给出 PASS/FAIL，FAIL 必须附复现命令与实际输出。",
+    "overall 只由 criteria_results 推导。"
+  ],
+  "review_roles": [
+    "cold_start",
+    "satellite_drl",
+    "adversarial"
+  ],
+  "cost_tier": "high_judgment",
+  "status": "REVIEW",
+  "provenance_disclosure": [
+    "本工作包的作者同时是改动者；三份回执若由同一会话产出，其独立性只是 session-id 语义（平台已知限制 L20）。",
+    "上一轮（V6 round 3）的三份回执针对 c2e18a8f，其中 satellite_drl 给出 FAIL，原因是 T5 判据文本内嵌的测量值是 smoke profile 的而非 fixture 的——属于判据缺陷而非代码缺陷；开工前的未提交改动与 98c858f 的提交信息已修正该文本。",
+    "本轮直接采用了该轮对抗复核的 F1（拉回名单缺流）与 T8（v5 提供流路径必须显式拒绝）两条结论作为设计前提。"
+  ]
+}

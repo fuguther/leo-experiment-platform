@@ -1,0 +1,587 @@
+{
+  "access": {
+    "grants": 1,
+    "preposition_grants": 1,
+    "releases": {},
+    "requests": 0,
+    "slot_hold_s_total": 0.0,
+    "wait_time_s_max": 0.0,
+    "wait_time_s_total": 0.0,
+    "waiting_at_stop": 0
+  },
+  "congestion_metrics": {
+    "access_admission_rate": 1.0,
+    "admitted_at_satellite_ingress_bits": 48000000,
+    "admitted_at_satellite_ingress_packets": 6,
+    "delivered_bits": 0,
+    "delivered_by_horizon_given_ingress_bits": 0,
+    "delivered_by_horizon_given_ingress_packets": 0,
+    "delivered_packets": 0,
+    "links": {
+      "gsl:uplink:0:G1:90:180": {
+        "available_capacity_bits": 48000000.00000004,
+        "available_samples": 0,
+        "available_time_s": 0.0,
+        "capacity_bits": 48000000.00000004,
+        "served_bits": 48000000.0,
+        "service_windows": 6,
+        "stage": "uplink",
+        "utilization": 0.9999999999999992
+      }
+    },
+    "network_delivery_rate_by_horizon": 0.0,
+    "offered_bits": 48000000,
+    "offered_packets": 6,
+    "packets": {
+      "1": {
+        "access_wait_s": 0.08184582931872608,
+        "admitted_at": 3.081845829318726,
+        "emitted_at": 3.0,
+        "holding_wait_s": 0.0,
+        "pre_ingress_s": 0.08184582931872608,
+        "prop_s": 0.001845829318726011,
+        "queue_wait_s": 0.0,
+        "total_queue_wait_s": 0.0,
+        "tx_s": 0.08000000000000007
+      },
+      "2": {
+        "access_wait_s": 0.11184563162965899,
+        "admitted_at": 3.161845631629659,
+        "emitted_at": 3.05,
+        "holding_wait_s": 0.0,
+        "pre_ingress_s": 0.11184563162965899,
+        "prop_s": 0.0018456316296586728,
+        "queue_wait_s": 0.03000000000000025,
+        "total_queue_wait_s": 0.03000000000000025,
+        "tx_s": 0.08000000000000007
+      },
+      "3": {
+        "access_wait_s": 0.1418454358103598,
+        "admitted_at": 3.24184543581036,
+        "emitted_at": 3.1,
+        "holding_wait_s": 0.0,
+        "pre_ingress_s": 0.1418454358103598,
+        "prop_s": 0.0018454358103596746,
+        "queue_wait_s": 0.06000000000000005,
+        "total_queue_wait_s": 0.06000000000000005,
+        "tx_s": 0.08000000000000007
+      },
+      "4": {
+        "access_wait_s": 0.1718452418614249,
+        "admitted_at": 3.321845241861425,
+        "emitted_at": 3.15,
+        "holding_wait_s": 0.0,
+        "pre_ingress_s": 0.1718452418614249,
+        "prop_s": 0.0018452418614245403,
+        "queue_wait_s": 0.0900000000000003,
+        "total_queue_wait_s": 0.0900000000000003,
+        "tx_s": 0.08000000000000007
+      },
+      "5": {
+        "access_wait_s": 0.20184504978344542,
+        "admitted_at": 3.4018450497834456,
+        "emitted_at": 3.2,
+        "holding_wait_s": 0.0,
+        "pre_ingress_s": 0.20184504978344542,
+        "prop_s": 0.0018450497834452406,
+        "queue_wait_s": 0.1200000000000001,
+        "total_queue_wait_s": 0.1200000000000001,
+        "tx_s": 0.08000000000000007
+      },
+      "99": {
+        "access_wait_s": 0.18185425234304817,
+        "admitted_at": 0.18185425234304817,
+        "emitted_at": 0.0,
+        "holding_wait_s": 0.0,
+        "pre_ingress_s": 0.18185425234304817,
+        "prop_s": 0.0018542523430481739,
+        "queue_wait_s": 0.1,
+        "total_queue_wait_s": 0.1,
+        "tx_s": 0.07999999999999999
+      }
+    },
+    "schema": "leo-sim-congestion-metrics/v2",
+    "validation": {
+      "errors": [],
+      "ok": true
+    }
+  },
+  "control_counters": {
+    "arrived": 0,
+    "duplicate": 0,
+    "entered_queue": 0,
+    "expired": 0,
+    "geometry_lost": 0,
+    "in_system": 0,
+    "lost": 0,
+    "overflow": 0,
+    "registered": 0,
+    "snapshots_created": 0,
+    "transmission_completed": 0,
+    "transmission_started": 0
+  },
+  "control_instances": {},
+  "deliveries": {},
+  "events_processed": 4106,
+  "field_authority": {
+    "access": "diagnostic",
+    "congestion_metrics": "recomputed",
+    "control_counters": "ledger_consistency",
+    "control_instances": "ledger_consistency",
+    "deliveries": "recomputed",
+    "events_processed": "diagnostic",
+    "handover_events": "diagnostic",
+    "learning": "ledger_consistency",
+    "link_available_windows": "diagnostic",
+    "link_service_windows": "diagnostic",
+    "mechanism_counters": "ledger_consistency",
+    "occupied": "diagnostic",
+    "packet_events": "diagnostic",
+    "packet_fates": "recomputed",
+    "queue_area_bits_s": "diagnostic",
+    "stop_time_s": "recomputed"
+  },
+  "handover_events": [
+    {
+      "endpoint": "G1:90:180",
+      "sat": 0,
+      "t": 0,
+      "type": "associate"
+    },
+    {
+      "endpoint": "G1:142:270",
+      "sat": 2,
+      "t": 0.18185425234304817,
+      "type": "associate"
+    }
+  ],
+  "learning": {
+    "algorithm": "none"
+  },
+  "link_available_windows": [],
+  "link_service_windows": [
+    {
+      "bits": 8000000,
+      "capacity_bits": 7999999.999999999,
+      "end": 0.18,
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "outcome": "ok",
+      "pid": 99,
+      "rate_bps": 100000000.0,
+      "served_bits": 8000000,
+      "stage": "uplink",
+      "start": 0.1
+    },
+    {
+      "bits": 8000000,
+      "capacity_bits": 8000000.000000007,
+      "end": 3.08,
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "outcome": "ok",
+      "pid": 1,
+      "rate_bps": 100000000.0,
+      "served_bits": 8000000,
+      "stage": "uplink",
+      "start": 3.0
+    },
+    {
+      "bits": 8000000,
+      "capacity_bits": 8000000.000000007,
+      "end": 3.16,
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "outcome": "ok",
+      "pid": 2,
+      "rate_bps": 100000000.0,
+      "served_bits": 8000000,
+      "stage": "uplink",
+      "start": 3.08
+    },
+    {
+      "bits": 8000000,
+      "capacity_bits": 8000000.000000007,
+      "end": 3.24,
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "outcome": "ok",
+      "pid": 3,
+      "rate_bps": 100000000.0,
+      "served_bits": 8000000,
+      "stage": "uplink",
+      "start": 3.16
+    },
+    {
+      "bits": 8000000,
+      "capacity_bits": 8000000.000000007,
+      "end": 3.3200000000000003,
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "outcome": "ok",
+      "pid": 4,
+      "rate_bps": 100000000.0,
+      "served_bits": 8000000,
+      "stage": "uplink",
+      "start": 3.24
+    },
+    {
+      "bits": 8000000,
+      "capacity_bits": 8000000.000000007,
+      "end": 3.4000000000000004,
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "outcome": "ok",
+      "pid": 5,
+      "rate_bps": 100000000.0,
+      "served_bits": 8000000,
+      "stage": "uplink",
+      "start": 3.3200000000000003
+    }
+  ],
+  "mechanism_counters": {
+    "control_entered_queue": 0,
+    "control_initialized": false,
+    "control_registered": 0,
+    "control_snapshots": 0,
+    "control_tx_completed": 0,
+    "control_tx_started": 0,
+    "ge_failures": 0,
+    "ge_gsl_queries": 0,
+    "ge_initialized": false,
+    "ge_isl_queries": 0,
+    "ge_waits": 0,
+    "holding_queue_overflows": 0,
+    "learning_decisions": 0,
+    "learning_discarded_at_rematch": 0,
+    "learning_discarded_at_stop": 0,
+    "learning_initialized": false,
+    "learning_train_steps": 0,
+    "learning_transitions": 0,
+    "mbb_events": 0,
+    "mcs_rate_max_bps": 0,
+    "mcs_rate_min_bps": 0,
+    "mcs_rate_samples": 0,
+    "mcs_zero_rate_holds": 0,
+    "topo_dynamic_init": false,
+    "topo_recomputes": 0
+  },
+  "occupied": {
+    "ctrl_isl_s": 0.0,
+    "gsl_downlink_s": 0.0,
+    "gsl_uplink_s": 0.4800000000000003,
+    "isl_s": 0.0
+  },
+  "packet_events": [
+    {
+      "at": 0.0,
+      "bits": 8000000,
+      "kind": "packet_emitted",
+      "pid": 99
+    },
+    {
+      "at": 0.0,
+      "kind": "queue_enter",
+      "link_id": "gsl:uplink:pending:G1:90:180",
+      "pid": 99,
+      "queue": "uplink",
+      "queue_id": 0
+    },
+    {
+      "at": 0.1,
+      "bits": 8000000,
+      "kind": "service_start",
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "pid": 99,
+      "queue_id": 0,
+      "rate_bps": 100000000.0,
+      "stage": "uplink"
+    },
+    {
+      "at": 0.18,
+      "delay_s": 0.0018542523430481806,
+      "kind": "propagation_start",
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "pid": 99,
+      "prop_id": 0,
+      "stage": "uplink"
+    },
+    {
+      "at": 0.18185425234304817,
+      "kind": "propagation_arrival",
+      "pid": 99,
+      "prop_id": 0
+    },
+    {
+      "at": 0.18185425234304817,
+      "bits": 8000000,
+      "endpoint": "G1:90:180",
+      "kind": "satellite_ingress",
+      "pid": 99,
+      "satellite": 0
+    },
+    {
+      "at": 3.0,
+      "bits": 8000000,
+      "kind": "packet_emitted",
+      "pid": 1
+    },
+    {
+      "at": 3.0,
+      "kind": "queue_enter",
+      "link_id": "gsl:uplink:pending:G1:90:180",
+      "pid": 1,
+      "queue": "uplink",
+      "queue_id": 1
+    },
+    {
+      "at": 3.0,
+      "bits": 8000000,
+      "kind": "service_start",
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "pid": 1,
+      "queue_id": 1,
+      "rate_bps": 100000000.0,
+      "stage": "uplink"
+    },
+    {
+      "at": 3.05,
+      "bits": 8000000,
+      "kind": "packet_emitted",
+      "pid": 2
+    },
+    {
+      "at": 3.05,
+      "kind": "queue_enter",
+      "link_id": "gsl:uplink:pending:G1:90:180",
+      "pid": 2,
+      "queue": "uplink",
+      "queue_id": 2
+    },
+    {
+      "at": 3.08,
+      "delay_s": 0.0018458293187258708,
+      "kind": "propagation_start",
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "pid": 1,
+      "prop_id": 1,
+      "stage": "uplink"
+    },
+    {
+      "at": 3.08,
+      "bits": 8000000,
+      "kind": "service_start",
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "pid": 2,
+      "queue_id": 2,
+      "rate_bps": 100000000.0,
+      "stage": "uplink"
+    },
+    {
+      "at": 3.081845829318726,
+      "kind": "propagation_arrival",
+      "pid": 1,
+      "prop_id": 1
+    },
+    {
+      "at": 3.081845829318726,
+      "bits": 8000000,
+      "endpoint": "G1:90:180",
+      "kind": "satellite_ingress",
+      "pid": 1,
+      "satellite": 0
+    },
+    {
+      "at": 3.1,
+      "bits": 8000000,
+      "kind": "packet_emitted",
+      "pid": 3
+    },
+    {
+      "at": 3.1,
+      "kind": "queue_enter",
+      "link_id": "gsl:uplink:pending:G1:90:180",
+      "pid": 3,
+      "queue": "uplink",
+      "queue_id": 3
+    },
+    {
+      "at": 3.15,
+      "bits": 8000000,
+      "kind": "packet_emitted",
+      "pid": 4
+    },
+    {
+      "at": 3.15,
+      "kind": "queue_enter",
+      "link_id": "gsl:uplink:pending:G1:90:180",
+      "pid": 4,
+      "queue": "uplink",
+      "queue_id": 4
+    },
+    {
+      "at": 3.16,
+      "delay_s": 0.0018456316296588155,
+      "kind": "propagation_start",
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "pid": 2,
+      "prop_id": 2,
+      "stage": "uplink"
+    },
+    {
+      "at": 3.16,
+      "bits": 8000000,
+      "kind": "service_start",
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "pid": 3,
+      "queue_id": 3,
+      "rate_bps": 100000000.0,
+      "stage": "uplink"
+    },
+    {
+      "at": 3.161845631629659,
+      "kind": "propagation_arrival",
+      "pid": 2,
+      "prop_id": 2
+    },
+    {
+      "at": 3.161845631629659,
+      "bits": 8000000,
+      "endpoint": "G1:90:180",
+      "kind": "satellite_ingress",
+      "pid": 2,
+      "satellite": 0
+    },
+    {
+      "at": 3.2,
+      "bits": 8000000,
+      "kind": "packet_emitted",
+      "pid": 5
+    },
+    {
+      "at": 3.2,
+      "kind": "queue_enter",
+      "link_id": "gsl:uplink:pending:G1:90:180",
+      "pid": 5,
+      "queue": "uplink",
+      "queue_id": 5
+    },
+    {
+      "at": 3.24,
+      "delay_s": 0.0018454358103595235,
+      "kind": "propagation_start",
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "pid": 3,
+      "prop_id": 3,
+      "stage": "uplink"
+    },
+    {
+      "at": 3.24,
+      "bits": 8000000,
+      "kind": "service_start",
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "pid": 4,
+      "queue_id": 4,
+      "rate_bps": 100000000.0,
+      "stage": "uplink"
+    },
+    {
+      "at": 3.24184543581036,
+      "kind": "propagation_arrival",
+      "pid": 3,
+      "prop_id": 3
+    },
+    {
+      "at": 3.24184543581036,
+      "bits": 8000000,
+      "endpoint": "G1:90:180",
+      "kind": "satellite_ingress",
+      "pid": 3,
+      "satellite": 0
+    },
+    {
+      "at": 3.3200000000000003,
+      "delay_s": 0.0018452418614246045,
+      "kind": "propagation_start",
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "pid": 4,
+      "prop_id": 4,
+      "stage": "uplink"
+    },
+    {
+      "at": 3.3200000000000003,
+      "bits": 8000000,
+      "kind": "service_start",
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "pid": 5,
+      "queue_id": 5,
+      "rate_bps": 100000000.0,
+      "stage": "uplink"
+    },
+    {
+      "at": 3.321845241861425,
+      "kind": "propagation_arrival",
+      "pid": 4,
+      "prop_id": 4
+    },
+    {
+      "at": 3.321845241861425,
+      "bits": 8000000,
+      "endpoint": "G1:90:180",
+      "kind": "satellite_ingress",
+      "pid": 4,
+      "satellite": 0
+    },
+    {
+      "at": 3.4000000000000004,
+      "delay_s": 0.00184504978344523,
+      "kind": "propagation_start",
+      "link_id": "gsl:uplink:0:G1:90:180",
+      "pid": 5,
+      "prop_id": 5,
+      "stage": "uplink"
+    },
+    {
+      "at": 3.4018450497834456,
+      "kind": "propagation_arrival",
+      "pid": 5,
+      "prop_id": 5
+    },
+    {
+      "at": 3.4018450497834456,
+      "bits": 8000000,
+      "endpoint": "G1:90:180",
+      "kind": "satellite_ingress",
+      "pid": 5,
+      "satellite": 0
+    }
+  ],
+  "packet_fates": {
+    "1": [
+      "NO_ROUTE",
+      8000000
+    ],
+    "2": [
+      "NO_ROUTE",
+      8000000
+    ],
+    "3": [
+      "NO_ROUTE",
+      8000000
+    ],
+    "4": [
+      "NO_ROUTE",
+      8000000
+    ],
+    "5": [
+      "NO_ROUTE",
+      8000000
+    ],
+    "99": [
+      "NO_ROUTE",
+      8000000
+    ]
+  },
+  "queue_area_bits_s": {
+    "downlink": 0.0,
+    "holding": 0.0,
+    "isl_ctrl": 0.0,
+    "isl_data": 0.0,
+    "uplink": 3200000.0000000056
+  },
+  "stop_time_s": 40.0
+}

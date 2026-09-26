@@ -1,0 +1,187 @@
+{
+ "schema": "leo-t1-e1-validation/v1",
+ "identity": {
+  "code_sha256": "2a114890e8b11e429fec45a6b1efcb81c1d80a8e195a9c9407a250d218f16dbe",
+  "config_sha256": "c6e7357aaf7ffad755925c1118b9ec6451276e1e88c11b58b68f3681abc76099",
+  "trace_sha256": "a763b8709dacdb767a7ee7b02358fa4674883ecc97b0a7a8ee77d0f89a4593ab",
+  "schema": "leo-sim-receipt/v6"
+ },
+ "ledger_schema": "decision-ledger-fold/v1",
+ "decisions": 10576,
+ "decisions_all": 10576,
+ "outcome_filter": {
+  "timeline_provided": true,
+  "decisions_with_service_finish": 10573,
+  "dropped_non_ok": 0,
+  "multiple_finish_milestones": 0,
+  "dropped_sample": []
+ },
+ "ledger_diagnostics": {
+  "decisions": 10576,
+  "duplicate_decision_ids": [],
+  "milestones": 67563,
+  "orphan_redecisions": []
+ },
+ "checks": {
+  "A1_constellation_parameters": {
+   "status": "PASS",
+   "resolved": {
+    "num_satellites": 24,
+    "num_planes": 3,
+    "altitude_km": 550.0,
+    "inclination_deg": 53.0,
+    "min_elevation_deg": 5,
+    "seed": 7
+   },
+   "missing_fields": [],
+   "declared_vs_resolved": {},
+   "note": "任务书点名：66 星旧配置（acceptance/bbm.yaml、mbb.yaml、mlab_measured_od_burst.yaml）在仓库中零测试引用，倾角/参数不得沿用示意值。本检查只核对 resolved config 字段完整性与其自报值；与轨道真值的独立比对属 A2/A3（需几何模块，见 NOT_IMPLEMENTED）。"
+  },
+  "A_serialization_fixed_point": {
+   "status": "PASS",
+   "expected_service_s_by_class": {
+    "isl": 0.1,
+    "access_uplink": 0.001,
+    "access_downlink": 0.001
+   },
+   "formula": "packet_bits / (link_rate_mbps * 1e6)",
+   "checked_decisions": 10573,
+   "skipped_missing_timestamps": 3,
+   "matched_by_class": {
+    "isl": 7049,
+    "access_uplink": 3524,
+    "access_downlink": 0
+   },
+   "max_abs_error_s": 2.3646883062777846e-14,
+   "tolerance_s": 1e-09,
+   "violation_count": 0,
+   "violations_sample": []
+  },
+  "OBS_observation_mode_semantics": {
+   "status": "PASS",
+   "by_mode": {
+    "refresh": {
+     "checked": 0,
+     "skipped_missing": 0,
+     "violation_count": 0,
+     "violations_sample": [],
+     "status": "SKIP"
+    },
+    "frozen": {
+     "checked": 10576,
+     "skipped_missing": 0,
+     "violation_count": 0,
+     "violations_sample": [],
+     "status": "PASS"
+    }
+   }
+  },
+  "D_timeline_monotonicity": {
+   "status": "PASS",
+   "order": [
+    "t_measure",
+    "t_decision_start",
+    "t_decision_commit",
+    "t_local_queue_enter",
+    "t_service_start",
+    "t_service_finish",
+    "t_peer_arrival",
+    "t_peer_redecision",
+    "t_peer_target_egress_enter",
+    "t_peer_target_egress_service_start"
+   ],
+   "checked_decisions": 7049,
+   "skipped_missing_timestamps": 3527,
+   "violation_count": 0,
+   "violations_sample": []
+  },
+  "D1_delta_arrival_statistics": {
+   "status": "PASS",
+   "definition": "DeltaT_arrival := t_peer_arrival - t_service_finish",
+   "n": 10573,
+   "skipped_missing": 3,
+   "min_s": 0.0018353687512462358,
+   "p50_s": 0.017669237265465654,
+   "p95_s": 0.017669237265465654,
+   "max_s": 0.017669237265465654,
+   "mean_s": 0.013096898775663446,
+   "note": "该量含传播时延 + 对端排队/重决策开销；按几何（临近/远离）分组需几何模块，见 NOT_IMPLEMENTED。"
+  },
+  "A2_propagation_geometry_fixed_point": {
+   "status": "PASS",
+   "observations": 10573,
+   "isl_class": {
+    "expected_intra_plane_chord_km": 5297.104070797573,
+    "observations": 7049,
+    "max_relative_error": 1.5023874446665168e-08,
+    "pass_tolerance": 1e-06
+   },
+   "gsl_or_other_class": {
+    "observations": 3524,
+    "allowed_band_km": [
+     550.0,
+     2204.9705941303782
+    ],
+    "out_of_band": [],
+    "note": "地面-卫星斜距；本脚本只做上下界约束核对，不做逐时刻位置传播。"
+   },
+   "formulas": {
+    "isl_intra_plane_chord": "2*(R_earth+h)*sin(pi/(n/p))",
+    "gsl_max_slant": "-Re*sin(e)+sqrt((Re*sin(e))^2+h^2+2*Re*h), e=min_elevation_deg"
+   },
+   "details_isl": [
+    {
+     "delta_t_s": 0.017669237,
+     "observed_distance_km": 5297.103991214546,
+     "count": 7049,
+     "relative_error": 1.5023874446665168e-08
+    }
+   ],
+   "details_other": [
+    {
+     "delta_t_s": 0.001844721,
+     "observed_distance_km": 553.033442914218,
+     "count": 2
+    },
+    {
+     "delta_t_s": 0.001844714,
+     "observed_distance_km": 553.0313443670119,
+     "count": 2
+    },
+    {
+     "delta_t_s": 0.004206932,
+     "observed_distance_km": 1261.206484918856,
+     "count": 2
+    },
+    {
+     "delta_t_s": 0.001847508,
+     "observed_distance_km": 553.8689644946639,
+     "count": 1
+    },
+    {
+     "delta_t_s": 0.001845681,
+     "observed_distance_km": 553.321243673898,
+     "count": 1
+    },
+    {
+     "delta_t_s": 0.001847242,
+     "observed_distance_km": 553.7892197008359,
+     "count": 1
+    }
+   ],
+   "note": "仍属 NOT_IMPLEMENTED 的是：逐时刻轨道位置传播（含相位因子/地球自转）、GSL 斜距、按临近/远离分组。"
+  },
+  "A3_link_caliber_mcs_zero_rate": {
+   "status": "SKIP",
+   "reason": "仅在 rate_model=mcs 且配置了 max_isl_km 时适用",
+   "rate_model": "constant",
+   "max_isl_km": 6000.0
+  }
+ },
+ "NOT_IMPLEMENTED": {
+  "A2_A3_geometry_and_availability_fixed_points": "需独立重算星座几何（轨道参数+时刻 → 位置 → 星间距离）并与平台模型比对；日志不含距离。",
+  "A4_script_vs_kernel_per_hop_crosscheck": "同上，依赖几何模块。",
+  "ETA_error_by_geometry_group": "ΔT_arrival 的临近/远离分组依赖几何事件判定，同上。"
+ },
+ "overall_status": "PASS"
+}

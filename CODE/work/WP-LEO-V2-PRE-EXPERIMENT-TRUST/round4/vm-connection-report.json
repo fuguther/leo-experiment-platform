@@ -1,0 +1,78 @@
+{
+  "schema": "leo-sim-vm-connection-report/v1",
+  "date": "2026-09-25",
+  "verdict": "CONNECTION_USABLE_DEPLOYMENT_BLOCKED",
+  "connection": {
+    "ssh_alias": "vm",
+    "resolved_from": "~/.ssh/config Host vm",
+    "host_name": "192.168.200.23",
+    "port": 12130,
+    "user": "liguang13",
+    "identity_file": "~/.ssh/id_ed25519_lab",
+    "batch_mode_probe": "ssh -o BatchMode=yes -o ConnectTimeout=8 vm 'echo VM_OK; hostname'",
+    "probe_result": "VM_OK / cuda-liguang13 / Linux 6.6.0-28.0.0.34.oe2403.aarch64",
+    "usable": true,
+    "prerequisites_verified": {
+      "tmux": "/usr/bin/tmux (3.4)",
+      "conda_env": "/data/liguang13/conda-envs/leo-i39 present, Python 3.11.15",
+      "leo_sim_cli": "python3 -m CODE.leo_sim --help works under that env",
+      "disk_free": "471G available on /data",
+      "workspace": "/data/论文/leo-direct-sim present",
+      "results_dir": "CODE/Results has 36 experiment directories incl. a real R06 formal run (formal_run.json + governance_receipt.json, receipt v5/28 keys)",
+      "launch_witnesses": ".remote_runtime/launches has many nonce-named witness files",
+      "deployment_receipt": ".remote_runtime/deployment.json present, schema_version=2"
+    },
+    "earlier_claim_corrected": "Previous rounds recorded no-VM because /data does not exist locally. That inference was wrong: the VM is reachable and fully equipped."
+  },
+  "deployment_blocker": {
+    "why": "The canonical deployment contract deploys the FULL research workspace, not this subset repository.",
+    "guard": "CODE/scripts/remote/deployment_guard.py source_paths()",
+    "required_dirs": [
+      "ANALYSIS",
+      "CODE",
+      "EXPERIMENTS",
+      "LITERATURE",
+      "PAPER"
+    ],
+    "required_files": [
+      ".deployment_commit",
+      ".gitignore",
+      "AGENTS.md",
+      "DECISIONS.md",
+      "LICENSE",
+      "NOTES.md",
+      "README.md"
+    ],
+    "missing_in_this_repo": {
+      "dirs": [
+        "LITERATURE",
+        "PAPER"
+      ],
+      "files": [
+        "AGENTS.md",
+        "DECISIONS.md",
+        "LICENSE",
+        "NOTES.md"
+      ]
+    },
+    "observed_failure": "bash CODE/scripts/remote/push-remote.sh -> ValueError: required deployment directory missing or unsafe: <clone>/LITERATURE (exit 1)",
+    "why_not_bypass": "deployment_guard.install() os.replace()s ANALYSIS/CODE/EXPERIMENTS/LITERATURE/PAPER and the top-level files into deploy-backups, so a successful deploy from this subset would REMOVE the VM LITERATURE, PAPER, NOTES.md, DECISIONS.md, AGENTS.md. The guard refuses before any remote mutation, which is the correct fail-closed behaviour. Bypassing push-remote.sh with a manual rsync is also impossible: remote_job.prepare_launch calls deployment_guard.verify_receipt() on every formal run, which re-hashes the deployed workspace against source_tree_sha256, so an out-of-band copy would be refused by design.",
+    "vm_workspace_identity": {
+      "source_git_commit": "046eea3549f7089118d85efc3300b6d20e6a3c21",
+      "source_git_branch": "main",
+      "source_git_dirty": false,
+      "source_tree_sha256": "5a0ce1681daa826802a9cbe48fb11fd774cf03a8cd5cac92c5883784bdf6de5d",
+      "deployed_at": "2026-09-24T14:04:54+08:00",
+      "deployed_file_count": 880,
+      "deployed_code_sha256": "9dea5140d14fe841711a665b84f9eaf0dd65d9c216467532a4bd4973117fe639"
+    },
+    "relation_to_this_repo": "The deployed commit 046eea3549... does not exist in this repository history, and the deployed CODE/leo_sim has no pullback.py / recompute.py, so the VM carries a different lineage of the same package layout."
+  },
+  "what_was_not_done": [
+    "No deployment: push-remote.sh refused and the refusal is correct.",
+    "No out-of-band copy: it would be refused by verify_receipt at run time.",
+    "No formal run on the VM: the two acceptance configs are compiled and authorized for code identity 693796433f..., which is not what the VM has deployed, so a run would be refused (fail-closed).",
+    "No reuse of any old authorization."
+  ],
+  "requirement_to_close": "The freeze commit must be checked out ON TOP OF the full research workspace (with LITERATURE/PAPER/AGENTS.md/DECISIONS.md/NOTES.md/LICENSE present) and committed there, so push-remote.sh can stage and verify it."
+}

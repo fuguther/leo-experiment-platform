@@ -1,0 +1,78 @@
+{
+  "work_id": "WP-LEO-V2-FREEZE-COLDSTART-R5",
+  "round": 5,
+  "frozen_at_sha": "5fb89de07831041e4452ffb75592136758fc4eda",
+  "frozen_code_sha256": "0ab9bb447bbe170f311684c3dae6da317785333312e06533f6a0c377335ccab0",
+  "previous_reviewed_sha": "9fd4f8673104708a5445991d070386829603884a",
+  "coldstart_checkout": "/Users/lge/Desktop/topic/leo-r5clone",
+  "scope": "R5 的定向冷启动复核：只审 R4 复核 F1/F2 与两条弱点的修复，外加既有的身份/测试/范围检查。",
+  "not_in_scope": "不改动仓库；不部署；不运行正式实验。",
+  "author_disclosure": "判据与冻结提交由同一作者产出；作者自检不算复核。",
+  "criteria": [
+    {
+      "id": "C1",
+      "statement": "身份与检出正确",
+      "check": "git rev-parse HEAD == 5fb89de0…；.git 是目录；两次 git status 均为空",
+      "touches": [
+        "CODE/"
+      ]
+    },
+    {
+      "id": "C2",
+      "statement": "代码哈希一致且由冻结字节算出",
+      "check": "code_sha256() == 0ab9bb44…",
+      "touches": [
+        "CODE/leo_sim/"
+      ]
+    },
+    {
+      "id": "C3",
+      "statement": "clone 内全量测试 0 failed",
+      "check": "pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q（cwd=clone）",
+      "touches": [
+        "CODE/"
+      ]
+    },
+    {
+      "id": "C4",
+      "statement": "（R4-F1 的结论）变换报告不再声称观察了生成器",
+      "check": "verify_burst_transform 的报告含 verified / not_verified / thinning_clause_is_algebraic_identity，无 property 字段；并**独立复现**：只改生成器的接受步骤、倍率函数保持正确时，编译仍然通过——确认该限制被如实声明而不是被掩盖",
+      "touches": [
+        "CODE/leo_sim/trace.py"
+      ]
+    },
+    {
+      "id": "C5",
+      "statement": "（R4-F1 的一半）时间扫掠确实抓住 12<=t<13 的洞，且逃逸洞边界与文档一致",
+      "check": "复现 12<=t<13 的洞被拒；并测量逃逸洞宽度是否与 docstring 写的最大网格间距一致",
+      "touches": [
+        "CODE/leo_sim/trace.py"
+      ]
+    },
+    {
+      "id": "C6",
+      "statement": "（R4-F2）兜底网格不再被调用者的说明覆盖",
+      "check": "verify_burst_transform(resolved, None, \"<任意完备性句子>\") 的 longitude_source 必须是 1-degree backstop grid",
+      "touches": [
+        "CODE/leo_sim/trace.py"
+      ]
+    },
+    {
+      "id": "C7",
+      "statement": "（R4-F3/F4 弱点）守卫断言与 frozen_at_sha",
+      "check": "旧授权守卫断言的是 artifact hash mismatch；且仓库中有文件指名冻结提交 5fb89de0，FREEZE-SCOPE 表头分别记录开发工作树 HEAD / 冻结提交 / 附着提交",
+      "touches": [
+        "CODE/experiment_platform/tests/test_stale_authorization_guard.py"
+      ]
+    },
+    {
+      "id": "C8",
+      "statement": "命名的零包案例与结构拒绝仍然成立",
+      "check": "seed 1 / 0.16 Mbps / 8e6 / [10,20) / ×5 编译通过 3 包 0 在窗内；multiplier<=1、窗口越界、非默认 multiplier 在 uniform 下均被拒",
+      "touches": [
+        "CODE/leo_sim/trace.py",
+        "CODE/leo_sim/config.py"
+      ]
+    }
+  ]
+}

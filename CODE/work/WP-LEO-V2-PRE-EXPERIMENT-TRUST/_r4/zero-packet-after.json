@@ -1,0 +1,290 @@
+{
+  "config": {
+    "mode": "burst",
+    "offered_mbps": 0.16,
+    "emission_end_s": null,
+    "packet_bits": 8000000,
+    "deadline_s": null,
+    "csv_path": null,
+    "population_path": null,
+    "source_population_exponent": 1.0,
+    "destination_population_exponent": 1.0,
+    "gravity_alpha": 1.5,
+    "gravity_d_floor_km": 500.0,
+    "hotspot_fraction": 0.1,
+    "hotspot_concentration": 0.8,
+    "burst_start_s": 10.0,
+    "burst_duration_s": 10.0,
+    "burst_multiplier": 5.0,
+    "diurnal_amplitude": 0.5,
+    "diurnal_phase_h": 12.0,
+    "temporal_model": "constant",
+    "utc_start_hour": 0.0,
+    "population_destination_sampler": "scan",
+    "destination_rejection_max_draws": 10000,
+    "nested_master_offered_mbps": null
+  },
+  "seed": 1,
+  "report": {
+    "schema": "leo-sim-trace-materialization/v1",
+    "mode": "burst",
+    "packets": 3,
+    "offered_bits": 24000000,
+    "packet_bits": {
+      "declared": 8000000,
+      "observed_distinct": [
+        8000000
+      ],
+      "declaration_applies": true
+    },
+    "emission": {
+      "emission_end_s": 60.0,
+      "first_emit_s": 21.048134,
+      "last_emit_s": 54.847124,
+      "packets_after_emission_end": 0
+    },
+    "endpoints": {
+      "distinct_sources": 2,
+      "distinct_destinations": 2,
+      "declared_cells": 2,
+      "sources_outside_declared": [],
+      "destinations_outside_declared": [],
+      "self_loops": 0
+    },
+    "burst": {
+      "start_s": 10.0,
+      "duration_s": 10.0,
+      "end_s": 20.0,
+      "multiplier": 5.0,
+      "effective_multiplier": 5.0,
+      "packets_inside_window": 0,
+      "applied": false,
+      "transform": {
+        "schema": "leo-sim-burst-transform/v1",
+        "mode": "burst",
+        "window": [
+          10.0,
+          20.0
+        ],
+        "multiplier": 5.0,
+        "max_multiplier": 5.0,
+        "probes": [
+          {
+            "probe": "before_window",
+            "longitude_deg": 0.0,
+            "t": 9.999999999,
+            "multiplier": 1.0,
+            "expected": 1.0,
+            "thinning_rate": 0.020000000000000004,
+            "declared_rate": 0.02,
+            "matches": true
+          },
+          {
+            "probe": "window_start",
+            "longitude_deg": 0.0,
+            "t": 10.0,
+            "multiplier": 5.0,
+            "expected": 5.0,
+            "thinning_rate": 0.1,
+            "declared_rate": 0.1,
+            "matches": true
+          },
+          {
+            "probe": "window_middle",
+            "longitude_deg": 0.0,
+            "t": 15.0,
+            "multiplier": 5.0,
+            "expected": 5.0,
+            "thinning_rate": 0.1,
+            "declared_rate": 0.1,
+            "matches": true
+          },
+          {
+            "probe": "window_end_minus_eps",
+            "longitude_deg": 0.0,
+            "t": 19.999999999,
+            "multiplier": 5.0,
+            "expected": 5.0,
+            "thinning_rate": 0.1,
+            "declared_rate": 0.1,
+            "matches": true
+          },
+          {
+            "probe": "window_end",
+            "longitude_deg": 0.0,
+            "t": 20.0,
+            "multiplier": 1.0,
+            "expected": 1.0,
+            "thinning_rate": 0.020000000000000004,
+            "declared_rate": 0.02,
+            "matches": true
+          },
+          {
+            "probe": "after_window",
+            "longitude_deg": 0.0,
+            "t": 20.000000001,
+            "multiplier": 1.0,
+            "expected": 1.0,
+            "thinning_rate": 0.020000000000000004,
+            "declared_rate": 0.02,
+            "matches": true
+          },
+          {
+            "probe": "before_window",
+            "longitude_deg": 90.0,
+            "t": 9.999999999,
+            "multiplier": 1.0,
+            "expected": 1.0,
+            "thinning_rate": 0.020000000000000004,
+            "declared_rate": 0.02,
+            "matches": true
+          },
+          {
+            "probe": "window_start",
+            "longitude_deg": 90.0,
+            "t": 10.0,
+            "multiplier": 5.0,
+            "expected": 5.0,
+            "thinning_rate": 0.1,
+            "declared_rate": 0.1,
+            "matches": true
+          },
+          {
+            "probe": "window_middle",
+            "longitude_deg": 90.0,
+            "t": 15.0,
+            "multiplier": 5.0,
+            "expected": 5.0,
+            "thinning_rate": 0.1,
+            "declared_rate": 0.1,
+            "matches": true
+          },
+          {
+            "probe": "window_end_minus_eps",
+            "longitude_deg": 90.0,
+            "t": 19.999999999,
+            "multiplier": 5.0,
+            "expected": 5.0,
+            "thinning_rate": 0.1,
+            "declared_rate": 0.1,
+            "matches": true
+          },
+          {
+            "probe": "window_end",
+            "longitude_deg": 90.0,
+            "t": 20.0,
+            "multiplier": 1.0,
+            "expected": 1.0,
+            "thinning_rate": 0.020000000000000004,
+            "declared_rate": 0.02,
+            "matches": true
+          },
+          {
+            "probe": "after_window",
+            "longitude_deg": 90.0,
+            "t": 20.000000001,
+            "multiplier": 1.0,
+            "expected": 1.0,
+            "thinning_rate": 0.020000000000000004,
+            "declared_rate": 0.02,
+            "matches": true
+          },
+          {
+            "probe": "before_window",
+            "longitude_deg": -180.0,
+            "t": 9.999999999,
+            "multiplier": 1.0,
+            "expected": 1.0,
+            "thinning_rate": 0.020000000000000004,
+            "declared_rate": 0.02,
+            "matches": true
+          },
+          {
+            "probe": "window_start",
+            "longitude_deg": -180.0,
+            "t": 10.0,
+            "multiplier": 5.0,
+            "expected": 5.0,
+            "thinning_rate": 0.1,
+            "declared_rate": 0.1,
+            "matches": true
+          },
+          {
+            "probe": "window_middle",
+            "longitude_deg": -180.0,
+            "t": 15.0,
+            "multiplier": 5.0,
+            "expected": 5.0,
+            "thinning_rate": 0.1,
+            "declared_rate": 0.1,
+            "matches": true
+          },
+          {
+            "probe": "window_end_minus_eps",
+            "longitude_deg": -180.0,
+            "t": 19.999999999,
+            "multiplier": 5.0,
+            "expected": 5.0,
+            "thinning_rate": 0.1,
+            "declared_rate": 0.1,
+            "matches": true
+          },
+          {
+            "probe": "window_end",
+            "longitude_deg": -180.0,
+            "t": 20.0,
+            "multiplier": 1.0,
+            "expected": 1.0,
+            "thinning_rate": 0.020000000000000004,
+            "declared_rate": 0.02,
+            "matches": true
+          },
+          {
+            "probe": "after_window",
+            "longitude_deg": -180.0,
+            "t": 20.000000001,
+            "multiplier": 1.0,
+            "expected": 1.0,
+            "thinning_rate": 0.020000000000000004,
+            "declared_rate": 0.02,
+            "matches": true
+          }
+        ],
+        "checked_probes": 18,
+        "mismatched_probes": 0,
+        "property": "multiplier(t) is the declared value on the half-open window and 1.0 outside it, for every longitude, and the thinning reproduces base_rate*multiplier(t)"
+      },
+      "intensity": {
+        "status": "UNDECIDABLE",
+        "scenario_seed": 1,
+        "sigma": 3.0,
+        "window_width_s": 10.0,
+        "expected_packets_if_burst_applied": 1.0,
+        "expected_packets_if_burst_not_applied": 0.2,
+        "observed_packets": 0,
+        "observed_over_expected_burst": 0.0,
+        "acceptance_band": 3.0,
+        "required_separation": 4.341640786499874,
+        "predicted_separation": 0.8,
+        "sigma_distance": 1.0,
+        "raw_sample_preserved": {
+          "inside_window": 0,
+          "all_emitted": 0,
+          "note": "the sample and its seed are reported, never replaced or re-drawn"
+        },
+        "reason": "the declaration predicts 1.000 packets inside the window and 0.200 if the burst were not applied; separating those at 3.0 sigma needs more than 4.342 and the gap is 0.800. A non-empty window is NOT evidence that the declared intensity happened"
+      },
+      "intensity_compatible": false,
+      "zero_packet_diagnostic": {
+        "observed_packets_in_window": 0,
+        "emitted_packets": 3,
+        "scenario_seed": 1,
+        "expected_packets_if_burst_applied": 1.0,
+        "expected_packets_if_burst_not_applied": 0.2,
+        "meaning": "the declared treatment is unobservable in this sample; the raw sample and its seed are reported unchanged and no re-draw was attempted",
+        "where_discriminating_power_is_judged": "the pre-declared experiment design, not this compiler"
+      }
+    },
+    "problems": []
+  }
+}

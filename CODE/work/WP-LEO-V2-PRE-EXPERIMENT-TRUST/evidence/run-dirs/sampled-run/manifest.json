@@ -1,0 +1,75 @@
+{
+  "active_endpoints": 2,
+  "config_version": "leo-sim-config/v1",
+  "drain_s": 0.0,
+  "emission_end_s": 40.0,
+  "input_sha256": "26536d8b3b894a13d74289131653fddfdae8fe095f7c4edb2dc6a1683ec37592",
+  "ledger": {
+    "bits": 48000000,
+    "packets": 6
+  },
+  "mode": "csv",
+  "offered_bits": 48000000,
+  "offered_packets": 6,
+  "packet_id_contract": "synthetic: sequential 1..N in emission order; csv: source packet_id preserved verbatim",
+  "provenance": "synthetic",
+  "provenance_contract": {
+    "drain_s": 0.0,
+    "emission_end_s": 40.0,
+    "measurement_summary": null,
+    "od_mapping": {
+      "aggregation_deg": 1.0,
+      "grid_deg": 0.25,
+      "input_coordinate_fields": [
+        "src_lat",
+        "src_lon",
+        "dst_lat",
+        "dst_lon"
+      ],
+      "output_fields": [
+        "src_grid_id",
+        "dst_grid_id"
+      ],
+      "rule": "grid_id(lat,lon,grid_deg) then aggregate_id(...,aggregation_deg)"
+    },
+    "offered_load": {
+      "horizon_s": 40.0,
+      "load_mode": "observed_trace",
+      "offered_bits": 48000000,
+      "offered_packets": 6,
+      "packet_bits": 8000000,
+      "realized_offered_mbps": 1.2,
+      "target_offered_mbps": null
+    },
+    "schema": "leo-sim-trace-provenance/v2",
+    "simulation_horizon_s": 40.0,
+    "source": {
+      "path": "/Users/lge/Desktop/topic/leo-experiment-platform/CODE/data/traffic/t1_step5_micro_ab.csv",
+      "sha256": "26536d8b3b894a13d74289131653fddfdae8fe095f7c4edb2dc6a1683ec37592",
+      "type": "csv_input"
+    },
+    "traffic_transform": {
+      "burst": null,
+      "diurnal": null,
+      "mode": "csv"
+    },
+    "units": {
+      "bits": "bits",
+      "coordinates": "degrees_wgs84",
+      "deadline": "seconds_since_run_start_or_empty",
+      "emit_time": "seconds_since_run_start"
+    }
+  },
+  "rng_streams": {
+    "demand": "SeedSequence(7).spawn[0]"
+  },
+  "schema": "leo-sim-trace-manifest/v2",
+  "simulation_horizon_s": 40.0,
+  "time_range_s": [
+    0.0,
+    3.2
+  ],
+  "trace_identity_sha256": "37080a6feaeaf28d0b0a0492aa398d7d29d00fe06f78ad6b35f2c8d636898f4a",
+  "trace_schema": "leo-sim-trace/v1",
+  "trace_sha256": "3423c86c17427cc4f76a28a936a8c85c44dccd7cd79a93fcd3aba0d482809a5c"
+}

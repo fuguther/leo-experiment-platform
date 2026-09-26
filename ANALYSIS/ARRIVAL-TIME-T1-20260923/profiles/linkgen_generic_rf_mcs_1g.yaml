@@ -1,0 +1,59 @@
+# REAL-LINK-GENERATION 门 · profile A：generic-legacy RF/MCS（1 Gbps 级）
+
+# 用途：把「RF MCS 距离相关旧模型」与「光学固定速率容量」明确分开，满足任务书 §R7
+#   REAL-LINK-GENERATION-PASS 的「两者明确分 profile」要求，并禁止把二者混用。
+# 本 profile 使用 rate_model: mcs（距离相关 MCS 查表）与 isl_rate_mbps = 1000（1 Gbps 级），
+#   对应任务书所称的 generic 1 Gbps RF 档。
+# 禁止：不得用本 profile 的结果去声称任何光学链路性能。
+# 场景：沿用 T1 受控压力走廊 v2，两 profile 可直接同场景对照。
+
+config_version: leo-sim-config/v1
+scenario:
+  name: t1-pressure-corridor
+  duration_s: 300.0
+  time_step_s: 0.1
+  num_satellites: 24
+  num_planes: 3
+  seed: 7
+  min_elevation_deg: 5
+endpoints:
+  sites:
+  - name: equator
+    lat: 0.1
+    lon: 0.1
+    demand_weight: 1.0
+  - name: north
+    lat: 52.6
+    lon: 90.4
+    demand_weight: 1.0
+demand:
+  mode: uniform
+  offered_mbps: 12.0
+  packet_bits: 1000000
+access:
+  unavailable_policy: queue
+  uplink_rate_mbps: 1000.0
+  downlink_rate_mbps: 1000.0
+  association: bbm
+  uplink_queue_bits: 4000000000
+  downlink_queue_bits: 4000000000
+links:
+  rate_model: mcs
+  isl_rate_mbps: 1000.0
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 2.0
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  max_events: 20000000
+  max_entities: 20000
+  max_packets: 200000
+  available_capacity_interval_s: 1.0
+outputs:
+  out_dir: leo_sim_out/t1-pressure-corridor
+  plotting: false

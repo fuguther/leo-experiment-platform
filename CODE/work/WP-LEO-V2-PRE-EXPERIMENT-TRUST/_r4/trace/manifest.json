@@ -1,0 +1,74 @@
+{
+  "active_endpoints": 2,
+  "config_version": "leo-sim-config/v1",
+  "drain_s": 0.0,
+  "emission_end_s": 60.0,
+  "input_sha256": "",
+  "ledger": {
+    "bits": 24000000,
+    "packets": 3
+  },
+  "mode": "burst",
+  "offered_bits": 24000000,
+  "offered_packets": 3,
+  "packet_id_contract": "synthetic: sequential 1..N in emission order; csv: source packet_id preserved verbatim",
+  "provenance": "synthetic",
+  "provenance_contract": {
+    "drain_s": 0.0,
+    "emission_end_s": 60.0,
+    "measurement_summary": null,
+    "od_mapping": {
+      "aggregation_deg": 1.0,
+      "grid_deg": 0.25,
+      "input_coordinate_fields": null,
+      "output_fields": [
+        "src_grid_id",
+        "dst_grid_id"
+      ],
+      "rule": "generated endpoint aggregate IDs"
+    },
+    "offered_load": {
+      "horizon_s": 60.0,
+      "load_mode": "target_rate_sampler",
+      "offered_bits": 24000000,
+      "offered_packets": 3,
+      "packet_bits": 8000000,
+      "realized_offered_mbps": 0.4,
+      "target_offered_mbps": 0.16
+    },
+    "schema": "leo-sim-trace-provenance/v2",
+    "simulation_horizon_s": 60.0,
+    "source": {
+      "path": null,
+      "sha256": "",
+      "type": "synthetic_generator"
+    },
+    "traffic_transform": {
+      "burst": {
+        "duration_s": 10.0,
+        "multiplier": 5.0,
+        "start_s": 10.0
+      },
+      "diurnal": null,
+      "mode": "burst"
+    },
+    "units": {
+      "bits": "bits",
+      "coordinates": "degrees_wgs84",
+      "deadline": "seconds_since_run_start_or_empty",
+      "emit_time": "seconds_since_run_start"
+    }
+  },
+  "rng_streams": {
+    "demand": "SeedSequence(1).spawn[0]"
+  },
+  "schema": "leo-sim-trace-manifest/v2",
+  "simulation_horizon_s": 60.0,
+  "time_range_s": [
+    21.048134,
+    54.847124
+  ],
+  "trace_identity_sha256": "8a81ccc94394739093df77e3aae88781516571e55f7b8ed970246a1c9eb6fec2",
+  "trace_schema": "leo-sim-trace/v1",
+  "trace_sha256": "2040b658ba482ac65a62a15a5ee8368d314d8d86507abcb5d8ed0e44af63e4f7"
+}

@@ -1,0 +1,305 @@
+{
+  "schema": "leo-sim-pre-experiment-release-table/v8",
+  "date": "2026-09-25",
+  "round": "round 4: 两处小修 + 本地冻结提交 + VM 连接核查",
+  "baseline_head": "98c858f642aeca8056d215224b20783b00354026",
+  "freeze_commit": "5fb89de07831041e4452ffb75592136758fc4eda",
+  "instance_commit": "d29a8cb7c810758b94dcba873b229d688e423daf",
+  "frozen_identity": {
+    "code_sha256": "0ab9bb447bbe170f311684c3dae6da317785333312e06533f6a0c377335ccab0",
+    "freeze_set_files": 22
+  },
+  "formal_experiment_ready": false,
+  "local_chain": {
+    "gates_passed": [
+      "R1",
+      "R2",
+      "R3",
+      "R4",
+      "R5",
+      "R6",
+      "R7",
+      "R8",
+      "R9",
+      "R10",
+      "R11a",
+      "R11c",
+      "R11d",
+      "R12",
+      "R13",
+      "R14",
+      "R15",
+      "R16",
+      "R17",
+      "R19",
+      "R20",
+      "R21"
+    ],
+    "gates_failed": [],
+    "gates_pending": []
+  },
+  "reasons_not_ready": [
+    "平台链路本身已打通并 VM 实测 VERIFIED；但正式研究实验的启动不属于本轮范围，且仍受以下限制：",
+    "冻结树内继承的 superseded 授权在使用时会被 code_sha256 复核拒绝；正式运行需按同一顺序重新编译/审阅/授权",
+    "候选到达时刻 O3 能力仍缺失（R13）本就不在本轮范围"
+  ],
+  "items": [
+    {
+      "id": "R1",
+      "statement": "机械核对 trace 的包长/注入量/源目的地/发包窗口与配置声明一致",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R2",
+      "statement": "不支持突发的模式必须编译期拒绝或显式标为不生效",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R3",
+      "statement": "突发窗口必须落在实际发包窗口内",
+      "result": "PASS",
+      "round4_change": "无（结构性，保留）"
+    },
+    {
+      "id": "R4",
+      "statement": "主指标必须是分析器真正支持的指标（编译前拦截）",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R5",
+      "statement": "需要链路利用率时必须先配置有效容量采样（编译前拦截）",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R6",
+      "statement": "声称单因素时必须机械核对实际改变的因素",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R7",
+      "statement": "容量分母缺失时不得输出 0 或 1 利用率",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R8",
+      "statement": "用持久化逐包/链路事件独立重算关键结果",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R9",
+      "statement": "节点处理时间与决策计算时间不得混淆",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R10",
+      "statement": "修复不得静默改写历史回执的数值或语义",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R11a",
+      "statement": "正式入口流契约：零决策行 v5 不被错判失败；v6 摘要被真的重算",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R11b",
+      "statement": "VM 端到端：部署 -> 授权 -> 运行 -> 回执 -> 拉回 -> 本地重验 -> 正式资格分析",
+      "result": "PASS",
+      "evidence": [
+        "round5/FINDINGS-VM-ACCEPTANCE.md",
+        "两轮实跑：R1（80d935f8，nonces 14fb5640/891fcf84）两条 success；R2（82e47354，nonces 50e5369c/0fd79c4b）两条 success",
+        "R2 control exit 0 / leo-sim-receipt/v5；treatment exit 0 / leo-sim-receipt/v6",
+        "拉回后本地门：两条 ok=true、claimable=false（v5 走矛盾检查、v6 摘要本地重算）",
+        "既有分析入口：status VERIFIED、verified_runs 2、authorization_verification strict_recomputed",
+        "两条 run 的 governance_receipt research_eligible=true、verification_errors=[]",
+        "R3 复跑：部署身份由 deploy_recipe.sh 逐字复现（975 文件 / 42217231…），分析 status VERIFIED",
+        "R4 复跑（部署 c856562b / 树 f1d88086…）：两条 success，本地门两条通过，分析 VERIFIED + strict_recomputed"
+      ],
+      "limits": [
+        "部署树由 3 个固定提交复现（父仓库 2416278 + 平台 CODE b38ded0e + 实例 6f6d58da），不再是叙述",
+        "父仓库独有的 12 个 CODE 文件随替换移出 VM 工作区，可从 deploy-backups 取回"
+      ],
+      "round4_change": "本轮由阻塞转为通过（两轮 VM 实测）"
+    },
+    {
+      "id": "R11c",
+      "statement": "结果拉回的本地验收入口（含结论权限）",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R11d",
+      "statement": "两处未提交改动的互斥缺陷已修且不依赖跳过校验",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R12",
+      "statement": "无 VM 实测回执不得声称正式链路已打通",
+      "result": "PASS",
+      "round4_change": "本项本轮尤其关键：连接可用不等于链路打通"
+    },
+    {
+      "id": "R13",
+      "statement": "O3 能力单列后续工作、不伪造未来信息",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R14",
+      "statement": "不以单元测试通过宣布平台可信",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R15",
+      "statement": "recompute 在生产读数缺字段/非数值时必须失败",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R16",
+      "statement": "突发倍率：确定性生成过程检查 + 明确统计设计；随机偏离不得拒绝编译",
+      "result": "PASS",
+      "evidence": [
+        "verify_burst_transform 确定性检查（18 探针 + 稀疏化恒等式）",
+        "400 种子扫描 0 拒绝；种子 222/227 记为 INCOMPATIBLE 且不阻断",
+        "标定设计：mult=5 N=40 均值 246.4（带 ±7.5）；mult=1.2 N=200 均值 60.37（带 ±1.64）"
+      ],
+      "round4_change": "删除\"窗内零包\"硬拒绝；零包改为诊断（保留样本/种子/期望量/applied_reason）",
+      "limits": [
+        "σ 与可判定阈值是平台口径；辨别能力由事先制定的设计判断",
+        "verify_burst_transform() 只在 3 个经度 x 6 个时刻做点检（见 R22），其 docstring 的 every-longitude 表述强于实现"
+      ]
+    },
+    {
+      "id": "R17",
+      "statement": "代码哈希变化对旧矩阵/授权/回执的影响被列明，且不复用旧授权",
+      "result": "PASS",
+      "evidence": [
+        "HASH-IMPACT.md",
+        "round3/FREEZE-SCOPE.md（由生成器产出）"
+      ],
+      "round4_change": "身份值更新为冻结提交的值"
+    },
+    {
+      "id": "R18",
+      "statement": "冻结提交的独立冷启动复核（在精确提交的新检出中）",
+      "result": "PASS",
+      "evidence": [
+        "冻结提交 324c8ee882f243f59718df8864e7cddcf63481b6",
+        "round4/criteria-frozen.json（9 条判据，frozen_at_sha 与 criteria_sha256 已绑定）",
+        "round4/coldstart-review.json：overall PASS，F1-F9 全 PASS，reviewed_sha 与冻结提交逐字一致",
+        "在该提交的新检出中：git status 空（含 --ignored）、全量 982 passed / 1 skipped 两次独立运行计数一致、命名的零包案例由复核者独立复现、结构检查逐项仍拒绝、审计钩子证明未读原工作树（outside=0）",
+        "round4/review-{A,A2,B,B2}*.json 四份定向回执（B 第一轮 FAIL -> 已修 -> B2 PASS）"
+      ],
+      "round4_change": "新增；本轮完成并 PASS",
+      "limits": [
+        "复核者是同族模型的独立会话，不是人工/机构评审（L13/L20）",
+        "冷启动检出是 git worktree 而非独立 clone（共享对象库）；复核者用审计钩子证明未读原工作树",
+        "9 条弱点已记录，其中 4 条列入 R22"
+      ]
+    },
+    {
+      "id": "R19",
+      "statement": "拉回验收不得输出 claimable=true；正式见证缺失不得自动降级",
+      "result": "PASS",
+      "round4_change": "无"
+    },
+    {
+      "id": "R20",
+      "statement": "冻结当前代码的准确文件范围已列出，且由生成器产出",
+      "result": "PASS",
+      "evidence": [
+        "round3/FREEZE-SCOPE.md 由 round4/generate_freeze_scope.py 生成；行号由源码读出；含自检"
+      ],
+      "round4_change": "重写（上一版的行号引用与措辞被独立复核判 FAIL，已修）"
+    },
+    {
+      "id": "R21",
+      "statement": "本地冻结提交只含明确列出的代码/测试/必要依赖",
+      "result": "PASS",
+      "evidence": [
+        "324c8ee8 的 20 个文件与 FREEZE-SCOPE §3 完全一致（独立复核 B/C1-C6 已验证）",
+        "不含 ANALYSIS/、CODE/Results/、EXPERIMENTS/、任何 authorization.json",
+        "原工作树未提交改动与唯一研究材料保持原样"
+      ],
+      "round4_change": "新增"
+    },
+    {
+      "id": "R22",
+      "statement": "冷启动复核与 VM 实测查出的限制：代码项已修，残余项如实保留",
+      "result": "PASS",
+      "evidence": [
+        "已修：verify_burst_transform 经度覆盖 3 点 -> 1 度网格 360 点（2160 探针），复核者的泄漏变换现被抓",
+        "已修：burst_multiplier 在从不施加突发的模式下不再静默保留",
+        "已修：materialization_report 对数据源模式给出可操作错误",
+        "已修：pullback 的治理 schema 常量、外部见证命名（VM 实测发现）",
+        "已修：分析器对 design_accounting 扩展的接受（VM 实测发现，S-2 同类）",
+        "保留：冷启动检出是 worktree 而非 clone；verify_burst_transform 仍是点检；冻结树内继承的旧授权；TensorFlow skip",
+        "R3：变换检查对真实生成完备（用端点经度）；新增旧授权守卫测试；修掉 csv 端点 KeyError",
+        "R4 修掉冷启动复核 R3 指出的三处过度声明：时间扫掠 0.05 s、longitude_source 不再无条件声称完备、旧授权守卫不再 skip 且拆成两条",
+        "R5：变换检查的声明收窄到真正被验证的东西（R4 复核 F1 判定 FAIL 后修复）——删掉不成立的 property，改为 verified/not_verified/thinning_clause_is_algebraic_identity"
+      ],
+      "limits": [
+        "作为下一次修订的首项；本轮如实记录，不修改已复核的冻结提交"
+      ],
+      "round4_change": "代码项已修（R2），残余项保留为已知限制"
+    },
+    {
+      "id": "R23",
+      "statement": "部署树可从固定提交复现，且与 VM 记录的身份逐字一致",
+      "result": "PASS",
+      "evidence": [
+        "round5/deploy_recipe.sh 复现 file_count=975、source_tree_sha256=42217231…（与 push-remote.sh 记录相同）",
+        "复现过程中发现并修掉配方自身的两个错误：树哈希含部署提交的见证记录；不得覆盖研究仓库的 EXPERIMENTS/contracts"
+      ],
+      "round4_change": "新增"
+    },
+    {
+      "id": "R24",
+      "statement": "复核材料与冻结范围绑进提交（不再依赖带外文档）",
+      "result": "PASS",
+      "evidence": [
+        "附着提交 2470b87df7a5c066d14834ea0b1463d556836935 纳入 FREEZE-SCOPE.md、R3 判据、R3 冷启动回执、四份定向回执、部署配方与 VM 验收记录（9 份）",
+        "由冷启动复核 R3 的 C4 指出后修复"
+      ],
+      "round4_change": "新增"
+    },
+    {
+      "id": "R25",
+      "statement": "检查的声明不超过它真正观察到的东西",
+      "result": "PASS",
+      "evidence": [
+        "R4 复核证伪：细化条款是代数恒等式，只改生成器接受步骤即可完全丢掉突发而 mismatched_probes=0",
+        "R5 修复：报告分列 verified / not_verified，并指出生成器侧缺陷由 burst.intensity 统计诊断承担（按平台规则不拒绝编译）",
+        "docstring 写出实测逃逸洞边界（最大网格间距 0.05000000000000426 s）而不是标称步长"
+      ],
+      "round4_change": "由独立复核判定 FAIL 后修复"
+    }
+  ],
+  "previous_freeze_commit": "324c8ee882f243f59718df8864e7cddcf63481b6",
+  "deployment": {
+    "recipe": "CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/round5/deploy_recipe.sh",
+    "parent_commit": "241627856886934cbbf2a0820982bef2018e6249",
+    "deploy_commit": "870d6757ef3aed40295a0f8bfeb6a2ebb9a5edfe",
+    "source_tree_sha256": "3171bfa4d91682d8f8903a01b64e0900b2cd0d59658c18829a690705978a40f5",
+    "file_count": 991,
+    "acceptance": {
+      "control": "success/exit 0/leo-sim-receipt/v5",
+      "treatment": "success/exit 0/leo-sim-receipt/v6",
+      "local_pullback": "both ok=true / claimable=false",
+      "analysis": "VERIFIED / 2 runs / strict_recomputed / READY_FOR_INDEPENDENT_CLAIM_REVIEW"
+    }
+  },
+  "attestation_commit": "f3a3a905dd221814712da2028b97c9c6f929a017"
+}

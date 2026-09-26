@@ -1,0 +1,14 @@
+{
+ "schema": "leo-t1-e3-scorer-probe/v1",
+ "note": "O0 复刻自证：复现率低说明重建不忠实，其后的臂比较不可用。",
+ "compared": 200,
+ "agree": 200,
+ "disagree": 0,
+ "skipped": 0,
+ "agreement_rate": 1.0,
+ "mismatch_samples": [],
+ "declared_approximations": [
+  "远端边传播项用几何真值代理（账本未记录 cache 的 isl_propagation_s）",
+  "仅观察里出现的 origin 有广告队列；其余 fail-closed 为 inf"
+ ]
+}

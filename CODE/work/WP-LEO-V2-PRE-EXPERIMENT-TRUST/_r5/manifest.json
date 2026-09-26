@@ -1,0 +1,74 @@
+{
+  "active_endpoints": 2,
+  "config_version": "leo-sim-config/v1",
+  "drain_s": 0.0,
+  "emission_end_s": 60.0,
+  "input_sha256": "",
+  "ledger": {
+    "bits": 3696000000,
+    "packets": 462
+  },
+  "mode": "burst",
+  "offered_bits": 3696000000,
+  "offered_packets": 462,
+  "packet_id_contract": "synthetic: sequential 1..N in emission order; csv: source packet_id preserved verbatim",
+  "provenance": "synthetic",
+  "provenance_contract": {
+    "drain_s": 0.0,
+    "emission_end_s": 60.0,
+    "measurement_summary": null,
+    "od_mapping": {
+      "aggregation_deg": 1.0,
+      "grid_deg": 0.25,
+      "input_coordinate_fields": null,
+      "output_fields": [
+        "src_grid_id",
+        "dst_grid_id"
+      ],
+      "rule": "generated endpoint aggregate IDs"
+    },
+    "offered_load": {
+      "horizon_s": 60.0,
+      "load_mode": "target_rate_sampler",
+      "offered_bits": 3696000000,
+      "offered_packets": 462,
+      "packet_bits": 8000000,
+      "realized_offered_mbps": 61.6,
+      "target_offered_mbps": 40.0
+    },
+    "schema": "leo-sim-trace-provenance/v2",
+    "simulation_horizon_s": 60.0,
+    "source": {
+      "path": null,
+      "sha256": "",
+      "type": "synthetic_generator"
+    },
+    "traffic_transform": {
+      "burst": {
+        "duration_s": 10.0,
+        "multiplier": 5.0,
+        "start_s": 10.0
+      },
+      "diurnal": null,
+      "mode": "burst"
+    },
+    "units": {
+      "bits": "bits",
+      "coordinates": "degrees_wgs84",
+      "deadline": "seconds_since_run_start_or_empty",
+      "emit_time": "seconds_since_run_start"
+    }
+  },
+  "rng_streams": {
+    "demand": "SeedSequence(7).spawn[0]"
+  },
+  "schema": "leo-sim-trace-manifest/v2",
+  "simulation_horizon_s": 60.0,
+  "time_range_s": [
+    0.075545,
+    59.773626
+  ],
+  "trace_identity_sha256": "f6a148c9f1a74150aa075f3d42101f04b4f7742bbb3b7dd69c52dc9a2ea5304f",
+  "trace_schema": "leo-sim-trace/v1",
+  "trace_sha256": "d233a45d86fdf55477e277e78ef97b1e249efb64d5121631b03c927e752ac566"
+}

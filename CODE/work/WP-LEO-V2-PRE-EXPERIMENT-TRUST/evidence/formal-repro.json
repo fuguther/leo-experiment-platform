@@ -1,0 +1,272 @@
+{
+  "authorization": {
+    "sha256_of_file": "fc5f52dead60ea0c36eb3660d1fc6d7985b311e487423fbbbf9c8cb0a3421cbd",
+    "status": "AUTHORIZED"
+  },
+  "compile": {
+    "design_accounting": {
+      "exact_reexecution_cells": 0,
+      "exact_reexecution_groups": [],
+      "independent_condition_rule": "one independent condition per unique resolved config SHA256",
+      "one_change_policy_check": {
+        "declared_factor_changed": [
+          "routing.policy"
+        ],
+        "observed_changed_paths_by_contrast": {
+          "treatment_minus_control": [
+            "routing.policy"
+          ]
+        },
+        "one_change_policy": "strict",
+        "schema": "leo-sim-matrix-design-check/v1",
+        "single_factor_verified": true
+      },
+      "planned_cells": 2,
+      "schema": "leo-sim-matrix-design-accounting/v1",
+      "unique_resolved_configurations": 2
+    },
+    "errors": [],
+    "status": "COMPILED_REVIEW_REQUIRED"
+  },
+  "relocated_constants": {
+    "CANONICAL_RESULTS": "/Users/lge/Desktop/topic/leo-experiment-platform/CODE/Results",
+    "CANONICAL_WORKSPACE": "/Users/lge/Desktop/topic/leo-experiment-platform",
+    "note": "the VM path /data/论文/leo-direct-sim does not exist on this host; only these two constants are relocated, and there is no VM, no deployment and no external launch witness here"
+  },
+  "runs": [
+    {
+      "arm": "control",
+      "decision_rows": 0,
+      "exit_code": 0,
+      "old_unconditional_stream_form_errors": [
+        "stream paths were supplied but this receipt is leo-sim-receipt/v5, which carries no stream binding"
+      ],
+      "pullback": {
+        "checks": [
+          {
+            "errors": [],
+            "id": "P1",
+            "missing": [],
+            "ok": true,
+            "statement": "every required core result file is present"
+          },
+          {
+            "id": "P2",
+            "ok": true,
+            "schema": "leo-sim-receipt/v5",
+            "statement": "the receipt schema is one this checkout can verify",
+            "why": "unsupported receipt schema: 'leo-sim-receipt/v5'"
+          },
+          {
+            "errors": [],
+            "id": "P3",
+            "ok": true,
+            "statement": "every hash the receipt binds matches the files on disk",
+            "why": "artifact set incomplete; integrity not evaluated"
+          },
+          {
+            "errors": [],
+            "expect": "formal",
+            "id": "P4",
+            "ok": true,
+            "require_streams": true,
+            "statement": "the stream contract holds (v6 digests recomputed HERE, not trusted from the VM run)",
+            "stream_binding": "v5: no digest is bound, so the downgrade is checked for contradiction and required to be the empty-decision case"
+          },
+          {
+            "errors": [
+              "governance_receipt.json is missing or symbolic: /Users/lge/Desktop/topic/leo-experiment-platform/CODE/Results/EXP-LEO-V2-PRE-TRUST-REPRO-control-s7/governance_receipt.json"
+            ],
+            "id": "P5",
+            "ok": false,
+            "statement": "the formal increment is complete, contract-shaped and agrees with this copy",
+            "witness_root": null
+          }
+        ],
+        "claimable": false,
+        "claimable_reason": "this gate establishes local file integrity and the bindings it covers only; formal analysis eligibility is NOT evaluated here and remains with CODE/experiment_platform/v2_analysis.py",
+        "errors": [
+          "governance_receipt.json is missing or symbolic: /Users/lge/Desktop/topic/leo-experiment-platform/CODE/Results/EXP-LEO-V2-PRE-TRUST-REPRO-control-s7/governance_receipt.json"
+        ],
+        "expect": "formal",
+        "formal_artifacts_present": true,
+        "formal_eligibility": {
+          "authority": "CODE/experiment_platform/v2_analysis.py",
+          "checked_here": [
+            "P1",
+            "P2",
+            "P3",
+            "P4"
+          ],
+          "not_checked_here": [],
+          "status": "NOT_EVALUATED"
+        },
+        "ok": false,
+        "receipt_schema": "leo-sim-receipt/v5",
+        "run_dir": "/Users/lge/Desktop/topic/leo-experiment-platform/CODE/Results/EXP-LEO-V2-PRE-TRUST-REPRO-control-s7",
+        "run_id": null,
+        "runtime_identity": {
+          "local_code_sha256": "61d48a7dbab79cfae9c8aa49853ccd223cf616d189675dcde9459334297401e4",
+          "note": "reported for the record only: this checker deliberately does not require the local checkout to equal the run-time identity, so a false here is expected for a VM run and is not an error",
+          "runtime_code_sha256": "61d48a7dbab79cfae9c8aa49853ccd223cf616d189675dcde9459334297401e4",
+          "runtime_equals_local": true
+        },
+        "schema": "leo-sim-pullback-verification/v1",
+        "scope": "local acceptance of a pulled-back result set: required files, receipt-bound hashes, stream contract, and -- when declared formal -- the formal witness and governance receipt contracts. This is NOT authorization, NOT an analysis, NOT formal eligibility, and it does not re-derive the run-time identity."
+      },
+      "receipt_schema": "leo-sim-receipt/v5",
+      "routing_policy": "hop",
+      "run_dir": "/Users/lge/Desktop/topic/leo-experiment-platform/CODE/Results/EXP-LEO-V2-PRE-TRUST-REPRO-control-s7",
+      "run_id": "EXP-LEO-V2-PRE-TRUST-REPRO-control-s7",
+      "stderr_tail": "",
+      "stdout_tail": "}",
+      "timeline_rows": 36,
+      "vm_gate_errors_now": []
+    },
+    {
+      "arm": "treatment",
+      "decision_rows": 18,
+      "exit_code": 0,
+      "old_unconditional_stream_form_errors": [],
+      "pullback": {
+        "checks": [
+          {
+            "errors": [],
+            "id": "P1",
+            "missing": [],
+            "ok": true,
+            "statement": "every required core result file is present"
+          },
+          {
+            "id": "P2",
+            "ok": true,
+            "schema": "leo-sim-receipt/v6",
+            "statement": "the receipt schema is one this checkout can verify",
+            "why": "unsupported receipt schema: 'leo-sim-receipt/v6'"
+          },
+          {
+            "errors": [],
+            "id": "P3",
+            "ok": true,
+            "statement": "every hash the receipt binds matches the files on disk",
+            "why": "artifact set incomplete; integrity not evaluated"
+          },
+          {
+            "errors": [],
+            "expect": "formal",
+            "id": "P4",
+            "ok": true,
+            "require_streams": true,
+            "statement": "the stream contract holds (v6 digests recomputed HERE, not trusted from the VM run)",
+            "stream_binding": "v6 digests recomputed from this copy"
+          },
+          {
+            "errors": [
+              "governance_receipt.json is missing or symbolic: /Users/lge/Desktop/topic/leo-experiment-platform/CODE/Results/EXP-LEO-V2-PRE-TRUST-REPRO-treatment-s7/governance_receipt.json"
+            ],
+            "id": "P5",
+            "ok": false,
+            "statement": "the formal increment is complete, contract-shaped and agrees with this copy",
+            "witness_root": null
+          }
+        ],
+        "claimable": false,
+        "claimable_reason": "this gate establishes local file integrity and the bindings it covers only; formal analysis eligibility is NOT evaluated here and remains with CODE/experiment_platform/v2_analysis.py",
+        "errors": [
+          "governance_receipt.json is missing or symbolic: /Users/lge/Desktop/topic/leo-experiment-platform/CODE/Results/EXP-LEO-V2-PRE-TRUST-REPRO-treatment-s7/governance_receipt.json"
+        ],
+        "expect": "formal",
+        "formal_artifacts_present": true,
+        "formal_eligibility": {
+          "authority": "CODE/experiment_platform/v2_analysis.py",
+          "checked_here": [
+            "P1",
+            "P2",
+            "P3",
+            "P4"
+          ],
+          "not_checked_here": [],
+          "status": "NOT_EVALUATED"
+        },
+        "ok": false,
+        "receipt_schema": "leo-sim-receipt/v6",
+        "run_dir": "/Users/lge/Desktop/topic/leo-experiment-platform/CODE/Results/EXP-LEO-V2-PRE-TRUST-REPRO-treatment-s7",
+        "run_id": null,
+        "runtime_identity": {
+          "local_code_sha256": "61d48a7dbab79cfae9c8aa49853ccd223cf616d189675dcde9459334297401e4",
+          "note": "reported for the record only: this checker deliberately does not require the local checkout to equal the run-time identity, so a false here is expected for a VM run and is not an error",
+          "runtime_code_sha256": "61d48a7dbab79cfae9c8aa49853ccd223cf616d189675dcde9459334297401e4",
+          "runtime_equals_local": true
+        },
+        "schema": "leo-sim-pullback-verification/v1",
+        "scope": "local acceptance of a pulled-back result set: required files, receipt-bound hashes, stream contract, and -- when declared formal -- the formal witness and governance receipt contracts. This is NOT authorization, NOT an analysis, NOT formal eligibility, and it does not re-derive the run-time identity."
+      },
+      "receipt_schema": "leo-sim-receipt/v6",
+      "routing_policy": "oracle",
+      "run_dir": "/Users/lge/Desktop/topic/leo-experiment-platform/CODE/Results/EXP-LEO-V2-PRE-TRUST-REPRO-treatment-s7",
+      "run_id": "EXP-LEO-V2-PRE-TRUST-REPRO-treatment-s7",
+      "stderr_tail": "",
+      "stdout_tail": "}",
+      "timeline_rows": 120,
+      "vm_gate_errors_now": []
+    }
+  ],
+  "schema": "leo-sim-formal-stream-repro/v1",
+  "tamper_checks": [
+    {
+      "corruption": "empty decision stream given a row",
+      "gate_errors": [
+        "/Users/lge/Desktop/topic/leo-experiment-platform/CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/_tamper-scratch/control-6457/receipt.json is a v5 receipt but /Users/lge/Desktop/topic/leo-experiment-platform/CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/_tamper-scratch/control-6457/decisions.jsonl holds 1 row(s) while both stream sidecars are present; a run with recorded decisions and both streams requested is signed v6, so this receipt contradicts its own run directory"
+      ],
+      "receipt_schema": "leo-sim-receipt/v5",
+      "rejected": true,
+      "run_id": "EXP-LEO-V2-PRE-TRUST-REPRO-control-s7"
+    },
+    {
+      "corruption": "decision stream deleted",
+      "gate_errors": [
+        "/Users/lge/Desktop/topic/leo-experiment-platform/CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/_tamper-scratch/control-1807/receipt.json is a v5 receipt whose sidecar manifests say both streams were requested, but /Users/lge/Desktop/topic/leo-experiment-platform/CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/_tamper-scratch/control-1807/decisions.jsonl is missing",
+        "formal run result set is incomplete: /Users/lge/Desktop/topic/leo-experiment-platform/CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/_tamper-scratch/control-1807/decisions.jsonl is missing"
+      ],
+      "receipt_schema": "leo-sim-receipt/v5",
+      "rejected": true,
+      "run_id": "EXP-LEO-V2-PRE-TRUST-REPRO-control-s7"
+    },
+    {
+      "corruption": "timeline stream deleted",
+      "gate_errors": [
+        "formal run result set is incomplete: /Users/lge/Desktop/topic/leo-experiment-platform/CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/_tamper-scratch/control-4093/timeline.jsonl is missing"
+      ],
+      "receipt_schema": "leo-sim-receipt/v5",
+      "rejected": true,
+      "run_id": "EXP-LEO-V2-PRE-TRUST-REPRO-control-s7"
+    },
+    {
+      "corruption": "decision stream appended to",
+      "gate_errors": [
+        "decision_log_sha256 does not match /Users/lge/Desktop/topic/leo-experiment-platform/CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/_tamper-scratch/treatment-7244/decisions.jsonl: receipt says 6c6b6de651732262babeb4c14c2c3f9c59a3a53e3ef55bf1f34e1d981cc47ecb, file is 56bc0b4eb5e9d283379d54e0b6d6972d0971face6f275fb3d7cf9b0dd807868e"
+      ],
+      "receipt_schema": "leo-sim-receipt/v6",
+      "rejected": true,
+      "run_id": "EXP-LEO-V2-PRE-TRUST-REPRO-treatment-s7"
+    },
+    {
+      "corruption": "timeline stream deleted",
+      "gate_errors": [
+        "timeline_log_sha256: missing or symbolic stream file: /Users/lge/Desktop/topic/leo-experiment-platform/CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/_tamper-scratch/treatment-4093/timeline.jsonl"
+      ],
+      "receipt_schema": "leo-sim-receipt/v6",
+      "rejected": true,
+      "run_id": "EXP-LEO-V2-PRE-TRUST-REPRO-treatment-s7"
+    },
+    {
+      "corruption": "timeline stream rewritten",
+      "gate_errors": [
+        "timeline_log_sha256 does not match /Users/lge/Desktop/topic/leo-experiment-platform/CODE/work/WP-LEO-V2-PRE-EXPERIMENT-TRUST/_tamper-scratch/treatment-3292/timeline.jsonl: receipt says ecac905ca90be1c8feac86b7810160d0f1c6bedbdd5be9ca8ab0e1c7483edd8a, file is ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      ],
+      "receipt_schema": "leo-sim-receipt/v6",
+      "rejected": true,
+      "run_id": "EXP-LEO-V2-PRE-TRUST-REPRO-treatment-s7"
+    }
+  ]
+}

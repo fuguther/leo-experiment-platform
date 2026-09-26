@@ -1,0 +1,8 @@
+{
+ "schema": "leo-t1-e3-full-cache/v1",
+ "compared": 3528,
+ "O0_eq_O1_pick": 3528,
+ "pick_flipped": 0,
+ "samples": [],
+ "note": "全缓存注入（覆盖所有 origin）；需先应用 recording-extension.patch"
+}
