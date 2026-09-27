@@ -305,9 +305,13 @@ def test_the_dev_tier_runs_with_behaviour_predicates(tmp_path):
     assert run["counts"]["ok"] == run["counts"]["total"], [
         (r["cell_id"], r["status"], r.get("exit_reason"))
         for r in run["cells"] if r["status"] != "ok"]
+    kinds = set()
     for record in run["cells"]:
-        assert record["predicate"]["kind"] == "execution_modes"
+        kinds.add(record["predicate"]["kind"])
         assert record["predicate_verdict"]["passed"] is True
+        assert record["predicate_verdict"]["checks"]
+    # the dev tier covers both the execution sweep and the state-time blocks
+    assert kinds == {"execution_modes", "time_alignment"}, kinds
 
 
 def test_the_formal_package_is_compiled_and_validated_not_run(tmp_path):
