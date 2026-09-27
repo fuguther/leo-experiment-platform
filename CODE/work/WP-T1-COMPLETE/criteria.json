@@ -108,7 +108,7 @@
     {
       "id": "K09",
       "statement": "包长和每星请求率可复算，finite 池启用",
-      "check": "python3 -m pytest CODE/experiment_platform/tests/test_t1_suite.py -q -k pressure",
+      "check": "python3 -m pytest CODE/experiment_platform/tests/test_benchmark_decision.py -q -k pool（N=0 负对照 + N=1/2/4 有限池）",
       "evidence": [
         "CODE/experiment_platform/benchmark_decision.py"
       ],
@@ -116,24 +116,24 @@
         "CODE/experiment_platform/benchmark_decision.py",
         "CODE/leo_sim/config.py"
       ],
-      "status": "PENDING"
+      "status": "TESTED"
     },
     {
       "id": "K10",
       "statement": "完整耗时与纯推理、实测与注入分别标注",
-      "check": "python3 -m CODE.experiment_platform.benchmark_decision --help 且报告含 warmed_up/rounds/p50/p95/p99 与 timing_call_overhead_s",
+      "check": "python3 -m pytest CODE/experiment_platform/tests/test_benchmark_decision.py -q；工件含 warmup/rounds/p50/p95/p99 与 empty_call_baseline",
       "evidence": [
         "CODE/experiment_platform/benchmark_decision.py"
       ],
       "touches": [
         "CODE/experiment_platform/benchmark_decision.py"
       ],
-      "status": "PENDING"
+      "status": "TESTED"
     },
     {
       "id": "K11",
       "statement": "后台更新时旧表真正在转发，完成后才安装",
-      "check": "python3 -m pytest CODE/leo_sim/tests/test_async_routing.py -q（状态机/安装/版本/窗口）；内核在线接线待 P5/P7 完成",
+      "check": "python3 -m pytest CODE/leo_sim/tests/test_async_kernel.py -q；schedule_installed.at == schedule_update_computed.at + install_delay",
       "evidence": [
         "CODE/leo_sim/async_routing.py",
         "CODE/leo_sim/tests/test_async_routing.py"
@@ -142,67 +142,67 @@
         "CODE/leo_sim/async_routing.py",
         "CODE/leo_sim/kernel.py"
       ],
-      "status": "IMPLEMENTED"
+      "status": "TESTED"
     },
     {
       "id": "K12",
       "statement": "五执行模式公平、调用和查询成本分开",
-      "check": "python3 -m pytest CODE/experiment_platform/tests/test_execution_compare.py -q",
+      "check": "python3 -m pytest CODE/experiment_platform/tests/test_execution_compare.py -q；五模式同 trace、仅 execution_mode 差异",
       "evidence": [
         "CODE/experiment_platform/execution_compare.py"
       ],
       "touches": [
         "CODE/experiment_platform/execution_compare.py"
       ],
-      "status": "PENDING"
+      "status": "TESTED"
     },
     {
       "id": "K13",
       "statement": "DDQN 固定推理与训练边界明确",
-      "check": "python3 -m pytest CODE/experiment_platform/tests/test_execution_compare.py -q -k ddqn；无检查点时输出精确外部阻塞证据",
+      "check": "ddqn_status：无检查点 -> EXTERNAL_BLOCKER（test_ddqn_without_a_checkpoint_is_an_external_blocker）；本机无有效 DDQN 检查点，按计划书 §5 列外部阻塞，不冒称实现验证",
       "evidence": [
         "CODE/experiment_platform/execution_compare.py"
       ],
       "touches": [
         "CODE/leo_sim/learning.py"
       ],
-      "status": "PENDING"
+      "status": "IMPLEMENTED"
     },
     {
       "id": "K14",
       "statement": "统计单元正确、开发确认分离、负结果可终止",
-      "check": "python3 -m pytest CODE/experiment_platform/tests/test_t1_stats.py -q（统计）；t1_suite 待 P10",
+      "check": "python3 -m pytest CODE/experiment_platform/tests/test_t1_stats.py CODE/experiment_platform/tests/test_t1_suite.py -q",
       "evidence": [
         "CODE/experiment_platform/t1_suite.py"
       ],
       "touches": [
         "CODE/experiment_platform/t1_suite.py"
       ],
-      "status": "IMPLEMENTED"
+      "status": "TESTED"
     },
     {
       "id": "K15",
       "statement": "端到端流水线及恢复/拒绝路径实跑",
-      "check": "compile -> validate -> run --tier acceptance -> report，且篡改复制工件被拒绝",
+      "check": "compile -> validate -> run --tier acceptance -> report 实跑 7/7 ok；resume 只重试失败 cell、身份变更即失效；篡改 bundle 被 validate 拒绝",
       "evidence": [
         "out/t1-complete/acceptance/"
       ],
       "touches": [
         "CODE/experiment_platform/t1_suite.py"
       ],
-      "status": "PENDING"
+      "status": "TESTED"
     },
     {
       "id": "K16",
       "statement": "回归、文档、能力表与最终报告一致",
-      "check": "python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q",
+      "check": "REPORT.md + STATUS.md + criteria.json 逐条链接证据；全平台回归实际输出见 STATUS.md",
       "evidence": [
         "CODE/work/WP-T1-COMPLETE/REPORT.md"
       ],
       "touches": [
         "ANALYSIS/CAPABILITY-TABLE.md"
       ],
-      "status": "PENDING"
+      "status": "IMPLEMENTED"
     }
   ]
 }

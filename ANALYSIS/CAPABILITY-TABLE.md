@@ -106,3 +106,31 @@
 | E0–E3 交付集（**未跟踪**） | `ANALYSIS/ARRIVAL-TIME-T1-20260923/`（61 文件，冻结于 `98c858f`，`code_sha256=2a114890…`） | **未复制、未改写**；已备份并固化为本地 ref `refs/heads/wip/protect-arrival-time-t1` |
 | E2-F 三因素单因素设计 | `ANALYSIS/ARRIVAL-TIME-T1-20260923/02b-…` | 未重做；本轮的 `cost_pressure_probe` 只补它没有的**每星算力上界**这一杠杆，并在 docstring 里写明关系 |
 | 信息权限表（表 A/B/C） | `ANALYSIS/ARRIVAL-TIME-T1-20260923/00e-…` | 未重写；`TIME-SEMANTICS-QUARTET.md` 只补它与四组语义之间的那一层 |
+
+
+---
+
+## F. T1-COMPLETE 新增能力（P1–P10）
+
+基准身份：起始 `0876b12`（`t1/frozen-branch-and-async-design`）；本轮提交见 `CODE/work/WP-T1-COMPLETE/STATUS.md`。
+状态口径同 A–E；**没有 FORMAL_RUN**，没有 VM 实跑，没有研究比较完成。
+
+| 能力 | 实现存在 | 命令可达 | 本地实跑 | VM 实跑 | 研究比较完成 |
+|---|---|---|---|---|---|
+| 单位修正（occupied 秒 / 控制比特分离） | ✅ `control_reach_probe._control_overhead` + `UNITS` | ✅ 同名 CLI（schema v2） | ✅ 3 测试 | ❌ | ❌ |
+| 执行链身份（commit/dirty/diff + 逐文件哈希） | ✅ `artifact_identity.py` | ✅ 各驱动内嵌 `identity` | ✅ | ❌ | ❌ |
+| 每星 FIFO 计算池 + compute_request/start/finish | ✅ `kernel._deferred_enabled` / `decide_deferred` | ✅ 配置键 + timeline | ✅ 手算夹具 7 测试 | ❌ | ❌ |
+| 零成本 frozen 诊断 | ✅ `_deferred_enabled` | ✅ `decision_observation_mode=frozen` + `compute_delay_s=0` | ✅ | ❌ | ❌ |
+| 不可变快照 / 预测器 / ETA / 统一评分 / 计划表 | ✅ `time_alignment.py` | ✅ 经内核与 `time_alignment_compare` | ✅ 28 测试 | ❌ | ❌ |
+| 四组离线比较 + 每候选闭环代价 + oracle 隔离 | ✅ `time_alignment_compare.py` | ✅ `-m CODE.experiment_platform.time_alignment_compare` | ✅ 15 测试 + 实跑工件 | ❌ | ❌ |
+| 四组在线执行 + 可回放审计 | ✅ `kernel._time_aligned_order` | ✅ `time_alignment.enabled=true` | ✅ 8 测试 | ❌ | ❌ |
+| 异步更新器（scope 状态机 / 完成才安装 / 版本单调） | ✅ `async_routing.py` | ✅ `async_routing.enabled=true` + async 执行模式 | ✅ 16 + 7 测试 | ❌ | ❌ |
+| 五执行模式公平矩阵 | ✅ `execution_compare.py` | ✅ `-m CODE.experiment_platform.execution_compare` | ✅ 10 测试 | ❌ | ❌ |
+| 决策路径计时 + 有限池压力 | ✅ `benchmark_decision.py` | ✅ `-m CODE.experiment_platform.benchmark_decision` | ✅ 8 测试 | ❌ | ❌ |
+| 统一统计（配对/bootstrap/样本量/主对比） | ✅ `t1_stats.py` | ✅ 被驱动与报告引用 | ✅ 32 测试 | ❌ | ❌ |
+| 端到端流水线 compile/validate/run/resume/report | ✅ `t1_suite.py` | ✅ `-m CODE.experiment_platform.t1_suite` | ✅ acceptance 7/7 ok + 11 测试 | ❌ | ❌ |
+| DDQN 固定推理接口 | ⚠️ 仅可用性检查 `execution_compare.ddqn_status` | ✅ | ⚠️ 本机无有效检查点 → `EXTERNAL_BLOCKER` | ❌ | ❌ |
+
+**F 节能说**：机制本身本地实跑并可判定；关闭新功能时旧路径回归通过（1181 passed, 1 skipped）。
+**F 节不能说**：状态时间对齐的收益；异步的性能收益；任何确认性结论。当前单分支诊断在 contention 上显示四组 regret 全 0（场景未激活机制），在合成夹具中四组可改变排序。
+

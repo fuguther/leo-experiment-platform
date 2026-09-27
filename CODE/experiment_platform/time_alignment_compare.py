@@ -265,10 +265,16 @@ def _branch(resolved, rows, geometry, decision_id):
     baseline = kernel.run_simulation(
         resolved, rows, geometry=geometry, decision_sink=sink,
         timeline_sink=timeline)
-    target = next((r for r in sink if r.get("decision_id") == decision_id),
-                  None)
-    if target is None:
-        raise CompareError(f"decision {decision_id} never committed")
+    if decision_id is None:
+        target = next((r for r in sink if r.get("kind") == "forward"), None)
+        if target is None:
+            raise CompareError(
+                "the fixture produced no forward decision to compare")
+    else:
+        target = next((r for r in sink if r.get("decision_id") == decision_id),
+                      None)
+        if target is None:
+            raise CompareError(f"decision {decision_id} never committed")
     return capture(baseline, sink, timeline), target
 
 
@@ -297,6 +303,7 @@ def _deadline(resolved, per_candidate, deadline_s):
 
 def compare(resolved, rows, geometry, decision_id, deadline_s, source):
     branch, target = _branch(resolved, rows, geometry, decision_id)
+    decision_id = int(target["decision_id"])
     if target.get("kind") != "forward":
         raise CompareError(
             "the four-group comparison is defined on a forward branch; "
@@ -561,7 +568,8 @@ def main(argv=None) -> int:
     parser.add_argument("--config", type=Path)
     parser.add_argument("--scenario",
                         choices=sorted(scripted_scenarios.SCENARIOS))
-    parser.add_argument("--decision-id", type=int, required=True)
+    parser.add_argument("--decision-id", required=True,
+                        help="an integer decision id, or first_forward")
     parser.add_argument("--deadline-s", type=float, default=None)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--out", type=Path, required=True)
@@ -569,12 +577,14 @@ def main(argv=None) -> int:
     if bool(args.config) == bool(args.scenario):
         print("COMPARE REFUSED: give exactly one of --config or --scenario")
         return 2
+    raw_id = str(args.decision_id)
+    decision_id = None if raw_id == "first_forward" else int(raw_id)
     try:
         if args.config:
-            document = compare_config(args.config, args.decision_id,
+            document = compare_config(args.config, decision_id,
                                       args.deadline_s, args.root)
         else:
-            document = compare_scenario(args.scenario, args.decision_id,
+            document = compare_scenario(args.scenario, decision_id,
                                         args.deadline_s)
         publish(document, args.out)
     except CompareError as exc:
