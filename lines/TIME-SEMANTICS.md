@@ -73,7 +73,7 @@ t_peer_target_egress_enter                 t_peer_target_egress_service_start
 | 处理方式 | 平台现状 | 状态 |
 |---|---|---|
 | 原始状态 | `observation_mode=frozen` —— 观测冻结于决策开始,提交只做合法性校验 | ✅ 已实现 |
-| 补偿到当前 | `observation_mode=refresh` —— 提交时刻重新观测(默认) | ✅ 已实现 |
+| 延迟重观测 | `observation_mode=refresh` —— 提交时刻重新观测(默认) | ✅ 已实现 |
 | 候选到达时刻 | 只有**事后真值** `truth_at_target`;作为**决策输入**不存在 | ❌ 需新增 |
 | 共同未来时刻 | 把各候选对齐到同一未来时刻再比较 —— 无对应机制 | ❌ 需新增 |
 

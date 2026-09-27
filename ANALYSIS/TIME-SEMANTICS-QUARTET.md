@@ -63,13 +63,13 @@
 | # | 语义 | 观测时刻 | 动作决定时刻 | 生效时刻 | 平台现状 | 对应字段 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | 原始状态 | `t_decision_start` | `t_decision_start`（观测与推断同一瞬间） | `t_decision_commit` | 已实现 | `obs_mode="frozen"`；`t_measure=t_decision_start`；`observation_at_start`（`source="frozen_snapshot_before_compute"`）；`estimate_at_start` |
-| 2 | 补偿到当前 | `t_decision_commit` | `t_decision_commit` | `t_decision_commit` | 已实现（默认） | `obs_mode="refresh"`；`t_measure=t_decision_commit`；`observation_at_start`（`source="commit_time_state"`）；`estimate_at_start` |
+| 2 | 延迟重观测（提交时刻重读） | `t_decision_commit` | `t_decision_commit` | `t_decision_commit` | 已实现（默认） | `obs_mode="refresh"`；`t_measure=t_decision_commit`；`observation_at_start`（`source="commit_time_state"`）；`estimate_at_start` |
 | 3 | 候选到达时刻 | **不存在**（要求投影到"该候选被选中后到达对端"的时刻） | `t_decision_start`（本应在同一决策内） | `t_peer_arrival`（实际只在事后得知） | **缺失** | 只有事后真值 `truth_at_target`（`t_arrival` / `contended_direction` / `egress`）；决策输入侧字段**待实现** |
 | 4 | 共同未来时刻 | **不存在**（要求把各候选投影到同一未来时刻 `t_common`） | `t_decision_start` | `t_common`（无定义） | **完全缺失** | 无。平台**全部**既有预测都取决策时刻值（见下） |
 
 **1. 原始状态（`frozen`）**（工作树 `kernel.py`）：观测在 `t_decision_start` 取得并在同一瞬间推断出动作（`_observe_preferred_action`，`:3945`），提交时刻只做**合法性校验**（`_decide_from_frozen_observation`，`:3998`）。校验失败不是"重解一次"，而是记 `commit_rejected`（`:4059,4071`）并 park（`:4095-4097`）；观测本身推出 hold 的记 `frozen_inferred_hold`（`:4083`）。被拒/被 hold 的尝试**不写 decision 行**，只存在于 timeline 流。配置侧：`VALID_OBSERVATION_MODES`（`config.py:247`，两身份同号）；`frozen` 要求 `compute_delay_s > 0`（工作树 `config.py:910-921`，`98c858f` 为 `:869-872`；无计算区间就无可冻结之物，报配置错误而非静默降级）；`frozen` 不允许与 learning arm 同时出现（工作树 `kernel.py:1140-1143`）。
 
-**2. 补偿到当前（`refresh`）**：默认模式（`config.py:413`）。实现是"延迟重观测"：计算落地后重新读 `env.now` 与实时状态，再选动作（`_decide` → `_record_decision`，工作树 `:3550-3561,4273`）。因此观测时刻**就是**提交时刻。
+**2. 延迟重观测（`refresh`）**：默认模式（`config.py:413`）。实现是"延迟重观测"：计算落地后重新读 `env.now` 与实时状态，再选动作（`_decide` → `_record_decision`，工作树 `:3550-3561,4273`）。因此观测时刻**就是**提交时刻。
 
 判别性实测夹具（不是论证）：`tests/test_frozen_observation.py:225-234` 让唯一 ISL 在决策开始时 down、提交时 up，`refresh` 提交了那次 forward（断言原文 "the ISL was down at 5.082, so this forward is not knowable then"）；`frozen` 在同一夹具下不会（`:237-251`）。反向夹具 `:254-273`：ISL 在 t0 up、提交时 down，`frozen` 留下 `commit_rejected`，而 `refresh` **根本没有 `commit_rejected` 这个概念**——它直接重解。
 

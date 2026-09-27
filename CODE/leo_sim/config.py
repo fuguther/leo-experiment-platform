@@ -12,6 +12,7 @@ import copy
 import hashlib
 import json
 import math
+import re
 from typing import Any, Mapping
 
 import yaml
@@ -53,6 +54,19 @@ def _construct_unique_mapping(loader, node, deep=False):
 _UniqueKeyLoader.add_constructor(
     yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
     _construct_unique_mapping)
+
+# YAML 1.1 (which PyYAML implements) only recognises a float exponent when the
+# mantissa carries a decimal point, so the JSON form "1e-06" -- which is exactly
+# what json.dumps emits for the small default time_alignment.query_delay_s --
+# round-trips as a STRING.  A compiled config written as JSON and re-read as
+# YAML would then be rejected as a type error.  Accept the JSON exponent form as
+# a float too; the mantissa must still be numeric, so ordinary words are
+# unaffected.
+_JSON_EXP_FLOAT = re.compile(
+    r"^[-+]?(?:[0-9][0-9_]*|\.[0-9_]+|[0-9][0-9_]*\.[0-9_]*)[eE][-+]?[0-9]+$")
+_UniqueKeyLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:float", _JSON_EXP_FLOAT,
+    list("-+0123456789."))
 
 
 # Allowed fields per top-level group. Anything else is rejected.
@@ -230,6 +244,30 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # number.
         "compute_servers_per_satellite": int,
     },
+    # T1-COMPLETE P3.1: state-time semantics and asynchronous schedule
+    # updates.  Defaults are OFF so every existing configuration keeps its
+    # behaviour; the values below are engineering diagnostic assumptions, not
+    # measured satellite parameters.
+    "time_alignment": {
+        "enabled": bool,
+        "arm": str,  # stale | now | common | candidate
+        "predictor": str,  # hold_last | bounded_linear
+        "history_limit": int,
+        "common_rule": str,  # median_eta | mean_eta | fixed_horizon
+        "common_horizon_s": (int, float, type(None)),
+        "execution_mode": str,  # per_packet|per_flow|precomputed|async_point|async_window
+        "per_flow_ttl_s": (int, float),
+        "query_delay_s": (int, float),
+    },
+    "async_routing": {
+        "enabled": bool,
+        "update_interval_s": (int, float),
+        "valid_window_s": (int, float),
+        "install_delay_s": (int, float),
+        "window_bins": int,
+        "trigger": str,  # periodic (first version)
+        "max_pending_per_scope": int,
+    },
     "outputs": {
         "out_dir": str,
         "trace_path": (str, type(None)),
@@ -255,6 +293,13 @@ VALID_RATE_MODELS = {"constant", "mcs"}
 # during the computation cannot exist); "frozen" infers on the observation
 # taken at decision start and only checks legality at commit time.
 VALID_OBSERVATION_MODES = {"refresh", "frozen"}
+VALID_TIME_ARMS = {"stale", "now", "common", "candidate"}
+VALID_PREDICTORS = {"hold_last", "bounded_linear"}
+VALID_COMMON_RULES = {"median_eta", "mean_eta", "fixed_horizon"}
+VALID_EXECUTION_MODES = {
+    "per_packet", "per_flow", "precomputed", "async_point", "async_window",
+}
+VALID_ASYNC_TRIGGERS = {"periodic"}
 RF_KEYS = {
     "frequency_hz", "bandwidth_hz", "max_ptx_w",
     "antenna_diameter_tx_m", "antenna_diameter_rx_m",
@@ -428,6 +473,26 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         # a bounded on-board processor is opt-in.
         "compute_servers_per_satellite": 0,
     },
+    "time_alignment": {
+        "enabled": False,
+        "arm": "candidate",
+        "predictor": "bounded_linear",
+        "history_limit": 8,
+        "common_rule": "median_eta",
+        "common_horizon_s": None,
+        "execution_mode": "per_packet",
+        "per_flow_ttl_s": 0.5,
+        "query_delay_s": 0.000001,
+    },
+    "async_routing": {
+        "enabled": False,
+        "update_interval_s": 0.5,
+        "valid_window_s": 1.0,
+        "install_delay_s": 0.001,
+        "window_bins": 4,
+        "trigger": "periodic",
+        "max_pending_per_scope": 1,
+    },
     "outputs": {"out_dir": "leo_sim_out", "trace_path": None, "plotting": False},
 }
 
@@ -486,6 +551,7 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         cfg["links"], cfg["topology"], cfg["control_plane"], cfg["routing"],
         cfg["learning"], cfg["execution"],
     )
+    ta, ar = cfg["time_alignment"], cfg["async_routing"]
     if sc["duration_s"] <= 0:
         raise ConfigError("scenario.duration_s must be > 0")
     if sc["time_step_s"] <= 0:
@@ -924,14 +990,16 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(
             "execution.decision_observation_mode must be one of "
             f"{sorted(VALID_OBSERVATION_MODES)}")
-    if ex["decision_observation_mode"] == "frozen" and compute_delay <= 0:
-        # Fail loud instead of silently ignoring the requested mode: with no
-        # computation time there is no interval during which an observation
-        # could go stale, so the two modes are the same run and the request is
-        # a configuration error rather than a no-op.
+    if ex["decision_observation_mode"] == "frozen" and compute_delay < 0:
+        # negative delays are already rejected above; this branch keeps the
+        # frozen mode's own lower bound explicit.
         raise ConfigError(
             "execution.decision_observation_mode=frozen requires "
-            "execution.compute_delay_s > 0")
+            "execution.compute_delay_s >= 0")
+    # T1-P2: zero-cost frozen is ALLOWED.  It is the diagnostic that freezes,
+    # selects and commits at one simulated instant without an epsilon delay, so
+    # the state-time semantics can be compared without paying a compute cost.
+    # The historical refresh + zero delay path is untouched.
     node_delay = ex["node_process_delay_s"]
     if (isinstance(node_delay, bool) or node_delay < 0
             or not math.isfinite(node_delay)):
@@ -949,6 +1017,90 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(
             "execution.compute_servers_per_satellite > 0 requires "
             "execution.compute_delay_s > 0")
+    _validate_time_alignment(ta, ar)
+
+
+def _validate_time_alignment(ta: Mapping[str, Any],
+                             ar: Mapping[str, Any]) -> None:
+    """T1-COMPLETE P3.1: fail loud on any contradictory state-time request.
+
+    A contradictory request (e.g. async execution mode with async_routing off)
+    is rejected, never silently downgraded to a different run.
+    """
+    if ta["arm"] not in VALID_TIME_ARMS:
+        raise ConfigError(
+            f"time_alignment.arm must be one of {sorted(VALID_TIME_ARMS)}, "
+            f"got {ta['arm']!r}")
+    if ta["predictor"] not in VALID_PREDICTORS:
+        raise ConfigError(
+            f"time_alignment.predictor must be one of "
+            f"{sorted(VALID_PREDICTORS)}, got {ta['predictor']!r}")
+    if isinstance(ta["history_limit"], bool) or ta["history_limit"] < 1:
+        raise ConfigError("time_alignment.history_limit must be >= 1")
+    if ta["common_rule"] not in VALID_COMMON_RULES:
+        raise ConfigError(
+            f"time_alignment.common_rule must be one of "
+            f"{sorted(VALID_COMMON_RULES)}, got {ta['common_rule']!r}")
+    horizon = ta["common_horizon_s"]
+    if ta["common_rule"] == "fixed_horizon":
+        if (horizon is None or isinstance(horizon, bool)
+                or not isinstance(horizon, (int, float))
+                or not math.isfinite(horizon) or horizon < 0):
+            raise ConfigError(
+                "time_alignment.common_horizon_s must be a finite, non-negative "
+                "number when common_rule=fixed_horizon")
+    elif horizon is not None:
+        raise ConfigError(
+            "time_alignment.common_horizon_s may only be set when "
+            "common_rule=fixed_horizon")
+    mode = ta["execution_mode"]
+    if mode not in VALID_EXECUTION_MODES:
+        raise ConfigError(
+            f"time_alignment.execution_mode must be one of "
+            f"{sorted(VALID_EXECUTION_MODES)}, got {mode!r}")
+    is_async = mode in ("async_point", "async_window")
+    if is_async and not ar["enabled"]:
+        raise ConfigError(
+            f"time_alignment.execution_mode={mode} requires "
+            "async_routing.enabled=true")
+    if bool(ar["enabled"]) and not is_async:
+        raise ConfigError(
+            "async_routing.enabled=true requires "
+            "time_alignment.execution_mode async_point or async_window")
+    ttl = ta["per_flow_ttl_s"]
+    if (isinstance(ttl, bool) or not isinstance(ttl, (int, float))
+            or not math.isfinite(ttl) or ttl <= 0):
+        raise ConfigError("time_alignment.per_flow_ttl_s must be > 0")
+    qd = ta["query_delay_s"]
+    if (isinstance(qd, bool) or not isinstance(qd, (int, float))
+            or not math.isfinite(qd) or qd < 0):
+        raise ConfigError(
+            "time_alignment.query_delay_s must be finite and >= 0")
+    for name in ("update_interval_s", "valid_window_s"):
+        v = ar[name]
+        if (isinstance(v, bool) or not isinstance(v, (int, float))
+                or not math.isfinite(v) or v <= 0):
+            raise ConfigError(f"async_routing.{name} must be finite and > 0")
+    install = ar["install_delay_s"]
+    if (isinstance(install, bool) or not isinstance(install, (int, float))
+            or not math.isfinite(install) or install < 0):
+        raise ConfigError(
+            "async_routing.install_delay_s must be finite and >= 0")
+    bins = ar["window_bins"]
+    if isinstance(bins, bool) or not isinstance(bins, int) or bins < 1:
+        raise ConfigError("async_routing.window_bins must be a positive integer")
+    if mode == "async_point" and bins != 1:
+        raise ConfigError(
+            "async_point forces a single window bin; async_routing.window_bins "
+            "must be 1")
+    pending = ar["max_pending_per_scope"]
+    if isinstance(pending, bool) or not isinstance(pending, int) or pending < 1:
+        raise ConfigError(
+            "async_routing.max_pending_per_scope must be >= 1")
+    if ar["trigger"] not in VALID_ASYNC_TRIGGERS:
+        raise ConfigError(
+            f"async_routing.trigger must be one of "
+            f"{sorted(VALID_ASYNC_TRIGGERS)}, got {ar['trigger']!r}")
 
 
 # The five demand fields defaulted since identity/v2 (Task 1 global scene

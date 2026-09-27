@@ -65,13 +65,13 @@
 | 有界每星计算资源 + 计算排队的 6 条测试（含无界逐位相同负对照、服务器数单调性） | `CODE/leo_sim/tests/test_compute_delay.py` | 本地实跑 ✅ |
 | 逐包比较产物（no_info 失败诊断） | `out/br-noinfo.json`（`minimal-branch-compare/v2`） | 本地实跑 ✅ |
 | 逐包比较产物（**两个候选都送达**，零负载） | `out/br-reach.json`：两分支 `delivered_at` 完全相同，Δ = 0.000000000 s | 本地实跑 ✅ + **VM 实跑 ✅** |
-| 逐包比较产物（**可手算的出口竞争**） | `out/br-cont.json`：入队前工作量 1,566,997.9231432169 bit → 实测等待 1.614997923 s；送达差 = −1.614997923 s，与实测等待逐位相等 | 本地实跑 ✅ + **VM 实跑 ✅** |
+| 逐包比较产物（**可手算的出口竞争**） | `out/br-cont.json`：入队前工作量 1,566,997.9231432169 bit → 实测等待 1.614997923 s；送达差 = −1.614997923 s，与实测等待在实现容差（1e-9）内一致 | 本地实跑 ✅ + **VM 实跑 ✅** |
 | 脚本化场景定义（参数先声明） | `CODE/experiment_platform/scripted_scenarios.py` | 本地实跑 ✅ |
 | **真实星座 no_info 原因定位**（四因互斥分类，只用观测自身） | `CODE/experiment_platform/no_info_diagnosis.py` + `ANALYSIS/REAL-CONSTELLATION-SCAN-20260926.md` §1 | 本地实跑 ✅（诊断） |
 | **真实星座双可达人口扫描**（选点规则预先声明） | `CODE/experiment_platform/dual_reachable_scan.py` + 同上 §3；实测 **0/12** | 本地实跑 ✅（诊断） |
 | 成本/压力探针产物 | `out/cost-pressure.json`（`cost-pressure-probe/v1`） | 本地实跑 ✅ |
 | 无学习小场景 profile | `CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml` | 本地实跑 ✅ |
-| **VM 实跑**（本轮，与提交对齐） | VM `/data/论文/leo-direct-sim/ANALYSIS/DIAG-T1-FROZEN-BRANCH-20260926/`；部署 `leo-vmdeploy@ab15b8f`，`code_sha256 = 2c17718d…` = 提交 `a49ce82`，Python 3.11.15 / simpy 4.0.1 / numpy 1.24.3。VM 上重算的握手量与本机**逐位相同** | **VM 实跑 ✅**（诊断，非正式授权） |
+| **VM 实跑**（本轮，与提交对齐） | VM `/data/论文/leo-direct-sim/ANALYSIS/DIAG-T1-FROZEN-BRANCH-20260926/`；部署 `leo-vmdeploy@ab15b8f`，`code_sha256 = 2c17718d…` = 提交 `a49ce82`，Python 3.11.15 / simpy 4.0.1 / numpy 1.24.3。VM 上重算的握手量与本机**在实现容差内一致** | **VM 实跑 ✅**（诊断，非正式授权） |
 | VM 上的平台测试套件 | `3 failed, 1005 passed, 1 skipped`——3 条失败全部归因于部署形态（无 `.git`、父仓实验实例），非本轮引入 | VM 实跑 ✅（含失败） |
 | 跨环境一致性 | 语义字段逐项相同；算力争用 `wait_total=17.234256 s` 两边相同；`branch_fingerprint` **不同**（6/1199 叶子为 ≤1e-9 的相对浮点差） | 见 `ANALYSIS/VM-RUN-20260926.md` §4 |
 
@@ -83,7 +83,7 @@
 - `frozen` 的分支点是**观测时刻**，且在 `compute_delay>0` 时严格早于提交；强制动作必须落在该观测记录的合法集内，否则 fail-loud。
 - 一对分支的**分支前状态逐行相同**（决策指纹 + 分支时刻之前的全部 timeline 行），**分支后的第一个差异出现在分支时刻之后**。
 - 在脚本化 `reachability` 场景（无负载、两条路径几何相同）上，两个候选**都送达且送达时刻完全相同**，Δ = 0.000000000 s。这是**如实报告的"没有差异"**：该场景只证明可达性与配对正确，不证明任何策略优劣。
-- 在脚本化 `contention` 场景（额外一个 4 Mbit 竞争包、链路 1 Mbps）上，两条路径的**真实代价可以手算并被实测逐位验证**：基线走 E 在对端出口 `isl:1:3` 入队前有 1,566,997.9231432169 bit 在前面，实测等待 1.614997923 s；强制走 W 的 `isl:2:3` 工作量为 0、等待为 0；两个分支的送达差 = −1.614997923 s，**与实测等待逐位相等**。
+- 在脚本化 `contention` 场景（额外一个 4 Mbit 竞争包、链路 1 Mbps）上，两条路径的**真实代价可以手算并被实测在实现容差内验证**：基线走 E 在对端出口 `isl:1:3` 入队前有 1,566,997.9231432169 bit 在前面，实测等待 1.614997923 s；强制走 W 的 `isl:2:3` 工作量为 0、等待为 0；两个分支的送达差 = −1.614997923 s，**与实测等待在实现容差内一致**。
 - 两时刻工作量检查在该场景为 `True`：对端到达时的快照比入队前多出 84,000 bit —— 若直接引用到达快照，就会把**取错快照**当成机制差异。
 - 在 `t1_frozen_branch_smoke`（真实星座）上，`N` 与 `S` 的差异是：走 `N` 送达（45.13 s，路径 [0,1,2]），走 `S` 在对端拿不到路由信息、61 次 hold、地平线内未送达。**这是保留的失败诊断（可行性对照），不是代价对照。**
 

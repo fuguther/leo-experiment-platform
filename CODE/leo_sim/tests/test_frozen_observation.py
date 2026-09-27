@@ -99,13 +99,35 @@ def test_an_unknown_observation_mode_is_rejected():
                 {"execution": {"decision_observation_mode": bad}})
 
 
-def test_frozen_without_a_compute_delay_is_a_config_error():
-    """With no computation time there is no interval to freeze, so asking for
-    the mode is a configuration error rather than a silent no-op."""
-    with pytest.raises(config.ConfigError, match="requires"):
-        config.resolve_config(
-            {"execution": {"decision_observation_mode": "frozen",
-                           "compute_delay_s": 0.0}})
+def test_zero_cost_frozen_is_allowed_and_is_a_real_frozen_run():
+    """T1-P2: the zero-cost frozen diagnostic is allowed.
+
+    The old rule (frozen requires compute_delay_s > 0) is replaced, not
+    weakened: instead of refusing the request, the run must actually freeze at
+    the request instant and commit at the SAME simulated instant, without
+    reading any advertisement that arrives after t0.  A silent fall back to
+    refresh would be the real regression, so it is checked behaviourally.
+    """
+    resolved = config.resolve_config(
+        {"execution": {"decision_observation_mode": "frozen",
+                       "compute_delay_s": 0.0}})
+    assert resolved["config"]["execution"]["compute_delay_s"] == 0.0
+    assert resolved["config"]["execution"]["decision_observation_mode"] == "frozen"
+
+    # the mode is still rejected for negative delays (checked above), and the
+    # frozen semantics must hold at zero cost
+    res, sink, timeline = _run("frozen", up_before=False, delay=0.0)
+    target = [r for r in sink if r.get("pid") == 1]
+    assert target, "the fixture must decide"
+    for r in target:
+        assert r["obs_mode"] == "frozen"
+        # freeze and commit at one simulated instant
+        assert r["t"] == r["t_decision_start"]
+        assert r["observation_at_start"]["t_observed"] == r["t_decision_start"]
+    # the zero-cost frozen run must still refuse an action the t0 observation
+    # did not support (the ISL comes up only after t0)
+    assert any(m["milestone"] in ("commit_rejected", "frozen_inferred_hold")
+               for m in timeline), timeline
 
 
 def test_the_mode_is_part_of_the_config_identity():
