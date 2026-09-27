@@ -50,7 +50,9 @@ import simpy
 
 from . import (control, fates, grid as gridmod, learning as _learning, metrics,
                model, q0, link_budget)
+from . import async_routing as _async
 from . import outage, rng as rngmod, routing
+from . import time_alignment as _ta
 from . import trace as tracemod
 
 LearningUnavailable = _learning.LearningUnavailable
@@ -1074,6 +1076,31 @@ class Kernel:
         self.cfg_rt = cfg["routing"]
         self.cfg_learning = cfg["learning"]
         self.cfg_ex = cfg["execution"]
+        # T1-COMPLETE P5: state-time aligned candidate ordering.  Both default
+        # to disabled/off, so a config that does not opt in keeps the exact
+        # historical routing path.
+        self.cfg_ta = cfg["time_alignment"]
+        self.cfg_ar = cfg["async_routing"]
+        self.cfg_dm = cfg["demand"]
+        # T1-COMPLETE P7/P8: async execution modes.  The schedule manager owns
+        # the scope state machine; the kernel owns simulated time and the SHARED
+        # compute pool, so an async update is never free and never gets its own
+        # private pool.
+        self.async_mode = str(self.cfg_ta["execution_mode"]) in (
+            "async_point", "async_window")
+        self.async_bins = (1 if self.cfg_ta["execution_mode"] == "async_point"
+                           else int(self.cfg_ar["window_bins"]))
+        self.async_manager = None
+        self._async_scopes: set = set()
+        if self.async_mode:
+            self.async_manager = _async.AsyncScheduleManager(
+                install_delay_s=float(self.cfg_ar["install_delay_s"]),
+                valid_window_s=float(self.cfg_ar["valid_window_s"]),
+                window_bins=self.async_bins,
+                max_pending_per_scope=int(
+                    self.cfg_ar["max_pending_per_scope"]),
+                service_s=float(self.cfg_ex["compute_delay_s"]),
+                listener=self._async_event)
         self.horizon = float(self.cfg_sc["duration_s"])
         self.time_step = float(self.cfg_sc["time_step_s"])
         self.env = simpy.Environment()
@@ -1414,6 +1441,12 @@ class Kernel:
             self.env.process(self._topology_ticker())
         for s in range(self.num_sats):
             self.env.process(self._pending_ticker(s))
+        if self.async_mode:
+            # periodic trigger (first version): one ticker per satellite; a
+            # scope is only refreshed once it has been queried
+            for s in range(self.num_sats):
+                self.env.process(self._async_ticker(
+                    s, float(self.cfg_ar["update_interval_s"])))
         self.env.process(self._horizon_closer())
 
     def _live_entity_count(self) -> int:
@@ -3454,7 +3487,7 @@ class Kernel:
                               mode: str, source: str, own_queue_bits: dict,
                               considered: list, legal: list,
                               status: str | None, kind: str,
-                              action: str | None) -> dict:
+                              action: str | None, ta_audit: dict | None = None) -> dict:
         """The observation a decision was ACTUALLY based on.
 
         Every contributing neighbour keeps its OWN measurement/arrival time:
@@ -3521,10 +3554,17 @@ class Kernel:
             # online estimate uses.  Output only, and only when a sink exists.
             "candidate_resources": self._candidate_resource_map(
                 pkt, sat, now, considered),
+            # T1-P5: what the enabled state-time arm actually queried and how it
+            # reordered the candidates, so a single decision can be replayed.
+            # None whenever time_alignment is disabled.
+            "time_alignment": ta_audit,
         }
 
-    def _advertisement_history(self, sat: int, origin: int, now: float) -> list:
+    def _advertisement_history(self, sat: int, origin: int, now: float,
+                               force: bool = False) -> list:
         """Arrived advertisements from one origin, in arrival order, as rows."""
+        if self.decision_sink is None and not force:
+            return []
         out = []
         for entry in self.caches[sat].history_for(origin):
             if entry.received_at > now:
@@ -3545,8 +3585,322 @@ class Kernel:
             })
         return out
 
-    def _candidate_resource_map(self, pkt: DataPacket, sat: int, now: float,
-                                considered: list) -> dict:
+    # ------------------------------------- T1-COMPLETE P7 async updater
+    def _async_event(self, row: dict) -> None:
+        """Mirror an async schedule milestone onto the timeline sink."""
+        if self.timeline_sink is None:
+            return
+        out = dict(row)
+        name = str(out.get("milestone", "event"))
+        out["milestone"] = (name if name.startswith("schedule")
+                            else "schedule_" + name)
+        out["pid"] = None
+        out["decision_id"] = None
+        self.timeline_sink.append(out)
+
+    def _async_scope(self, sat: int, dst) -> tuple:
+        return (int(sat), dst, "default")
+
+    def _async_snapshot(self, sat: int, dst, now: float, cands=None,
+                        own_q=None):
+        """Scope-level snapshot from current received advertisements.
+
+        When the caller already computed the legal candidate set (the packet
+        path did), that set is reused: the schedule must be built from the SAME
+        allowed information the decision saw, not from a second lookup that
+        could resolve differently.
+        """
+        status = "ok"
+        if cands is None:
+            cands, status = routing.choose_next_hop(
+                self.cfg_rt["policy"], sat, dst, now, self.geometry, self.topo,
+                self.caches[sat],
+                {d: lnk.data_bits + lnk.ctrl_bits
+                 for d, lnk in self.isls[sat].items()},
+                self.isl_rate_bps, model.propagation_delay_s, best_only=False,
+                reverse_adj=self._routing_reverse_adj,
+                sorted_adj=self._routing_sorted_rev_adj,
+                cache_hops=None)
+        if status != "ok" or not cands:
+            return None, cands, status
+        cands = [d for d in cands if self.topo[sat].get(d) is not None]
+        if own_q is None:
+            own_q = {d: lnk.data_bits + lnk.ctrl_bits
+                     for d, lnk in self.isls[sat].items()}
+        arm = str(self.cfg_ta["arm"])
+        rule = str(self.cfg_ta["common_rule"])
+        bits = float(self.cfg_dm["packet_bits"])
+        if rule == "fixed_horizon":
+            horizon = float(self.cfg_ta["common_horizon_s"])
+        else:
+            probe = self._build_ta_snapshot(None, sat, now, cands, own_q, arm,
+                                            None, dst=dst, bits=bits)
+            horizon = self._ta_common_horizon(probe, rule)
+        snap = self._build_ta_snapshot(None, sat, now, cands, own_q, arm,
+                                       horizon, dst=dst, bits=bits)
+        return snap, cands, status
+
+    def _async_order(self, pkt, sat: int, now: float, cands: list,
+                     own_q: dict):
+        """Order candidates from the INSTALLED table only (no re-scoring)."""
+        scope = self._async_scope(sat, pkt.dst)
+        if scope not in self._async_scopes:
+            self._async_scopes.add(scope)
+            self._async_trigger(sat, pkt.dst, now, cands, own_q)
+        result = self.async_manager.query(scope, now, legal=cands,
+                                          path=pkt.path)
+        if result.get("fallback"):
+            # shared visible-topology safe fallback for every arm; the update
+            # was already requested above / by the query
+            if result.get("needs_update"):
+                self._async_trigger(sat, pkt.dst, now)
+            order = list(cands)
+        else:
+            action = result["action"]
+            order = [action] + [d for d in cands if d != action]
+        audit = {
+            "schema": "leo-sim-async-order-at-start/v1",
+            "enabled": True,
+            "execution_mode": str(self.cfg_ta["execution_mode"]),
+            "arm": str(self.cfg_ta["arm"]),
+            "scope": list(scope),
+            "bins": self.async_bins,
+            "installed_version": result.get("version"),
+            "bin": result.get("bin"),
+            "state": result.get("state"),
+            "fallback": bool(result.get("fallback")),
+            "reason": result.get("reason"),
+            "applied_order": list(order),
+            "source": "installed schedule table lookup only; the scorer is "
+                      "never called on the query path",
+        }
+        return order, audit
+
+    def _async_trigger(self, sat: int, dst, now: float, cands=None,
+                       own_q=None) -> None:
+        """Request one background update for the scope, if allowed."""
+        if self.async_manager is None:
+            return
+        scope = self._async_scope(sat, dst)
+        if not self.async_manager.needs_update(scope, now):
+            return
+        snap, cands, status = self._async_snapshot(sat, dst, now, cands, own_q)
+        if snap is None:
+            return
+        self._async_scopes.add(scope)
+        result = self.async_manager.request_update(scope, snap, now,
+                                                   trigger="periodic")
+        ticket = result.get("ticket")
+        if ticket is not None:
+            self.env.process(self._async_compute(ticket))
+
+    def _async_compute(self, ticket):
+        """Consume the SHARED compute pool, then install after the delay."""
+        requested = float(self.env.now)
+        sat = int(ticket.scope[0])
+        scope = ticket.scope
+        self._compute_job_seq += 1
+        job_id = self._compute_job_seq
+        self._async_milestone(
+            "compute_request", sat, job_id, requested_at=requested,
+            service_s=ticket.service_s, servers=self.compute_servers,
+            scope="async:%s" % (scope,))
+        if self.compute_servers > 0:
+            pool = self._compute_pool[sat]
+            busy = pool.count
+            slot = pool.request()
+            yield slot
+            started = float(self.env.now)
+            wait = started - requested
+            self._async_milestone(
+                "compute_wait", sat, job_id, wait_s=wait,
+                service_s=ticket.service_s, servers=self.compute_servers,
+                servers_busy=busy, queueing=bool(wait > 0.0),
+                requested_at=requested, at=requested)
+            yield self.env.timeout(ticket.service_s)
+            finished = float(self.env.now)
+            self._async_milestone(
+                "compute_finish", sat, job_id, requested_at=requested,
+                started_at=started, finished_at=finished, wait_s=wait,
+                service_s=finished - started)
+            pool.release(slot)
+        else:
+            yield self.env.timeout(ticket.service_s)
+            finished = float(self.env.now)
+            self._async_milestone(
+                "compute_finish", sat, job_id, requested_at=requested,
+                started_at=requested, finished_at=finished, wait_s=0.0,
+                service_s=finished - requested)
+        self.async_manager.finish_compute(ticket, finished)
+        delay = max(0.0, (ticket.install_at or finished) - self.env.now)
+        if delay > 0:
+            yield self.env.timeout(delay)
+        verdict = self.async_manager.install(ticket, float(self.env.now))
+        if not verdict.get("installed"):
+            return
+        pending = self.async_manager.take_pending(scope)
+        if pending is not None:
+            self._async_trigger(sat, scope[1], float(self.env.now))
+
+    def _async_ticker(self, sat: int, interval: float):
+        while True:
+            yield self.env.timeout(interval)
+            now = float(self.env.now)
+            for scope in sorted(self._async_scopes):
+                if scope[0] != sat:
+                    continue
+                if self.async_manager.needs_update(scope, now):
+                    self._async_trigger(sat, scope[1], now)
+
+    # ------------------------------------------- T1-COMPLETE P5 online arms
+    def _build_ta_snapshot(self, pkt, sat: int, now: float,
+                           cands: list, own_q: dict, arm: str,
+                           common_horizon_s, dst=None, bits=None):
+        """ObservationSnapshot for the online state-time arms.
+
+        Reads only what the decision may read: this node own queues, its
+        received advertisements, the visible topology rule and the configured
+        per-hop costs.  No kernel truth, no peer cache, no future event.
+        """
+        cand_map = self._candidate_resource_map(pkt, sat, now, cands,
+                                                force=True, dst=dst)
+        legal = []
+        resources = {}
+        history = []
+        rate = {}
+        prop = {}
+        peer_process = {}
+        remaining = {}
+        node_process = float(self.cfg_ex["node_process_delay_s"])
+        for direction in sorted(cands):
+            cr = cand_map.get(str(direction))
+            if not isinstance(cr, dict) or cr.get("status") != "ok":
+                legal.append(direction)
+                continue
+            legal.append(direction)
+            key = _ta.ResourceKey(int(cr["peer"]), str(cr["egress_direction"]),
+                                  "isl")
+            resources[direction] = key
+            rate[direction] = cr.get("isl_rate_bps")
+            prop[direction] = cr.get("propagation_s")
+            peer_process[direction] = node_process
+            remaining[direction] = cr.get("remaining_prop_s")
+            for rec in self._advertisement_history(sat, int(cr["peer"]), now,
+                                                   force=True):
+                bits = (rec.get("advertised_isl_queue_bits") or {}).get(
+                    cr["egress_direction"])
+                if bits is None:
+                    continue
+                history.append(_ta.StateSample(
+                    key, float(rec["generated_at"]), float(rec["received_at"]),
+                    float(bits),
+                    None if cr.get("isl_rate_bps") is None
+                    else float(cr["isl_rate_bps"])))
+        def _finite_pairs(values):
+            return {d: float(v) for d, v in values.items()
+                    if v is not None and isinstance(v, (int, float))
+                    and not isinstance(v, bool) and math.isfinite(float(v))}
+        target_dst = pkt.dst if dst is None else dst
+        target_bits = float(pkt.bits) if bits is None else float(bits)
+        scope = "scope:|%s|%s|default" % (sat, target_dst)
+        return _ta.make_snapshot(
+            satellite=int(sat), snapshot_at=float(now), history=tuple(history),
+            legal_directions=tuple(legal), resources=resources,
+            egress_queue_bits=_finite_pairs(
+                {d: own_q.get(d, 0.0) for d in resources}),
+            link_rate_bps=_finite_pairs(rate),
+            link_propagation_s=_finite_pairs(prop),
+            peer_process_s=_finite_pairs(peer_process),
+            remaining_prop_s=_finite_pairs(remaining),
+            compute_wait_s=0.0,
+            compute_service_s=float(self.cfg_ex["compute_delay_s"]),
+            pkt_bits=target_bits,
+            arm=arm, predictor=str(self.cfg_ta["predictor"]),
+            history_limit=int(self.cfg_ta["history_limit"]),
+            common_horizon_s=common_horizon_s,
+            common_rule=str(self.cfg_ta["common_rule"]),
+            query_delay_s=float(self.cfg_ta["query_delay_s"]),
+            provenance=(scope,))
+
+    def _ta_common_horizon(self, probe, rule):
+        offsets = []
+        for direction in probe.legal_directions:
+            eta = _ta.estimate_eta(probe, direction)
+            offsets.append(eta.target_at - probe.snapshot_at)
+        if not offsets:
+            return 0.0
+        offsets.sort()
+        if rule == "mean_eta":
+            return float(sum(offsets) / len(offsets))
+        mid = len(offsets) // 2
+        if len(offsets) % 2:
+            return float(offsets[mid])
+        return float(0.5 * (offsets[mid - 1] + offsets[mid]))
+
+    def _time_aligned_order(self, pkt: DataPacket, sat: int, now: float,
+                            cands: list, own_q: dict):
+        """Reorder the legal forward candidates with the shared scorer.
+
+        Returns (ordered_candidates, audit).  With time_alignment disabled the
+        candidate order and the audit are exactly what the historical path
+        produced.  A scoring failure is fail-loud, never a silent fallback.
+        """
+        if not self.cfg_ta["enabled"] or not cands:
+            return cands, None
+        if self.async_mode:
+            return self._async_order(pkt, sat, now, cands, own_q)
+        arm = str(self.cfg_ta["arm"])
+        try:
+            rule = str(self.cfg_ta["common_rule"])
+            if rule == "fixed_horizon":
+                horizon = float(self.cfg_ta["common_horizon_s"])
+                probe = self._build_ta_snapshot(pkt, sat, now, cands, own_q,
+                                                arm, horizon)
+            else:
+                probe = self._build_ta_snapshot(pkt, sat, now, cands, own_q,
+                                                arm, None)
+                horizon = self._ta_common_horizon(probe, rule)
+                probe = self._build_ta_snapshot(pkt, sat, now, cands, own_q,
+                                                arm, horizon)
+            target = probe.snapshot_at + horizon
+            scored = _ta.score_snapshot_at(probe, target)
+        except _ta.TimeAlignmentError as exc:
+            raise KernelError(
+                f"time_alignment could not score decision at {now}: {exc}")
+        order = [d for d in scored.ranking if d in cands]
+        order += [d for d in cands if d not in order]
+        audit = {
+            "schema": "leo-sim-time-alignment-at-start/v1",
+            "enabled": True,
+            "arm": arm,
+            "predictor": probe.predictor,
+            "common_rule": rule,
+            "common_horizon_s": horizon,
+            "query_delay_s": probe.query_delay_s,
+            "snapshot_at": probe.snapshot_at,
+            "ranking": list(scored.ranking),
+            "fallback_directions": list(scored.fallback_directions),
+            "missing_directions": list(scored.missing_directions),
+            "applied_order": list(order),
+            "history_samples": {
+                d: (0 if probe.resource_for(d) is None
+                    else len(probe.history_for(probe.resource_for(d))))
+                for d in probe.legal_directions},
+            "scores": {
+                s.direction: {
+                    "total_s": (None if s.total_s == math.inf else s.total_s),
+                    "terms": dict(s.terms),
+                    "missing": list(s.missing),
+                    "fallback": s.fallback,
+                } for s in scored.scores},
+            "source": "leo_sim.kernel online snapshot (received advertisements "
+                      "and local state only)",
+        }
+        return order, audit
+
+    def _candidate_resource_map(self, pkt, sat: int, now: float,
+                                considered: list, force: bool = False,
+                                dst=None) -> dict:
         """Per-candidate (peer_sat, egress_direction) prediction at now.
 
         Deterministic-router scope (learning.algorithm == none), which is the
@@ -3556,13 +3910,14 @@ class Kernel:
         peer's real queue is forbidden here; only the received advertisement
         may enter.
         """
-        if self.decision_sink is None or not considered:
+        if (self.decision_sink is None and not force) or not considered:
             return {}
         cache_hops = (1 if self.cfg_rt["contract"] == "C1"
                       else self.cfg_learning.get("obs_hops")) \
             if self.learner is not None else None
+        target_dst = pkt.dst if dst is None else dst
         serving = routing.destinations_in_cache(
-            self.caches[sat], pkt.dst, now, max_cache_hops=cache_hops)
+            self.caches[sat], target_dst, now, max_cache_hops=cache_hops)
         entries = self._observed_cache_entries(sat, now)
         out: dict = {}
         for direction in considered:
@@ -3611,7 +3966,7 @@ class Kernel:
                     "propagation_s": propagation}
                 continue
             cands, route_status = routing.choose_next_hop(
-                self.cfg_rt["policy"], peer, pkt.dst, now, self.geometry,
+                self.cfg_rt["policy"], peer, target_dst, now, self.geometry,
                 self.topo, self.caches[sat], advertised_q, self.isl_rate_bps,
                 model.propagation_delay_s,
                 oracle_targets=([s for s in serving if s != peer]
@@ -3779,7 +4134,8 @@ class Kernel:
                          audit_candidates: list | None = None,
                          decision_id: int | None = None,
                          decision_started_at: float | None = None,
-                         observation: dict | None = None) -> None:
+                         observation: dict | None = None,
+                         ta_audit: dict | None = None) -> None:
         """Append one per-hop decision snapshot to the optional decision sink.
 
         Output only: never influences routing, learning, timing, or fates.
@@ -3832,7 +4188,8 @@ class Kernel:
                 # the label -- not the numbers -- says so
                 source="commit_time_state",
                 own_queue_bits=own_queue_bits, considered=list(considered),
-                legal=list(candidates), status=None, kind=kind, action=chosen)
+                legal=list(candidates), status=None, kind=kind, action=chosen,
+                ta_audit=ta_audit)
             estimate, estimate_reason = self._estimate_at_start(
                 pkt, sat, committed_at, chosen, kind)
         else:
@@ -4235,6 +4592,17 @@ class Kernel:
         self._decide(pkt, sat, decision_started_at=requested,
                      observation=observation)
 
+    def _async_milestone(self, milestone: str, sat: int, job_id: int,
+                         **extra) -> None:
+        """Compute milestone for a scope update (no packet/decision id)."""
+        if self.timeline_sink is None:
+            return
+        row = {"milestone": milestone, "at": float(self.env.now),
+               "pid": None, "decision_id": None, "sat": int(sat),
+               "compute_job_id": int(job_id)}
+        row.update(extra)
+        self.timeline_sink.append(row)
+
     def _compute_scope(self, pkt: DataPacket, sat: int) -> str:
         """(satellite, destination_cell, traffic_class) as a stable string."""
         return f"{int(sat)}|{pkt.dst}|default"
@@ -4312,6 +4680,7 @@ class Kernel:
         if self._deliver_legal_now(pkt, sat, now):
             kind, action = "deliver", "deliver"
             legal, cands, status = ["deliver"], ["deliver"], "ok"
+            ta_audit = None
         else:
             cands, status = routing.choose_next_hop(
                 self.cfg_rt["policy"], sat, pkt.dst, now, self.geometry,
@@ -4329,6 +4698,8 @@ class Kernel:
                     if self.rate_model == "mcs" else None),
                 cache_hops=None)
             cands = [d for d in cands if self.topo[sat][d] not in pkt.path]
+            cands, ta_audit = self._time_aligned_order(pkt, sat, now, cands,
+                                                       own_q)
             legal = self._forward_legal_now(pkt, sat, now, cands)
             if legal:
                 kind, action = "forward", legal[0]
@@ -4341,7 +4712,7 @@ class Kernel:
             pkt, sat, now, mode="frozen",
             source="frozen_snapshot_before_compute",
             own_queue_bits=own_q, considered=cands, legal=legal,
-            status=status, kind=kind, action=action)
+            status=status, kind=kind, action=action, ta_audit=ta_audit)
         estimate, estimate_reason = self._estimate_at_start(
             pkt, sat, now, action, kind)
         return {"t_observe": now, "kind": kind, "action": action,
@@ -4573,6 +4944,10 @@ class Kernel:
             return
         # loop avoidance: never forward back onto a satellite already visited
         cands = [d for d in cands if self.topo[sat][d] not in pkt.path]
+        # T1-P5: reorder by the enabled state-time arm; the legality/looping
+        # filters below and the commit rules are unchanged, so the four arms
+        # differ ONLY in the ordering they feed the same pipeline.
+        cands, ta_audit = self._time_aligned_order(pkt, sat, now, cands, own_q)
         unavailable = False
         rate_blocked = False
         recover_at = float("inf")
@@ -4627,7 +5002,8 @@ class Kernel:
             self._record_decision(pkt, sat, "forward", legal, action,
                                   audit_candidates=cands,
                                   decision_id=decision_id,
-                                  decision_started_at=decision_started_at)
+                                  decision_started_at=decision_started_at,
+                                  ta_audit=ta_audit)
             self.isls[sat][action].put_data(pkt)
             return
         if unavailable:
