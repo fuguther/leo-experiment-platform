@@ -1082,6 +1082,17 @@ class Kernel:
         self.cfg_ta = cfg["time_alignment"]
         self.cfg_ar = cfg["async_routing"]
         self.cfg_dm = cfg["demand"]
+        # T1-R9: ONE shared per-satellite query service.  Every execution mode
+        # reads its answer through it, so "just a table lookup" is not silently
+        # free; a query_delay_s of 0 keeps the historical instantaneous path.
+        self._query_delay_s = float(self.cfg_ta["query_delay_s"])
+        # the pool needs num_sats, which is only known once the geometry is
+        # built; it is created there
+        self._query_pool = None
+        self._query_charge = {"requests": 0, "wait_s": 0.0, "service_s": 0.0,
+                              "servers": 0}
+        self._query_totals = {"requests": 0, "total_wait_s": 0.0,
+                              "total_service_s": 0.0, "max_wait_s": 0.0}
         # T1-COMPLETE P7/P8: async execution modes.  The schedule manager owns
         # the scope state machine; the kernel owns simulated time and the SHARED
         # compute pool, so an async update is never free and never gets its own
@@ -1098,8 +1109,9 @@ class Kernel:
         self.exec_mode = str(self.cfg_ta["execution_mode"])
         self._flow_cache: dict = {}
         self._precomputed_dirs: dict = {}
+        self._dist_to: dict = {}
         self._precompute_cost = {"builds": 0, "targets": 0, "installs": 0,
-                                 "queries": 0}
+                                 "queries": 0, "bfs_runs": 0}
         if self.async_mode:
             self.async_manager = _async.AsyncScheduleManager(
                 install_delay_s=float(self.cfg_ar["install_delay_s"]),
@@ -1152,6 +1164,10 @@ class Kernel:
         # times itself.
         self.geometry = model.MemoizedGeometry(geometry)
         self.num_sats = geometry.num_satellites
+        if self.cfg_ta["enabled"] and self._query_delay_s > 0:
+            self._query_pool = [simpy.Resource(self.env, capacity=1)
+                                for _ in range(self.num_sats)]
+            self._query_charge["servers"] = 1
         # optional output-only per-hop decision snapshot sink (a list); when
         # None the recording code paths are never entered
         self.decision_sink = decision_sink
@@ -3569,6 +3585,10 @@ class Kernel:
             # reordered the candidates, so a single decision can be replayed.
             # None whenever time_alignment is disabled.
             "time_alignment": ta_audit,
+            # T1-R8: the pool state the ETA's compute-wait term was derived
+            # from, so an offline reader can rebuild the same snapshot without
+            # reading the realised wait out of the future.
+            "compute_state": self._compute_state_now(int(sat)),
         }
 
     def _advertisement_history(self, sat: int, origin: int, now: float,
@@ -3627,20 +3647,33 @@ class Kernel:
         received advertisements, which is allowed control information.
         """
         adj = self._routing_reverse_adj
+        # Directed shortest distance from every node TO each target.  The
+        # reverse adjacency makes a BFS rooted at the TARGET give exactly
+        # "hops from u to target", which is what choosing a next hop requires.
+        # The previous version rooted the search at the CURRENT satellite and
+        # ignored the target when costing each candidate direction, so every
+        # target got the same (first) direction.
+        self._dist_to = {}
+        for target in range(self.num_sats):
+            self._dist_to[target] = routing._multi_source_bfs(adj, [target])
+        self._precompute_cost["bfs_runs"] = self.num_sats
         for sat in range(self.num_sats):
-            dist = routing._multi_source_bfs(adj, [sat])
             table = {}
             for other in range(self.num_sats):
                 if other == sat:
                     continue
                 best_dir, best_hops = None, None
                 for direction, peer in sorted(self.topo.get(sat, {}).items()):
-                    hops = dist.get(peer)
+                    if peer == other:
+                        best_dir, best_hops = direction, 0
+                        break
+                    hops = self._dist_to[other].get(peer)
                     if hops is None:
                         continue
                     if best_hops is None or hops < best_hops:
                         best_dir, best_hops = direction, hops
                 if best_dir is not None:
+                    # unreachable targets are simply absent: never a fake route
                     table[other] = best_dir
             self._precomputed_dirs[sat] = table
         self._precompute_cost["builds"] += 1
@@ -3659,8 +3692,11 @@ class Kernel:
         reachable = [t for t in serving if t != sat and t in table]
         if not reachable:
             return None, "no_precomputed_route_to_a_serving_satellite"
-        dist = routing._multi_source_bfs(self._routing_reverse_adj, [sat])
-        target = min(reachable, key=lambda t: (dist.get(t, math.inf), t))
+        # nearest serving target by the precomputed directed distance, so no
+        # per-query graph search is needed
+        target = min(reachable,
+                     key=lambda t: (self._dist_to.get(t, {}).get(sat, math.inf),
+                                    t))
         primary = table[target]
         order = ([primary] if primary in cands else [])
         order += [d for d in cands if d not in order]
@@ -3752,6 +3788,7 @@ class Kernel:
             "fallback": bool(result.get("fallback")),
             "reason": result.get("reason"),
             "applied_order": list(order),
+            "query": dict(self._query_charge),
             "source": "installed schedule table lookup only; the scorer is "
                       "never called on the query path",
         }
@@ -3884,6 +3921,7 @@ class Kernel:
         target_dst = pkt.dst if dst is None else dst
         target_bits = float(pkt.bits) if bits is None else float(bits)
         scope = "scope:|%s|%s|default" % (sat, target_dst)
+        compute_state = self._compute_state_now(int(sat))
         return _ta.make_snapshot(
             satellite=int(sat), snapshot_at=float(now), history=tuple(history),
             legal_directions=tuple(legal), resources=resources,
@@ -3893,8 +3931,8 @@ class Kernel:
             link_propagation_s=_finite_pairs(prop),
             peer_process_s=_finite_pairs(peer_process),
             remaining_prop_s=_finite_pairs(remaining),
-            compute_wait_s=0.0,
-            compute_service_s=float(self.cfg_ex["compute_delay_s"]),
+            compute_wait_s=float(compute_state["wait_estimate_s"]),
+            compute_service_s=float(compute_state["service_s"]),
             pkt_bits=target_bits,
             arm=arm, predictor=str(self.cfg_ta["predictor"]),
             history_limit=int(self.cfg_ta["history_limit"]),
@@ -3939,6 +3977,7 @@ class Kernel:
                     "schema": "leo-sim-execution-mode-at-start/v1",
                     "enabled": True, "execution_mode": "per_flow",
                     "cache_hit": True, "stored_at": hit["stored_at"],
+                    "query": dict(self._query_charge),
                     "expires_at": hit["expires_at"],
                     "ttl_s": float(self.cfg_ta["per_flow_ttl_s"]),
                     "applied_order": list(order),
@@ -4007,6 +4046,16 @@ class Kernel:
             "common_horizon_s": horizon,
             "query_delay_s": probe.query_delay_s,
             "snapshot_at": probe.snapshot_at,
+            "compute_state": self._compute_state_now(int(sat)),
+            "eta_terms": {
+                d: dict(_ta.estimate_eta(probe, d).terms)
+                for d in probe.legal_directions},
+            "eta_targets": {
+                d: _ta.estimate_eta(probe, d).target_at
+                for d in probe.legal_directions},
+            "eta_unknown_terms": {
+                d: list(_ta.estimate_eta(probe, d).unknown_terms)
+                for d in probe.legal_directions},
             "ranking": list(scored.ranking),
             "fallback_directions": list(scored.fallback_directions),
             "missing_directions": list(scored.missing_directions),
@@ -4024,10 +4073,31 @@ class Kernel:
                 } for s in scored.scores},
             "execution_mode": self.exec_mode,
             "cache_hit": None,
+            "query": dict(self._query_charge),
             "source": "leo_sim.kernel online snapshot (received advertisements "
                       "and local state only)",
         }
         return order, audit
+
+    def _compute_state_now(self, sat: int) -> dict:
+        """The compute-pool state KNOWN AT THIS INSTANT.
+
+        Used to estimate the wait a request would pay.  It is derived from the
+        live pool occupancy and the configured service time, never from the
+        wait the request will actually turn out to pay (that would be future
+        information leaking into an online prediction).
+        """
+        service = float(self.cfg_ex["compute_delay_s"])
+        if self.compute_servers <= 0:
+            return {"servers": 0, "busy": 0, "service_s": service,
+                    "wait_estimate_s": 0.0,
+                    "method": "unbounded_pool_no_wait"}
+        busy = self._compute_pool[sat].count
+        pending = max(0, busy + 1 - self.compute_servers)
+        return {"servers": self.compute_servers, "busy": int(busy),
+                "service_s": service,
+                "wait_estimate_s": float(pending) * service,
+                "method": "fifo_pending_tasks_times_service"}
 
     def _candidate_resource_map(self, pkt, sat: int, now: float,
                                 considered: list, force: bool = False,
@@ -4659,6 +4729,10 @@ class Kernel:
         observation).  The default refresh + zero delay path stays exactly the
         historical synchronous call.
         """
+        if self.cfg_ta["enabled"] and self._query_delay_s > 0:
+            # a non-zero query service is a simulated event, so the decision
+            # must be able to yield
+            return True
         return self.compute_delay_s > 0 or self.obs_mode == "frozen"
 
     def decide_deferred(self, pkt: DataPacket, sat: int):
@@ -4679,12 +4753,15 @@ class Kernel:
         requested = float(self.env.now)
         # frozen: the observation and the inference happen NOW, before the
         # timeout; only the legality check and the commit happen after it.
+        self._reset_query_charge()
         if (self.exec_mode == "per_flow"
                 and self._per_flow_hit(pkt, sat, requested) is not None):
             # A cache hit must not pay the compute interval: that is the whole
             # difference between per_flow and per_packet.  The check happens
             # BEFORE the pre-compute observation, so a miss cannot consume the
-            # entry it is about to store itself.
+            # entry it is about to store itself.  It DOES pay the shared query
+            # service, like every other mode.
+            yield from self._query_service(pkt, sat, requested)
             self._decide(pkt, sat, decision_started_at=requested,
                          observation=None)
             return
@@ -4729,6 +4806,13 @@ class Kernel:
                 "compute_finish", pkt, sat, job_id, requested_at=requested,
                 started_at=started, finished_at=finished,
                 wait_s=0.0, service_s=finished - started)
+        yield from self._query_service(pkt, sat, requested)
+        # the frozen observation (and its audit) was built BEFORE the query, so
+        # the charge is attached now, in place, rather than left at zero
+        if observation is not None:
+            audit = (observation.get("observation") or {}).get("time_alignment")
+            if isinstance(audit, dict):
+                audit["query"] = dict(self._query_charge)
         self._decide(pkt, sat, decision_started_at=requested,
                      observation=observation)
 
@@ -4742,6 +4826,58 @@ class Kernel:
                "compute_job_id": int(job_id)}
         row.update(extra)
         self.timeline_sink.append(row)
+
+    def _reset_query_charge(self) -> None:
+        self._query_charge = {"requests": 0, "wait_s": 0.0, "service_s": 0.0,
+                              "servers": 1 if self._query_pool else 0}
+
+    def _query_milestone(self, milestone: str, pkt, sat: int, **extra) -> None:
+        # requests are counted once per query in _query_service; start/finish
+        # are two rows of the SAME query
+        if "wait_s" in extra:
+            self._query_charge["wait_s"] += float(extra["wait_s"])
+            self._query_totals["total_wait_s"] += float(extra["wait_s"])
+            self._query_totals["max_wait_s"] = max(
+                self._query_totals["max_wait_s"], float(extra["wait_s"]))
+        if "service_s" in extra:
+            self._query_charge["service_s"] += float(extra["service_s"])
+            self._query_totals["total_service_s"] += float(extra["service_s"])
+        if self.timeline_sink is not None:
+            row = {"milestone": milestone, "at": float(self.env.now),
+                   "pid": None if pkt is None else pkt.pid,
+                   "decision_id": None, "sat": int(sat),
+                   "scope": "query:%d" % int(sat)}
+            row.update(extra)
+            self.timeline_sink.append(row)
+
+    def _query_service(self, pkt, sat: int, requested: float):
+        """Consume the shared per-satellite query service.
+
+        Yields until the answer is available and returns (wait_s, service_s).
+        All five execution modes pay it identically; only the query_delay_s = 0
+        default keeps the historical instantaneous path.
+        """
+        if self._query_pool is None or self._query_delay_s <= 0:
+            return 0.0, 0.0
+        pool = self._query_pool[sat]
+        busy = pool.count
+        self._query_charge["requests"] += 1
+        self._query_totals["requests"] += 1
+        slot = pool.request()
+        yield slot
+        started = float(self.env.now)
+        wait = max(0.0, started - requested)
+        self._query_milestone("query_start", pkt, sat, requested_at=requested,
+                              started_at=started, wait_s=wait,
+                              servers_busy=int(busy),
+                              queueing=bool(wait > 0.0))
+        yield self.env.timeout(self._query_delay_s)
+        finished = float(self.env.now)
+        self._query_milestone("query_finish", pkt, sat,
+                              started_at=started, finished_at=finished,
+                              wait_s=0.0, service_s=finished - started)
+        pool.release(slot)
+        return wait, finished - started
 
     def _compute_scope(self, pkt: DataPacket, sat: int) -> str:
         """(satellite, destination_cell, traffic_class) as a stable string."""
@@ -5534,6 +5670,10 @@ class Kernel:
                 "async_bins": self.async_bins,
                 "per_flow_cache_entries": len(self._flow_cache),
                 "precompute": dict(self._precompute_cost),
+                "query_service": {"delay_s": self._query_delay_s,
+                                  "servers_per_satellite":
+                                      1 if self._query_pool else 0,
+                                  "totals": dict(self._query_totals)},
                 "async": (None if self.async_manager is None
                           else self.async_manager.snapshot_counts()),
             },

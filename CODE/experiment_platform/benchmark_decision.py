@@ -225,8 +225,7 @@ def run_benchmark(resolved, rows, geometry, source, *, warmup, rounds,
         "schema": SCHEMA,
         "identity": artifact_identity.build_identity(
             config=resolved, trace_digest=source.get("trace_sha256"),
-            driver_paths=artifact_identity.DEFAULT_DRIVER_PATHS + (
-                "CODE/experiment_platform/benchmark_decision.py",),
+            driver_paths=artifact_identity.execution_chain_paths(),
             extra={"candidates": len(snapshot.legal_directions)}),
         "source": dict(source, config_sha256=resolved["sha256"],
                        legal_directions=list(snapshot.legal_directions),

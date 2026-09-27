@@ -202,8 +202,7 @@ def probe(config_path: Path, root: Path, drain_to, vis_k, forced=None):
         "legacy_unit_notes": LEGACY_UNIT_NOTES,
         "identity": artifact_identity.build_identity(
             config=resolved, trace_digest=digest,
-            driver_paths=artifact_identity.DEFAULT_DRIVER_PATHS + (
-                "CODE/experiment_platform/control_reach_probe.py",),
+            driver_paths=artifact_identity.execution_chain_paths(),
             extra={"rows": len(rows), "source_config": str(config_path)}),
         "source": {
             "config": str(config_path),

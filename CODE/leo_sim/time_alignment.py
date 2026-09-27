@@ -49,12 +49,26 @@ ETA_METHOD_MISSING = "missing"
 
 # term keys, each a non-overlapping interval in seconds
 TERM_KEYS = (
-    "local_wait_s",
+    "compute_wait_s",
+    "compute_service_s",
+    "local_egress_wait_s",
     "tx_s",
     "prop_s",
     "peer_process_s",
     "resource_work_s",
     "remaining_prop_s",
+)
+
+#: Names of the ETA terms, each a NON-OVERLAPPING interval in seconds.  The
+#: target instant is snapshot_at + sum(eta terms); the scorer must therefore
+#: reuse these terms instead of adding the local queue a second time.
+ETA_TERM_KEYS = (
+    "compute_wait_s",
+    "compute_service_s",
+    "local_egress_wait_s",
+    "tx_s",
+    "prop_s",
+    "peer_process_s",
 )
 
 
@@ -518,19 +532,36 @@ def estimate_eta(snapshot: ObservationSnapshot, direction: str) -> EtaEstimate:
     known = {}
     unknown = []
 
-    terms["local_wait_s"] = snapshot.compute_wait_s + snapshot.compute_service_s
-    known["local_wait_s"] = True
+    # The ETA is the ONLY place a query instant is produced, so every local
+    # delay a packet will actually spend must be inside it -- otherwise the
+    # prediction is asked about an instant that is systematically too early.
+    terms["compute_wait_s"] = snapshot.compute_wait_s
+    known["compute_wait_s"] = True
+    terms["compute_service_s"] = snapshot.compute_service_s
+    known["compute_service_s"] = True
 
     rate = snapshot.rate_for(direction)
+    egress = snapshot.egress_bits(direction)
     if rate is None:
         terms["tx_s"] = 0.0
         known["tx_s"] = False
         unknown.append("tx_s")
+        terms["local_egress_wait_s"] = 0.0
+        known["local_egress_wait_s"] = False
+        unknown.append("local_egress_wait_s")
     else:
         if rate <= 0:
             raise TimeAlignmentError(f"non-positive local rate for {direction}")
         terms["tx_s"] = snapshot.pkt_bits / rate
         known["tx_s"] = True
+        if egress is None:
+            terms["local_egress_wait_s"] = 0.0
+            known["local_egress_wait_s"] = False
+            unknown.append("local_egress_wait_s")
+        else:
+            # bits already queued on the local directed egress / known rate
+            terms["local_egress_wait_s"] = float(egress) / rate
+            known["local_egress_wait_s"] = True
 
     prop = snapshot.propagation_for(direction)
     if prop is None:
@@ -588,13 +619,15 @@ def resource_service_bps(snapshot: ObservationSnapshot, direction: str):
 def score_candidates(snapshot: ObservationSnapshot, predictions, etas) -> ScoredCandidates:
     """One scorer for all four arms; only the query instant differs.
 
-    Terms (seconds):
-      local_wait_s      compute wait + service + local egress queue / known rate
-      tx_s              pkt_bits / known local egress rate
-      prop_s            known local propagation
-      peer_process_s    known peer processing (else missing)
-      resource_work_s   predicted peer-egress work / known service rate
-      remaining_prop_s  fixed visible-topology remaining propagation cost
+    Terms (seconds), each non-overlapping:
+      compute_wait_s       estimated pool wait known at request time
+      compute_service_s    configured computation service
+      local_egress_wait_s  bits already queued on the local directed egress
+      tx_s                 pkt_bits / known local egress rate
+      prop_s               known local propagation
+      peer_process_s       known peer processing (else missing)
+      resource_work_s      predicted peer-egress work / known service rate
+      remaining_prop_s     fixed visible-topology remaining propagation cost
 
     A candidate with any missing term is NOT given an invented numeric value:
     it is marked fallback and ranked after every fully-known candidate, using
@@ -621,19 +654,16 @@ def score_candidates(snapshot: ObservationSnapshot, predictions, etas) -> Scored
                                          tuple(missing), True,
                                          (_direction_index(direction), direction)))
             continue
-        rate = snapshot.rate_for(direction)
-        egress = snapshot.egress_bits(direction)
-        local_wait = eta.terms.get("local_wait_s", 0.0)
-        if egress is not None and rate:
-            local_wait += egress / rate
-        elif egress:
-            missing.append("local_egress_rate")
-        terms["local_wait_s"] = local_wait
-        terms["tx_s"] = eta.terms.get("tx_s", 0.0)
-        terms["prop_s"] = eta.terms.get("prop_s", 0.0)
-        terms["peer_process_s"] = eta.terms.get("peer_process_s", 0.0)
-        if "peer_process_s" in eta.unknown_terms:
-            missing.append("peer_process_s")
+        # The local terms come from the ETA verbatim: re-deriving the egress
+        # wait here would both double-count it and leave the query instant
+        # untouched, which is exactly the defect this fixes.
+        for name in ("compute_wait_s", "compute_service_s",
+                     "local_egress_wait_s", "tx_s", "prop_s",
+                     "peer_process_s"):
+            terms[name] = eta.terms.get(name, 0.0)
+        for name in eta.unknown_terms:
+            if name in ETA_TERM_KEYS:
+                missing.append(name)
         service_rate = resource_service_bps(snapshot, direction)
         if prediction.predicted_bits is None:
             missing.append("predicted_bits")

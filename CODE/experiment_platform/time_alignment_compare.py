@@ -41,7 +41,9 @@ from pathlib import Path
 from CODE.experiment_platform import artifact_identity, t1_stats
 from CODE.experiment_platform import scripted_scenarios
 from CODE.leo_sim import config as config_mod, counterfactual, decision_ledger
-from CODE.leo_sim import kernel, time_alignment as ta, trace as trace_mod
+from CODE.leo_sim import kernel, time_alignment as _ta, trace as trace_mod
+
+ta = _ta
 
 SCHEMA = "time-alignment-compare/v1"
 
@@ -157,6 +159,13 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
     own_q = obs.get("own_queue_bits") or {}
     cfg_ta = resolved["config"]["time_alignment"]
     node_process = float(resolved["config"]["execution"]["node_process_delay_s"])
+    # T1-R8: the compute-wait term must come from the pool state KNOWN at the
+    # observation instant.  The realised wait is future information and would
+    # make the online arms clairvoyant; it is only reported as a diagnostic.
+    state = obs.get("compute_state")
+    if isinstance(state, dict):
+        compute_wait = float(state.get("wait_estimate_s", 0.0))
+        compute_service = float(state.get("service_s", compute_service))
     legal = []
     resources = {}
     history = []
@@ -316,8 +325,9 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
                     if r.get("packet_id") == pid), None)
     if pkt_bits is None:
         pkt_bits = float(resolved["config"]["demand"]["packet_bits"])
-    wait, service = _compute_interval(branch["timeline_rows"], pid,
-                                      target["t_decision_start"])
+    # diagnostic only: the realised compute interval is NOT fed to the arms
+    realized_wait, realized_service = _compute_interval(
+        branch["timeline_rows"], pid, target["t_decision_start"])
 
     # --- one closed-loop replay per candidate -------------------------
     base_outcome = _outcome(branch["result"], pid)
@@ -410,7 +420,8 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
     cfg_ta = resolved["config"]["time_alignment"]
     scope = "scope:|%s|%s|default" % (target.get("sat"), target.get("dst"))
     probe = build_snapshot(target, resolved, "candidate", None, pkt_bits,
-                           wait, service, provenance=(scope,))
+                           0.0, float(resolved["config"]["execution"][
+                               "compute_delay_s"]), provenance=(scope,))
     if cfg_ta["common_rule"] == "fixed_horizon":
         horizon = float(cfg_ta["common_horizon_s"])
     else:
@@ -418,7 +429,8 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
     arms = {}
     for arm in ta.ARMS:
         snap = build_snapshot(target, resolved, arm, horizon, pkt_bits,
-                              wait, service, provenance=(scope,))
+                              0.0, float(resolved["config"]["execution"][
+                                  "compute_delay_s"]), provenance=(scope,))
         scored = ta.score_snapshot_at(snap, snap.snapshot_at + horizon)
         ranking = list(scored.ranking)
         picked = ranking[0] if ranking else None
@@ -448,10 +460,7 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
 
     identity = artifact_identity.build_identity(
         config=resolved, trace_digest=source.get("trace_sha256"),
-        driver_paths=artifact_identity.DEFAULT_DRIVER_PATHS + (
-            "CODE/experiment_platform/time_alignment_compare.py",
-            "CODE/leo_sim/time_alignment.py",
-            "CODE/experiment_platform/t1_stats.py"),
+        driver_paths=artifact_identity.execution_chain_paths(),
         extra={"decision_id": int(decision_id)})
     return {
         "schema": SCHEMA,
@@ -468,7 +477,11 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
                        candidates=candidates),
         "branch": {"t_decision_start": float(target["t_decision_start"]),
                    "t_decision_commit": float(target["t"]),
-                   "compute_wait_s": wait, "compute_service_s": service,
+                   "realized_compute_wait_s": realized_wait,
+                   "realized_compute_service_s": realized_service,
+                   "compute_state_at_request":
+                       (target.get("observation_at_start") or {}).get(
+                           "compute_state"),
                    "pkt_bits": pkt_bits,
                    "candidate_directions": candidates,
                    "legal_directions": (target.get(
@@ -486,6 +499,12 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
                 for d in probe.legal_directions},
             "snapshot_provenance": list(probe.provenance),
             "legal_directions": list(probe.legal_directions),
+            "eta_terms": {d: dict(_ta.estimate_eta(probe, d).terms)
+                          for d in probe.legal_directions},
+            "eta_targets": {d: _ta.estimate_eta(probe, d).target_at
+                            for d in probe.legal_directions},
+            "eta_unknown_terms": {d: list(_ta.estimate_eta(probe, d).unknown_terms)
+                                  for d in probe.legal_directions},
         },
         "candidates": per_candidate,
         "arms": arms,

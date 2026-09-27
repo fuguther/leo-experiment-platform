@@ -27,12 +27,33 @@ IDENTITY_SCHEMA = "t1-artifact-identity/v1"
 # CODE/experiment_platform/artifact_identity.py -> CODE -> repo
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# The drivers whose behaviour an artifact depends on, relative to the repo root.
-DEFAULT_DRIVER_PATHS = (
-    "CODE/experiment_platform/artifact_identity.py",
-    "CODE/leo_sim/kernel.py",
-    "CODE/leo_sim/config.py",
-)
+# The COMPLETE execution chain an artifact depends on.  A short hand-listed
+# driver set was demonstrably incomplete (it omitted time_alignment,
+# async_routing, the comparison drivers and the statistics module), so the chain
+# is discovered from the package tree instead of being enumerated by hand: any
+# .py under CODE/leo_sim or CODE/experiment_platform that is not a test or a
+# cache participates.  Adding a new module therefore changes the identity
+# automatically, which is the failure mode the reviewer found.
+EXECUTION_PACKAGES = ("CODE/leo_sim", "CODE/experiment_platform")
+
+
+def execution_chain_paths(root: Path = REPO_ROOT) -> tuple:
+    root = Path(root)
+    out = []
+    for package in EXECUTION_PACKAGES:
+        base = root / package
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("*.py")):
+            parts = path.parts
+            if "tests" in parts or "__pycache__" in parts:
+                continue
+            out.append(str(path.relative_to(root)))
+    return tuple(out)
+
+
+#: Backward-compatible alias; new code should use execution_chain_paths().
+DEFAULT_DRIVER_PATHS = execution_chain_paths()
 
 
 def _sha256_file(path: Path) -> str:
@@ -119,12 +140,34 @@ def runtime_identity() -> dict:
     }
 
 
+def chain_sha256(root: Path = REPO_ROOT) -> str | None:
+    """Combined digest of the current execution chain (None if incomplete)."""
+    return source_identity(execution_chain_paths(root), root)["combined_sha256"]
+
+
+def current_identity(root: Path = REPO_ROOT) -> dict:
+    """A FRESH identity of the code on disk right now.
+
+    Recovery and validation must compare against this, never against an
+    identity string recorded inside an old artifact: a self-consistent old
+    record proves nothing about the code that is about to run.
+    """
+    return {
+        "schema": IDENTITY_SCHEMA,
+        "git": git_identity(root),
+        "sources": source_identity(execution_chain_paths(root), root),
+        "runtime": runtime_identity(),
+    }
+
+
 def build_identity(config: Mapping | None = None,
                    trace_digest: str | None = None,
-                   driver_paths: Iterable[str | Path] = DEFAULT_DRIVER_PATHS,
+                   driver_paths: Iterable[str | Path] | None = None,
                    root: Path = REPO_ROOT,
                    extra: Mapping | None = None) -> dict:
     """The full execution-chain identity block for an artifact."""
+    if driver_paths is None:
+        driver_paths = execution_chain_paths(root)
     doc = {
         "schema": IDENTITY_SCHEMA,
         "git": git_identity(root),

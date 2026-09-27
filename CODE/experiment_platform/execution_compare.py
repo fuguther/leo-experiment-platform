@@ -221,8 +221,7 @@ def compare(resolved, rows, geometry, source, modes=MODES):
         "schema": SCHEMA,
         "identity": artifact_identity.build_identity(
             config=resolved, trace_digest=source.get("trace_sha256"),
-            driver_paths=artifact_identity.DEFAULT_DRIVER_PATHS + (
-                "CODE/experiment_platform/execution_compare.py",),
+            driver_paths=artifact_identity.execution_chain_paths(),
             extra={"modes": list(modes)}),
         "source": dict(source, rows_digest=rows_digest,
                        base_config_sha256=resolved["sha256"]),

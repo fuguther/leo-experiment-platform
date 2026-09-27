@@ -181,8 +181,9 @@ def compile_bundle(contract_path, out_dir):
             f"{len(cells)} cells exceed the pre-declared max_cells "
             f"{budgets['max_cells']}")
     identity = artifact_identity.build_identity(
-        driver_paths=artifact_identity.DEFAULT_DRIVER_PATHS + (
-            "CODE/experiment_platform/t1_suite.py",))
+        driver_paths=artifact_identity.execution_chain_paths())
+    for cell in cells:
+        cell["input"] = _cell_input_binding(cell)
     bundle = {
         "schema": SCHEMA_BUNDLE,
         "contract_path": str(contract_path),
@@ -191,6 +192,12 @@ def compile_bundle(contract_path, out_dir):
         "frozen_at_sha": contract.get("frozen_at_sha"),
         "budgets": budgets,
         "identity": identity,
+        "execution_chain": {
+            "paths": list(artifact_identity.execution_chain_paths()),
+            "combined_sha256": identity["sources"]["combined_sha256"],
+            "git": identity["git"],
+            "runtime": identity["runtime"],
+        },
         "tiers": {"acceptance": [c["cell_id"] for c in cells]},
         "cells": cells,
         "pre_registration": {
@@ -210,8 +217,53 @@ def compile_bundle(contract_path, out_dir):
             "information and is not claimed",
         ],
     }
+    bundle["bundle_fingerprint"] = _bundle_fingerprint(bundle)
     _write_json(out_dir / "bundle.json", bundle)
     return bundle
+
+
+def _cell_input_binding(cell):
+    """Hash every input file a cell actually reads.
+
+    A cell that names a config file is bound to that file content, so editing
+    the config after the compile invalidates the cell instead of being re-read
+    silently.
+    """
+    binding = {"config_sha256": None, "config_path": None,
+               "scenario": None, "driver_sha256": None}
+    args = list(cell.get("args") or [])
+    for flag, value in zip(args, args[1:]):
+        if flag == "--config":
+            path = Path(value)
+            binding["config_path"] = str(path)
+            binding["config_sha256"] = (_sha256_file(path)
+                                        if path.exists() else None)
+        if flag == "--scenario":
+            binding["scenario"] = value
+    driver = REPO_ROOT / str(cell.get("driver", "")).replace(".", "/")
+    driver_py = driver.with_suffix(".py")
+    binding["driver_sha256"] = (_sha256_file(driver_py)
+                                if driver_py.exists() else None)
+    return binding
+
+
+def _bundle_fingerprint(bundle):
+    """Content fingerprint of everything that defines the matrix.
+
+    Parameter edits, cell additions and contract changes all move it, so a
+    structure-preserving tamper cannot pass validation.
+    """
+    payload = {
+        "schema": bundle.get("schema"),
+        "contract_sha256": bundle.get("contract_sha256"),
+        "chain_sha256": (bundle.get("execution_chain") or {}).get(
+            "combined_sha256"),
+        "budgets": bundle.get("budgets"),
+        "tiers": bundle.get("tiers"),
+        "cells": bundle.get("cells"),
+        "pre_registration": bundle.get("pre_registration"),
+    }
+    return hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
 
 
 # --------------------------------------------------------------- validate
@@ -233,15 +285,53 @@ def validate_bundle(bundle_dir):
                 errors.append(f"cell {cell.get('cell_id')!r} missing {field}")
         if not isinstance(cell.get("args"), list):
             errors.append(f"cell {cell.get('cell_id')!r} args must be a list")
-        if not any(part in ids for part in ()) and False:
-            pass
+        recorded = cell.get("input")
+        if recorded is None:
+            errors.append(f"cell {cell.get('cell_id')!r} has no input binding")
+            continue
+        fresh = _cell_input_binding(cell)
+        if fresh != recorded:
+            changed = sorted(k for k in set(fresh) | set(recorded)
+                             if fresh.get(k) != recorded.get(k))
+            errors.append(
+                f"cell {cell.get('cell_id')!r} input binding changed: "
+                f"{changed}")
+        if recorded.get("config_path") and recorded.get("config_sha256") is None:
+            errors.append(
+                f"cell {cell.get('cell_id')!r} config file missing")
     budgets = bundle.get("budgets") or {}
     for key in DEFAULT_BUDGETS:
         if key not in budgets:
             errors.append(f"budget {key} missing")
+    # --- content fingerprint: a structure-preserving parameter edit moves it
+    recorded_fp = bundle.get("bundle_fingerprint")
+    if recorded_fp is None:
+        errors.append("bundle has no fingerprint (recompile)")
+    elif recorded_fp != _bundle_fingerprint(bundle):
+        errors.append("bundle content changed since compile "
+                      "(fingerprint mismatch)")
+    # --- contract content, re-read from disk
+    contract_path = Path(str(bundle.get("contract_path") or ""))
+    if not contract_path.exists():
+        errors.append(f"contract file missing: {contract_path}")
+    elif _sha256_file(contract_path) != bundle.get("contract_sha256"):
+        errors.append("contract content changed since compile")
+    # --- execution chain, recomputed from the CURRENT sources
+    current = artifact_identity.current_identity()
+    recorded_chain = bundle.get("execution_chain") or {}
+    fresh_chain = current["sources"]["combined_sha256"]
+    if fresh_chain != recorded_chain.get("combined_sha256"):
+        errors.append("execution chain changed since compile: recompile "
+                      "instead of reusing this bundle")
+    if ((current.get("git") or {}).get("commit")
+            != (recorded_chain.get("git") or {}).get("commit")):
+        errors.append("git commit changed since compile: recompile")
     report = {"schema": VALIDATION_SCHEMA,
               "bundle": str(path),
               "bundle_sha256": _sha256_file(path),
+              "bundle_fingerprint": recorded_fp,
+              "execution_chain_sha256": recorded_chain.get("combined_sha256"),
+              "current_chain_sha256": fresh_chain,
               "cells": len(ids),
               "valid": not errors,
               "errors": errors}
@@ -253,12 +343,14 @@ def validate_bundle(bundle_dir):
 
 # -------------------------------------------------------------------- run
 def _cell_identity(bundle, cell):
+    """What a cell result is bound to: matrix content + inputs + code chain."""
     return {
-        "bundle_sha256": _canonical(bundle),
+        "bundle_fingerprint": bundle.get("bundle_fingerprint"),
         "contract_sha256": bundle.get("contract_sha256"),
-        "code_sha256": (bundle.get("identity") or {}).get(
-            "sources", {}).get("combined_sha256"),
-        "cell": _canonical(cell),
+        "chain_sha256": (bundle.get("execution_chain") or {}).get(
+            "combined_sha256"),
+        "cell_id": cell.get("cell_id"),
+        "input": dict(cell.get("input") or {}),
     }
 
 
@@ -295,12 +387,19 @@ def _execute_cell(cell, out_root, budgets):
         stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (
             exc.stderr or "")
     wall = time.perf_counter() - started
+    result_probe = _inspect_result(result_path)
     if timed_out:
         status = "timeout"
-    elif returncode == 0:
-        status = "ok"
-    else:
+    elif returncode != 0:
         status = "error"
+    elif not result_probe["exists"]:
+        status = "error"
+    elif result_probe["parse_error"] is not None:
+        status = "error"
+    elif result_probe["schema"] is None:
+        status = "error"
+    else:
+        status = "ok"
     return {
         "cell_id": cell["cell_id"],
         "status": status,
@@ -310,14 +409,46 @@ def _execute_cell(cell, out_root, budgets):
         "stdout_tail": (stdout or "")[-2000:],
         "stderr_tail": (stderr or "")[-2000:],
         "result_path": str(Path("cells") / cell["cell_id"] / "result.json"),
+        "result_sha256": result_probe["sha256"],
+        "result_schema": result_probe["schema"],
+        "result_parse_error": result_probe["parse_error"],
+        "input": dict(cell.get("input") or {}),
         "superseded_result": (None if superseded is None
                               else str(superseded.relative_to(out_root))),
-        "exit_reason": ("cell_wall_s exceeded" if timed_out else None),
+        "exit_reason": ("cell_wall_s exceeded" if timed_out else
+                        (None if status == "ok" else
+                         (result_probe["parse_error"]
+                          or (f"returncode {returncode}"
+                              if returncode else "result missing or invalid")))),
     }
+
+
+def _inspect_result(result_path):
+    """Existence + parseability + schema + content hash of one cell result."""
+    result_path = Path(result_path)
+    probe = {"exists": False, "sha256": None, "schema": None,
+             "parse_error": None}
+    if not result_path.exists():
+        return probe
+    probe["exists"] = True
+    try:
+        raw = result_path.read_bytes()
+        probe["sha256"] = hashlib.sha256(raw).hexdigest()
+        payload = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        probe["parse_error"] = f"{type(exc).__name__}: {exc}"
+        return probe
+    if not isinstance(payload, dict):
+        probe["parse_error"] = "result is not a JSON object"
+        return probe
+    probe["schema"] = payload.get("schema")
+    return probe
 
 
 def run_bundle(bundle_dir, tier, out_dir):
     bundle_dir = Path(bundle_dir)
+    # a run must never start from a bundle whose inputs or code have moved
+    validate_bundle(bundle_dir)
     bundle = json.loads((bundle_dir / "bundle.json").read_text(encoding="utf-8"))
     cell_ids = (bundle.get("tiers") or {}).get(tier)
     if cell_ids is None:
@@ -369,23 +500,68 @@ def run_bundle(bundle_dir, tier, out_dir):
     return run_doc
 
 
+def _verify_recorded_result(run_dir, record):
+    """Prove a recorded ok cell still has a valid, unmodified result.
+
+    Returns None when the record is acceptable, or a precise reason string.  A
+    self-consistent old record is NOT evidence: existence, JSON validity, a
+    schema and the content hash are all re-derived from disk.
+    """
+    if record.get("status") != "ok":
+        return None
+    stored = record.get("result_path")
+    if not stored:
+        return "record has no result_path"
+    probe = _inspect_result(Path(run_dir) / stored)
+    if not probe["exists"]:
+        return "result file is missing"
+    if probe["parse_error"] is not None:
+        return f"result is not valid JSON: {probe['parse_error']}"
+    if probe["schema"] is None:
+        return "result has no schema"
+    recorded_sha = record.get("result_sha256")
+    if recorded_sha is None:
+        return "record has no result hash"
+    if recorded_sha != probe["sha256"]:
+        return ("result content changed since it was recorded "
+                f"({recorded_sha[:12]} != {probe['sha256'][:12]})")
+    if record.get("result_schema") != probe["schema"]:
+        return "result schema changed since it was recorded"
+    return None
+
+
 def resume_run(run_dir):
     run_dir = Path(run_dir)
     run_doc = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     bundle_dir = Path(run_doc["bundle_dir"])
+    # fresh validation: the bundle must still match the contract and the code on
+    # disk, and the on-disk results must still match their recorded hashes
+    validate_bundle(bundle_dir)
     bundle = json.loads((bundle_dir / "bundle.json").read_text(encoding="utf-8"))
+    current_code = artifact_identity.chain_sha256()
+    recorded_chain = (bundle.get("execution_chain") or {}).get("combined_sha256")
+    if current_code != recorded_chain:
+        raise SuiteError(
+            "the execution chain changed since this bundle was compiled "
+            f"({str(current_code)[:12]} != {str(recorded_chain)[:12]}); "
+            "recompile a NEW identity instead of resuming the old one")
     cells = {c["cell_id"]: c for c in bundle["cells"]}
     budgets = run_doc["budgets"]
     records = list(run_doc["cells"])
     done = {r["cell_id"]: r for r in records}
-    current_code = (bundle.get("identity") or {}).get(
-        "sources", {}).get("combined_sha256")
     revalidated = []
     for cell_id, record in done.items():
         cell = cells.get(cell_id)
         if cell is None:
             revalidated.append({"cell_id": cell_id, "action": "orphan",
                                 "reason": "cell no longer in the bundle"})
+            continue
+        reason = _verify_recorded_result(run_dir, record)
+        if reason is not None:
+            record["status"] = "invalidated"
+            record["exit_reason"] = reason
+            revalidated.append({"cell_id": cell_id, "action": "invalidated",
+                                "reason": reason})
             continue
         if record.get("status") != "ok":
             continue
@@ -395,11 +571,6 @@ def resume_run(run_dir):
             record["exit_reason"] = "recorded identity != current identity"
             revalidated.append({"cell_id": cell_id, "action": "invalidated",
                                 "reason": "identity changed"})
-        elif (record.get("identity") or {}).get("code_sha256") != current_code:
-            record["status"] = "invalidated"
-            record["exit_reason"] = "driver source changed"
-            revalidated.append({"cell_id": cell_id, "action": "invalidated",
-                                "reason": "driver source changed"})
     retried = []
     started = time.perf_counter()
     for cell_id in (bundle.get("tiers") or {}).get(run_doc["tier"], []):
@@ -421,7 +592,8 @@ def resume_run(run_dir):
         retried.append(cell_id)
     run_doc["cells"] = records
     run_doc["resume"] = {"revalidated": revalidated, "retried": retried,
-                         "code_sha256": current_code}
+                         "current_chain_sha256": current_code,
+                         "bundle_fingerprint": bundle.get("bundle_fingerprint")}
     run_doc["counts"] = {
         "total": len((bundle.get("tiers") or {}).get(run_doc["tier"], [])),
         "executed": len(records),
@@ -452,19 +624,32 @@ def report_run(run_dir):
                 payload = json.loads(result_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 payload = None
+        # a report must never call a cell ok when its result vanished or moved
+        reason = _verify_recorded_result(run_dir, record)
+        status = record["status"] if reason is None else "invalidated"
         rows.append({
             "cell_id": record["cell_id"],
-            "status": record["status"],
+            "status": status,
+            "recorded_status": record["status"],
+            "invalid_reason": reason,
             "wall_s": record["wall_s"],
             "schema": (payload or {}).get("schema"),
+            "result_sha256": record.get("result_sha256"),
             "summary": _summarise(payload),
         })
+    counts = dict(run_doc["counts"])
+    counts["verified_ok"] = sum(1 for r in rows if r["status"] == "ok")
+    counts["invalidated_at_report"] = sum(1 for r in rows
+                                          if r["status"] == "invalidated")
+    run_status = run_doc["status"]
+    if counts["invalidated_at_report"]:
+        run_status = "FAILED_CELLS"
     report = {
         "schema": SCHEMA_REPORT,
         "run": str(run_dir),
         "tier": run_doc["tier"],
-        "run_status": run_doc["status"],
-        "counts": run_doc["counts"],
+        "run_status": run_status,
+        "counts": counts,
         "cells": rows,
         "by_group": _by_group(run_doc, rows),
         "limits": [
