@@ -1092,6 +1092,14 @@ class Kernel:
                            else int(self.cfg_ar["window_bins"]))
         self.async_manager = None
         self._async_scopes: set = set()
+        # T1-P8 execution modes that reuse a result instead of recomputing:
+        # per_flow keeps one ranking per (sat, src, dst, class) with a TTL;
+        # precomputed keeps a topology-derived next-hop table built once.
+        self.exec_mode = str(self.cfg_ta["execution_mode"])
+        self._flow_cache: dict = {}
+        self._precomputed_dirs: dict = {}
+        self._precompute_cost = {"builds": 0, "targets": 0, "installs": 0,
+                                 "queries": 0}
         if self.async_mode:
             self.async_manager = _async.AsyncScheduleManager(
                 install_delay_s=float(self.cfg_ar["install_delay_s"]),
@@ -1441,6 +1449,9 @@ class Kernel:
             self.env.process(self._topology_ticker())
         for s in range(self.num_sats):
             self.env.process(self._pending_ticker(s))
+        if self.exec_mode == "precomputed":
+            # offline topology table: built once at t=0, before any packet
+            self._precompute_build()
         if self.async_mode:
             # periodic trigger (first version): one ticker per satellite; a
             # scope is only refreshed once it has been queried
@@ -3585,6 +3596,76 @@ class Kernel:
             })
         return out
 
+    # ------------------------------- T1-COMPLETE P8 per_flow / precomputed
+    def _flow_key(self, pkt, sat: int):
+        return (int(sat), pkt.src, pkt.dst, "default")
+
+    def _per_flow_hit(self, pkt, sat: int, now: float):
+        if self.exec_mode != "per_flow":
+            return None
+        entry = self._flow_cache.get(self._flow_key(pkt, sat))
+        if entry is None or entry["expires_at"] <= now:
+            return None
+        return entry
+
+    def _store_flow_cache(self, pkt, sat: int, now: float, ranking: list) -> None:
+        if self.exec_mode != "per_flow":
+            return
+        ttl = float(self.cfg_ta["per_flow_ttl_s"])
+        self._flow_cache[self._flow_key(pkt, sat)] = {
+            "ranking": list(ranking),
+            "expires_at": float(now) + ttl,
+            "stored_at": float(now),
+        }
+
+    def _precompute_build(self) -> None:
+        """Build the topology-only next-hop table once, at t=0.
+
+        Uses ONLY the visible static topology and the hop metric; it never reads
+        a business queue, an advertisement payload or a future event.  The
+        destination-to-serving mapping is still resolved at query time from the
+        received advertisements, which is allowed control information.
+        """
+        adj = self._routing_reverse_adj
+        for sat in range(self.num_sats):
+            dist = routing._multi_source_bfs(adj, [sat])
+            table = {}
+            for other in range(self.num_sats):
+                if other == sat:
+                    continue
+                best_dir, best_hops = None, None
+                for direction, peer in sorted(self.topo.get(sat, {}).items()):
+                    hops = dist.get(peer)
+                    if hops is None:
+                        continue
+                    if best_hops is None or hops < best_hops:
+                        best_dir, best_hops = direction, hops
+                if best_dir is not None:
+                    table[other] = best_dir
+            self._precomputed_dirs[sat] = table
+        self._precompute_cost["builds"] += 1
+        self._precompute_cost["targets"] = sum(
+            len(t) for t in self._precomputed_dirs.values())
+        self._precompute_cost["installs"] += 1
+
+    def _precomputed_order(self, pkt, sat: int, cands: list, now: float):
+        """Order candidates from the installed table plus advertisements."""
+        self._precompute_cost["queries"] += 1
+        serving = routing.destinations_in_cache(self.caches[sat], pkt.dst, now,
+                                                max_cache_hops=None)
+        if not serving:
+            return None, "no_serving_advertisement"
+        table = self._precomputed_dirs.get(sat, {})
+        reachable = [t for t in serving if t != sat and t in table]
+        if not reachable:
+            return None, "no_precomputed_route_to_a_serving_satellite"
+        dist = routing._multi_source_bfs(self._routing_reverse_adj, [sat])
+        target = min(reachable, key=lambda t: (dist.get(t, math.inf), t))
+        primary = table[target]
+        order = ([primary] if primary in cands else [])
+        order += [d for d in cands if d not in order]
+        return order, None
+
     # ------------------------------------- T1-COMPLETE P7 async updater
     def _async_event(self, row: dict) -> None:
         """Mirror an async schedule milestone onto the timeline sink."""
@@ -3849,6 +3930,54 @@ class Kernel:
             return cands, None
         if self.async_mode:
             return self._async_order(pkt, sat, now, cands, own_q)
+        if self.exec_mode == "per_flow":
+            hit = self._per_flow_hit(pkt, sat, now)
+            if hit is not None:
+                order = [d for d in hit["ranking"] if d in cands]
+                order += [d for d in cands if d not in order]
+                return order, {
+                    "schema": "leo-sim-execution-mode-at-start/v1",
+                    "enabled": True, "execution_mode": "per_flow",
+                    "cache_hit": True, "stored_at": hit["stored_at"],
+                    "expires_at": hit["expires_at"],
+                    "ttl_s": float(self.cfg_ta["per_flow_ttl_s"]),
+                    "applied_order": list(order),
+                    "source": "per-flow cache hit: no scoring, no compute on "
+                              "this decision",
+                }
+            order, audit = self._score_order(pkt, sat, now, cands, own_q)
+            self._store_flow_cache(pkt, sat, now, order)
+            if audit is not None:
+                audit["execution_mode"] = "per_flow"
+                audit["cache_hit"] = False
+                audit["ttl_s"] = float(self.cfg_ta["per_flow_ttl_s"])
+            return order, audit
+        if self.exec_mode == "precomputed":
+            order, reason = self._precomputed_order(pkt, sat, cands, now)
+            if order is None:
+                return list(cands), {
+                    "schema": "leo-sim-execution-mode-at-start/v1",
+                    "enabled": True, "execution_mode": "precomputed",
+                    "fallback": True, "reason": reason,
+                    "installed": bool(self._precomputed_dirs),
+                    "applied_order": list(cands),
+                    "source": "precomputed topology table: per-decision "
+                              "scoring skipped",
+                }
+            return order, {
+                "schema": "leo-sim-execution-mode-at-start/v1",
+                "enabled": True, "execution_mode": "precomputed",
+                "fallback": False, "reason": None,
+                "installed": True,
+                "applied_order": list(order),
+                "source": "precomputed topology table + received "
+                          "advertisements; per-decision scoring skipped",
+            }
+        return self._score_order(pkt, sat, now, cands, own_q)
+
+    def _score_order(self, pkt, sat: int, now: float, cands: list, own_q: dict):
+        """The full per-packet scoring path (observation -> prediction ->
+        scoring -> ranking).  Returns (order, audit)."""
         arm = str(self.cfg_ta["arm"])
         try:
             rule = str(self.cfg_ta["common_rule"])
@@ -3893,6 +4022,8 @@ class Kernel:
                     "missing": list(s.missing),
                     "fallback": s.fallback,
                 } for s in scored.scores},
+            "execution_mode": self.exec_mode,
+            "cache_hit": None,
             "source": "leo_sim.kernel online snapshot (received advertisements "
                       "and local state only)",
         }
@@ -4548,6 +4679,15 @@ class Kernel:
         requested = float(self.env.now)
         # frozen: the observation and the inference happen NOW, before the
         # timeout; only the legality check and the commit happen after it.
+        if (self.exec_mode == "per_flow"
+                and self._per_flow_hit(pkt, sat, requested) is not None):
+            # A cache hit must not pay the compute interval: that is the whole
+            # difference between per_flow and per_packet.  The check happens
+            # BEFORE the pre-compute observation, so a miss cannot consume the
+            # entry it is about to store itself.
+            self._decide(pkt, sat, decision_started_at=requested,
+                         observation=None)
+            return
         observation = (self._observe_preferred_action(pkt, sat)
                        if self.obs_mode == "frozen" else None)
         self._compute_job_seq += 1
@@ -5388,6 +5528,15 @@ class Kernel:
                                "valid": e.valid_at(self.env.now)}
                            for o, e in c._entries.items()}
                        for s, c in enumerate(self.caches)},
+            "execution_mode": {
+                "mode": self.exec_mode,
+                "async_enabled": bool(self.async_mode),
+                "async_bins": self.async_bins,
+                "per_flow_cache_entries": len(self._flow_cache),
+                "precompute": dict(self._precompute_cost),
+                "async": (None if self.async_manager is None
+                          else self.async_manager.snapshot_counts()),
+            },
             "mechanisms": {"requested": requested, "effective": effective},
             "learning": learning_result,
             "mechanism_counters": dict(self.mech),
