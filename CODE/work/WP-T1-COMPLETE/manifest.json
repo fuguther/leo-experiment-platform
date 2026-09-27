@@ -1,0 +1,29 @@
+{
+  "schema": "wp-t1-complete-manifest/v1",
+  "work_id": "WP-T1-COMPLETE",
+  "plan": "docs/superpowers/plans/2026-09-27-t1-complete-implementation.md",
+  "baseline_sha": "0876b12dbb0e067a840743dcc57b804d4600e9b0",
+  "branch": "t1/frozen-branch-and-async-design",
+  "identity_note": "commit/工作树身份在每次运行时由 artifact_identity.build_identity 现算，不在此处冻结（避免自指）。",
+  "inputs": {
+    "contract": "CODE/work/WP-T1-COMPLETE/contract.yaml",
+    "criteria": "CODE/work/WP-T1-COMPLETE/criteria.json"
+  },
+  "outputs": {
+    "run_root": "out/t1-complete/",
+    "report": "CODE/work/WP-T1-COMPLETE/REPORT.md"
+  },
+  "status_layers": [
+    "IMPLEMENTED",
+    "TESTED",
+    "DIAGNOSTIC_RUN",
+    "FORMAL_RUN"
+  ],
+  "environment": {
+    "python": "3.14.2",
+    "simpy": "4.1.1",
+    "numpy": "2.3.5",
+    "pyyaml": "6.0.3"
+  },
+  "stages": []
+}

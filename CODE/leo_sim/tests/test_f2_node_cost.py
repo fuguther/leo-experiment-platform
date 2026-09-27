@@ -371,9 +371,18 @@ def test_naming_the_node_stage_closes_the_decomposition_to_machine_precision():
 
 
 def _next_milestone_after(timeline, row):
+    """First PHYSICAL milestone after the node occupancy.
+
+    T1-P2 added the explicit compute_request / compute_start / compute_wait
+    markers, which necessarily begin AT the node boundary (the decision stage
+    starts where the node stage ends).  They are the boundary itself, not a
+    later stage, so the "next stage" is the compute FINISH -- which is what
+    proves the compute interval is a separate, non-overlapping interval.
+    """
     later = [m["at"] for m in timeline
              if m["pid"] == row["pid"] and m["at"] >= row["end"] - DUR_TOL
-             and m["milestone"] != "node_process_end"]
+             and m["milestone"] not in ("node_process_end", "compute_request",
+                                        "compute_start", "compute_wait")]
     assert later, "an occupancy must be followed by the decision stage"
     return min(later)
 
@@ -398,6 +407,18 @@ def test_the_node_stage_ends_exactly_where_the_decision_stage_starts():
     for row in rows:
         assert _next_milestone_after(timeline, row) - row["end"] == \
             pytest.approx(0.02, abs=DUR_TOL)
+    # T1-P2: the decision stage BEGINS at the node boundary and the compute
+    # interval is exactly [start, start + compute_delay]; the two stages share
+    # only that boundary, so F2 can never be a hidden part of the computation.
+    req_at = [m["at"] for m in timeline if m["milestone"] == "compute_request"]
+    start_at = [m["at"] for m in timeline if m["milestone"] == "compute_start"]
+    finish_at = [m["at"] for m in timeline if m["milestone"] == "compute_finish"]
+    assert len(req_at) == len(start_at) == len(finish_at)
+    for row in rows:
+        # a packet may decide more than once, so match instants, not pids
+        assert any(abs(a - row["end"]) <= DUR_TOL for a in req_at)
+        assert any(abs(a - row["end"]) <= DUR_TOL for a in start_at)
+        assert any(abs(a - (row["end"] + 0.02)) <= DUR_TOL for a in finish_at)
     deliver = [d for d in sink if d["kind"] == "deliver"]
     assert deliver, "the fixture must deliver"
     assert deliver[0]["t_decision_start"] == pytest.approx(rows[-1]["end"],

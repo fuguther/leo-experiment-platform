@@ -1,0 +1,208 @@
+{
+  "work_id": "WP-T1-COMPLETE",
+  "frozen_at_sha": "0876b12dbb0e067a840743dcc57b804d4600e9b0",
+  "branch": "t1/frozen-branch-and-async-design",
+  "note": "计划书 §5 K01–K16。每条可判定：check 是一条命令或一个明确谓词。status 分层 IMPLEMENTED/TESTED/DIAGNOSTIC_RUN/FORMAL_RUN。",
+  "criteria": [
+    {
+      "id": "K01",
+      "statement": "精确基线、dirty 保护、执行链身份可追踪",
+      "check": "STATUS.md 记录起始 HEAD==0876b12；artifact_identity.build_identity 输出 git commit/dirty/diff_sha256 + sources.combined_sha256",
+      "evidence": [
+        "CODE/work/WP-T1-COMPLETE/STATUS.md",
+        "CODE/experiment_platform/artifact_identity.py"
+      ],
+      "touches": [
+        "CODE/experiment_platform/artifact_identity.py"
+      ],
+      "status": "IMPLEMENTED"
+    },
+    {
+      "id": "K02",
+      "statement": "秒/比特错误修复且 schema 可辨",
+      "check": "python3 -m pytest CODE/experiment_platform/tests/test_control_reach_units.py -q",
+      "evidence": [
+        "CODE/experiment_platform/control_reach_probe.py",
+        "CODE/experiment_platform/tests/test_control_reach_units.py"
+      ],
+      "touches": [
+        "CODE/experiment_platform/control_reach_probe.py"
+      ],
+      "status": "TESTED"
+    },
+    {
+      "id": "K03",
+      "statement": "测量/接收/请求/服务/完成/安装不混淆",
+      "check": "python3 -m pytest CODE/leo_sim/tests/test_time_alignment.py -q -k timeline",
+      "evidence": [
+        "CODE/leo_sim/time_alignment.py",
+        "CODE/leo_sim/tests/test_time_alignment.py"
+      ],
+      "touches": [
+        "CODE/leo_sim/kernel.py",
+        "CODE/leo_sim/time_alignment.py"
+      ],
+      "status": "TESTED"
+    },
+    {
+      "id": "K04",
+      "statement": "zero-cost frozen 正确且默认路径兼容",
+      "check": "python3 -m pytest CODE/leo_sim/tests/test_compute_delay.py -q",
+      "evidence": [
+        "CODE/leo_sim/tests/test_compute_delay.py"
+      ],
+      "touches": [
+        "CODE/leo_sim/kernel.py",
+        "CODE/leo_sim/config.py"
+      ],
+      "status": "TESTED"
+    },
+    {
+      "id": "K05",
+      "statement": "四组同输入权限、资源、候选及评分",
+      "check": "python3 -m pytest CODE/leo_sim/tests/test_time_alignment.py -q -k \"trap or tie or fallback or snapshot\"",
+      "evidence": [
+        "CODE/leo_sim/time_alignment.py"
+      ],
+      "touches": [
+        "CODE/leo_sim/time_alignment.py"
+      ],
+      "status": "TESTED"
+    },
+    {
+      "id": "K06",
+      "statement": "共同未来及候选时刻生成真实存在",
+      "check": "python3 -m pytest CODE/leo_sim/tests/test_time_alignment.py CODE/leo_sim/tests/test_async_routing.py -q",
+      "evidence": [
+        "CODE/leo_sim/time_alignment.py"
+      ],
+      "touches": [
+        "CODE/leo_sim/time_alignment.py"
+      ],
+      "status": "TESTED"
+    },
+    {
+      "id": "K07",
+      "statement": "每候选闭环重跑、真假值输入分离",
+      "check": "python3 -m pytest CODE/experiment_platform/tests/test_time_alignment_compare.py -q -k \"arm or oracle or legal\"",
+      "evidence": [
+        "CODE/experiment_platform/time_alignment_compare.py"
+      ],
+      "touches": [
+        "CODE/experiment_platform/time_alignment_compare.py"
+      ],
+      "status": "TESTED"
+    },
+    {
+      "id": "K08",
+      "statement": "命运/缺失/资源错配全部报告",
+      "check": "python3 -m pytest CODE/experiment_platform/tests/test_time_alignment_compare.py -q -k \"fallback or mismatch or deadline\"",
+      "evidence": [
+        "CODE/experiment_platform/time_alignment_compare.py"
+      ],
+      "touches": [
+        "CODE/experiment_platform/time_alignment_compare.py"
+      ],
+      "status": "TESTED"
+    },
+    {
+      "id": "K09",
+      "statement": "包长和每星请求率可复算，finite 池启用",
+      "check": "python3 -m pytest CODE/experiment_platform/tests/test_t1_suite.py -q -k pressure",
+      "evidence": [
+        "CODE/experiment_platform/benchmark_decision.py"
+      ],
+      "touches": [
+        "CODE/experiment_platform/benchmark_decision.py",
+        "CODE/leo_sim/config.py"
+      ],
+      "status": "PENDING"
+    },
+    {
+      "id": "K10",
+      "statement": "完整耗时与纯推理、实测与注入分别标注",
+      "check": "python3 -m CODE.experiment_platform.benchmark_decision --help 且报告含 warmed_up/rounds/p50/p95/p99 与 timing_call_overhead_s",
+      "evidence": [
+        "CODE/experiment_platform/benchmark_decision.py"
+      ],
+      "touches": [
+        "CODE/experiment_platform/benchmark_decision.py"
+      ],
+      "status": "PENDING"
+    },
+    {
+      "id": "K11",
+      "statement": "后台更新时旧表真正在转发，完成后才安装",
+      "check": "python3 -m pytest CODE/leo_sim/tests/test_async_routing.py -q（状态机/安装/版本/窗口）；内核在线接线待 P5/P7 完成",
+      "evidence": [
+        "CODE/leo_sim/async_routing.py",
+        "CODE/leo_sim/tests/test_async_routing.py"
+      ],
+      "touches": [
+        "CODE/leo_sim/async_routing.py",
+        "CODE/leo_sim/kernel.py"
+      ],
+      "status": "IMPLEMENTED"
+    },
+    {
+      "id": "K12",
+      "statement": "五执行模式公平、调用和查询成本分开",
+      "check": "python3 -m pytest CODE/experiment_platform/tests/test_execution_compare.py -q",
+      "evidence": [
+        "CODE/experiment_platform/execution_compare.py"
+      ],
+      "touches": [
+        "CODE/experiment_platform/execution_compare.py"
+      ],
+      "status": "PENDING"
+    },
+    {
+      "id": "K13",
+      "statement": "DDQN 固定推理与训练边界明确",
+      "check": "python3 -m pytest CODE/experiment_platform/tests/test_execution_compare.py -q -k ddqn；无检查点时输出精确外部阻塞证据",
+      "evidence": [
+        "CODE/experiment_platform/execution_compare.py"
+      ],
+      "touches": [
+        "CODE/leo_sim/learning.py"
+      ],
+      "status": "PENDING"
+    },
+    {
+      "id": "K14",
+      "statement": "统计单元正确、开发确认分离、负结果可终止",
+      "check": "python3 -m pytest CODE/experiment_platform/tests/test_t1_stats.py -q（统计）；t1_suite 待 P10",
+      "evidence": [
+        "CODE/experiment_platform/t1_suite.py"
+      ],
+      "touches": [
+        "CODE/experiment_platform/t1_suite.py"
+      ],
+      "status": "IMPLEMENTED"
+    },
+    {
+      "id": "K15",
+      "statement": "端到端流水线及恢复/拒绝路径实跑",
+      "check": "compile -> validate -> run --tier acceptance -> report，且篡改复制工件被拒绝",
+      "evidence": [
+        "out/t1-complete/acceptance/"
+      ],
+      "touches": [
+        "CODE/experiment_platform/t1_suite.py"
+      ],
+      "status": "PENDING"
+    },
+    {
+      "id": "K16",
+      "statement": "回归、文档、能力表与最终报告一致",
+      "check": "python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q",
+      "evidence": [
+        "CODE/work/WP-T1-COMPLETE/REPORT.md"
+      ],
+      "touches": [
+        "ANALYSIS/CAPABILITY-TABLE.md"
+      ],
+      "status": "PENDING"
+    }
+  ]
+}

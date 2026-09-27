@@ -42,9 +42,29 @@ import os
 import tempfile
 from pathlib import Path
 
+from CODE.experiment_platform import artifact_identity
 from CODE.leo_sim import config as config_mod, kernel, trace as trace_mod
 
-SCHEMA = "control-reach-probe/v1"
+SCHEMA = "control-reach-probe/v2"
+SCHEMA_V1 = "control-reach-probe/v1"
+
+# v1 named a SECONDS quantity "ctrl_isl_bits".  The value was always
+# occupied["ctrl_isl_s"] (seconds); the field name alone was wrong.  v2 keeps
+# the seconds under ctrl_isl_occupied_s and records control bits separately,
+# so a reader can never add seconds to bits.
+UNITS = {
+    "ctrl_isl_occupied_s": "seconds of control-packet ISL service occupancy",
+    "ctrl_isl_served_bits": "control bits that actually arrived at a peer "
+                            "(one instance per forwarding hop)",
+    "ctrl_isl_offered_bits": "control bits offered into the control plane",
+}
+LEGACY_UNIT_NOTES = {
+    SCHEMA_V1: {
+        "ctrl_isl_bits": "v1 mislabelled a SECONDS value as bits; the reader "
+                         "must treat it as seconds and use "
+                         "ctrl_isl_occupied_s",
+    },
+}
 
 
 class ProbeError(RuntimeError):
@@ -77,6 +97,35 @@ def _no_info_counts(timeline, dst_of):
     return counts, sorted(pairs)
 
 
+def _control_overhead(result: dict) -> dict:
+    """Extract the control-plane cost block with UNITS that cannot be mixed.
+
+    ctrl_isl_occupied_s is SECONDS of ISL service time; ctrl_isl_served_bits is
+    control BITS that actually arrived (accumulated independently from the
+    control fate ledger, one instance per forwarding hop).  Schema v1 put the
+    seconds value in a field named ctrl_isl_bits; this function never does.
+    """
+    control = result["control"]
+    bits = control.get("bits") if isinstance(control.get("bits"), dict) else {}
+    return {
+        "snapshots_created": control["counters"]["snapshots_created"],
+        "registered": control["counters"]["registered"],
+        "entered_queue": control["counters"]["entered_queue"],
+        "arrived": control["counters"]["arrived"],
+        "expired": control["counters"]["expired"],
+        "overflow": control["counters"]["overflow"],
+        # SECONDS (was mislabelled ctrl_isl_bits in schema v1)
+        "ctrl_isl_occupied_s": float(result["occupied"].get("ctrl_isl_s", 0.0)),
+        # BITS, independent accumulation
+        "ctrl_isl_served_bits": int(bits.get("delivered", 0)),
+        "ctrl_isl_offered_bits": int(bits.get("offered", 0)),
+        "control_packet_bits": sum(bits.values()) if bits else None,
+        "control_fate_counts": {k: v for k, v in
+                                control["fate_counts"].items() if v},
+        "events_processed": result["events_processed"],
+    }
+
+
 def _arm(name, resolved, rows, dst_of, changed, forced=None):
     sink, timeline = [], []
     result = kernel.run_simulation(
@@ -84,7 +133,6 @@ def _arm(name, resolved, rows, dst_of, changed, forced=None):
         forced_actions=(None if forced is None
                         else {int(forced[0]): str(forced[1])}))
     counts, pairs = _no_info_counts(timeline, dst_of)
-    control = result["control"]
     return {
         "arm": name,
         "changed": changed,
@@ -93,20 +141,7 @@ def _arm(name, resolved, rows, dst_of, changed, forced=None):
         "pairs_never_covered": pairs,
         "fate_counts": {k: v for k, v in result["fate_counts"].items() if v},
         "delivered": len(result["deliveries"]),
-        "control_overhead": {
-            "snapshots_created": control["counters"]["snapshots_created"],
-            "registered": control["counters"]["registered"],
-            "entered_queue": control["counters"]["entered_queue"],
-            "arrived": control["counters"]["arrived"],
-            "expired": control["counters"]["expired"],
-            "overflow": control["counters"]["overflow"],
-            "ctrl_isl_bits": result["occupied"].get("ctrl_isl_s"),
-            "control_packet_bits": sum(control["bits"].values())
-            if isinstance(control.get("bits"), dict) else None,
-            "control_fate_counts": {k: v for k, v in
-                                    control["fate_counts"].items() if v},
-            "events_processed": result["events_processed"],
-        },
+        "control_overhead": _control_overhead(result),
     }
 
 
@@ -163,6 +198,13 @@ def probe(config_path: Path, root: Path, drain_to, vis_k, forced=None):
 
     return {
         "schema": SCHEMA,
+        "units": dict(UNITS),
+        "legacy_unit_notes": LEGACY_UNIT_NOTES,
+        "identity": artifact_identity.build_identity(
+            config=resolved, trace_digest=digest,
+            driver_paths=artifact_identity.DEFAULT_DRIVER_PATHS + (
+                "CODE/experiment_platform/control_reach_probe.py",),
+            extra={"rows": len(rows), "source_config": str(config_path)}),
         "source": {
             "config": str(config_path),
             "config_sha256": resolved["sha256"],

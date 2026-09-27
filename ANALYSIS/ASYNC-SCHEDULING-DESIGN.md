@@ -513,7 +513,7 @@ D1 只要求严格不等号，但"解耦到什么程度才算异步"没有定：
 - **不破契约**：decision row 19 键不动（`validate_decision_row` 仍双向通过），receipt 已是 V6，无需新 schema。
 - **不新增旁路**：新信息只走 `timeline_sink`（与 `commit_rejected` / `node_process_start` 同一通道）；决策仍走 `decision_sink`。
 - **完全复用既有因果工具**：每个受益包仍走自己的 `decide_deferred` → 自己的 `t_decision_start` → 自己的 commit，所以 `counterfactual.replay_with_forced_action`（含 `branch_fingerprint` 配对证明）、`decision_ledger.build_ledger`、`receipt` **全部原样可用**，无需改动。这正是"复用而有证据"的关键：**共享观测，但不共享决策身份。**
-- **可产出负面结果**：若证据 2 不成立（同流 `chosen` 恒定），该实验**证伪**了"这不是按流缓存"，这是有价值的可审结论，不是失败。
+- **可产出负面结果**：若证据 2 不成立，该实验**证伪**了"这不是按流缓存"，这是有价值的可审结论，不是失败。
 
 ### YAML 片段（字段名与 `config.py` 现有键风格一致；新键标注"新增"）
 
