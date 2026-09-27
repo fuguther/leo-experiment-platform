@@ -31,7 +31,7 @@ from pathlib import Path
 
 import yaml
 
-from CODE.experiment_platform import artifact_identity
+from CODE.experiment_platform import artifact_identity, t1_stats
 
 SCHEMA_BUNDLE = "t1-suite-bundle/v1"
 SCHEMA_RUN = "t1-suite-run/v1"
@@ -94,9 +94,11 @@ def _require_new_dir(path, label):
 
 
 # --------------------------------------------------------------- compile
-def _cell(cell_id, group, driver, args, description, seed=None):
+def _cell(cell_id, group, driver, args, description, seed=None,
+          predicate=None):
     return {"cell_id": cell_id, "group": group, "driver": driver,
-            "args": list(args), "description": description, "seed": seed}
+            "args": list(args), "description": description, "seed": seed,
+            "predicate": predicate or {"kind": None}}
 
 
 def _acceptance_cells(contract, bundle_dir):
@@ -106,25 +108,69 @@ def _acceptance_cells(contract, bundle_dir):
     seed variation would not add information and is not pretended to.  The
     constellation group carries the seven/eleven/twenty-three seeds.
     """
+    hand_predicate = {
+        "kind": "time_alignment",
+        "require": {"min_candidates": 2, "max_invalid_pairs": 0,
+                    "ideal_arms": ["oracle_now", "oracle_common",
+                                   "oracle_candidate"],
+                    "decomposition": [
+                        "eta_estimated_x_queue_predicted",
+                        "eta_estimated_x_queue_truth",
+                        "eta_true_x_queue_predicted",
+                        "eta_true_x_queue_truth"]},
+    }
+    execution_predicate = {
+        "kind": "execution_modes",
+        "require": {
+            "per_packet": {"compute_servers": 1, "min_queued": 1,
+                           "min_request_rate": 0.0},
+            "per_flow": {"compute_servers": 1, "min_cache_hits": 1},
+            "precomputed": {"compute_servers": 1},
+            "async_point": {"bins": 1, "min_installs": 1,
+                            "min_query_service_requests": 1},
+            "async_window": {"bins": 4, "min_distinct_bins": 3,
+                             "min_installs": 1, "min_distinct_versions": 2},
+        },
+    }
     cells = [
         _cell("hand-reachability", "hand_mechanism",
               "CODE.experiment_platform.time_alignment_compare",
               ["--scenario", "reachability", "--decision-id", "3"],
-              "empty equal queues must show zero difference"),
+              "empty equal queues must show zero difference",
+              predicate=hand_predicate),
         _cell("hand-contention", "hand_mechanism",
               "CODE.experiment_platform.time_alignment_compare",
               ["--scenario", "contention", "--decision-id", "4"],
-              "declared competing packet: a real per-candidate cost gap"),
+              "declared competing packet: a real per-candidate cost gap",
+              predicate=hand_predicate),
         _cell("exec-five-modes", "execution",
               "CODE.experiment_platform.execution_compare",
-              ["--scenario", "contention"],
-              "five execution modes on one fair trace"),
+              ["--scenario", "same_flow", "--compute-servers", "1",
+               "--service-s", "0.05", "--query-delay-s", "0.001"],
+              "five execution modes, bounded pool, one shared flow",
+              predicate=execution_predicate),
         _cell("bench-decision", "execution",
               "CODE.experiment_platform.benchmark_decision",
               ["--scenario", "reachability", "--iterations", "200",
                "--rounds", "2", "--warmup", "20", "--pool-sweep", "0,1,2"],
-              "decision-path timing and finite-pool pressure"),
+              "decision-path timing and finite-pool pressure",
+              predicate={"kind": "benchmark",
+                         "require": {"min_complete_rounds": 1,
+                                     "pool_servers": [0, 1, 2],
+                                     "min_pool_requests": True}}),
     ]
+    for size in (372, 891, 1500):
+        cells.append(_cell(
+            f"packet-{size}B", "packet_sizes",
+            "CODE.experiment_platform.execution_compare",
+            ["--scenario", "same_flow", "--packet-bits", str(size * 8),
+             "--compute-servers", "1", "--service-s", "0.05"],
+            f"fixed {size}-byte packets through all five modes",
+            predicate={"kind": "execution_modes",
+                       "require": {"per_flow": {"packet_bits": size * 8,
+                                                "min_cache_hits": 1},
+                                   "async_window": {"packet_bits": size * 8,
+                                                    "bins": 4}}}))
     seed_cells = []
     for seed in (7, 11, 23):
         cfg = _seed_config(contract, bundle_dir, seed)
@@ -134,6 +180,134 @@ def _acceptance_cells(contract, bundle_dir):
             ["--config", str(cfg), "--decision-id", "first_forward"],
             "frozen branch profile at one development seed", seed=seed))
     return cells + seed_cells
+
+
+def _dev_cells(contract, bundle_dir):
+    """Development sweep: ONE factor at a time, then a small two-factor cell.
+
+    The candidate ranges are written here, before any arm result is read.  This
+    is a DEVELOPMENT tier: it selects candidates, it does not confirm anything.
+    """
+    def exec_cell(cell_id, args, description, require):
+        return _cell(cell_id, "dev_sweep",
+                     "CODE.experiment_platform.execution_compare", args,
+                     description,
+                     predicate={"kind": "execution_modes",
+                                "require": require})
+
+    cells = []
+    for interval in ("0.1", "0.5", "2.0"):
+        cells.append(exec_cell(
+            f"dev-update-interval-{interval}",
+            ["--scenario", "same_flow", "--update-interval-s", interval,
+             "--compute-servers", "1", "--service-s", "0.05"],
+            f"single factor: async update interval {interval} s",
+            {"async_window": {"bins": 4, "min_installs": 1,
+                              "min_query_service_requests": 1}}))
+    cells.append(exec_cell(
+        "dev-perflow-ttl-0.1",
+        ["--scenario", "same_flow", "--per-flow-ttl-s", "0.1",
+         "--compute-servers", "1", "--service-s", "0.05"],
+        "single factor: per-flow TTL below the flow inter-arrival",
+        {"per_flow": {"compute_servers": 1}}))
+    cells.append(exec_cell(
+        "dev-two-factor-packet372-pool1",
+        ["--scenario", "same_flow", "--packet-bits", str(372 * 8),
+         "--compute-servers", "1", "--service-s", "0.05"],
+        "two-factor: smallest packet x one compute server",
+        {"per_packet": {"compute_servers": 1, "min_queued": 1,
+                        "packet_bits": 372 * 8}}))
+    cells.append(exec_cell(
+        "dev-two-factor-packet1500-pool2",
+        ["--scenario", "same_flow", "--packet-bits", str(1500 * 8),
+         "--compute-servers", "2", "--service-s", "0.05"],
+        "two-factor: largest packet x two compute servers",
+        {"per_packet": {"compute_servers": 2, "packet_bits": 1500 * 8}}))
+    cells.append(exec_cell(
+        "dev-query-delay-zero",
+        ["--scenario", "same_flow", "--query-delay-s", "0.0",
+         "--compute-servers", "1", "--service-s", "0.05"],
+        "single factor: query service switched off (historical path)",
+        {"per_packet": {"compute_servers": 1}}))
+    return cells
+
+
+def _formal_package(contract, bundle_dir):
+    """The compiled, NOT-EXECUTED confirmation package.
+
+    Compiling it is part of this task; running it needs an authorization this
+    task does not hold.  Everything a later run needs to be reproducible is
+    frozen here: the matrix, the dev/confirm separation, the sample-size rule,
+    the pre-declared effect thresholds, the information permissions, the cost
+    sources, the scenario-validity rule and the failure rules.
+    """
+    stats = contract.get("statistics") or {}
+    half_width = 0.005
+    examples = {}
+    for s in (0.01, 0.02, 0.05, 0.1):
+        examples[str(s)] = t1_stats.plan_sample_size(s, half_width=half_width)
+    return {
+        "schema": "t1-formal-package/v1",
+        "status": "NOT_EXECUTED",
+        "why_not_executed": "the confirmation matrix requires an explicit "
+                            "authorization and a remote/formal execution "
+                            "window; neither is held by this task",
+        "dev_confirm_separation": {
+            "dev_seeds": stats.get("dev_seeds"),
+            "confirm_seeds_start": stats.get("confirm_seeds_start"),
+            "rule": "candidates are selected and frozen on the dev seeds only; "
+                    "the confirmation seeds are never read during selection",
+        },
+        "sample_size_plan": {
+            "rule": stats.get("sample_size_rule"),
+            "half_width": half_width,
+            "formula_examples": examples,
+            "pending": "replace s with the observed dev paired-difference "
+                       "standard deviation, then freeze n BEFORE running",
+        },
+        "effect_thresholds": {
+            "minimum_substantive_difference": stats.get(
+                "minimum_substantive_difference"),
+            "sensitivity": stats.get("sensitivity"),
+            "note": "pre-declared design thresholds, not measured effects",
+        },
+        "information_permissions": {
+            "online_snapshot_only": True,
+            "forbidden_online": ["TruthSample", "BranchOutcome", "kernel",
+                                 "peer caches", "future trace"],
+            "audit_types": ["ObservationSnapshot", "ResourcePrediction",
+                            "BranchOutcome"],
+        },
+        "cost_sources": {
+            "compute": "shared per-satellite FIFO pool (execution."
+                       "compute_servers_per_satellite)",
+            "query": "shared per-satellite query service (time_alignment."
+                     "query_delay_s)",
+            "install": "async_routing.install_delay_s",
+            "service_time": "measured host/VM timing (benchmark_decision) or "
+                            "the diagnostic configured value, reported "
+                            "separately",
+        },
+        "scenario_validity": {
+            "rule": "a scenario whose requests mostly take the shared fallback "
+                    "does not activate the mechanism and cannot support an "
+                    "algorithm claim",
+            "reported_by": "counts.fallbacks / reuse.fallbacks per cell",
+        },
+        "failure_rules": {
+            "no_silent_drop": True,
+            "invalid_pairs": "reported with reason and count",
+            "budget": "BUDGET_EXCEEDED keeps completed cells",
+            "cells": "a cell is ok only if its pre-declared predicate passes",
+        },
+        "planned_matrix": {
+            "arms": ["stale", "now", "common", "candidate"],
+            "modes": ["per_packet", "per_flow", "precomputed", "async_point",
+                      "async_window"],
+            "primary_comparison": stats.get("primary_comparison"),
+            "bootstrap": stats.get("bootstrap"),
+        },
+    }
 
 
 def _seed_config(contract, bundle_dir, seed):
@@ -175,7 +349,8 @@ def compile_bundle(contract_path, out_dir):
     if not parent.is_dir() or parent.is_symlink():
         raise SuiteError(f"bundle parent must be a real directory: {parent}")
     out_dir.mkdir()
-    cells = _acceptance_cells(contract, out_dir)
+    cells = _acceptance_cells(contract, out_dir) + _dev_cells(contract,
+                                                               out_dir)
     if len(cells) > budgets["max_cells"]:
         raise BudgetExceeded(
             f"{len(cells)} cells exceed the pre-declared max_cells "
@@ -198,7 +373,13 @@ def compile_bundle(contract_path, out_dir):
             "git": identity["git"],
             "runtime": identity["runtime"],
         },
-        "tiers": {"acceptance": [c["cell_id"] for c in cells]},
+        "tiers": {
+            "acceptance": [c["cell_id"] for c in cells
+                           if c["group"] != "dev_sweep"],
+            "dev": [c["cell_id"] for c in cells if c["group"] == "dev_sweep"],
+            "formal": [],
+        },
+        "formal_package": _formal_package(contract, out_dir),
         "cells": cells,
         "pre_registration": {
             "primary_comparison": contract.get("statistics", {}).get(
@@ -303,6 +484,20 @@ def validate_bundle(bundle_dir):
     for key in DEFAULT_BUDGETS:
         if key not in budgets:
             errors.append(f"budget {key} missing")
+    package = bundle.get("formal_package") or {}
+    if not package:
+        errors.append("formal pending package is missing")
+    else:
+        for field in ("dev_confirm_separation", "sample_size_plan",
+                      "effect_thresholds", "information_permissions",
+                      "cost_sources", "scenario_validity", "failure_rules",
+                      "planned_matrix"):
+            if field not in package:
+                errors.append(f"formal package missing {field}")
+        if package.get("status") != "NOT_EXECUTED":
+            errors.append("formal package must be declared NOT_EXECUTED")
+    if "formal" not in (bundle.get("tiers") or {}):
+        errors.append("a formal tier entry is required (even if empty)")
     # --- content fingerprint: a structure-preserving parameter edit moves it
     recorded_fp = bundle.get("bundle_fingerprint")
     if recorded_fp is None:
@@ -388,6 +583,11 @@ def _execute_cell(cell, out_root, budgets):
             exc.stderr or "")
     wall = time.perf_counter() - started
     result_probe = _inspect_result(result_path)
+    predicate = cell.get("predicate") or {"kind": None}
+    verdict = (check_predicate(result_probe["payload"], predicate)
+               if result_probe["payload"] is not None
+               else {"passed": False, "checks": [],
+                     "reason": "result unavailable"})
     if timed_out:
         status = "timeout"
     elif returncode != 0:
@@ -398,6 +598,10 @@ def _execute_cell(cell, out_root, budgets):
         status = "error"
     elif result_probe["schema"] is None:
         status = "error"
+    elif not verdict["passed"]:
+        # a returned exit code is not evidence that the mechanism under test
+        # fired: the cell must satisfy its PRE-DECLARED behaviour predicate
+        status = "predicate_failed"
     else:
         status = "ok"
     return {
@@ -412,22 +616,164 @@ def _execute_cell(cell, out_root, budgets):
         "result_sha256": result_probe["sha256"],
         "result_schema": result_probe["schema"],
         "result_parse_error": result_probe["parse_error"],
+        "predicate": predicate,
+        "predicate_verdict": verdict,
         "input": dict(cell.get("input") or {}),
         "superseded_result": (None if superseded is None
                               else str(superseded.relative_to(out_root))),
         "exit_reason": ("cell_wall_s exceeded" if timed_out else
                         (None if status == "ok" else
                          (result_probe["parse_error"]
+                          or verdict.get("reason")
                           or (f"returncode {returncode}"
                               if returncode else "result missing or invalid")))),
     }
+
+
+def _check_execution_predicate(result, require):
+    """Machine-check the pre-declared behaviour of an execution cell."""
+    checks = []
+    modes = {m.get("mode"): m for m in result.get("modes", [])}
+    for mode, want in sorted(require.items()):
+        row = modes.get(mode)
+        checks.append([f"mode {mode} present", row is not None, None])
+        if row is None:
+            continue
+        reuse = row.get("reuse") or {}
+        compute = row.get("compute") or {}
+        scale = row.get("scale") or {}
+        query_service = (row.get("query_service") or {}).get("totals") or {}
+        if "min_cache_hits" in want:
+            checks.append([f"{mode} cache hits >= {want['min_cache_hits']}",
+                           reuse.get("per_flow_cache_hits", 0)
+                           >= want["min_cache_hits"],
+                           reuse.get("per_flow_cache_hits")])
+        if "bins" in want:
+            checks.append([f"{mode} bins == {want['bins']}",
+                           reuse.get("bins") == want["bins"],
+                           reuse.get("bins")])
+        if "min_distinct_bins" in want:
+            distinct = {k for k in (reuse.get("query_bin_counts") or {})
+                        if k != "None"}
+            checks.append([f"{mode} distinct queried bins >= "
+                           f"{want['min_distinct_bins']}",
+                           len(distinct) >= want["min_distinct_bins"],
+                           sorted(distinct)])
+        if "min_distinct_versions" in want:
+            versions = {k for k in (reuse.get("query_version_counts") or {})
+                        if k != "None"}
+            checks.append([f"{mode} distinct queried versions >= "
+                           f"{want['min_distinct_versions']}",
+                           len(versions) >= want["min_distinct_versions"],
+                           sorted(versions)])
+        if "min_installs" in want:
+            checks.append([f"{mode} installs >= {want['min_installs']}",
+                           reuse.get("schedule_installs", 0)
+                           >= want["min_installs"],
+                           reuse.get("schedule_installs")])
+        if "max_fallbacks" in want:
+            checks.append([f"{mode} fallbacks <= {want['max_fallbacks']}",
+                           reuse.get("fallbacks", 0) <= want["max_fallbacks"],
+                           reuse.get("fallbacks")])
+        if "compute_servers" in want:
+            checks.append([f"{mode} pool == {want['compute_servers']}",
+                           compute.get("servers") == want["compute_servers"],
+                           compute.get("servers")])
+        if "min_queued" in want:
+            checks.append([f"{mode} queued requests >= {want['min_queued']}",
+                           compute.get("queued_requests", 0)
+                           >= want["min_queued"],
+                           compute.get("queued_requests")])
+        if "min_query_service_requests" in want:
+            checks.append([f"{mode} query service requests >= "
+                           f"{want['min_query_service_requests']}",
+                           query_service.get("requests", 0)
+                           >= want["min_query_service_requests"],
+                           query_service.get("requests")])
+        if "packet_bits" in want:
+            checks.append([f"{mode} packet bits == {want['packet_bits']}",
+                           scale.get("packet_bits") == want["packet_bits"],
+                           scale.get("packet_bits")])
+        if "min_request_rate" in want:
+            rate = scale.get("forward_requests_per_satellite_per_s")
+            checks.append([f"{mode} per-satellite request rate > 0",
+                           bool(rate and rate > want["min_request_rate"]),
+                           rate])
+    return checks
+
+
+def check_predicate(result, predicate):
+    """Evaluate a cell predicate against its result document."""
+    kind = (predicate or {}).get("kind")
+    if kind is None:
+        return {"passed": True, "checks": [], "kind": None}
+    if kind == "execution_modes":
+        checks = _check_execution_predicate(result,
+                                            predicate.get("require") or {})
+    elif kind == "time_alignment":
+        require = predicate.get("require") or {}
+        checks = []
+        counts = result.get("counts") or {}
+        if "min_candidates" in require:
+            checks.append(["candidates >= min",
+                           counts.get("candidates", 0)
+                           >= require["min_candidates"],
+                           counts.get("candidates")])
+        if "max_invalid_pairs" in require:
+            checks.append(["invalid pairs <= max",
+                           counts.get("invalid_pairs", 0)
+                           <= require["max_invalid_pairs"],
+                           counts.get("invalid_pairs")])
+        for name in require.get("ideal_arms", []):
+            arm = (result.get("ideal_arms") or {}).get(name)
+            checks.append([f"ideal arm {name} present", arm is not None,
+                           None])
+            if arm is not None:
+                checks.append([f"ideal arm {name} chose an action",
+                               bool(arm.get("chosen")), arm.get("chosen")])
+                checks.append([f"ideal arm {name} recorded truth inputs",
+                               bool(arm.get("truth_inputs")), None])
+        for name in require.get("decomposition", []):
+            checks.append([f"2x2 cell {name} present",
+                           name in (result.get("eta_queue_2x2") or {}), None])
+    elif kind == "benchmark":
+        require = predicate.get("require") or {}
+        checks = []
+        full = result.get("full_decision") or {}
+        if "min_complete_rounds" in require:
+            checks.append(["complete rounds >= min",
+                           full.get("complete_rounds", 0)
+                           >= require["min_complete_rounds"],
+                           full.get("complete_rounds")])
+        sweep = {row.get("servers"): row
+                 for row in (result.get("finite_pool") or [])}
+        for servers in require.get("pool_servers", []):
+            row = sweep.get(servers)
+            checks.append([f"pool N={servers} present", row is not None, None])
+            if row is not None and row.get("skipped"):
+                checks.append([f"pool N={servers} executed", False,
+                               row.get("reason")])
+        if require.get("min_pool_requests"):
+            executed = [row for row in sweep.values() if not row.get("skipped")]
+            checks.append(["pool sweep produced requests",
+                           any(row.get("requests", 0) > 0 for row in executed),
+                           {row.get("servers"): row.get("requests")
+                            for row in executed}])
+    else:
+        return {"passed": False, "checks": [],
+                "reason": f"unknown predicate kind {kind!r}", "kind": kind}
+    return {"passed": all(c[1] for c in checks), "kind": kind,
+            "checks": [{"check": c[0], "passed": bool(c[1]),
+                        "observed": c[2]} for c in checks],
+            "reason": None if all(c[1] for c in checks)
+            else "; ".join(c[0] for c in checks if not c[1])}
 
 
 def _inspect_result(result_path):
     """Existence + parseability + schema + content hash of one cell result."""
     result_path = Path(result_path)
     probe = {"exists": False, "sha256": None, "schema": None,
-             "parse_error": None}
+             "parse_error": None, "payload": None}
     if not result_path.exists():
         return probe
     probe["exists"] = True
@@ -442,6 +788,7 @@ def _inspect_result(result_path):
         probe["parse_error"] = "result is not a JSON object"
         return probe
     probe["schema"] = payload.get("schema")
+    probe["payload"] = payload
     return probe
 
 
@@ -450,6 +797,11 @@ def run_bundle(bundle_dir, tier, out_dir):
     # a run must never start from a bundle whose inputs or code have moved
     validate_bundle(bundle_dir)
     bundle = json.loads((bundle_dir / "bundle.json").read_text(encoding="utf-8"))
+    if tier == "formal":
+        raise SuiteError(
+            "the formal tier is a COMPILED PENDING PACKAGE, not a runnable "
+            "matrix: executing it needs an explicit authorization this task "
+            "does not hold; it is validated by validate, never run here")
     cell_ids = (bundle.get("tiers") or {}).get(tier)
     if cell_ids is None:
         raise SuiteError(f"unknown tier {tier!r}; "

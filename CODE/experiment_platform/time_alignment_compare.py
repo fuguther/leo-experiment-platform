@@ -121,6 +121,97 @@ def _compute_interval(timeline, pid, t_request):
     return wait, service
 
 
+def _resource_timeline(timeline, resource_link_id, t_after):
+    """Queue/service rows for ONE named resource from ONE branch."""
+    return [m for m in timeline
+            if m.get("link_id") == resource_link_id
+            and float(m["at"]) >= float(t_after)
+            and m.get("milestone") in ("queue_enter", "service_start",
+                                       "service_finish")]
+
+
+def truth_at_instant(resource_timeline_rows, bits_by_pid, instant,
+                     exclude_pid):
+    """Reconstruct the work ahead on a named resource at one instant.
+
+    Built ONLY from that candidate own branch event trace.  The value is the
+    last backlog measured at or before the instant, minus the bits that left
+    service between that measurement and the instant, minus the target packet
+    itself (it is not work ahead of itself).  No final fate, no other
+    candidate result and no whole-satellite queue enters.
+
+    Returns a verifiable record: the instant, the resource link, the raw
+    measurement it started from and every adjustment applied.
+    """
+    rows = sorted(resource_timeline_rows, key=lambda m: (float(m["at"]),
+                                                         str(m["milestone"])))
+    base = None
+    for row in rows:
+        if float(row["at"]) > instant + 1e-12:
+            break
+        if row.get("milestone") == "queue_enter":
+            backlog = row.get("backlog_before")
+            if isinstance(backlog, dict) and backlog.get(
+                    "queued_bits_before") is not None:
+                base = {
+                    "measured_at": float(row["at"]),
+                    "queued_bits_before": float(backlog["queued_bits_before"]),
+                    "in_service_remaining_bits":
+                        backlog.get("in_service_remaining_bits_before"),
+                }
+    if base is None:
+        # No queue_enter at or before the instant.  If the resource has ANY
+        # event later, the resource existed and its queue was empty at the
+        # instant -- that is a measurement (zero), not a missing value.  If the
+        # resource never appears at all, the truth is genuinely unavailable.
+        first_event = min((float(r["at"]) for r in rows), default=None)
+        if first_event is None:
+            return {"bits": None, "available": False,
+                    "reason": "resource_never_appears_in_this_branch",
+                    "instant": float(instant), "excluded_pid": exclude_pid}
+        return {"bits": 0.0, "available": True,
+                "reason": "queue_empty_at_instant",
+                "instant": float(instant), "excluded_pid": exclude_pid,
+                "first_event_at": first_event,
+                "source": "own-branch event trace of the named resource"}
+    served = 0.0
+    served_pids = []
+    for row in rows:
+        at = float(row["at"])
+        if at <= base["measured_at"] + 1e-12 or at > instant + 1e-12:
+            continue
+        if row.get("milestone") != "service_finish":
+            continue
+        pid = row.get("pid")
+        if pid is None or pid not in bits_by_pid:
+            continue
+        if pid == exclude_pid:
+            continue
+        served += float(bits_by_pid[pid])
+        served_pids.append(pid)
+    value = base["queued_bits_before"] - served
+    excluded_self = False
+    if exclude_pid is not None:
+        for row in rows:
+            if row.get("milestone") != "queue_enter":
+                continue
+            if row.get("pid") != exclude_pid:
+                continue
+            if float(row["at"]) <= instant + 1e-12:
+                excluded_self = True
+                value -= float(bits_by_pid.get(exclude_pid, 0.0))
+            break
+    if value < 0:
+        value = 0.0
+    return {
+        "bits": float(value), "available": True, "reason": None,
+        "instant": float(instant), "base": base,
+        "served_bits_subtracted": served, "served_pids": sorted(served_pids),
+        "excluded_pid": exclude_pid, "excluded_self": excluded_self,
+        "source": "own-branch event trace of the named resource",
+    }
+
+
 def _resource_trajectory(timeline, resource_link_id, t_after):
     """Read-only trajectory of the named peer egress, for the oracle side.
 
@@ -310,6 +401,77 @@ def _deadline(resolved, per_candidate, deadline_s):
             "why": "no delivered candidate in this branch; D is the declared measurement horizon and is weakly interpretable"}
 
 
+def score_with_state(snapshot, targets, *, use_truth, truth_fn):
+    """Score every legal candidate at its own query instant.
+
+    use_truth=True replaces the resource state with a TRUTH value supplied by
+    truth_fn(direction, instant) -- the caller may only supply the state of the
+    NAMED resource at that instant, never a final outcome.  use_truth=False uses
+    the online predictor.  Either way the SAME scorer runs.
+    """
+    predictions, etas, detail = {}, {}, {}
+    for direction in snapshot.legal_directions:
+        resource = snapshot.resource_for(direction)
+        eta = ta.estimate_eta(snapshot, direction)
+        etas[direction] = eta
+        instant = targets.get(direction)
+        if instant is None:
+            predictions[direction] = ta.ResourcePrediction(
+                resource or ta.ResourceKey(0, "N", "isl"),
+                snapshot.snapshot_at, snapshot.snapshot_at, None,
+                "unavailable", missing_reason="query_instant_unknown")
+            detail[direction] = {"available": False,
+                                 "reason": "query_instant_unknown"}
+            continue
+        if use_truth:
+            truth = truth_fn(direction, instant)
+            detail[direction] = truth
+            predictions[direction] = ta.ResourcePrediction(
+                resource or ta.ResourceKey(0, "N", "isl"),
+                snapshot.snapshot_at, instant, truth.get("bits"),
+                "truth_at_query_instant",
+                missing_reason=(None if truth.get("bits") is not None
+                                else truth.get("reason")
+                                or "truth_unavailable"))
+        else:
+            predictions[direction] = ta.predict_resource(
+                snapshot.history_for(resource) if resource else (),
+                snapshot_at=snapshot.snapshot_at, target_at=instant,
+                method=snapshot.predictor,
+                history_limit=snapshot.history_limit,
+                max_queue_bits=snapshot.max_resource_queue_bits,
+                resource=resource)
+            detail[direction] = {
+                "available": predictions[direction].predicted_bits is not None,
+                "bits": predictions[direction].predicted_bits,
+                "instant": instant,
+                "method": predictions[direction].method}
+    scored = ta.score_candidates(snapshot, predictions, etas)
+    return scored, detail
+
+
+def arm_view(scored, detail, label, role, losses, best):
+    chosen = scored.ranking[0] if scored.ranking else None
+    picked_loss = losses.get(chosen) if chosen in losses else None
+    return {
+        "arm": label,
+        "role": role,
+        "ranking": list(scored.ranking),
+        "chosen": chosen,
+        "loss": picked_loss,
+        "regret": (None if picked_loss is None or best is None
+                   else picked_loss - best),
+        "fallback_directions": list(scored.fallback_directions),
+        "truth_inputs": detail,
+        "scores": {s.direction: {
+            "total_s": (None if s.total_s == math.inf else s.total_s),
+            "terms": dict(s.terms), "missing": list(s.missing),
+            "fallback": s.fallback} for s in scored.scores},
+        "query_instants": {d: detail.get(d, {}).get("instant")
+                           for d in scored.by_direction()},
+    }
+
+
 def compare(resolved, rows, geometry, decision_id, deadline_s, source):
     branch, target = _branch(resolved, rows, geometry, decision_id)
     decision_id = int(target["decision_id"])
@@ -334,6 +496,7 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
     base_ledger, _diag = decision_ledger.build_ledger(
         branch["decision_rows"], branch["timeline_rows"])
     per_candidate = {}
+    branch_timelines = {}
     invalid = 0
     mismatch = 0
     for direction in candidates:
@@ -366,6 +529,7 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
             entry_ledger, _d = decision_ledger.build_ledger(
                 cf["decision_rows"], cf["timeline_rows"])
             valid, reason = True, None
+        branch_timelines[direction] = chosen_branch["timeline_rows"]
         entry = entry_ledger.get(decision_id, {})
         truth_target = entry.get("truth_at_target")
         actual_egress = (truth_target.get("contended_direction")
@@ -382,6 +546,7 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
                          else "isl:%s:%s" % (peer_id, egress_peer))
         per_candidate[direction] = {
             "direction": direction,
+            "resource_link": resource_link,
             "valid": valid,
             "reason": reason,
             "taken_in_baseline": direction == target["chosen"],
@@ -458,6 +623,96 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
         "role": "offline evaluator only; never a policy input",
     }
 
+    # --- R2: the three IDEAL state-time arms -------------------------------
+    # Same branch point, same candidate set, same unified scorer; only the
+    # resource state is replaced by the TRUTH of the named resource at that
+    # arm's query instant, read from EACH CANDIDATE OWN branch.  The final
+    # outcome never enters this input; it only scores the result afterwards.
+    bits_by_pid = {r["packet_id"]: float(r["bits"]) for r in rows
+                   if r.get("packet_id") is not None}
+
+    def _truth(direction, instant):
+        entry = per_candidate.get(direction) or {}
+        # the WHOLE branch trace of that resource, not only the part after the
+        # branch instant: a truth query AT t0 must see what was measured before
+        # t0 (an empty queue is a real measurement, not a missing one)
+        rows_for_resource = [
+            m for m in _resource_timeline(
+                branch_timelines.get(direction, ()), entry.get("resource_link"),
+                0.0)
+        ] if entry.get("resource_link") else []
+        return truth_at_instant(rows_for_resource, bits_by_pid, instant, pid)
+
+    def _realized_entry(direction):
+        entry = per_candidate.get(direction) or {}
+        link = entry.get("resource_link")
+        if not link:
+            return None
+        for row in branch_timelines.get(direction, ()):
+            if (row.get("milestone") == "queue_enter"
+                    and row.get("pid") == pid and row.get("link_id") == link):
+                return float(row["at"])
+        return None
+
+    def _truth_fn(direction, instant):
+        return _truth(direction, instant)
+
+    def _score_with_predictions(snapshot, targets, use_truth):
+        return score_with_state(snapshot, targets, use_truth=use_truth,
+                                truth_fn=_truth_fn)
+
+    def _arm_view(scored, detail, label, role):
+        return arm_view(scored, detail, label, role, losses, best)
+
+    eta_targets = {d: ta.estimate_eta(probe, d).target_at
+                   for d in probe.legal_directions}
+    realized = {d: _realized_entry(d) for d in probe.legal_directions}
+    ideal_arms = {}
+    scored_now, detail_now = _score_with_predictions(
+        probe, {d: probe.snapshot_at for d in probe.legal_directions}, True)
+    ideal_arms["oracle_now"] = _arm_view(
+        scored_now, detail_now, "oracle_now",
+        "ideal information at t0 (offline value-space bound)")
+    scored_common, detail_common = _score_with_predictions(
+        probe, {d: probe.snapshot_at + horizon for d in probe.legal_directions},
+        True)
+    ideal_arms["oracle_common"] = _arm_view(
+        scored_common, detail_common, "oracle_common",
+        "ideal information at the shared future instant t0+h")
+    scored_cand, detail_cand = _score_with_predictions(
+        probe, eta_targets, True)
+    ideal_arms["oracle_candidate"] = _arm_view(
+        scored_cand, detail_cand, "oracle_candidate",
+        "ideal information at each candidate own predicted resource instant")
+
+    # --- R2b: ETA x queue-state 2x2 decomposition --------------------------
+    decomposition = {}
+    for eta_name, targets in (("eta_estimated", eta_targets),
+                              ("eta_true", realized)):
+        for queue_name, use_truth in (("queue_predicted", False),
+                                      ("queue_truth", True)):
+            if eta_name == "eta_estimated" and queue_name == "queue_predicted":
+                decomposition[f"{eta_name}_x_{queue_name}"] = dict(
+                    arms["candidate"], role="online candidate arm (baseline "
+                                            "cell of the 2x2)")
+                continue
+            scored, detail = _score_with_predictions(probe, targets, use_truth)
+            decomposition[f"{eta_name}_x_{queue_name}"] = _arm_view(
+                scored, detail, f"{eta_name}_x_{queue_name}",
+                "diagnostic only: a true ETA or a true queue state is not "
+                "available to any online policy")
+    decomposition_meta = {
+        "eta_estimated": "ETA built from request-time known terms (compute "
+                         "wait estimate, service, local egress queue, tx, "
+                         "prop, known peer processing)",
+        "eta_true": "the REALISED instant the target packet entered the "
+                    "resource, read from that candidate own branch; "
+                    "diagnostic only",
+        "queue_predicted": "bounded_linear over received advertisements",
+        "queue_truth": "reconstructed from that candidate own branch event "
+                       "trace at the same query instant; diagnostic only",
+    }
+
     identity = artifact_identity.build_identity(
         config=resolved, trace_digest=source.get("trace_sha256"),
         driver_paths=artifact_identity.execution_chain_paths(),
@@ -508,6 +763,9 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
         },
         "candidates": per_candidate,
         "arms": arms,
+        "ideal_arms": ideal_arms,
+        "eta_queue_2x2": decomposition,
+        "eta_queue_2x2_meaning": decomposition_meta,
         "oracle": oracle,
         "counts": {"candidates": len(candidates), "invalid_pairs": invalid,
                    "resource_mismatch": mismatch,

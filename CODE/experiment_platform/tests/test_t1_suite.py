@@ -264,7 +264,92 @@ def test_a_tiny_total_budget_marks_budget_exceeded_and_keeps_cells(tmp_path):
 
 def test_an_unknown_tier_is_refused(tmp_path):
     bundle_dir = _compiled(tmp_path)
-    done = _run("run", "--bundle", str(bundle_dir), "--tier", "formal",
+    done = _run("run", "--bundle", str(bundle_dir), "--tier", "confirm",
                 "--out", str(tmp_path / "r"))
     assert done.returncode == 2
     assert "unknown tier" in done.stdout
+
+
+# ------------------------------------------------- R3: predicates and tiers
+def test_a_cell_whose_predicate_fails_is_not_reported_ok(tmp_path):
+    """A zero exit code is not evidence: the mechanism must have fired."""
+    import CODE.experiment_platform.t1_suite as suite
+
+    cell = {
+        "cell_id": "impossible-cache-hit", "group": "test",
+        "driver": "CODE.experiment_platform.execution_compare",
+        "args": ["--scenario", "reachability"],
+        "description": "no same-flow packets, so a cache hit is impossible",
+        "seed": None,
+        "predicate": {"kind": "execution_modes",
+                      "require": {"per_flow": {"min_cache_hits": 5}}},
+        "input": {},
+    }
+    out = tmp_path / "cells-out"
+    out.mkdir()
+    record = suite._execute_cell(cell, out, suite.DEFAULT_BUDGETS)
+    assert record["returncode"] == 0
+    assert record["status"] == "predicate_failed"
+    assert "cache hits" in record["predicate_verdict"]["reason"]
+    assert record["predicate_verdict"]["checks"]
+
+
+def test_the_dev_tier_runs_with_behaviour_predicates(tmp_path):
+    bundle_dir = _compiled(tmp_path)
+    run_dir = tmp_path / "dev"
+    done = _run("run", "--bundle", str(bundle_dir), "--tier", "dev",
+                "--out", str(run_dir))
+    assert done.returncode == 0, done.stdout + done.stderr
+    run = json.loads((run_dir / "run.json").read_text())
+    assert run["counts"]["total"] >= 5
+    assert run["counts"]["ok"] == run["counts"]["total"], [
+        (r["cell_id"], r["status"], r.get("exit_reason"))
+        for r in run["cells"] if r["status"] != "ok"]
+    for record in run["cells"]:
+        assert record["predicate"]["kind"] == "execution_modes"
+        assert record["predicate_verdict"]["passed"] is True
+
+
+def test_the_formal_package_is_compiled_and_validated_not_run(tmp_path):
+    bundle_dir = _compiled(tmp_path)
+    bundle = json.loads((bundle_dir / "bundle.json").read_text())
+    package = bundle["formal_package"]
+    assert package["status"] == "NOT_EXECUTED"
+    for field in ("dev_confirm_separation", "sample_size_plan",
+                  "effect_thresholds", "information_permissions",
+                  "cost_sources", "scenario_validity", "failure_rules",
+                  "planned_matrix"):
+        assert field in package
+    assert package["sample_size_plan"]["formula_examples"]
+    assert "formal" in bundle["tiers"]
+    done = _run("run", "--bundle", str(bundle_dir), "--tier", "formal",
+                "--out", str(tmp_path / "formal"))
+    assert done.returncode == 2
+    assert "PENDING PACKAGE" in done.stdout
+
+
+def test_validate_requires_the_formal_package(tmp_path):
+    bundle_dir = _compiled(tmp_path)
+    bundle = json.loads((bundle_dir / "bundle.json").read_text())
+    bundle["formal_package"] = {}
+    (bundle_dir / "bundle.json").write_text(json.dumps(bundle))
+    done = _run("validate", "--bundle", str(bundle_dir))
+    assert done.returncode == 2
+    assert "bundle validation failed" in done.stdout
+    assert "formal" in done.stdout
+
+
+def test_the_acceptance_matrix_records_its_declared_overrides(tmp_path):
+    bundle_dir = _compiled(tmp_path)
+    run_dir = tmp_path / "acceptance"
+    _run("run", "--bundle", str(bundle_dir), "--tier", "acceptance",
+         "--out", str(run_dir))
+    run = json.loads((run_dir / "run.json").read_text())
+    exec_cell = next(r for r in run["cells"]
+                     if r["cell_id"] == "exec-five-modes")
+    payload = json.loads((run_dir / exec_cell["result_path"]).read_text())
+    overrides = payload["source"]["declared_overrides"]
+    assert overrides["execution"]["compute_servers_per_satellite"] == 1
+    assert overrides["execution"]["compute_delay_s"] == 0.05
+    assert overrides["time_alignment"]["query_delay_s"] == 0.001
+

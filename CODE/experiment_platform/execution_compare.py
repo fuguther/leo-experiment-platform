@@ -105,7 +105,7 @@ def ddqn_status(resolved):
                     "still not exercised by this deterministic matrix"}
 
 
-def _mode_config(resolved, mode):
+def _mode_config(resolved, mode, overrides=None):
     cfg = json.loads(json.dumps(resolved["config"]))
     cfg["time_alignment"]["enabled"] = True
     cfg["time_alignment"]["execution_mode"] = mode
@@ -116,11 +116,14 @@ def _mode_config(resolved, mode):
     else:
         cfg["async_routing"]["enabled"] = False
     cfg["execution"]["decision_observation_mode"] = "frozen"
+    for group, values in dict(overrides or {}).items():
+        cfg.setdefault(group, {})
+        cfg[group].update(values)
     return config_mod.resolve_config(cfg)
 
 
-def _row_for_mode(base_resolved, rows, geometry, mode):
-    resolved = _mode_config(base_resolved, mode)
+def _row_for_mode(base_resolved, rows, geometry, mode, overrides=None):
+    resolved = _mode_config(base_resolved, mode, overrides)
     sink, timeline = [], []
     result = kernel.run_simulation(resolved, rows, geometry=geometry,
                                    decision_sink=sink, timeline_sink=timeline)
@@ -142,6 +145,16 @@ def _row_for_mode(base_resolved, rows, geometry, mode):
                     if (_audit(r) or {}).get("fallback") is True)
     e2e = _e2e(result["deliveries"], result["packet_events"])
     forwards = [r for r in sink if r.get("kind") == "forward"]
+    bin_counts = {}
+    version_counts = {}
+    for row in queries:
+        key = row.get("bin")
+        bin_counts[key] = bin_counts.get(key, 0) + 1
+        key = row.get("version")
+        version_counts[key] = version_counts.get(key, 0) + 1
+    duration = float(resolved["config"]["scenario"]["duration_s"])
+    n_sats = int(resolved["config"]["scenario"]["num_satellites"])
+    packet_bits = int(resolved["config"]["demand"]["packet_bits"])
     return {
         "mode": mode,
         "config_sha256": resolved["sha256"],
@@ -170,11 +183,28 @@ def _row_for_mode(base_resolved, rows, geometry, mode):
             "schedule_installs": len(installs),
             "fallbacks": fallbacks,
             "installed_versions": sorted({m.get("version") for m in installs}),
+            "query_bin_counts": {str(k): v for k, v in sorted(
+                bin_counts.items(), key=lambda kv: str(kv[0]))},
+            "query_version_counts": {str(k): v for k, v in sorted(
+                version_counts.items(), key=lambda kv: str(kv[0]))},
             "bins": (None if mode not in ASYNC_MODES
                      else (1 if mode == "async_point"
                            else resolved["config"]["async_routing"][
                                "window_bins"])),
         },
+        "scale": {
+            "num_satellites": n_sats,
+            "duration_s": duration,
+            "packet_bits": packet_bits,
+            "packet_bytes": packet_bits / 8.0,
+            "forward_requests_per_satellite_per_s": (
+                len(forwards) / (n_sats * duration) if n_sats and duration
+                else None),
+            "compute_requests_per_satellite_per_s": (
+                len(compute_req) / (n_sats * duration) if n_sats and duration
+                else None),
+        },
+        "query_service": result["execution_mode"]["query_service"],
         "precompute": result["execution_mode"]["precompute"],
         "outcome": {
             "delivered": len(result["deliveries"]),
@@ -201,16 +231,16 @@ def _config_diff(left, right):
     return diffs
 
 
-def compare(resolved, rows, geometry, source, modes=MODES):
+def compare(resolved, rows, geometry, source, modes=MODES, overrides=None):
     rows_digest = _rows_digest(rows)
     mode_rows = []
     configs = {}
     for mode in modes:
         if mode not in MODES:
             raise ExecutionCompareError(f"unknown execution mode {mode!r}")
-        row = _row_for_mode(resolved, rows, geometry, mode)
+        row = _row_for_mode(resolved, rows, geometry, mode, overrides)
         mode_rows.append(row)
-        configs[mode] = _mode_config(resolved, mode)["config"]
+        configs[mode] = _mode_config(resolved, mode, overrides)["config"]
     base_mode = modes[0]
     fairness = {"rows_digest": rows_digest, "seed": resolved["config"][
         "scenario"]["seed"], "base_mode": base_mode, "diffs": {}}
@@ -224,7 +254,8 @@ def compare(resolved, rows, geometry, source, modes=MODES):
             driver_paths=artifact_identity.execution_chain_paths(),
             extra={"modes": list(modes)}),
         "source": dict(source, rows_digest=rows_digest,
-                       base_config_sha256=resolved["sha256"]),
+                       base_config_sha256=resolved["sha256"],
+                       declared_overrides=dict(overrides or {})),
         "fairness": fairness,
         "ddqn": ddqn_status(resolved),
         "modes": mode_rows,
@@ -309,6 +340,17 @@ def main(argv=None):
     parser.add_argument("--config", type=Path)
     parser.add_argument("--scenario", choices=sorted(scripted_scenarios.SCENARIOS))
     parser.add_argument("--modes", default=",".join(MODES))
+    parser.add_argument("--compute-servers", type=int, default=None,
+                        help="finite compute pool size for every mode")
+    parser.add_argument("--service-s", type=float, default=None,
+                        help="compute service time for every mode")
+    parser.add_argument("--packet-bits", type=int, default=None,
+                        help="packet size for every mode")
+    parser.add_argument("--per-flow-ttl-s", type=float, default=None)
+    parser.add_argument("--update-interval-s", type=float, default=None)
+    parser.add_argument("--window-bins", type=int, default=None)
+    parser.add_argument("--query-delay-s", type=float, default=None,
+                        help="shared per-satellite query service time")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -316,10 +358,33 @@ def main(argv=None):
         print("EXECCOMPARE REFUSED: give exactly one of --config or --scenario")
         return 2
     modes = tuple(m.strip() for m in str(args.modes).split(",") if m.strip())
+    overrides = {}
+    if args.compute_servers is not None:
+        overrides.setdefault("execution", {})[
+            "compute_servers_per_satellite"] = int(args.compute_servers)
+    if args.service_s is not None:
+        overrides.setdefault("execution", {})["compute_delay_s"] = float(
+            args.service_s)
+    if args.packet_bits is not None:
+        overrides.setdefault("demand", {})["packet_bits"] = int(
+            args.packet_bits)
+    if args.per_flow_ttl_s is not None:
+        overrides.setdefault("time_alignment", {})["per_flow_ttl_s"] = float(
+            args.per_flow_ttl_s)
+    if args.update_interval_s is not None:
+        overrides.setdefault("async_routing", {})[
+            "update_interval_s"] = float(args.update_interval_s)
+    if args.window_bins is not None:
+        overrides.setdefault("async_routing", {})[
+            "window_bins"] = int(args.window_bins)
+    if args.query_delay_s is not None:
+        overrides.setdefault("time_alignment", {})[
+            "query_delay_s"] = float(args.query_delay_s)
     try:
         resolved, rows, geometry, source = _design(args.config, args.scenario,
                                                    args.root)
-        document = compare(resolved, rows, geometry, source, modes=modes)
+        document = compare(resolved, rows, geometry, source, modes=modes,
+                           overrides=overrides)
         publish(document, args.out)
     except ExecutionCompareError as exc:
         print(f"EXECCOMPARE REFUSED: {exc}")

@@ -189,6 +189,21 @@ SCENARIOS = {
                     "mechanism",
         },
     },
+    "same_flow": {
+        "purpose": "many packets on ONE flow, so a per-flow cache can be hit",
+        "overrides": {},
+        "rows": [_row(TARGET_PID + i, TARGET_EMIT_S + 0.05 * i, SRC, DST,
+                      PACKET_BITS) for i in range(8)],
+        "declared": {
+            "target_bits": PACKET_BITS,
+            "flow_packets": 8,
+            "inter_arrival_s": 0.05,
+            "isl_service_s_per_mbit": 1.0 / ISL_RATE_MBPS,
+            "note": "same satellite, same source and destination: a per-flow "
+                    "cache with a TTL above 0.05 s must hit, and a per-packet "
+                    "arm must recompute every time",
+        },
+    },
     "contention": {
         "purpose": "one declared competing packet on the target egress",
         "overrides": {},
