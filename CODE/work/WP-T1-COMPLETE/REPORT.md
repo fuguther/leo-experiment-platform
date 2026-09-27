@@ -127,3 +127,63 @@ python3 -m CODE.experiment_platform.t1_suite report --run-dir out/t1/suite/accep
 - 运行工件：`out/t1/`（gitignored，未提交；由上述命令可逐条重建）。
 - 身份：每个新工件内嵌 `identity`（Git commit/dirty/diff_sha256 + 逐文件哈希 + runtime）。
 - 旧证据：`out/` 既有文件未改写；新运行拒绝覆盖旧目录。
+
+
+---
+
+# 返工（独立验收 R1–R9，审查身份 53aeb30）
+
+裁决 REQUEST_CHANGES 已接受。以下逐条给出反例、修复与复现证据；**P4/P6/P8/P9/P10/P11/P12 的"完成"标记已按复审结论纠正**（见 §R 表）。
+
+## R 表：逐条状态
+
+| 项 | 复审问题 | 状态 | 行为反例（先补） | 修复 |
+|---|---|---|---|---|
+| R1 | validate/resume 只做旧身份自洽检查；链缺 time_alignment/async_routing/驱动/统计 | FIXED | `test_any_post_compile_bundle_edit_is_refused_not_reused`、`test_a_cell_parameter_change_is_refused`、`test_a_config_file_edit_is_refused`、`test_a_dependency_source_change_is_refused`、`test_a_missing_result_invalidates_the_cell_and_is_rerun`、`test_a_tampered_result_is_detected_by_its_hash` | 执行链改为整包发现（56 文件）；bundle 内容指纹 + 逐 cell 输入绑定 + 结果哈希；validate/run/resume 均重算当前源码与磁盘结果；报告不得把丢失/篡改结果的 cell 记为 ok；新身份必须重新编译 |
+| R7 | 预计算表不按目的节点选方向 | FIXED | `test_two_targets_in_opposite_directions_get_opposite_next_hops`（3 节点反例期望 `{1:E,2:W}`） | 对每个目标做有向最短距离，再在本星出口中选能到达该目标的最小距离方向；不可达不填假路线；查询用预计算距离不再每次 BFS |
+| R8 | ETA 漏本地出口排队；在线计算等待写死 0 | FIXED | `test_the_local_egress_queue_moves_the_query_instant_later`（8000 bit @ 8000 bit/s → +1.0 s）、`test_a_bounded_pool_wait_enters_the_prediction_span` | ETA 拆成 compute_wait / compute_service / local_egress_wait / tx / prop / peer_process；评分复用 ETA 项（不再二次计队列）；内核提供**请求时刻可知**的池等待估计（`compute_state.wait_estimate_s`），离线驱动改读该状态，实际等待只作诊断 |
+| R9 | 查询成本只有字段 | FIXED | `test_a_positive_query_delay_is_charged_and_serialised`、`test_every_execution_mode_pays_the_same_query_service`、`test_the_query_server_never_serves_two_queries_at_once` | 每星单服务台公共查询服务；五种执行模式（含缓存命中/预计算/异步查表）同口径计费；`query_delay_s=0` 保持历史瞬时路径；报告 query 等待与服务 |
+| R2 | 只有在线评分 + min(final_loss) 评估器，缺三组理想对照 | FIXED | `test_the_common_and_candidate_instants_can_pick_different_actions`、`test_the_zero_gain_control_makes_every_ideal_arm_agree` | `truth_at_instant` 从**各候选自身分支**重建命名资源时刻真值（扣除已服务比特、剔除目标包自身；空队列=0，资源不出现=缺失）；`oracle_now/common/candidate` 三组走同一评分器；新增 ETA×队列真值/估计 2×2 分解；最终命运只用于事后评分 |
+| R3 | 7/7 流水线未触发有效查询/缓存命中/N=0；cell 只看 returncode；缺包长/请求率/开发扫描/正式包 | FIXED | `test_a_cell_whose_predicate_fails_is_not_reported_ok`、`test_the_dev_tier_runs_with_behaviour_predicates`、`test_the_formal_package_is_compiled_and_validated_not_run` | 新增 `same_flow` 夹具（8 包同流）；五模式加 `--compute-servers/--service-s/--packet-bits/--query-delay-s/--update-interval-s` 覆盖并记录；报告 bin/version 分布、每星请求率、查询服务计数；cell 先声明行为谓词，未过则 `predicate_failed`；新增 372/891/1500 B 单元；新增 dev 扫描 tier 与 formal 待执行包（编译+校验+拒绝运行） |
+| R4 | 34 µs 不是完整决策路径；full/inference 都只调 scoring | FIXED | `test_the_full_path_is_the_sum_of_its_declared_phases`、`test_call_counting_proves_inference_only_does_not_repredict` | 按真实在线接口拆四段计时（观测构造 42.3 µs / 预测 24.3 µs / 评分 4.5 µs / 选动作 0.08 µs / 端到端 73.9 µs）；调用计数证明 end_to_end 预测次数 = 候选数、inference_only = 0 |
+| R5 | 默认 D 从当前分支现算；无观察窗口规则；统计只在单测里 | FIXED | `test_a_compare_run_may_not_derive_its_own_deadline`、`test_two_different_branches_share_the_same_frozen_deadline`、`test_a_short_observation_window_is_censored_not_counted_as_failure`、`test_report_carries_the_frozen_statistics` | `--deadline-from` 加载开发冻结 D（含文件哈希与身份）、`--freeze-deadline-to` 仅 dev 可写；`run_kind=compare/confirm` 禁止自行推导 D；观察窗口 < D 标行政删失（不计失败、不编造损失）；bootstrap/样本量/配对差接入真实 run 报告，std=0 时显式标退化 |
+| R6 | DDQN 只有路径存在检查 | FIXED（真实检查点仍为外部阻塞） | `test_the_adapter_is_inference_only`、`test_epsilon_is_zero_and_no_update_happens`、`test_a_checkpoint_needs_hashes_not_just_existence`、`test_the_kernel_still_refuses_frozen_with_a_learner` | 新增 `leo_sim/inference.py`：固定参数小模型适配器（epsilon=0、无更新路径、冻结归一化、掩码强制、确定性破同）；`verify_checkpoint` 校验路径+sha256+元数据+loader，**存在不等于 AVAILABLE**；内核 frozen+learner 边界保持拒绝 |
+
+## 返工后的实测证据
+
+```
+python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q
+1241 passed, 1 skipped in 436.14s
+
+t1_suite compile  -> 20 cells（acceptance 10 / dev 10 / formal 待执行）
+t1_suite validate -> valid true
+t1_suite run --tier acceptance -> {"ok": 10, "error": 0, "timeout": 0}   # 每个 cell 的行为谓词全部通过
+t1_suite run --tier dev        -> {"ok": 10, "error": 0, "timeout": 0}
+t1_suite run --tier formal     -> 拒绝（PENDING PACKAGE，需授权）
+report -> 通过（含 statistics：blocks / bootstrap / 样本量规划 / 退化警告）
+
+五执行模式（same_flow，N=1，服务 0.05 s，查询 0.001 s）：
+  per_packet   compute=41 queued=23 cache_hits=0  queries=0  installs=0  qsvc=41
+  per_flow     compute=34 queued=16 cache_hits=7  queries=0  installs=0  qsvc=41
+  precomputed  compute=41 queued=23 cache_hits=0  queries=0  installs=0  qsvc=41
+  async_point  compute=41 queued=23 queries=16 installs=32 bins=1 版本被查询数=6
+  async_window compute=41 queued=23 queries=16 installs=32 bins=4 实际查询到 bin {0,1,2,3}
+  每星转发请求率 0.1333 /s
+
+决策路径分段计时（主机）：观测 42.3 µs / 预测 24.3 µs / 评分 4.5 µs / 选动作 0.08 µs
+  端到端 73.9 µs；inference_only 4.4 µs；预测调用次数 2(=候选数) vs 0
+有限池：N=0 无等待；N=1 queued=23 max_wait=0.312 s；N=2 queued=25 max_wait=0.112 s
+
+R1 反问例复核（复现脚本 tmp_r1_final.py，已删除）：
+  A 结构保留改参数+改合同哈希 -> 拒绝（三条独立理由）
+  B 删除 result 但记录仍 ok -> report FAILED_CELLS / invalidated=1 / verified_ok 9/10；resume 只重跑该 cell 并恢复 10/10
+  C 篡改 result 内容 -> report FAILED_CELLS / invalidated=1
+```
+
+## 仍未做（未做范围，非工程缺口）
+
+1. **FORMAL_RUN**：确认性种子 1001+ 的矩阵未执行；formal 包已编译并校验，运行被显式拒绝（需授权）。
+2. **真实 DDQN 检查点**：本机无 tensorflow、无检查点；适配器与哈希校验已实现并用固定参数小模型验证，**不得**作为策略性能结论。
+3. **REMOTE_NOT_EXECUTED**：未做远端覆盖部署。
+4. 开发集配对差在本次 acceptance/dev 夹具上恒为 0，样本量规划因此标 `degenerate`：它只说明这些夹具不具判别力，不能用于估计确认样本量。
+

@@ -83,26 +83,40 @@ def _failure_details(resolved):
 
 
 def ddqn_status(resolved):
-    """Whether a fixed-inference checkpoint exists; never a performance claim."""
+    """Hash-verified fixed-inference availability; never a performance claim.
+
+    AVAILABLE is never inferred from file existence: the checkpoint hash, the
+    sibling metadata hash and the loader availability are all checked, and the
+    inference-only adapter (leo_sim.inference) is what a caller would use.
+    """
+    from CODE.leo_sim import inference
+
     cfg = resolved["config"]["learning"]
     details = _failure_details(resolved)
     if cfg["algorithm"] == "none":
         return {"state": "NOT_REQUESTED", "details": details,
+                "adapter": "CODE.leo_sim.inference.FixedInferenceAdapter",
                 "note": "the matrix runs the deterministic scorer"}
-    path = cfg["checkpoint_path"]
-    if path is None:
-        return {"state": "EXTERNAL_BLOCKER", "details": details,
-                "reason": "learning.algorithm is set but no checkpoint_path is "
-                          "configured, so fixed-inference reasoning cannot be "
-                          "validated with a model",
-                "recovery": "provide a trained checkpoint plus its sha256"}
-    if not Path(path).exists():
-        return {"state": "EXTERNAL_BLOCKER", "details": details,
-                "reason": f"checkpoint_path does not exist: {path}",
-                "recovery": "ship the checkpoint or point at the real artifact"}
-    return {"state": "AVAILABLE", "details": details,
-            "note": "a checkpoint exists; the learner-training boundary is "
-                    "still not exercised by this deterministic matrix"}
+    metadata_path = cfg.get("checkpoint_metadata_path")
+    if metadata_path is None:
+        path = cfg.get("checkpoint_path")
+        metadata_path = (str(Path(str(path)).with_name("metadata.json"))
+                         if path else None)
+    verification = inference.verify_checkpoint(
+        cfg.get("checkpoint_path"), cfg.get("checkpoint_sha256"),
+        metadata_path, cfg.get("checkpoint_metadata_sha256"))
+    state = verification["state"]
+    return {
+        "state": ("EXTERNAL_BLOCKER" if state.startswith("METADATA")
+                  or state == "EXTERNAL_BLOCKER" else state),
+        "details": dict(details, verification=verification),
+        "reason": verification.get("reason"),
+        "recovery": verification.get("recovery"),
+        "adapter": "CODE.leo_sim.inference.FixedInferenceAdapter",
+        "note": "a fixed-inference adapter is implemented and validated with a "
+                "fixed-parameter small model; a REAL trained checkpoint still "
+                "needs all hashes plus the loader on this host",
+    }
 
 
 def _mode_config(resolved, mode, overrides=None):

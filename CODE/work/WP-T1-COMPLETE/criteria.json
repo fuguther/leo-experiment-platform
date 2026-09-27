@@ -166,7 +166,8 @@
       "touches": [
         "CODE/leo_sim/learning.py"
       ],
-      "status": "IMPLEMENTED"
+      "status": "IMPLEMENTED",
+      "note": "R6：固定推理适配器已实现并用固定参数小模型验证；真实检查点仍为外部阻塞（无 tensorflow/无检查点）"
     },
     {
       "id": "K14",
@@ -204,5 +205,102 @@
       ],
       "status": "IMPLEMENTED"
     }
-  ]
+  ],
+  "rework": {
+    "reviewed_sha": "53aeb309eaf2917d706bb02142b33dd95eb156cc",
+    "verdict": "REQUEST_CHANGES",
+    "items": {
+      "R1": {
+        "severity": "high",
+        "status": "FIXED",
+        "what": "证据链/恢复真校验",
+        "evidence": [
+          "CODE/experiment_platform/artifact_identity.py (execution_chain_paths, current_identity)",
+          "CODE/experiment_platform/t1_suite.py (_bundle_fingerprint, _cell_input_binding, _verify_recorded_result)",
+          "CODE/experiment_platform/tests/test_t1_suite.py (四类负例 + 身份变更拒绝)"
+        ]
+      },
+      "R7": {
+        "severity": "high",
+        "status": "FIXED",
+        "what": "预计算路由表按目的节点有向最短距离",
+        "evidence": [
+          "CODE/leo_sim/kernel.py (_precompute_build/_precomputed_order)",
+          "CODE/leo_sim/tests/test_precomputed_routing.py (3 节点反例 {1:E,2:W})"
+        ]
+      },
+      "R8": {
+        "severity": "high",
+        "status": "FIXED",
+        "what": "ETA 含本地出口排队与请求时刻可知的计算等待",
+        "evidence": [
+          "CODE/leo_sim/time_alignment.py (ETA_TERM_KEYS, estimate_eta, score_candidates)",
+          "CODE/leo_sim/kernel.py (_compute_state_now)",
+          "CODE/leo_sim/tests/test_eta_terms.py (8000bit/8000bps -> +1.0s)"
+        ]
+      },
+      "R9": {
+        "severity": "high",
+        "status": "FIXED",
+        "what": "每星公共查询服务，五模式同口径计费",
+        "evidence": [
+          "CODE/leo_sim/kernel.py (_query_service, decide_deferred)",
+          "CODE/leo_sim/tests/test_query_service.py"
+        ]
+      },
+      "R2": {
+        "severity": "high",
+        "status": "FIXED",
+        "what": "oracle_now/common/candidate 时刻真值三组 + 2x2 分解",
+        "evidence": [
+          "CODE/experiment_platform/time_alignment_compare.py (truth_at_instant, score_with_state, ideal_arms, eta_queue_2x2)",
+          "CODE/experiment_platform/tests/test_ideal_state_time.py"
+        ]
+      },
+      "R3": {
+        "severity": "high",
+        "status": "FIXED",
+        "what": "验收矩阵覆盖有效查询/缓存命中/N>0/分段窗口/配置机核/行为谓词/包长/请求率/开发扫描/正式待执行包",
+        "evidence": [
+          "CODE/experiment_platform/scripted_scenarios.py (same_flow)",
+          "CODE/experiment_platform/execution_compare.py (overrides, bin/version counts, scale)",
+          "CODE/experiment_platform/t1_suite.py (check_predicate, _dev_cells, _formal_package)"
+        ]
+      },
+      "R4": {
+        "severity": "high",
+        "status": "FIXED",
+        "what": "在线接口分段计时与调用计数",
+        "evidence": [
+          "CODE/experiment_platform/benchmark_decision.py (phase_closures, count_predict_calls)",
+          "CODE/experiment_platform/tests/test_benchmark_decision.py (R4 段)"
+        ]
+      },
+      "R5": {
+        "severity": "medium-high",
+        "status": "FIXED",
+        "what": "冻结 D 与观察窗口/行政删失，统计接入真实 run 汇总",
+        "evidence": [
+          "CODE/experiment_platform/time_alignment_compare.py (load_frozen_deadline, write_frozen_deadline, censoring)",
+          "CODE/experiment_platform/t1_suite.py (_statistics_summary)",
+          "CODE/experiment_platform/tests/test_frozen_deadline.py"
+        ]
+      },
+      "R6": {
+        "severity": "medium-high",
+        "status": "FIXED",
+        "what": "DDQN 固定推理适配器与检查点哈希校验（真实检查点仍为外部阻塞）",
+        "evidence": [
+          "CODE/leo_sim/inference.py",
+          "CODE/experiment_platform/execution_compare.py (ddqn_status 哈希校验)",
+          "CODE/leo_sim/tests/test_fixed_inference.py"
+        ]
+      }
+    },
+    "not_claimed": [
+      "FORMAL_RUN：确认性种子 1001+ 的矩阵未执行（正式包仅编译与校验）",
+      "真实 DDQN 检查点性能：本机无 tensorflow 且无检查点，external blocker",
+      "REMOTE_NOT_EXECUTED：未做远端覆盖部署"
+    ]
+  }
 }

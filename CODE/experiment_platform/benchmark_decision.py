@@ -140,9 +140,14 @@ def _null_baseline(iterations=100_000):
 
 
 def _fixture(resolved, rows, geometry):
+    """The RAW kernel observation row the benchmark rebuilds from.
+
+    Returning the row (not a pre-built snapshot) is what lets the benchmark
+    time observation construction as part of the full decision path.
+    """
     sink, timeline = [], []
-    result = kernel.run_simulation(resolved, rows, geometry=geometry,
-                                   decision_sink=sink, timeline_sink=timeline)
+    kernel.run_simulation(resolved, rows, geometry=geometry,
+                          decision_sink=sink, timeline_sink=timeline)
     row = next((r for r in sink if r.get("kind") == "forward"), None)
     if row is None:
         raise BenchmarkError("the fixture produced no forward decision")
@@ -150,27 +155,117 @@ def _fixture(resolved, rows, geometry):
     bits = next((float(r["bits"]) for r in rows if r.get("packet_id") == pid),
                 float(resolved["config"]["demand"]["packet_bits"]))
     from CODE.experiment_platform import time_alignment_compare as cmp
-    snapshot = cmp.build_snapshot(row, resolved,
-                                  str(resolved["config"]["time_alignment"]["arm"]),
-                                  None, bits, 0.0, 0.0)
+    snapshot = cmp.build_snapshot(
+        row, resolved, str(resolved["config"]["time_alignment"]["arm"]),
+        None, bits, 0.0,
+        float(resolved["config"]["execution"]["compute_delay_s"]))
     if not snapshot.legal_directions:
         raise BenchmarkError("the fixture snapshot has no legal candidate")
-    return snapshot
+    return row, bits, snapshot
 
 
-def benchmark_snapshot(snapshot):
-    """Return (full_fn, inference_fn) closures over one frozen snapshot."""
-    target = snapshot.snapshot_at + 1.0
+def _build_message(snapshot, target):
+    """(predictions, etas) for every legal direction, built ONCE."""
+    predictions, etas = {}, {}
+    for direction in snapshot.legal_directions:
+        resource = snapshot.resource_for(direction)
+        eta = ta.estimate_eta(snapshot, direction)
+        etas[direction] = eta
+        predictions[direction] = ta.predict_resource(
+            snapshot.history_for(resource) if resource is not None else (),
+            snapshot_at=snapshot.snapshot_at, target_at=target,
+            method=snapshot.predictor,
+            history_limit=snapshot.history_limit,
+            max_queue_bits=snapshot.max_resource_queue_bits,
+            resource=resource)
+    return predictions, etas
 
-    def full():
-        scored = ta.score_snapshot_at(snapshot, target)
+
+def phase_closures(row, resolved, pkt_bits, arm, capture):
+    """The REAL online interface, split into its actual phases.
+
+    constructing the observation  -> raw kernel observation record to
+                                    immutable ObservationSnapshot
+    prediction                    -> per-candidate resource prediction + ETA
+    scoring/inference             -> the shared scorer over those inputs
+    mask/selection                -> legality filter and action choice
+    end_to_end                    -> all four in one call, which is what a
+                                    deployment actually pays per decision
+    """
+    from CODE.experiment_platform import time_alignment_compare as cmp
+
+    def observation_build():
+        capture["observation_build"] += 1
+        snapshot = cmp.build_snapshot(row, resolved, arm, None, pkt_bits,
+                                      0.0,
+                                      float(resolved["config"]["execution"][
+                                          "compute_delay_s"]))
+        capture["snapshot"] = snapshot
+        return snapshot
+
+    snapshot = observation_build()
+    target = snapshot.snapshot_at
+
+    def prediction():
+        capture["prediction"] += 1
+        predictions, etas = _build_message(snapshot, target)
+        capture["message"] = (predictions, etas)
+        return predictions, etas
+
+    predictions, etas = prediction()
+
+    def scoring():
+        capture["scoring"] += 1
+        scored = ta.score_candidates(snapshot, predictions, etas)
+        capture["scored"] = scored
+        return scored
+
+    scored = scoring()
+
+    def select():
+        capture["selection"] += 1
         return scored.ranking[0] if scored.ranking else None
 
-    def inference():
-        # predictions already exist: score and select only
-        return ta.score_snapshot_at(snapshot, target)
+    def end_to_end():
+        capture["end_to_end"] += 1
+        snap = cmp.build_snapshot(row, resolved, arm, None, pkt_bits, 0.0,
+                                  float(resolved["config"]["execution"][
+                                      "compute_delay_s"]))
+        preds, es = _build_message(snap, snap.snapshot_at)
+        sc = ta.score_candidates(snap, preds, es)
+        return sc.ranking[0] if sc.ranking else None
 
-    return full, inference
+    def inference_only():
+        # scoring + selection on ALREADY BUILT inputs: no prediction call
+        capture["inference_only"] += 1
+        sc = ta.score_candidates(snapshot, predictions, etas)
+        return sc.ranking[0] if sc.ranking else None
+
+    return {
+        "observation_build": observation_build,
+        "prediction": prediction,
+        "scoring": scoring,
+        "selection": select,
+        "end_to_end": end_to_end,
+        "inference_only": inference_only,
+    }
+
+
+def count_predict_calls(fn):
+    """Run fn while counting real ta.predict_resource calls."""
+    counter = {"calls": 0}
+    real = ta.predict_resource
+
+    def counted(*args, **kwargs):
+        counter["calls"] += 1
+        return real(*args, **kwargs)
+
+    ta.predict_resource = counted
+    try:
+        fn()
+    finally:
+        ta.predict_resource = real
+    return counter["calls"]
 
 
 def pool_sweep(resolved, rows, geometry, pools=POOL_SWEEP,
@@ -214,13 +309,29 @@ def pool_sweep(resolved, rows, geometry, pools=POOL_SWEEP,
 
 def run_benchmark(resolved, rows, geometry, source, *, warmup, rounds,
                   iterations, cap_s):
-    snapshot = _fixture(resolved, rows, geometry)
-    full, inference = benchmark_snapshot(snapshot)
+    row, bits, snapshot = _fixture(resolved, rows, geometry)
+    capture = {"observation_build": 0, "prediction": 0, "scoring": 0,
+               "selection": 0, "end_to_end": 0, "inference_only": 0}
+    closures = phase_closures(row, resolved, bits,
+                              str(resolved["config"]["time_alignment"]["arm"]),
+                              capture)
     null = _null_baseline()
-    full_stats = _measure(full, warmup=warmup, rounds=rounds,
-                          iterations=iterations, cap_s=cap_s)
-    inference_stats = _measure(inference, warmup=warmup, rounds=rounds,
+    measured = {name: _measure(fn, warmup=warmup, rounds=rounds,
                                iterations=iterations, cap_s=cap_s)
+                for name, fn in closures.items()}
+    full_stats = measured["end_to_end"]
+    inference_stats = measured["inference_only"]
+    # prove the phase split is real: the full path must call the predictor and
+    # inference-only must not call it again
+    call_counts = {
+        "end_to_end_predict_calls": count_predict_calls(closures["end_to_end"]),
+        "inference_only_predict_calls": count_predict_calls(
+            closures["inference_only"]),
+        "prediction_phase_predict_calls": count_predict_calls(
+            closures["prediction"]),
+        "expected_predict_calls_per_full_decision":
+            len(snapshot.legal_directions),
+    }
     return {
         "schema": SCHEMA,
         "identity": artifact_identity.build_identity(
@@ -250,11 +361,17 @@ def run_benchmark(resolved, rows, geometry, source, *, warmup, rounds,
         "empty_call_baseline": null,
         "full_decision": full_stats,
         "inference_only": inference_stats,
+        "phases": {name: measured[name] for name in (
+            "observation_build", "prediction", "scoring", "selection")},
+        "phase_call_counts": call_counts,
         "units": {"stats": "seconds per call",
                   "requests_per_s": "calls per second"},
         "limits": [
             "full_decision measures observation -> prediction -> scoring -> "
             "ranking -> selection in-process; it is not an on-board timing",
+            "the phase split is verified by call counting: end_to_end calls "
+            "the predictor once per candidate and inference_only calls it "
+            "zero times",
             "the configured compute service time is a diagnostic scenario "
             "input, not a measured on-board service time",
             "the analytic rho = lambda * t_service / N used to construct a "

@@ -151,13 +151,15 @@ def _acceptance_cells(contract, bundle_dir):
               predicate=execution_predicate),
         _cell("bench-decision", "execution",
               "CODE.experiment_platform.benchmark_decision",
-              ["--scenario", "reachability", "--iterations", "200",
-               "--rounds", "2", "--warmup", "20", "--pool-sweep", "0,1,2"],
-              "decision-path timing and finite-pool pressure",
+              ["--scenario", "same_flow", "--iterations", "200",
+               "--rounds", "2", "--warmup", "20", "--service-s", "0.05",
+               "--pool-sweep", "0,1,2"],
+              "decision-path timing and finite-pool congestion",
               predicate={"kind": "benchmark",
                          "require": {"min_complete_rounds": 1,
                                      "pool_servers": [0, 1, 2],
-                                     "min_pool_requests": True}}),
+                                     "min_pool_requests": True,
+                                     "require_queued_at": 1}}),
     ]
     for size in (372, 891, 1500):
         cells.append(_cell(
@@ -178,7 +180,8 @@ def _acceptance_cells(contract, bundle_dir):
             f"constellation-seed-{seed}", "constellation",
             "CODE.experiment_platform.time_alignment_compare",
             ["--config", str(cfg), "--decision-id", "first_forward"],
-            "frozen branch profile at one development seed", seed=seed))
+            "frozen branch profile at one development seed", seed=seed,
+            predicate=hand_predicate))
     return cells + seed_cells
 
 
@@ -229,6 +232,27 @@ def _dev_cells(contract, bundle_dir):
          "--compute-servers", "1", "--service-s", "0.05"],
         "single factor: query service switched off (historical path)",
         {"per_packet": {"compute_servers": 1}}))
+    # development state-time blocks: these are what size the deadline and the
+    # confirmation sample, so the dev tier must contain them
+    hand_predicate = {
+        "kind": "time_alignment",
+        "require": {"min_candidates": 2, "max_invalid_pairs": 0,
+                    "ideal_arms": ["oracle_now", "oracle_common",
+                                   "oracle_candidate"],
+                    "decomposition": ["eta_estimated_x_queue_predicted",
+                                      "eta_estimated_x_queue_truth",
+                                      "eta_true_x_queue_predicted",
+                                      "eta_true_x_queue_truth"]},
+    }
+    for seed in (7, 11, 23):
+        cfg = _seed_config(contract, bundle_dir, seed)
+        cells.append(_cell(
+            f"dev-ta-seed-{seed}", "dev_sweep",
+            "CODE.experiment_platform.time_alignment_compare",
+            ["--config", str(cfg), "--decision-id", "first_forward",
+             "--run-kind", "dev"],
+            "development state-time block for the deadline/sample-size plan",
+            seed=seed, predicate=hand_predicate))
     return cells
 
 
@@ -759,6 +783,13 @@ def check_predicate(result, predicate):
                            any(row.get("requests", 0) > 0 for row in executed),
                            {row.get("servers"): row.get("requests")
                             for row in executed}])
+        if require.get("require_queued_at"):
+            servers = require["require_queued_at"]
+            row = sweep.get(servers) or {}
+            checks.append([f"pool N={servers} actually queued",
+                           row.get("queued", 0) > 0,
+                           {"queued": row.get("queued"),
+                            "max_wait_s": row.get("max_wait_s")}])
     else:
         return {"passed": False, "checks": [],
                 "reason": f"unknown predicate kind {kind!r}", "kind": kind}
@@ -1004,6 +1035,7 @@ def report_run(run_dir):
         "counts": counts,
         "cells": rows,
         "by_group": _by_group(run_doc, rows),
+        "statistics": _statistics_summary(run_dir, rows),
         "limits": [
             "the acceptance tier proves the mechanisms fire; it is not a "
             "scientific result and carries no confirmatory claim",
@@ -1039,6 +1071,81 @@ def _summarise(payload):
                     "p99_s") else payload["full_decision"]["stats"]["p99_s"] * 1e6,
                 "complete_rounds": payload["full_decision"]["complete_rounds"]}
     return None
+
+
+def _statistics_summary(run_dir, rows):
+    """Wire the frozen statistics into the run summary.
+
+    A block is one cell that compared the primary arms at one branch.  With a
+    single block nothing confirmatory can be said, and the summary says so
+    instead of printing a number without a unit of replication.
+    """
+    import statistics as _statistics
+
+    blocks = []
+    for row in rows:
+        if row.get("schema") != "time-alignment-compare/v1":
+            continue
+        path = run_dir / "cells" / row["cell_id"] / "result.json"
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        arms = payload.get("arms") or {}
+        common = (arms.get("common") or {}).get("regret")
+        candidate = (arms.get("candidate") or {}).get("regret")
+        if common is None or candidate is None:
+            continue
+        blocks.append({"unit": row["cell_id"],
+                       "common_strong_regret": float(common),
+                       "candidate_regret": float(candidate),
+                       "censored": (payload.get("counts") or {}).get("censored"),
+                       "deadline": (payload.get("deadline") or {}).get(
+                           "deadline_s")})
+    summary = {
+        "unit_of_replication": "scenario x trace x seed (one cell here)",
+        "blocks": len(blocks),
+        "primary_comparison": "common_strong regret - candidate regret",
+        "minimum_substantive_difference": (
+            t1_stats.MINIMUM_SUBSTANTIVE_DIFFERENCE),
+        "sensitivity": [0.005, 0.02],
+        "per_block": blocks,
+    }
+    if not blocks:
+        summary["note"] = ("no time-alignment block in this tier: nothing to "
+                           "pair")
+        return summary
+    diffs = [b["common_strong_regret"] - b["candidate_regret"] for b in blocks]
+    summary["paired_differences"] = diffs
+    summary["mean_difference"] = _statistics.fmean(diffs)
+    if len(diffs) < 2:
+        summary["note"] = ("a single block is one contrast: no interval, no "
+                           "sample-size estimate and no confirmatory claim")
+        summary["sample_size_plan"] = {
+            "pending": "needs at least two development blocks to estimate s"}
+        return summary
+    common_list = [b["common_strong_regret"] for b in blocks]
+    candidate_list = [b["candidate_regret"] for b in blocks]
+    summary["bootstrap"] = t1_stats.primary_comparison_delta(
+        common_list, candidate_list)
+    s = _statistics.stdev(diffs)
+    plan = {
+        "observed_std": s,
+        "planned_n": t1_stats.plan_sample_size(s),
+        "half_width": 0.005,
+        "rule": "n = max(20, ceil((1.96*s/0.005)^2))",
+        "precision": t1_stats.precision_report(diffs),
+        "note": "planning approximation for precision only; not power",
+    }
+    if s == 0.0:
+        plan["degenerate"] = True
+        plan["warning"] = (
+            "every development block shows the SAME paired difference, so the "
+            "standard deviation is zero and the planned n is only the floor: "
+            "this sample carries no dispersion information and cannot size a "
+            "confirmation run by itself")
+    summary["sample_size_plan"] = plan
+    return summary
 
 
 def _by_group(run_doc, rows):

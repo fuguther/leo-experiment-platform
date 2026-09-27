@@ -339,6 +339,26 @@ def test_validate_requires_the_formal_package(tmp_path):
     assert "formal" in done.stdout
 
 
+def test_the_report_carries_the_frozen_statistics(tmp_path):
+    bundle_dir = _compiled(tmp_path)
+    run_dir = tmp_path / "acceptance"
+    _run("run", "--bundle", str(bundle_dir), "--tier", "acceptance",
+         "--out", str(run_dir))
+    _run("report", "--run-dir", str(run_dir))
+    report = json.loads((run_dir / "report.json").read_text())
+    stats = report["statistics"]
+    assert stats["blocks"] >= 2
+    assert stats["unit_of_replication"] == "scenario x trace x seed (one cell here)"
+    assert stats["minimum_substantive_difference"] == 0.01
+    assert stats["sensitivity"] == [0.005, 0.02]
+    assert len(stats["per_block"]) == stats["blocks"]
+    assert stats["bootstrap"]["n_boot"] == 10000
+    assert stats["sample_size_plan"]["rule"].startswith("n = max(20")
+    for block in stats["per_block"]:
+        assert "common_strong_regret" in block
+        assert "candidate_regret" in block
+
+
 def test_the_acceptance_matrix_records_its_declared_overrides(tmp_path):
     bundle_dir = _compiled(tmp_path)
     run_dir = tmp_path / "acceptance"

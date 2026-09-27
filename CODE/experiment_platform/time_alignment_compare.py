@@ -378,12 +378,82 @@ def _branch(resolved, rows, geometry, decision_id):
     return capture(baseline, sink, timeline), target
 
 
-def _deadline(resolved, per_candidate, deadline_s):
+def load_frozen_deadline(path):
+    """Load a development-frozen deadline with its provenance intact."""
+    path = Path(path)
+    if not path.exists():
+        raise CompareError(f"frozen deadline file missing: {path}")
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise CompareError(f"frozen deadline file is not JSON: {exc}") from exc
+    value = doc.get("deadline_s")
+    if not isinstance(value, (int, float)) or isinstance(value, bool) \
+            or not math.isfinite(float(value)) or float(value) <= 0:
+        raise CompareError(
+            f"frozen deadline file has no positive deadline_s: {path}")
+    return {
+        "deadline_s": float(value),
+        "source": "frozen_development_file",
+        "weak": bool(doc.get("weak", False)),
+        "frozen_file": str(path),
+        "file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "frozen_from": doc.get("source"),
+        "frozen_at_sha": doc.get("frozen_at_sha"),
+        "identity": doc.get("identity"),
+        "rule": doc.get("rule"),
+    }
+
+
+def write_frozen_deadline(path, report, resolved, run_kind):
+    """Dev stage: freeze D with the identity that produced it."""
+    path = Path(path)
+    if path.exists():
+        raise CompareError(f"refusing to overwrite a frozen deadline: {path}")
+    identity = artifact_identity.build_identity(
+        config=resolved, driver_paths=artifact_identity.execution_chain_paths())
+    doc = dict(report)
+    doc.update({
+        "schema": "t1-frozen-deadline/v1",
+        "rule": "D = multiplier x E2E p95 over the development baseline legal "
+                "candidate delivery samples",
+        "run_kind": run_kind,
+        "frozen_at_sha": identity["git"].get("commit"),
+        "identity": identity,
+        "note": "frozen on development data only; a confirmation comparison "
+                "loads this file and never re-derives D",
+    })
+    handle, temporary = tempfile.mkstemp(prefix="." + path.name + ".",
+                                         suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            json.dump(doc, stream, ensure_ascii=False, sort_keys=True, indent=1)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+    return doc
+
+
+def _deadline(resolved, per_candidate, deadline_s, frozen=None,
+              allow_branch_derivation=True):
+    if frozen is not None:
+        return dict(frozen)
     if deadline_s is not None:
         if deadline_s <= 0:
             raise CompareError("--deadline-s must be > 0")
         return {"deadline_s": float(deadline_s), "source": "configured",
                 "weak": False}
+    if not allow_branch_derivation:
+        raise CompareError(
+            "this run kind may not derive D from the branch it is comparing: "
+            "pass --deadline-from with the development-frozen deadline")
     delays = [c["outcome"]["delay_s"] for c in per_candidate.values()
               if c.get("valid") and c["outcome"]["delay_s"] is not None]
     if delays:
@@ -472,7 +542,8 @@ def arm_view(scored, detail, label, role, losses, best):
     }
 
 
-def compare(resolved, rows, geometry, decision_id, deadline_s, source):
+def compare(resolved, rows, geometry, decision_id, deadline_s, source,
+            frozen_deadline=None, run_kind="dev"):
     branch, target = _branch(resolved, rows, geometry, decision_id)
     decision_id = int(target["decision_id"])
     if target.get("kind") != "forward":
@@ -561,13 +632,34 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
             "outcome": outcome,
         }
 
-    deadline = _deadline(resolved, per_candidate, deadline_s)
+    deadline = _deadline(resolved, per_candidate, deadline_s,
+                         frozen_deadline,
+                         allow_branch_derivation=(run_kind == "dev"))
+    deadline["run_kind"] = run_kind
     D = deadline["deadline_s"]
+    horizon = float(resolved["config"]["scenario"]["duration_s"])
     losses = {}
+    censored = 0
     for direction, item in per_candidate.items():
         if not item["valid"]:
             continue
         outcome = item["outcome"]
+        emitted = outcome.get("emitted_at")
+        window = None if emitted is None else horizon - float(emitted)
+        item["observation_window_s"] = window
+        item["deadline_used_s"] = D
+        if window is not None and window < D:
+            # the packet cannot be observed for a full D: mark it
+            # ADMINISTRATIVELY CENSORED.  Counting it as a timeout failure
+            # would invent a loss that the run never had the chance to show.
+            item["censored"] = True
+            item["loss"] = None
+            item["regret"] = None
+            item["censor_reason"] = (
+                f"observation window {window:.6g}s < deadline {D:.6g}s")
+            censored += 1
+            continue
+        item["censored"] = False
         if not outcome["delivered"]:
             loss = 1.0
         else:
@@ -769,7 +861,9 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
         "oracle": oracle,
         "counts": {"candidates": len(candidates), "invalid_pairs": invalid,
                    "resource_mismatch": mismatch,
-                   "valid_pairs": len(candidates) - invalid},
+                   "censored": censored,
+                   "valid_pairs": len(candidates) - invalid,
+                   "scored_pairs": len(losses)},
         "units": {"loss": "normalized loss in [0,1] (dimensionless)",
                   "regret": "normalized loss difference (dimensionless)",
                   "score_terms": "seconds"},
@@ -784,7 +878,8 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source):
     }
 
 
-def compare_config(config_path, decision_id, deadline_s, root):
+def compare_config(config_path, decision_id, deadline_s, root,
+                   frozen_deadline=None, run_kind="dev"):
     try:
         resolved = config_mod.load_config_file(str(config_path))
     except (config_mod.ConfigError, FileNotFoundError) as exc:
@@ -799,10 +894,12 @@ def compare_config(config_path, decision_id, deadline_s, root):
     source = {"scenario": "config", "config": str(config_path),
               "trace_sha256": digest, "rows": len(rows),
               "rows_digest": _rows_digest(rows)}
-    return compare(resolved, rows, None, decision_id, deadline_s, source)
+    return compare(resolved, rows, None, decision_id, deadline_s, source,
+                   frozen_deadline=frozen_deadline, run_kind=run_kind)
 
 
-def compare_scenario(name, decision_id, deadline_s):
+def compare_scenario(name, decision_id, deadline_s, frozen_deadline=None,
+                     run_kind="dev"):
     try:
         resolved, rows, geometry, meta = scripted_scenarios.build(name)
     except KeyError as exc:
@@ -811,7 +908,8 @@ def compare_scenario(name, decision_id, deadline_s):
               "rows": len(rows), "rows_digest": _rows_digest(rows),
               "scripted_topology": meta["topology"],
               "scripted_cells": meta["cells"]}
-    return compare(resolved, rows, geometry, decision_id, deadline_s, source)
+    return compare(resolved, rows, geometry, decision_id, deadline_s, source,
+                   frozen_deadline=frozen_deadline, run_kind=run_kind)
 
 
 def publish(document, out: Path):
@@ -848,6 +946,14 @@ def main(argv=None) -> int:
     parser.add_argument("--decision-id", required=True,
                         help="an integer decision id, or first_forward")
     parser.add_argument("--deadline-s", type=float, default=None)
+    parser.add_argument("--deadline-from", type=Path, default=None,
+                        help="development-frozen deadline JSON to load")
+    parser.add_argument("--freeze-deadline-to", type=Path, default=None,
+                        help="dev only: write the derived deadline + identity")
+    parser.add_argument("--run-kind", choices=("dev", "compare", "confirm"),
+                        default="dev")
+    parser.add_argument("--allow-branch-deadline", action="store_true",
+                        help="dev only: permit deriving D from this branch")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -856,13 +962,30 @@ def main(argv=None) -> int:
         return 2
     raw_id = str(args.decision_id)
     decision_id = None if raw_id == "first_forward" else int(raw_id)
+    run_kind = "dev" if args.allow_branch_deadline else args.run_kind
     try:
+        frozen = (load_frozen_deadline(args.deadline_from)
+                  if args.deadline_from else None)
         if args.config:
             document = compare_config(args.config, decision_id,
-                                      args.deadline_s, args.root)
+                                      args.deadline_s, args.root,
+                                      frozen_deadline=frozen,
+                                      run_kind=run_kind)
         else:
             document = compare_scenario(args.scenario, decision_id,
-                                        args.deadline_s)
+                                        args.deadline_s,
+                                        frozen_deadline=frozen,
+                                        run_kind=run_kind)
+        if args.freeze_deadline_to is not None:
+            if run_kind != "dev":
+                raise CompareError(
+                    "--freeze-deadline-to is a development action; it needs "
+                    "--run-kind dev")
+            resolved = config_mod.load_config_file(str(args.config)) \
+                if args.config else None
+            write_frozen_deadline(args.freeze_deadline_to,
+                                  document["deadline"], resolved or {},
+                                  run_kind)
         publish(document, args.out)
     except CompareError as exc:
         print(f"COMPARE REFUSED: {exc}")

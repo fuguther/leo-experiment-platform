@@ -119,3 +119,63 @@ def test_pool_sweep_percentile_helpers_are_consistent():
     many = bd._percentiles([1.0, 2.0, 3.0, 4.0, 5.0])
     assert many["p50_s"] == 3.0
     assert many["min_s"] == 1.0 and many["max_s"] == 5.0
+
+
+# ------------------------------------------------- R4: the real phase split
+def _bench(tmp_path):
+    out = tmp_path / "bench.json"
+    done = _run("--scenario", "same_flow", "--iterations", "100",
+                "--rounds", "2", "--warmup", "10", "--pool-sweep", "0,1",
+                "--out", str(out))
+    assert done.returncode == 0, done.stdout + done.stderr
+    return json.loads(out.read_text())
+
+
+def test_the_full_path_is_the_sum_of_its_declared_phases(tmp_path):
+    doc = _bench(tmp_path)
+    phases = doc["phases"]
+    for name in ("observation_build", "prediction", "scoring", "selection"):
+        assert phases[name]["stats"]["n"] > 0, name
+    full = doc["full_decision"]["stats"]["mean_s"]
+    parts = sum(phases[name]["stats"]["mean_s"] for name in
+                ("observation_build", "prediction", "scoring", "selection"))
+    # end-to-end must include the work the phases describe, not just scoring
+    assert full > phases["scoring"]["stats"]["mean_s"]
+    assert full >= 0.5 * parts, (full, parts)
+
+
+def test_observation_construction_is_inside_the_full_measurement(tmp_path):
+    doc = _bench(tmp_path)
+    full = doc["full_decision"]["stats"]["mean_s"]
+    scoring = doc["phases"]["scoring"]["stats"]["mean_s"]
+    build = doc["phases"]["observation_build"]["stats"]["mean_s"]
+    assert build > 0.0
+    assert full > build
+    assert full > scoring
+    # inference-only is the scoring half alone and must be cheaper
+    assert doc["inference_only"]["stats"]["mean_s"] < full
+
+
+def test_call_counting_proves_inference_only_does_not_repredict(tmp_path):
+    doc = _bench(tmp_path)
+    counts = doc["phase_call_counts"]
+    assert counts["expected_predict_calls_per_full_decision"] > 0
+    assert (counts["end_to_end_predict_calls"]
+            == counts["expected_predict_calls_per_full_decision"])
+    assert counts["inference_only_predict_calls"] == 0
+    assert counts["prediction_phase_predict_calls"] == \
+        counts["expected_predict_calls_per_full_decision"]
+
+
+def test_the_pool_sweep_in_the_acceptance_shape_reports_congestion(tmp_path):
+    out = tmp_path / "bench.json"
+    done = _run("--scenario", "same_flow", "--iterations", "50",
+                "--rounds", "1", "--warmup", "5", "--service-s", "0.05",
+                "--pool-sweep", "0,1,2", "--out", str(out))
+    assert done.returncode == 0, done.stdout + done.stderr
+    doc = json.loads(out.read_text())
+    sweep = {row["servers"]: row for row in doc["finite_pool"]}
+    assert sweep[0]["total_wait_s"] == 0.0
+    assert sweep[1]["queued"] > 0
+    assert sweep[1]["total_wait_s"] > 0.0
+    assert sweep[2]["total_wait_s"] <= sweep[1]["total_wait_s"]
