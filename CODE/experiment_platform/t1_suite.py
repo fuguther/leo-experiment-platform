@@ -277,6 +277,83 @@ def project_horizon_candidates(contract_path, out_path, root=None):
     return projected
 
 
+#: A3/B3: one frozen deadline D per declared business scenario.
+DEADLINE_DIR = REPO_ROOT / "CODE/work/WP-T1-COMPLETE/deadlines"
+
+
+def deadline_file_for(scenario_id):
+    return DEADLINE_DIR / f"deadline_{scenario_id}.json"
+
+
+def freeze_scenario_deadlines(contract_path, out_dir, root=None):
+    """Freeze ONE D per declared business scenario, from development data.
+
+    D = multiplier x p95 of the LEGAL-CANDIDATE delivery samples of the
+    independent development baseline.  The samples come from replaying every
+    legal candidate of the FIRST eligible branch (a pre-declared rule: the
+    lowest decision id), so D is never derived from the branch an arm is
+    being compared on, and one scenario cannot end up with several scales.
+    """
+    contract_path = Path(contract_path)
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+    plan = (contract.get("b_round") or {}).get("scenarios") or []
+    if not plan:
+        raise SuiteError("the contract declares no b_round scenario to freeze")
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix="t1-deadlines-",
+                                 dir=str(root or Path.cwd())))
+    frozen = {}
+    try:
+        for spec in plan:
+            sid = str(spec["id"])
+            cfg = _seed_config(contract, work, 7,
+                               dict(spec.get("parameters") or {}),
+                               tag=f"b-{sid}", profile=str(spec["profile"]))
+            resolved, rows, geometry, source = t1_tasks.design(
+                config_path=cfg, root=work)
+            decisions = t1_tasks._baseline_decisions(resolved, rows, geometry)
+            eligible, rejected = t1_tasks.eligible_branches(decisions,
+                                                          window=DEV_WINDOW_S)
+            if not eligible:
+                frozen[sid] = {"status": "NO_ELIGIBLE_BRANCH",
+                               "eligible": 0, "rejected": len(rejected),
+                               "reason": "no forward decision with at least "
+                                         "two legal directions inside the "
+                                         "measurement window: the scenario "
+                                         "does not activate the mechanism"}
+                continue
+            decision_id = int(eligible[0]["decision_id"])
+            document = t1_tasks.tac.compare(resolved, rows, geometry,
+                                            decision_id, None, source)
+            delays = [float(c["outcome"]["delay_s"])
+                      for c in (document.get("candidates") or {}).values()
+                      if c.get("valid")
+                      and (c.get("outcome") or {}).get("delay_s") is not None]
+            if not delays:
+                frozen[sid] = {"status": "NO_DELIVERED_CANDIDATE",
+                               "decision_id": decision_id}
+                continue
+            report = t1_stats.default_deadline(delays)
+            path = out_dir / f"deadline_{sid}.json"
+            t1_tasks.tac.write_frozen_deadline(path, report, resolved, "dev")
+            frozen[sid] = {"status": "FROZEN",
+                           "deadline_s": report["deadline_s"],
+                           "samples": len(delays),
+                           "weak": bool(report.get("weak")),
+                           "decision_id": decision_id,
+                           "file": str(path),
+                           "file_sha256": _sha256_file(path),
+                           "rule": report.get("rule")}
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return {"schema": "t1-scenario-deadlines/v1",
+            "scenarios": frozen,
+            "rule": "D = 2 x p95 over the development baseline legal "
+                    "candidate delivery samples; ONE D per business "
+                    "scenario, shared by every arm and every mode",
+            "contract_sha256": _sha256_file(contract_path)}
+
 def _b_cells(contract, bundle_dir):
     """B0/B1: the PRE-DECLARED business scenarios, one small cell set each.
 
@@ -296,14 +373,21 @@ def _b_cells(contract, bundle_dir):
         branches = int(spec.get("max_branches", 12))
         cfg = _seed_config(contract, bundle_dir, 7, params, tag=f"b-{sid}",
                            profile=profile)
+        frozen_d = deadline_file_for(sid)
+        if frozen_d.exists():
+            deadline_args = ["--deadline-from", str(frozen_d)]
+            deadline_note = "frozen D from " + frozen_d.name
+        else:
+            deadline_args = ["--deadline-s", str(DEV_DEADLINE_S)]
+            deadline_note = ("D NOT YET FROZEN: the declared diagnostic value "
+                             "is used and the cell says so")
         cells.append(_task_cell(
             f"b-{sid}-branch-seed-7", "b_round", "branch_alignment", cfg,
-            extra_args=["--deadline-s", str(DEV_DEADLINE_S),
-                        "--max-branches", str(branches),
+            extra_args=[*deadline_args, "--max-branches", str(branches),
                         "--window-start", str(DEV_WINDOW_S[0]),
                         "--window-end", str(DEV_WINDOW_S[1])],
             description=f"{sid}: offline branch block (at most {branches} "
-                        f"branches, declared per scenario)", seed=7,
+                        f"branches; {deadline_note})", seed=7,
             require={"require_task": "branch_alignment",
                      "require_sampling_rule": t1_tasks.BRANCH_SAMPLING_RULE,
                      "min_branches": 1}))
@@ -2168,6 +2252,10 @@ def main(argv=None):
     p.add_argument("--contract", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--root", type=Path, default=Path.cwd())
+    p = sub.add_parser("freeze-deadlines")
+    p.add_argument("--contract", type=Path, required=True)
+    p.add_argument("--out-dir", type=Path, required=True)
+    p.add_argument("--root", type=Path, default=Path.cwd())
     p = sub.add_parser("cost")
     p.add_argument("--bundle", type=Path, required=True)
     p = sub.add_parser("report")
@@ -2206,6 +2294,15 @@ def main(argv=None):
                               "population_size": projected.get("population_size"),
                               "quantiles": projected.get("quantiles"),
                               "out": str(args.out)}, ensure_ascii=False))
+        elif args.command == "freeze-deadlines":
+            frozen = freeze_scenario_deadlines(args.contract, args.out_dir,
+                                               args.root)
+            report = frozen["scenarios"]
+            print(json.dumps({
+                "status": "frozen",
+                "scenarios": {k: v.get("status") for k, v in report.items()},
+                "deadlines": {k: v.get("deadline_s") for k, v in report.items()},
+            }, ensure_ascii=False))
         elif args.command == "cost":
             bundle = json.loads(
                 (Path(args.bundle) / "bundle.json").read_text(encoding="utf-8"))
