@@ -293,15 +293,17 @@ def _b_cells(contract, bundle_dir):
         sid = str(spec["id"])
         profile = str(spec["profile"])
         params = dict(spec.get("parameters") or {})
+        branches = int(spec.get("max_branches", 12))
         cfg = _seed_config(contract, bundle_dir, 7, params, tag=f"b-{sid}",
                            profile=profile)
         cells.append(_task_cell(
             f"b-{sid}-branch-seed-7", "b_round", "branch_alignment", cfg,
             extra_args=["--deadline-s", str(DEV_DEADLINE_S),
-                        "--max-branches", "12",
+                        "--max-branches", str(branches),
                         "--window-start", str(DEV_WINDOW_S[0]),
                         "--window-end", str(DEV_WINDOW_S[1])],
-            description=f"{sid}: offline branch block", seed=7,
+            description=f"{sid}: offline branch block (at most {branches} "
+                        f"branches, declared per scenario)", seed=7,
             require={"require_task": "branch_alignment",
                      "require_sampling_rule": t1_tasks.BRANCH_SAMPLING_RULE,
                      "min_branches": 1}))

@@ -265,33 +265,50 @@ b_round:
       demand.packet_bits: 1000000
       scenario.duration_s: 70.0
     measured: t1-five2-52d551f：四臂与五候选同值，不区分
+    max_branches: 3
   - id: fixed_hotspot
     business: 固定热点（单 OD 走廊，0.8×ISL 容量）
     profile: CODE/leo_sim/profiles/t1_pressure_corridor.yaml
     expectation: discriminating_candidate
     parameters:
-      demand.offered_mbps: 8.0
+      demand.offered_mbps: 2.0
       demand.packet_bits: 1000000
-      scenario.duration_s: 180.0
+      scenario.duration_s: 40.0
       time_alignment.enabled: true
       execution.compute_delay_s: 0.001
       execution.compute_servers_per_satellite: 2
-    analytic: 每条走廊链路承载 offered_mbps，期望有向 ISL 利用率 = min(1, F/isl_rate_mbps) = 0.8
+      links.isl_rate_mbps: 2.5
+    analytic: 同一解析窗口按比例缩小：利用率 = offered/isl_rate = 2.0/2.5 = 0.8 不变，包数从 1440 降到 80。VM
+      实测原始尺寸单臂 105 s，四臂/多支路必然超 120 s/cell。
+    max_branches: 3
   - id: burst_multiod
     business: 变化热点/突发（M-Lab OD 权重 + 预声明突发窗）
     profile: CODE/leo_sim/profiles/mlab_multiod_burst_t0_queue_280x14_e25_10mbps.yaml
     expectation: stress_transform
     parameters:
-      scenario.duration_s: 120.0
+      scenario.duration_s: 60.0
       time_alignment.enabled: true
       execution.compute_delay_s: 0.001
       execution.compute_servers_per_satellite: 2
+      scenario.num_satellites: 24
+      scenario.num_planes: 3
+      endpoints.mlab_max_sites: 8
+      demand.offered_mbps: 10.0
+    analytic: M-Lab OD 权重 + 预声明突发窗（压力变换）。VM 实测原始尺寸（140 星/120 s）单臂 888 s，远超 120 s/cell，故按任务书缩小拓扑与时窗并生成本身份；OD
+      权重来源不变。
+    max_branches: 3
   deadline_rule: 每个业务场景一个 D：预声明业务截止，或独立开发基准合法候选交付样本 p95×2；该场景所有臂/模式共用
   budgets:
     cell_wall_s: 120
     max_cells: 120
     total_wall_s: 7200
     note: 沿用现有上限；规模不适配时先缩小时窗并生成新身份，保留业务机制
+    sizing_evidence_vm:
+      steady_uniform: branch 43.3 s / network 6.4 s / benchmark 35.1 s（70 s, 24 星,
+        0.5 Mbps）
+      fixed_hotspot_original: 单臂 105 s（180 s, 24 星, 8/10 Mbps）
+      burst_multiod_original: 单臂 888 s（120 s, 140 星）
+      note: b_dev 首轮 10 格中 7 格 cell_wall_s 超时，故缩窗并生成新身份
   calibration_plan:
   - 固定包长 372/891/1500 B；有限池 N=1/2/4，无界 N=0 仅作负对照
   - 按目标 rho 构造受控请求流并验证等待/积压与守恒
