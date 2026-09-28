@@ -454,6 +454,22 @@
      "formal": 0
     },
     "fix": "tiers.acceptance 只含机制夹具；status != READY 的场景不进入运行层（无效场景留在合同里带实测理由）",
+    "full_file_run_is_not_completable_locally": {
+     "cause": "该文件的多个用例各自要跑整层 dev（39 格，含 24 星 40 s 走廊与突发场景，由 subprocess 拉起），累计内存/时间超过本机这条流水线的上限。",
+     "evidence": [
+      "bash-50 与 bash-63 两次整文件运行都在第 17-22 个用例处终止：/tmp/suite_*.log 冻结在 17 字节，",
+      "ps 里没有任何 python/pytest 进程，且没有 traceback —— 进程被环境杀掉，不是断言失败。",
+      "bash-52 曾完成过一次（30 passed / 1 failed / 32 分钟），但那是在验收层被 b_round 污染、",
+      "单次验收要 5 分钟以上的状态下；也就是说整文件运行处在资源边缘。"
+     ],
+     "next_step": "把只关心「dev 层能跑」的用例换成一个小的夹具合同（少种子/脚本场景），让整文件能在本机跑完；这属于测试基础设施改进，不改平台语义。",
+     "not_a_platform_defect": "VM 上的同一批 cell 全部通过（acceptance 10/10、dev 39/39、b_dev 10/10），且每次都有 run-id 与拉回复核；本机限制只影响这条本地测试流水线。",
+     "what_is_verified_instead": [
+      "本机其余全量：1422 passed, 3 skipped（不含该文件）。",
+      "该文件的两个曾失败用例单独复跑：2 passed in 24.86s（已修复的验收层污染）。",
+      "修复前整文件最好成绩：30 passed / 1 failed；修复后未再取得整文件结论。"
+     ]
+    },
     "rest_of_suite": "1422 passed, 3 skipped（不含 test_t1_suite.py）",
     "test_t1_suite_file": "30 passed / 1 failed（32 分钟）；-x 复跑 22 passed / 1 failed（22 分钟）",
     "two_failures_were_real_and_fixed": [
