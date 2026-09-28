@@ -899,11 +899,19 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
         "requested", {}).get("learning_policy")
     if learning_policy not in LEARNING_POLICIES:
         errors.append(f"unknown learning_policy {learning_policy!r}")
-    elif learning_policy == "deterministic_scorer" \
-            and requested_learning != "none":
-        errors.append(
-            "learning_policy=deterministic_scorer requires learning_algorithm=none")
+    elif learning_policy == "deterministic_scorer":
+        # the no-policy case: the ledger must be exactly the algorithm marker
+        if requested_learning != "none":
+            errors.append(
+                "learning_policy=deterministic_scorer requires "
+                "learning_algorithm=none")
+        if learning != {"algorithm": "none"}:
+            errors.append("non-learning ledger must be exactly {'algorithm': 'none'}")
     elif learning_policy == "fixed_inference_checkpoint":
+        if requested_learning != "ddqn":
+            errors.append(
+                "learning_policy=fixed_inference_checkpoint requires "
+                "learning_algorithm=ddqn")
         # A1: a FIXED-INFERENCE run reads a real artifact and never trains.
         # It is verified on its own terms: no replay buffer, no gradient step,
         # no saved training bundle, and the artifact identity it ran against
