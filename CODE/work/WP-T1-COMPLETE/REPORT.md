@@ -238,6 +238,7 @@ runner: CODE/scripts/remote/t1-vm.sh sync|run|pull|experiment
 run-id:   t1-final-8a31496        pulled -> out/vm/t1-final-8a31496/
 工件身份: identity.git.source=launch_manifest, commit=8a31496…, dirty=false, status_short=[]
 链一致性: VM 链 e8537aed… == 本机重算 e8537aed…（57 个执行链文件）
+拉回完整性: VM Results/t1-final-8a31496 的 52 个文件与 out/vm/t1-final-8a31496 逐字节一致（sha256 逐一相等）
 平台:     Linux-6.6.0-…aarch64   python 3.11.15 / simpy 4.0.1 / numpy 1.24.3
 
 t1_suite compile  -> 20 cells

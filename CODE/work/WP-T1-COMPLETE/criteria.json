@@ -396,6 +396,7 @@
         "status_short": [],
         "execution_chain_sha256": "e8537aedbcb46858848fe1c4d3234a56997a849fe0e113748b93a22281f0a4ce",
         "chain_equality": "VM 链 == 本机重算（57 个执行链文件）",
+        "pullback_integrity": "VM Results 的 52 个文件与 out/vm 拉回副本 sha256 逐一相等（逐字节一致）",
         "bundle_fingerprint": "334dbbd20a70a236db886eee7c32892773db7f9eb58b0666891c5dfd6991f38e",
         "acceptance": {"ok": 10, "predicate_failed": 0, "not_ok": 0, "verified_ok": 10},
         "dev": {"ok": 10, "predicate_failed": 0, "not_ok": 0, "verified_ok": 10},
