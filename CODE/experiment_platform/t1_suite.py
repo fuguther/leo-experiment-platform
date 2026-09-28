@@ -733,11 +733,6 @@ def _seed_config(contract, bundle_dir, seed, params=None, tag=None,
     doc.setdefault("scenario", {})
     if isinstance(doc["scenario"], dict):
         doc["scenario"]["seed"] = int(seed)
-    doc.setdefault("source", {})
-    if isinstance(doc["source"], dict):
-        # B0: record WHICH declared scenario profile this config came from, so a
-        # result can never be attributed to the wrong business class.
-        doc["source"]["scenario_profile"] = profile
     apply_parameters(doc, params)
     configs = Path(bundle_dir) / "configs"
     configs.mkdir(exist_ok=True)
