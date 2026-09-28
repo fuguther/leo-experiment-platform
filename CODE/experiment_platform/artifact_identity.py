@@ -17,6 +17,7 @@ still be produced with an explicit provenance gap rather than a crash.
 from __future__ import annotations
 
 import hashlib
+import json
 import platform
 import subprocess
 from pathlib import Path
@@ -106,7 +107,30 @@ def git_identity(root: Path = REPO_ROOT) -> dict:
 
     commit = _git("rev-parse", "HEAD")
     if commit is None:
-        return {"available": False, "reason": "git not available or not a repository"}
+        # A deployed tree (the VM) has no .git.  The sync step writes
+        # launch.json with the exact local HEAD and dirty flag, and an artifact
+        # produced there must still be bound to that identity rather than
+        # reporting "unknown".
+        manifest_path = root / "launch.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {"available": False,
+                    "reason": "git not available and no launch manifest found"}
+        if not manifest.get("head"):
+            return {"available": False, "reason": "launch manifest has no head"}
+        return {
+            "available": True,
+            "source": "launch_manifest",
+            "commit": str(manifest["head"]),
+            "branch": None,
+            "dirty": bool(manifest.get("dirty", False)),
+            "status_short": [],
+            "diff_sha256": None,
+            "manifest_path": str(manifest_path),
+            "manifest": {k: manifest.get(k) for k in
+                         ("schema", "head", "dirty", "synced_at")},
+        }
     branch = _git("rev-parse", "--abbrev-ref", "HEAD")
     porcelain = _git("status", "--porcelain")
     status_lines = [ln for ln in (porcelain or "").splitlines() if ln.strip()]

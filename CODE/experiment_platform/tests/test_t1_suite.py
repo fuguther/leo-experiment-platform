@@ -322,7 +322,9 @@ def test_the_formal_package_is_compiled_and_validated_not_run(tmp_path):
     bundle_dir = _compiled(tmp_path)
     bundle = json.loads((bundle_dir / "bundle.json").read_text())
     package = bundle["formal_package"]
-    assert package["status"] == "NOT_EXECUTED"
+    assert package["execution_status"] == "NOT_EXECUTED"
+    assert package["status"] == "PENDING_DEV_SELECTION"
+    assert package["design_state"]["required"]
     for field in ("dev_confirm_separation", "sample_size_plan",
                   "effect_thresholds", "information_permissions",
                   "cost_sources", "scenario_validity", "failure_rules",
@@ -363,8 +365,13 @@ def test_the_report_carries_the_frozen_statistics(tmp_path):
     assert stats["bootstrap"]["n_boot"] == 10000
     assert stats["sample_size_plan"]["rule"].startswith("n = max(20")
     for block in stats["per_block"]:
-        assert "common_strong_regret" in block
+        assert "common_regret" in block
         assert "candidate_regret" in block
+    # with identical dev differences the horizon cannot be selected: the report
+    # must say so instead of calling the online common arm "common_strong"
+    assert stats["common_strong"]["frozen"] is False
+    assert "cannot discriminate" in stats["common_strong"]["reason"]
+    assert "NOT frozen" in stats["primary_comparison"]
 
 
 def test_the_acceptance_matrix_records_its_declared_overrides(tmp_path):
@@ -448,4 +455,100 @@ def test_a_successful_round_still_exits_zero(tmp_path):
     assert done.returncode == 0, done.stdout + done.stderr
     done = _run("report", "--run-dir", str(tmp_path / "ok"))
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+
+# ------------------------------------- S7: formal package and common_strong
+def test_the_formal_package_thresholds_are_part_of_the_fingerprint(tmp_path):
+    """The reviewer's repro: rewriting a threshold must NOT stay valid."""
+    bundle_dir = _compiled(tmp_path)
+    bundle = json.loads((bundle_dir / "bundle.json").read_text())
+    bundle["formal_package"]["effect_thresholds"][
+        "minimum_substantive_difference"] = 999
+    (bundle_dir / "bundle.json").write_text(json.dumps(bundle))
+    done = _run("validate", "--bundle", str(bundle_dir))
+    assert done.returncode == 2, done.stdout
+    assert "fingerprint mismatch" in done.stdout
+
+
+def test_the_formal_design_is_part_of_the_fingerprint(tmp_path):
+    bundle_dir = _compiled(tmp_path)
+    bundle = json.loads((bundle_dir / "bundle.json").read_text())
+    bundle["formal_design"] = {"ready": True, "confirm_seeds": [1001]}
+    (bundle_dir / "bundle.json").write_text(json.dumps(bundle))
+    done = _run("validate", "--bundle", str(bundle_dir))
+    assert done.returncode == 2
+    assert "fingerprint mismatch" in done.stdout
+
+
+def _ready_contract(tmp_path):
+    contract = yaml.safe_load(CONTRACT.read_text())
+    frozen = tmp_path / "deadline.json"
+    frozen.write_text(json.dumps({"deadline_s": 4.0, "source": "dev_p95",
+                                  "frozen_at_sha": "abc"}))
+    contract["formal_design"] = {
+        "ready": True,
+        "confirm_seeds": [1001, 1002],
+        "deadline_file": str(frozen),
+        "common_strong_horizon_s": 0.75,
+        "sample_size": 20,
+    }
+    path = tmp_path / "contract-ready.yaml"
+    path.write_text(yaml.safe_dump(contract, allow_unicode=True))
+    return path, frozen
+
+
+def test_a_ready_design_compiles_real_pending_cells(tmp_path):
+    contract_path, _frozen = _ready_contract(tmp_path)
+    bundle_dir = tmp_path / "compiled-ready"
+    done = _run("compile", "--contract", str(contract_path),
+                "--out", str(bundle_dir))
+    assert done.returncode == 0, done.stdout + done.stderr
+    bundle = json.loads((bundle_dir / "bundle.json").read_text())
+    assert bundle["tiers"]["formal"] == ["confirm-seed-1001",
+                                         "confirm-seed-1002"]
+    assert bundle["formal_package"]["status"] == "READY_TO_EXECUTE"
+    assert bundle["formal_package"]["design_state"]["deadline_sha256"]
+    for cell in bundle["cells"]:
+        if cell["group"] != "confirm":
+            continue
+        assert cell["seed"] in (1001, 1002)
+        assert "--deadline-from" in cell["args"]
+        assert cell["input"]["files"]["--deadline-from"]["sha256"], cell
+    done = _run("validate", "--bundle", str(bundle_dir))
+    assert done.returncode == 0, done.stdout + done.stderr
+    # compiled and validated, still NOT runnable without authorization
+    done = _run("run", "--bundle", str(bundle_dir), "--tier", "formal",
+                "--out", str(tmp_path / "formal"))
+    assert done.returncode == 2
+    assert "PENDING PACKAGE" in done.stdout
+
+
+def test_a_ready_design_without_a_frozen_deadline_is_refused(tmp_path):
+    contract_path, _frozen = _ready_contract(tmp_path)
+    contract = yaml.safe_load(contract_path.read_text())
+    contract["formal_design"]["deadline_file"] = str(tmp_path / "nope.json")
+    bad = tmp_path / "contract-bad.yaml"
+    bad.write_text(yaml.safe_dump(contract, allow_unicode=True))
+    done = _run("compile", "--contract", str(bad), "--out",
+                str(tmp_path / "b2"))
+    assert done.returncode == 2
+    assert "frozen D" in done.stdout
+
+
+def test_the_common_strong_state_is_reported_with_its_reason(tmp_path):
+    bundle_dir = _compiled(tmp_path)
+    run_dir = tmp_path / "dev"
+    _run("run", "--bundle", str(bundle_dir), "--tier", "dev",
+         "--out", str(run_dir))
+    _run("report", "--run-dir", str(run_dir))
+    report = json.loads((run_dir / "report.json").read_text())
+    state = report["statistics"]["common_strong"]
+    assert state["frozen"] is False
+    assert set(state["candidates"]) == {
+        "mean_eta_offset", "median_eta_offset", "p25_offset", "p50_offset",
+        "p75_offset"}
+    assert state["evaluated"]
+    assert "cannot discriminate" in state["reason"]
+    assert "required" in state
 

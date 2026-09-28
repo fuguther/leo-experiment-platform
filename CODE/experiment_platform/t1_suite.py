@@ -256,7 +256,7 @@ def _dev_cells(contract, bundle_dir):
     return cells
 
 
-def _formal_package(contract, bundle_dir):
+def _formal_package(contract, bundle_dir, formal_state=None):
     """The compiled, NOT-EXECUTED confirmation package.
 
     Compiling it is part of this task; running it needs an authorization this
@@ -270,9 +270,12 @@ def _formal_package(contract, bundle_dir):
     examples = {}
     for s in (0.01, 0.02, 0.05, 0.1):
         examples[str(s)] = t1_stats.plan_sample_size(s, half_width=half_width)
+    state = dict(formal_state or {})
     return {
         "schema": "t1-formal-package/v1",
-        "status": "NOT_EXECUTED",
+        "status": state.get("status", "NOT_EXECUTED"),
+        "execution_status": "NOT_EXECUTED",
+        "design_state": state,
         "why_not_executed": "the confirmation matrix requires an explicit "
                             "authorization and a remote/formal execution "
                             "window; neither is held by this task",
@@ -334,6 +337,73 @@ def _formal_package(contract, bundle_dir):
     }
 
 
+def _formal_cells(contract, bundle_dir):
+    """REAL pending confirmation cells, generated only when the design is ready.
+
+    A cell is only frozen once the development stage has produced a deadline and
+    a common_strong choice; until then the formal tier stays empty and the
+    package says PENDING_DEV_SELECTION instead of inventing a sample size from
+    scenarios that cannot discriminate.
+    """
+    design = contract.get("formal_design") or {}
+    if not design.get("ready"):
+        return [], {
+            "status": "PENDING_DEV_SELECTION",
+            "reason": design.get("reason") or (
+                "the development stage has not produced a frozen deadline and a "
+                "common_strong choice, so no confirmation cell can be compiled"),
+            "required": design.get("required") or [
+                "a development block set with non-zero paired-difference "
+                "variance",
+                "a frozen deadline file (--freeze-deadline-to) with its "
+                "identity",
+                "a selected common_strong horizon with its provenance",
+            ],
+        }
+    profile = contract.get("source", {}).get(
+        "constellation_profile",
+        "CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml")
+    seeds = [int(s) for s in design.get("confirm_seeds", [])]
+    if not seeds:
+        raise SuiteError("formal_design.ready is true but confirm_seeds is empty")
+    deadline = design.get("deadline_file")
+    if not deadline or not Path(deadline).exists():
+        raise SuiteError(
+            "formal_design.ready is true but deadline_file is missing: a "
+            "confirmation cell must load a frozen D, not derive one")
+    horizon = design.get("common_strong_horizon_s")
+    if horizon is None:
+        raise SuiteError(
+            "formal_design.ready is true but common_strong_horizon_s is unset")
+    cells = []
+    for seed in seeds:
+        cfg = _seed_config(contract, bundle_dir, seed)
+        cells.append(_cell(
+            f"confirm-seed-{seed}", "confirm",
+            "CODE.experiment_platform.time_alignment_compare",
+            ["--config", str(cfg), "--decision-id", "first_forward",
+             "--deadline-from", str(deadline), "--run-kind", "confirm"],
+            "frozen confirmation cell: fixed D, confirm seed, arm comparison",
+            seed=seed,
+            predicate={"kind": "time_alignment",
+                       "require": {"min_candidates": 2,
+                                   "max_invalid_pairs": 0,
+                                   "ideal_arms": ["oracle_now", "oracle_common",
+                                                  "oracle_candidate"],
+                                   "decomposition": [
+                                       "eta_estimated_x_queue_predicted",
+                                       "eta_estimated_x_queue_truth",
+                                       "eta_true_x_queue_predicted",
+                                       "eta_true_x_queue_truth"]}}))
+    return cells, {"status": "READY_TO_EXECUTE",
+                   "reason": None,
+                   "confirm_seeds": seeds,
+                   "deadline_file": str(deadline),
+                   "deadline_sha256": _sha256_file(deadline),
+                   "common_strong_horizon_s": float(horizon),
+                   "sample_size": design.get("sample_size")}
+
+
 def _seed_config(contract, bundle_dir, seed):
     """Write a per-seed copy of the frozen branch profile into the bundle."""
     profile = contract.get("source", {}).get(
@@ -373,8 +443,10 @@ def compile_bundle(contract_path, out_dir):
     if not parent.is_dir() or parent.is_symlink():
         raise SuiteError(f"bundle parent must be a real directory: {parent}")
     out_dir.mkdir()
-    cells = _acceptance_cells(contract, out_dir) + _dev_cells(contract,
-                                                               out_dir)
+    confirm_cells, formal = _formal_cells(contract, out_dir)
+    cells = (_acceptance_cells(contract, out_dir) + _dev_cells(contract,
+                                                              out_dir)
+             + confirm_cells)
     if len(cells) > budgets["max_cells"]:
         raise BudgetExceeded(
             f"{len(cells)} cells exceed the pre-declared max_cells "
@@ -401,9 +473,10 @@ def compile_bundle(contract_path, out_dir):
             "acceptance": [c["cell_id"] for c in cells
                            if c["group"] != "dev_sweep"],
             "dev": [c["cell_id"] for c in cells if c["group"] == "dev_sweep"],
-            "formal": [],
+            "formal": [c["cell_id"] for c in confirm_cells],
         },
-        "formal_package": _formal_package(contract, out_dir),
+        "formal_design": contract.get("formal_design") or {"ready": False},
+        "formal_package": _formal_package(contract, out_dir, formal),
         "cells": cells,
         "pre_registration": {
             "primary_comparison": contract.get("statistics", {}).get(
@@ -435,7 +508,7 @@ def _cell_input_binding(cell):
     silently.
     """
     binding = {"config_sha256": None, "config_path": None,
-               "scenario": None, "driver_sha256": None}
+               "scenario": None, "driver_sha256": None, "files": {}}
     args = list(cell.get("args") or [])
     for flag, value in zip(args, args[1:]):
         if flag == "--config":
@@ -445,6 +518,12 @@ def _cell_input_binding(cell):
                                         if path.exists() else None)
         if flag == "--scenario":
             binding["scenario"] = value
+        if flag in ("--deadline-from", "--checkpoint", "--metadata",
+                    "--policy-checkpoint"):
+            path = Path(value)
+            binding["files"][flag] = {
+                "path": str(path),
+                "sha256": _sha256_file(path) if path.exists() else None}
     driver = REPO_ROOT / str(cell.get("driver", "")).replace(".", "/")
     driver_py = driver.with_suffix(".py")
     binding["driver_sha256"] = (_sha256_file(driver_py)
@@ -467,6 +546,11 @@ def _bundle_fingerprint(bundle):
         "tiers": bundle.get("tiers"),
         "cells": bundle.get("cells"),
         "pre_registration": bundle.get("pre_registration"),
+        # the formal pending package carries semantic fields (thresholds,
+        # sample-size rule, permissions); editing any of them must move the
+        # fingerprint, otherwise a threshold could be rewritten silently
+        "formal_package": bundle.get("formal_package"),
+        "formal_design": bundle.get("formal_design"),
     }
     return hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
 
@@ -518,8 +602,17 @@ def validate_bundle(bundle_dir):
                       "planned_matrix"):
             if field not in package:
                 errors.append(f"formal package missing {field}")
-        if package.get("status") != "NOT_EXECUTED":
+        if package.get("execution_status") != "NOT_EXECUTED":
             errors.append("formal package must be declared NOT_EXECUTED")
+        if package.get("status") not in ("NOT_EXECUTED",
+                                         "PENDING_DEV_SELECTION",
+                                         "READY_TO_EXECUTE"):
+            errors.append(
+                f"unknown formal package status {package.get('status')!r}")
+        if (package.get("status") == "READY_TO_EXECUTE"
+                and not (package.get("design_state") or {}).get(
+                    "deadline_sha256")):
+            errors.append("a READY formal package must bind its deadline hash")
     if "formal" not in (bundle.get("tiers") or {}):
         errors.append("a formal tier entry is required (even if empty)")
     # --- content fingerprint: a structure-preserving parameter edit moves it
@@ -1125,16 +1218,31 @@ def _statistics_summary(run_dir, rows):
             excluded.append({"unit": row["cell_id"],
                              "reason": "primary arms missing"})
             continue
+        source = payload.get("source") or {}
         blocks.append({"unit": row["cell_id"],
-                       "common_strong_regret": float(common),
+                       "common_regret": float(common),
                        "candidate_regret": float(candidate),
+                       "common_rule": source.get("arm"),
+                       "common_horizon_s": (payload.get("arms", {})
+                                            .get("common", {})
+                                            .get("common_horizon_s")),
                        "censored": (payload.get("counts") or {}).get("censored"),
                        "deadline": (payload.get("deadline") or {}).get(
-                           "deadline_s")})
+                           "deadline_s"),
+                       "deadline_source": (payload.get("deadline") or {}).get(
+                           "source"),
+                       "run_kind": (payload.get("deadline") or {}).get(
+                           "run_kind")})
+    frozen_common = _common_strong_state(blocks)
     summary = {
         "unit_of_replication": "scenario x trace x seed (one cell here)",
         "blocks": len(blocks),
-        "primary_comparison": "common_strong regret - candidate regret",
+        "primary_comparison": (
+            "common_strong regret - candidate regret"
+            if frozen_common["frozen"] else
+            "common regret - candidate regret (common_strong NOT frozen; see "
+            "common_strong)"),
+        "common_strong": frozen_common,
         "minimum_substantive_difference": (
             t1_stats.MINIMUM_SUBSTANTIVE_DIFFERENCE),
         "sensitivity": [0.005, 0.02],
@@ -1147,7 +1255,7 @@ def _statistics_summary(run_dir, rows):
         summary["note"] = ("no time-alignment block in this tier: nothing to "
                            "pair")
         return summary
-    diffs = [b["common_strong_regret"] - b["candidate_regret"] for b in blocks]
+    diffs = [b["common_regret"] - b["candidate_regret"] for b in blocks]
     summary["paired_differences"] = diffs
     summary["mean_difference"] = _statistics.fmean(diffs)
     if len(diffs) < 2:
@@ -1156,7 +1264,7 @@ def _statistics_summary(run_dir, rows):
         summary["sample_size_plan"] = {
             "pending": "needs at least two development blocks to estimate s"}
         return summary
-    common_list = [b["common_strong_regret"] for b in blocks]
+    common_list = [b["common_regret"] for b in blocks]
     candidate_list = [b["candidate_regret"] for b in blocks]
     summary["bootstrap"] = t1_stats.primary_comparison_delta(
         common_list, candidate_list)
@@ -1178,6 +1286,51 @@ def _statistics_summary(run_dir, rows):
             "confirmation run by itself")
     summary["sample_size_plan"] = plan
     return summary
+
+
+def _common_strong_state(blocks):
+    """Has a common_strong horizon actually been SELECTED and frozen?
+
+    The plan requires the shared future horizon to be chosen on development
+    data (mean/median/p25/p50/p75 offsets) and then frozen.  If the development
+    blocks cannot discriminate (every paired difference identical), no
+    candidate can be selected, and saying so is the honest outcome.
+    """
+    candidates = ["mean_eta_offset", "median_eta_offset", "p25_offset",
+                  "p50_offset", "p75_offset"]
+    if not blocks:
+        return {"frozen": False, "candidates": candidates, "evaluated": [],
+                "reason": "no development block in this tier"}
+    differences = [b["common_regret"] - b["candidate_regret"] for b in blocks]
+    distinct = sorted({round(d, 12) for d in differences})
+    if len(distinct) <= 1:
+        return {
+            "frozen": False,
+            "candidates": candidates,
+            "evaluated": [{"rule_used": b.get("common_rule"),
+                           "unit": b["unit"],
+                           "difference": b["common_regret"]
+                           - b["candidate_regret"]} for b in blocks],
+            "reason": ("every development block shows the SAME paired "
+                       "difference, so the dev scenarios cannot discriminate "
+                       "between horizon candidates: common_strong is NOT "
+                       "frozen and no confirmation sample size can be derived "
+                       "from them"),
+            "required": ("a development block set with non-zero paired "
+                         "difference variance, then re-run the selection over "
+                         "the five pre-declared candidates"),
+        }
+    return {
+        "frozen": True,
+        "candidates": candidates,
+        "rule_used": blocks[0].get("common_rule"),
+        "note": "the frozen rule is the one the development cells used; the "
+                "selection evidence is the per-block difference below",
+        "evaluated": [{"rule_used": b.get("common_rule"), "unit": b["unit"],
+                       "difference": b["common_regret"]
+                       - b["candidate_regret"]} for b in blocks],
+        "reason": None,
+    }
 
 
 def _by_group(run_doc, rows):

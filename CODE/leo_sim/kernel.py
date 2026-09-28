@@ -52,6 +52,7 @@ import simpy
 from . import (control, fates, grid as gridmod, learning as _learning, metrics,
                model, q0, link_budget)
 from . import async_routing as _async
+from . import inference as _inference
 from . import outage, rng as rngmod, routing
 from . import time_alignment as _ta
 from . import trace as tracemod
@@ -1066,7 +1067,8 @@ class ISLLink:
 class Kernel:
     def __init__(self, resolved: dict, rows: list[dict], geometry=None,
                  learning_out_dir=None, decision_sink=None, timeline_sink=None,
-                 forced_actions=None, control_audit=False):
+                 forced_actions=None, control_audit=False,
+                 inference_policy=None):
         cfg = resolved["config"]
         self.resolved = resolved
         self.cfg_sc = cfg["scenario"]
@@ -1083,6 +1085,18 @@ class Kernel:
         self.cfg_ta = cfg["time_alignment"]
         self.cfg_ar = cfg["async_routing"]
         self.cfg_dm = cfg["demand"]
+        # T1-R6/S6: an INFERENCE-ONLY policy may replace the action choice on a
+        # frozen snapshot (branch tooling).  A training learner is refused here
+        # and the frozen+learner combination stays refused below; this hook is
+        # deliberately not an unlock of the learner boundary.
+        self.inference_policy = inference_policy
+        if inference_policy is not None:
+            _inference.assert_inference_only(inference_policy)
+            if str(cfg["learning"]["algorithm"]) != "none":
+                raise KernelError(
+                    "an inference-only policy may not be combined with a "
+                    "training learner (learning.algorithm="
+                    f"{cfg['learning']['algorithm']!r})")
         # T1-R9: ONE shared per-satellite query service.  Every execution mode
         # reads its answer through it, so "just a table lookup" is not silently
         # free; a query_delay_s of 0 keeps the historical instantaneous path.
@@ -4042,11 +4056,23 @@ class Kernel:
                                                 arm, horizon)
             plan = _ta.plan_decision(probe)
             scored = plan.scored
+            policy_choice = None
+            if self.inference_policy is not None:
+                policy_choice = self.inference_policy.act(probe)
+                if policy_choice not in probe.legal_directions:
+                    raise KernelError(
+                        "the inference policy chose "
+                        f"{policy_choice!r} outside the legal set "
+                        f"{sorted(probe.legal_directions)}")
         except _ta.TimeAlignmentError as exc:
             raise KernelError(
                 f"time_alignment could not score decision at {now}: {exc}")
         order = [d for d in scored.ranking if d in cands]
         order += [d for d in cands if d not in order]
+        if policy_choice is not None:
+            # the inference policy owns the ACTION; the scorer still supplies
+            # the fallback ordering behind it
+            order = [policy_choice] + [d for d in order if d != policy_choice]
         audit = {
             "schema": "leo-sim-time-alignment-at-start/v1",
             "enabled": True,
@@ -4068,6 +4094,11 @@ class Kernel:
             # own idea of the arm
             "query_targets": dict(plan.targets),
             "arm": probe.arm,
+            "inference_policy": (
+                None if self.inference_policy is None else
+                {"name": getattr(self.inference_policy, "name", None),
+                 "choice": policy_choice,
+                 "counters": self.inference_policy.counters()}),
             "eta_unknown_terms": {
                 d: list(_ta.estimate_eta(probe, d).unknown_terms)
                 for d in probe.legal_directions},
@@ -5721,9 +5752,10 @@ class Kernel:
 def run_simulation(resolved: dict, rows: list[dict], geometry=None,
                    learning_out_dir=None, decision_sink=None,
                    timeline_sink=None, forced_actions=None,
-                   control_audit=False) -> dict:
+                   control_audit=False, inference_policy=None) -> dict:
     kern = Kernel(resolved, rows, geometry=geometry,
                   learning_out_dir=learning_out_dir,
                   decision_sink=decision_sink, timeline_sink=timeline_sink,
-                  forced_actions=forced_actions, control_audit=control_audit)
+                  forced_actions=forced_actions, control_audit=control_audit,
+                  inference_policy=inference_policy)
     return kern.run()

@@ -142,6 +142,210 @@ def deterministic_small_model(n_features: int, *, seed: int = 20260927,
     return FixedInferenceAdapter(weights, name=name)
 
 
+# --------------------------------------------------------------------------
+# inference-only POLICY interfaces: a frozen snapshot in, one legal action out
+# --------------------------------------------------------------------------
+#: the ordered feature contract a fixed model must match
+ETA_FEATURE_KEYS = ("compute_wait_s", "compute_service_s",
+                    "local_egress_wait_s", "tx_s", "prop_s",
+                    "peer_process_s")
+FEATURE_WIDTH_PER_CANDIDATE = len(ETA_FEATURE_KEYS) + 2
+
+
+class InferencePolicy:
+    """What a policy must expose to be usable on a frozen snapshot.
+
+    A legal set and a feature vector in, one action out.  Anything that also
+    exposes train_step/observe/update is a TRAINING learner and is refused by
+    assert_inference_only.
+    """
+
+    name = "abstract"
+    parameter_sha256 = ""
+
+    def act(self, snapshot):
+        raise NotImplementedError
+
+    def counters(self) -> dict:
+        raise NotImplementedError
+
+
+def assert_inference_only(policy) -> None:
+    """Refuse a policy that can learn: the frozen branch path is inference-only."""
+    for forbidden in ("train_step", "observe", "update", "set_epsilon",
+                      "learn"):
+        if hasattr(policy, forbidden):
+            raise FixedInferenceError(
+                f"policy {type(policy).__name__} exposes {forbidden!r}: it is a "
+                "training learner, and the frozen branch path accepts "
+                "inference-only policies")
+
+
+def build_features(snapshot) -> list:
+    """Deterministic feature vector of a frozen snapshot (model input contract).
+
+    Only information the snapshot already carries: per-candidate ETA terms in
+    seconds, the last advertised queue and the known rate.  The order is fixed
+    by ETA_FEATURE_KEYS so a checkpoint can be validated against it.
+    """
+    from . import time_alignment as _ta
+
+    features = []
+    for direction in sorted(snapshot.legal_directions):
+        eta = _ta.estimate_eta(snapshot, direction)
+        for key in ETA_FEATURE_KEYS:
+            value = eta.terms.get(key)
+            features.append(0.0 if value is None else float(value))
+        resource = snapshot.resource_for(direction)
+        samples = snapshot.history_for(resource) if resource is not None else ()
+        features.append(float(samples[-1].queue_bits) if samples else 0.0)
+        rate = snapshot.rate_for(direction)
+        features.append(float(rate) if rate else 0.0)
+    return features
+
+
+def observation_feature_width(snapshot) -> int:
+    return FEATURE_WIDTH_PER_CANDIDATE * len(snapshot.legal_directions)
+
+
+class FixedModelPolicy(InferencePolicy):
+    """Inference-only policy over a fixed parameter set.
+
+    The action mask is the snapshot's legal directions; the model may never
+    choose outside it.
+    """
+
+    def __init__(self, adapter, *, name=None):
+        assert_inference_only(adapter)
+        if not hasattr(adapter, "act") or not hasattr(adapter, "q_values"):
+            raise FixedInferenceError(
+                "a fixed model adapter must expose act() and q_values()")
+        self.adapter = adapter
+        self.name = name or adapter.name
+
+    @property
+    def parameter_sha256(self):
+        return self.adapter.parameter_sha256()
+
+    def act(self, snapshot):
+        legal = tuple(snapshot.legal_directions)
+        if not legal:
+            raise FixedInferenceError("the snapshot has no legal direction")
+        features = build_features(snapshot)
+        width = self.adapter.weights.shape[1]
+        if len(features) != width:
+            raise FixedInferenceError(
+                f"feature width {len(features)} != model width {width}; the "
+                "checkpoint was trained for a different observation contract")
+        q = self.adapter.q_values(features)
+        scores = {a: float(q[self.adapter.actions.index(a)]) for a in legal}
+        return max(legal, key=lambda a: (scores[a],
+                                         -self.adapter.actions.index(a)))
+
+    def counters(self) -> dict:
+        return dict(self.adapter.counters(), policy=self.name,
+                    kind="fixed_inference_policy")
+
+
+class WidthAdaptiveFixedPolicy(InferencePolicy):
+    """A fixed-parameter model PER FEATURE WIDTH, deterministic from a seed.
+
+    A real checkpoint has one input width, but a branch run can present
+    decisions with different candidate counts.  This variant keeps the
+    "fixed parameters" property (weights are a pure function of seed+width) and
+    lets the interface be exercised across a whole branch without pretending a
+    single checkpoint covers it.
+    """
+
+    def __init__(self, *, seed: int = 20260927, name="fixed-small-model"):
+        self.seed = int(seed)
+        self.name = str(name)
+        self._cache = {}
+        self._calls = 0
+
+    def _adapter_for(self, width: int):
+        adapter = self._cache.get(width)
+        if adapter is None:
+            adapter = deterministic_small_model(width, seed=self.seed,
+                                                name=self.name)
+            self._cache[width] = adapter
+        return adapter
+
+    def act(self, snapshot):
+        legal = tuple(snapshot.legal_directions)
+        if not legal:
+            raise FixedInferenceError("the snapshot has no legal direction")
+        adapter = self._adapter_for(observation_feature_width(snapshot))
+        features = build_features(snapshot)
+        q = adapter.q_values(features)
+        scores = {a: float(q[adapter.actions.index(a)]) for a in legal}
+        self._calls += 1
+        return max(legal, key=lambda a: (scores[a],
+                                         -adapter.actions.index(a)))
+
+    def parameter_sha256(self):
+        h = hashlib.sha256()
+        for width in sorted(self._cache):
+            h.update(str(width).encode())
+            h.update(self._cache[width].parameter_sha256().encode())
+        return h.hexdigest()
+
+    def counters(self) -> dict:
+        return {
+            "schema": SCHEMA, "policy": self.name, "kind":
+            "fixed_inference_policy", "seed": self.seed,
+            "calls": self._calls, "epsilon": 0.0, "updates": 0,
+            "grad_steps": 0, "training": False,
+            "widths": sorted(self._cache),
+            "parameter_sha256": self.parameter_sha256(),
+        }
+
+
+class ScorerPolicy(InferencePolicy):
+    """The deterministic shared scorer behind the same interface."""
+
+    name = "deterministic_scorer"
+    parameter_sha256 = ""
+
+    def act(self, snapshot):
+        from . import time_alignment as _ta
+        return _ta.plan_decision(snapshot).chosen()
+
+    def counters(self) -> dict:
+        return {"schema": SCHEMA, "policy": self.name, "calls": 0,
+                "epsilon": None, "updates": 0, "training": False}
+
+
+def load_fixed_adapter_from_checkpoint(checkpoint_path, checkpoint_sha256,
+                                       metadata_path, metadata_sha256,
+                                       *, expected_width=None,
+                                       name="checkpoint-model"):
+    """HARD-GATED load of a real checkpoint: every gate must pass.
+
+    Gates: path exists, file hash matches, sibling metadata exists and its hash
+    matches, metadata declares the observation contract, the declared feature
+    width matches, and the loader is importable.  Any failure is a precise
+    blocker, never a silent fallback to a random model.
+    """
+    report = verify_checkpoint(checkpoint_path, checkpoint_sha256,
+                               metadata_path, metadata_sha256)
+    if report["state"] != "AVAILABLE":
+        raise FixedInferenceError(
+            "checkpoint not loadable: " + str(report.get("reason")))
+    metadata = report.get("metadata") or {}
+    declared = metadata.get("feature_width")
+    if declared is None:
+        raise FixedInferenceError(
+            "checkpoint metadata does not declare feature_width, so the "
+            "observation contract cannot be validated")
+    if expected_width is not None and int(declared) != int(expected_width):
+        raise FixedInferenceError(
+            f"checkpoint feature_width {declared} != expected {expected_width}")
+    raise FixedInferenceError(
+        "this host can import the loader but no trained-model reader is "
+        "implemented; a real checkpoint run stays an external blocker")
+
+
 def _sha256_file(path: Path) -> str | None:
     try:
         return hashlib.sha256(Path(path).read_bytes()).hexdigest()
