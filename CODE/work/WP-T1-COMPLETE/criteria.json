@@ -1,498 +1,633 @@
 {
-  "work_id": "WP-T1-COMPLETE",
-  "frozen_at_sha": "0876b12dbb0e067a840743dcc57b804d4600e9b0",
-  "branch": "t1/frozen-branch-and-async-design",
-  "note": "计划书 §5 K01–K16。每条可判定：check 是一条命令或一个明确谓词。status 分层 IMPLEMENTED/TESTED/DIAGNOSTIC_RUN/FORMAL_RUN。",
-  "criteria": [
-    {
-      "id": "K01",
-      "statement": "精确基线、dirty 保护、执行链身份可追踪",
-      "check": "STATUS.md 记录起始 HEAD==0876b12；artifact_identity.build_identity 输出 git commit/dirty/diff_sha256 + sources.combined_sha256",
-      "evidence": [
-        "CODE/work/WP-T1-COMPLETE/STATUS.md",
-        "CODE/experiment_platform/artifact_identity.py"
-      ],
-      "touches": [
-        "CODE/experiment_platform/artifact_identity.py"
-      ],
-      "status": "IMPLEMENTED"
-    },
-    {
-      "id": "K02",
-      "statement": "秒/比特错误修复且 schema 可辨",
-      "check": "python3 -m pytest CODE/experiment_platform/tests/test_control_reach_units.py -q",
-      "evidence": [
-        "CODE/experiment_platform/control_reach_probe.py",
-        "CODE/experiment_platform/tests/test_control_reach_units.py"
-      ],
-      "touches": [
-        "CODE/experiment_platform/control_reach_probe.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K03",
-      "statement": "测量/接收/请求/服务/完成/安装不混淆",
-      "check": "python3 -m pytest CODE/leo_sim/tests/test_time_alignment.py -q -k timeline",
-      "evidence": [
-        "CODE/leo_sim/time_alignment.py",
-        "CODE/leo_sim/tests/test_time_alignment.py"
-      ],
-      "touches": [
-        "CODE/leo_sim/kernel.py",
-        "CODE/leo_sim/time_alignment.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K04",
-      "statement": "zero-cost frozen 正确且默认路径兼容",
-      "check": "python3 -m pytest CODE/leo_sim/tests/test_compute_delay.py -q",
-      "evidence": [
-        "CODE/leo_sim/tests/test_compute_delay.py"
-      ],
-      "touches": [
-        "CODE/leo_sim/kernel.py",
-        "CODE/leo_sim/config.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K05",
-      "statement": "四组同输入权限、资源、候选及评分",
-      "check": "python3 -m pytest CODE/leo_sim/tests/test_time_alignment.py -q -k \"trap or tie or fallback or snapshot\"",
-      "evidence": [
-        "CODE/leo_sim/time_alignment.py"
-      ],
-      "touches": [
-        "CODE/leo_sim/time_alignment.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K06",
-      "statement": "共同未来及候选时刻生成真实存在",
-      "check": "python3 -m pytest CODE/leo_sim/tests/test_time_alignment.py CODE/leo_sim/tests/test_async_routing.py -q",
-      "evidence": [
-        "CODE/leo_sim/time_alignment.py"
-      ],
-      "touches": [
-        "CODE/leo_sim/time_alignment.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K07",
-      "statement": "每候选闭环重跑、真假值输入分离",
-      "check": "python3 -m pytest CODE/experiment_platform/tests/test_time_alignment_compare.py -q -k \"arm or oracle or legal\"",
-      "evidence": [
-        "CODE/experiment_platform/time_alignment_compare.py"
-      ],
-      "touches": [
-        "CODE/experiment_platform/time_alignment_compare.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K08",
-      "statement": "命运/缺失/资源错配全部报告",
-      "check": "python3 -m pytest CODE/experiment_platform/tests/test_time_alignment_compare.py -q -k \"fallback or mismatch or deadline\"",
-      "evidence": [
-        "CODE/experiment_platform/time_alignment_compare.py"
-      ],
-      "touches": [
-        "CODE/experiment_platform/time_alignment_compare.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K09",
-      "statement": "包长和每星请求率可复算，finite 池启用",
-      "check": "python3 -m pytest CODE/experiment_platform/tests/test_benchmark_decision.py -q -k pool（N=0 负对照 + N=1/2/4 有限池）",
-      "evidence": [
-        "CODE/experiment_platform/benchmark_decision.py"
-      ],
-      "touches": [
-        "CODE/experiment_platform/benchmark_decision.py",
-        "CODE/leo_sim/config.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K10",
-      "statement": "完整耗时与纯推理、实测与注入分别标注",
-      "check": "python3 -m pytest CODE/experiment_platform/tests/test_benchmark_decision.py -q；工件含 warmup/rounds/p50/p95/p99 与 empty_call_baseline",
-      "evidence": [
-        "CODE/experiment_platform/benchmark_decision.py"
-      ],
-      "touches": [
-        "CODE/experiment_platform/benchmark_decision.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K11",
-      "statement": "后台更新时旧表真正在转发，完成后才安装",
-      "check": "python3 -m pytest CODE/leo_sim/tests/test_async_kernel.py -q；schedule_installed.at == schedule_update_computed.at + install_delay",
-      "evidence": [
-        "CODE/leo_sim/async_routing.py",
-        "CODE/leo_sim/tests/test_async_routing.py"
-      ],
-      "touches": [
-        "CODE/leo_sim/async_routing.py",
-        "CODE/leo_sim/kernel.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K12",
-      "statement": "五执行模式公平、调用和查询成本分开",
-      "check": "python3 -m pytest CODE/experiment_platform/tests/test_execution_compare.py -q；五模式同 trace、仅 execution_mode 差异",
-      "evidence": [
-        "CODE/experiment_platform/execution_compare.py"
-      ],
-      "touches": [
-        "CODE/experiment_platform/execution_compare.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K13",
-      "statement": "DDQN 固定推理与训练边界明确",
-      "check": "ddqn_status：无检查点 -> EXTERNAL_BLOCKER（test_ddqn_without_a_checkpoint_is_an_external_blocker）；本机无有效 DDQN 检查点，按计划书 §5 列外部阻塞，不冒称实现验证",
-      "evidence": [
-        "CODE/experiment_platform/execution_compare.py"
-      ],
-      "touches": [
-        "CODE/leo_sim/learning.py"
-      ],
-      "status": "IMPLEMENTED",
-      "note": "R6/第三轮：固定推理适配器已实现并用固定参数小模型验证；真实检查点不仅是外部阻塞——inference.load_fixed_adapter_from_checkpoint 在全部元数据闸门之后仍无条件抛 no trained-model reader is implemented，即**模型读取器本身未实现**，须继续标内部未实现，不得笼统归因于缺 tensorflow/缺检查点"
-    },
-    {
-      "id": "K14",
-      "statement": "统计单元正确、开发确认分离、负结果可终止",
-      "check": "python3 -m pytest CODE/experiment_platform/tests/test_t1_stats.py CODE/experiment_platform/tests/test_t1_suite.py -q",
-      "evidence": [
-        "CODE/experiment_platform/t1_suite.py"
-      ],
-      "touches": [
-        "CODE/experiment_platform/t1_suite.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K15",
-      "statement": "端到端流水线及恢复/拒绝路径实跑",
-      "check": "compile -> validate -> run --tier acceptance -> report 实跑 7/7 ok；resume 只重试失败 cell、身份变更即失效；篡改 bundle 被 validate 拒绝",
-      "evidence": [
-        "out/t1-complete/acceptance/"
-      ],
-      "touches": [
-        "CODE/experiment_platform/t1_suite.py"
-      ],
-      "status": "TESTED"
-    },
-    {
-      "id": "K16",
-      "statement": "回归、文档、能力表与最终报告一致",
-      "check": "REPORT.md + STATUS.md + criteria.json 逐条链接证据；全平台回归实际输出见 STATUS.md",
-      "evidence": [
-        "CODE/work/WP-T1-COMPLETE/REPORT.md"
-      ],
-      "touches": [
-        "ANALYSIS/CAPABILITY-TABLE.md"
-      ],
-      "status": "IMPLEMENTED"
-    }
-  ],
-  "rework": {
-    "reviewed_sha": "53aeb309eaf2917d706bb02142b33dd95eb156cc",
-    "verdict": "REQUEST_CHANGES",
-    "items": {
-      "R1": {
-        "severity": "high",
-        "status": "FIXED",
-        "what": "证据链/恢复真校验",
-        "evidence": [
-          "CODE/experiment_platform/artifact_identity.py (execution_chain_paths, current_identity)",
-          "CODE/experiment_platform/t1_suite.py (_bundle_fingerprint, _cell_input_binding, _verify_recorded_result)",
-          "CODE/experiment_platform/tests/test_t1_suite.py (四类负例 + 身份变更拒绝)"
-        ]
-      },
-      "R7": {
-        "severity": "high",
-        "status": "FIXED",
-        "what": "预计算路由表按目的节点有向最短距离",
-        "evidence": [
-          "CODE/leo_sim/kernel.py (_precompute_build/_precomputed_order)",
-          "CODE/leo_sim/tests/test_precomputed_routing.py (3 节点反例 {1:E,2:W})"
-        ]
-      },
-      "R8": {
-        "severity": "high",
-        "status": "FIXED",
-        "what": "ETA 含本地出口排队与请求时刻可知的计算等待",
-        "evidence": [
-          "CODE/leo_sim/time_alignment.py (ETA_TERM_KEYS, estimate_eta, score_candidates)",
-          "CODE/leo_sim/kernel.py (_compute_state_now)",
-          "CODE/leo_sim/tests/test_eta_terms.py (8000bit/8000bps -> +1.0s)"
-        ]
-      },
-      "R9": {
-        "severity": "high",
-        "status": "FIXED",
-        "what": "每星公共查询服务，五模式同口径计费",
-        "evidence": [
-          "CODE/leo_sim/kernel.py (_query_service, decide_deferred)",
-          "CODE/leo_sim/tests/test_query_service.py"
-        ]
-      },
-      "R2": {
-        "severity": "high",
-        "status": "FIXED",
-        "what": "oracle_now/common/candidate 时刻真值三组 + 2x2 分解",
-        "evidence": [
-          "CODE/experiment_platform/time_alignment_compare.py (truth_at_instant, score_with_state, ideal_arms, eta_queue_2x2)",
-          "CODE/experiment_platform/tests/test_ideal_state_time.py"
-        ]
-      },
-      "R3": {
-        "severity": "high",
-        "status": "FIXED",
-        "what": "验收矩阵覆盖有效查询/缓存命中/N>0/分段窗口/配置机核/行为谓词/包长/请求率/开发扫描/正式待执行包",
-        "evidence": [
-          "CODE/experiment_platform/scripted_scenarios.py (same_flow)",
-          "CODE/experiment_platform/execution_compare.py (overrides, bin/version counts, scale)",
-          "CODE/experiment_platform/t1_suite.py (check_predicate, _dev_cells, _formal_package)"
-        ]
-      },
-      "R4": {
-        "severity": "high",
-        "status": "FIXED",
-        "what": "在线接口分段计时与调用计数",
-        "evidence": [
-          "CODE/experiment_platform/benchmark_decision.py (phase_closures, count_predict_calls)",
-          "CODE/experiment_platform/tests/test_benchmark_decision.py (R4 段)"
-        ]
-      },
-      "R5": {
-        "severity": "medium-high",
-        "status": "FIXED",
-        "what": "冻结 D 与观察窗口/行政删失，统计接入真实 run 汇总",
-        "evidence": [
-          "CODE/experiment_platform/time_alignment_compare.py (load_frozen_deadline, write_frozen_deadline, censoring)",
-          "CODE/experiment_platform/t1_suite.py (_statistics_summary)",
-          "CODE/experiment_platform/tests/test_frozen_deadline.py"
-        ]
-      },
-      "R6": {
-        "severity": "medium-high",
-        "status": "FIXED",
-        "what": "DDQN 固定推理适配器与检查点哈希校验（真实检查点仍为外部阻塞）",
-        "evidence": [
-          "CODE/leo_sim/inference.py",
-          "CODE/experiment_platform/execution_compare.py (ddqn_status 哈希校验)",
-          "CODE/leo_sim/tests/test_fixed_inference.py"
-        ]
-      }
-    },
-    "not_claimed": [
-      "FORMAL_RUN：确认性种子 1001+ 的矩阵未执行（正式包仅编译与校验）",
-      "真实 DDQN 检查点性能：本机无 tensorflow 且无检查点，external blocker",
-      "REMOTE_NOT_EXECUTED：未做远端覆盖部署"
-    ]
+ "a_round": {
+  "anchor_commit": "5e8ab7c",
+  "items": {
+   "A0": {
+    "evidence": [
+     "CODE/work/WP-T1-COMPLETE/criteria.json#a_round"
+    ],
+    "plan": "本文件 a_round 段即 A0-A6/B0-B5 的需求→证据映射；每项分 代码可用/接口实跑/开发已跑/确认已跑 四层，禁止一个 DONE 覆盖全部层次",
+    "status": "IN_PROGRESS"
+   },
+   "A1": {
+    "boundary": "VM 检查点用 test_weights 导出，只证明接口；不得称为 DDQN 策略结果",
+    "changed": [
+     "leo_sim/inference.py（KerasFixedModelAdapter + validate_observation_contract + 真读 load_fixed_adapter_from_checkpoint；verify_checkpoint 收紧为 LOAD_PENDING）",
+     "leo_sim/kernel.py（fixed_policy 槽 + _fixed_policy_action，冻结观测半程也由模型决定）",
+     "leo_sim/learning.py（save_and_verify 写入观察契约块）",
+     "leo_sim/receipt.py（learning_policy 进入 requested 并单列校验分支）",
+     "leo_sim/config.py（learning.fixed_inference 及其硬校验）"
+    ],
+    "evidence": [
+     "CODE/leo_sim/tests/test_checkpoint_inference.py（27 项，含 remember 漏检反例、NaN、形状不符、重贴标签、损坏文件哈希正确）",
+     "CODE/experiment_platform/t1_a6_check.py（VM 导出→读取→决策→计时→正式拒绝负例）"
+    ],
+    "reuse": "learning.TensorflowDDQN 的 save_and_verify 写出仓库真实格式；只读读取由 inference 承担，训练 learner 不进冻结路径",
+    "status": "CODE_AVAILABLE + TESTED(本机) + VM 运行在飞"
+   },
+   "A2": {
+    "boundary": "first_forward 与 2Mbps 只存在于显式命名的 legacy smoke 与 acceptance 夹具",
+    "changed": [
+     "experiment_platform/t1_tasks.py（三类任务统一驱动 + 支路稳定抽样 + 区组聚合 + 逐臂审计 + 总计算成本）",
+     "experiment_platform/t1_suite.py（_task_cell/_check_task_predicate、apply_parameters 统一参数应用、DEV_WINDOW_S/DEV_DEADLINE_S、_seed_config_legacy_smoke 保存 2Mbps+first_forward 旧 smoke）"
+    ],
+    "evidence": [
+     "CODE/experiment_platform/tests/test_t1_tasks.py（24 项：抽样不可见结果、失败支路不吞、四臂真跑、horizon 改变真实查询时刻、offered load 改变配置与 trace）"
+    ],
+    "status": "CODE_AVAILABLE + TESTED(本机)；VM dev tier 在飞"
+   },
+   "A3": {
+    "changed": [
+     "experiment_platform/design_selection.py（子代理产出，53 测试）",
+     "experiment_platform/t1_tasks.py（candidate_eta_offsets）",
+     "experiment_platform/t1_suite.py（project-horizons、五候选 dev cell、_development_design 逐候选损失列、horizon_candidates 随 bundle 走）"
+    ],
+    "evidence": [
+     "CODE/experiment_platform/tests/test_design_selection.py",
+     "tests/test_t1_suite.py::test_the_five_candidates_get_their_own_loss_columns"
+    ],
+    "rework": "修复：无投影文件时曾用两个规则候选报 SELECTED，把两候选比较偷偷升级为选择；现先判 READY 否则 PENDING_HORIZON_CANDIDATES 并点名缺失候选",
+    "status": "CODE_AVAILABLE + TESTED(本机)；五候选选择待 VM 数字"
+   },
+   "A4": {
+    "boundary": "拿不到的原始字段报 NOT_COMPUTABLE 并点名字段，不填 0；后台更新计入总计算",
+    "changed": [
+     "experiment_platform/outcome_metrics.py（子代理产出，42 测试）",
+     "experiment_platform/execution_compare.py（+47/-2，模式行新增 measurement_window/network_outcome/total_cost/outcome_document）"
+    ],
+    "evidence": [
+     "tests/test_outcome_metrics.py",
+     "tests/test_execution_compare.py",
+     "tests/test_execution_cost.py（59 passed）"
+    ],
+    "status": "CODE_AVAILABLE + TESTED(本机)"
+   },
+   "A5": {
+    "boundary": "不生成任何冒充用户审批的授权；正式矩阵仍需既有制度授权",
+    "changed": [
+     "experiment_platform/t1_suite.py（formal_execution_plan 复核既有授权、estimate_bundle_cost 展开真实模拟调用数、run --authorization、cost 子命令、project-horizons 子命令）"
+    ],
+    "evidence": [
+     "tests/test_t1_suite.py 的正式 tier 空矩阵/无授权/移动包拒绝断言"
+    ],
+    "status": "CODE_AVAILABLE + TESTED(本机)；VM 负例待跑"
+   },
+   "A6": {
+    "remaining": [
+     "VM 跑 t1_a6_check（真实检查点读取→决策→计时＋正式拒绝负例）",
+     "VM 上 project-horizons 生成五候选并回写 contract 后再跑一次",
+     "拉回复核 identity（commit/dirty/chain）"
+    ],
+    "status": "IN_PROGRESS",
+    "vm_run": "t1-a6-5e8ab7c（experiment: compile+validate+acceptance+dev+report+pull）"
+   },
+   "B0": {
+    "status": "PENDING"
+   },
+   "B1": {
+    "status": "PENDING"
+   },
+   "B2": {
+    "status": "PENDING"
+   },
+   "B3": {
+    "status": "PENDING"
+   },
+   "B4": {
+    "status": "PENDING"
+   },
+   "B5": {
+    "status": "PENDING"
+   }
   },
-  "s_rework": {
-    "reviewed_sha": "2330701b118d870a6d8cd4b9adf34f995f941dcb",
-    "verdict": "REQUEST_CHANGES",
-    "execution_rule": "所有实验只在 VM 上跑（AGENTS.md）；本机仅代码/测试/只读复核",
-    "vm": {
-      "host": "cuda-liguang13",
-      "alias": "vm",
-      "isolated_root": "/data/论文/leo-t1-wt",
-      "live_deployment_untouched": "/data/论文/leo-direct-sim",
-      "runner": "CODE/scripts/remote/t1-vm.sh (sync/run/pull/experiment)",
-      "chain_equality_verified": "VM chain 96b3fbaf == local chain 96b3fbaf (57 execution-chain files, after pruning stray metadata)"
-    },
-    "items": {
-      "S1": {
-        "severity": "high",
-        "status": "FIXED",
-        "what": "队列真值按内核事件语义重建",
-        "evidence": [
-          "time_alignment_compare.resource_work_ahead（事件序、前置快照不重复扣目标包、含在服务剩余、区分 FIFO 后方与控制优先）",
-          "复审 2500 bit 反例测试 + 真实内核 backlog_before 对齐测试",
-          "第三轮复审（a124bba）判 PARTIAL：截断服务窗少报 86%、未知折成 0、控制包时间线缺失",
-          "第三轮返工：截断服务窗在目标入队瞬间回退 basis 内的在服务剩余量；未知分量时 work_ahead_bits=None；内核补 put_ctrl 入队行与控制包 service_start/finish 行；重建改用控制时间线测量 ctrl 分量",
-          "反例：test_s1_review_counterexamples.py（2）+ test_s1bc_review_counterexamples.py（3，真实内核轨迹），均验证过禁用修复即失败"
-        ]
-      },
-      "S2": {
-        "severity": "high",
-        "status": "FIXED",
-        "what": "包长与广告队列分离",
-        "evidence": [
-          "_build_ta_snapshot 先解 packet_bits 再遍历广告；局部名 advertised_bits",
-          "test_eta_terms.py: 999999 bit 广告下 pkt_bits 仍为 8000，顺序/取值不变性"
-        ]
-      },
-      "S3": {
-        "severity": "high",
-        "status": "FIXED",
-        "what": "查表模式不付逐包完整计算",
-        "evidence": [
-          "kernel._packet_compute_required + decide_deferred 分支；预计算构建成本单列",
-          "test_execution_cost.py: precomputed/async_* 逐包 compute_request == 0，后台任务仍付 0.05s",
-          "第三轮复审（a124bba）判 PARTIAL：per_flow 在查询排队期间 TTL 过期时，付 0 计算却跑了完整评分",
-          "第三轮返工：按计划书 P2 统一为请求时冻结——_time_aligned_order 接受 frozen_hit，decide_deferred 把请求时刻选定的条目下达；审计标记 frozen_at_request",
-          "反例：test_s3_review_counterexamples.py（4，按决策实例判定未付费评分），禁用冻结时实测 unpaid scoring at [(16, 7.712001)]"
-        ]
-      },
-      "S4": {
-        "severity": "high",
-        "status": "FIXED",
-        "what": "谓词失败驱动整轮非成功",
-        "evidence": [
-          "t1_suite._count_records（穷尽计数）/ report 非 ok 即 FAILED_CELLS / 统计仅纳入完整性+谓词均通过区组 / CLI 退出码 3",
-          "test_t1_suite.py: 不可能谓词的 run→report→resume 全流程反例"
-        ]
-      },
-      "S5": {
-        "severity": "medium-high",
-        "status": "FIXED",
-        "what": "计时走真实在线入口并逐臂对齐",
-        "evidence": [
-          "time_alignment.plan_decision/build_predictions/resolve_common_horizon 共用入口；kernel 使用之",
-          "benchmark 截获在线决策输入并冻结 caches/池状态，四臂 targets_match/ranking_match 均为 True（VM 工件）",
-          "第三轮复审（a124bba）判 PARTIAL：对齐只写入工件、未入门禁；工件缺可机器读的模型来源标记",
-          "第三轮返工：benchmark 谓词新增 require_alignment 与 require_model_provenance；工件新增 model_provenance（trained_checkpoint_used=false / ddqn=false / on_board=false），limits 明写不是 DDQN 延迟",
-          "反例：test_s5_review_counterexamples.py（4）+ test_s5_provenance.py（5）；新身份工件 bench 谓词检查由 17 项增至 20 项且全过"
-        ]
-      },
-      "S6": {
-        "severity": "high",
-        "status": "FIXED（真实检查点仍外部阻塞）",
-        "what": "固定推理接入冻结快照与分支重演",
-        "evidence": [
-          "inference.InferencePolicy/FixedModelPolicy/WidthAdaptiveFixedPolicy/load_fixed_adapter_from_checkpoint 硬门槛",
-          "kernel.inference_policy + counterfactual 透传；真实分支跑通、掩码强制、参数不变、前缀一致测试"
-        ]
-      },
-      "S7": {
-        "severity": "medium-high",
-        "status": "FIXED",
-        "what": "正式包真实冻结与 common_strong 来源",
-        "evidence": [
-          "formal_package/formal_design 纳入 bundle 指纹（复审改阈值 999 的复现现被拒绝）",
-          "cell 输入绑定含 deadline 依赖文件哈希；formal_design.ready 时生成真实 confirm cell；未就绪时 PENDING_DEV_SELECTION",
-          "statistics.common_strong 未冻结时给出原因，主比较标签不再冒称 common_strong"
-        ]
-      }
-    },
-    "vm_evidence": {
-      "run_ids": [
-        "t1-s4-46f9308",
-        "t1-s5-7440596",
-        "t1-s7-377ae9b",
-        "t1-final-a70d65c",
-        "t1-final-8a31496"
-      ],
-      "latest_identity": {
-        "run_id": "t1-final-06572b6",
-        "commit": "06572b622aa852d2cc4250d15a48d243839991d6",
-        "dirty": false,
-        "status_short": [],
-        "execution_chain_sha256": "b76414188dd0bb722bb575a35fb59f7f5655c7bf1b9a813058f8ca983b2c7d70",
-        "chain_equality": "VM 链 == 本机重算（57 个执行链文件）",
-        "pullback_integrity": "VM Results 的 52 个文件与 out/vm 拉回副本 sha256 逐一相等（逐字节一致）",
-        "bundle_fingerprint": "67fb0523a29b1573",
-        "acceptance": {"ok": 10, "predicate_failed": 0, "not_ok": 0, "verified_ok": 10},
-        "dev": {"ok": 10, "predicate_failed": 0, "not_ok": 0, "verified_ok": 10},
-        "online_path_p50_s": 0.00050976,
-        "note": "b1f44af 及更早的运行均因后续返工改变执行链而失效；t1-final-c4dd85f 与 t1-final-a70d65c 的 identity.git.dirty=true 系 runner 假阳性（见 s8_fix）。当前唯一有效身份是本条"
-      },
-      "pulled_to": "out/vm/<run-id>/",
-      "local_regression": "1275 passed, 2 skipped（pytest 属本机允许项）"
-    },
-    "s8_fix": {
-      "title": "runner 身份假阳性：干净提交上 dirty 恒为 true",
-      "severity": "medium",
-      "status": "FIXED",
-      "root_cause": "t1-vm.sh 用 shell 重定向把 .t1-launch.json 写进本机工作区；重定向目标在命令执行前就被创建，紧随其后的 git status --short 因此总能看见这个未跟踪文件",
-      "affected_evidence": ["t1-final-c4dd85f", "t1-final-a70d65c"],
-      "fix": [
-        "清单改为写入 mktemp -d 暂存目录后再打包上送：不再写入任何会被 git 看见的文件（__pycache__ 仍生成但在 .gitignore 内、不参与身份）",
-        "trap rm -rf EXIT 保证 ssh 失败时暂存目录不泄漏；远端改 rm -f && tar && mv 并校验 head，防止提升上一次的清单",
-        ".gitignore 增加 .t1-launch.json 兜底（脚本中途退出时不留脏文件）",
-        "新增 CODE/tests/test_t1_vm_launch_manifest.py：行为复现旧写法的假阳性与新写法的干净结果，并静态钉住暂存位置不变式"
-      ],
-      "verification": "修复后 VM launch.json dirty=false；t1-final-bace1bb 工件 identity.git.dirty=false 且 status_short=[]",
-      "third_round_followups": [
-        "t1-vm.sh 加 trap rm -rf EXIT：ssh 失败时暂存目录不再泄漏（S8-3a）",
-        "远端改 rm -f && tar && mv 并校验 head：陈旧清单不能被提升为本次清单（S8-i）"
-      ]
-    },
-    "third_round": {
-      "reviewers": ["S1-S3", "S4-S5", "S6-S7", "S8+evidence"],
-      "confirmed_fixed": ["S2", "S7", "S8(1)", "evidence_chain_a_e", "S4(a)(b)(c)(e)(f)", "S5 shared-entry/arm-alignment/full-path"],
-      "reworked": {
-        "S1": "截断服务窗回退内核 backlog_before（目标入队瞬间恒等）；未知分量不再折成数字（work_ahead_bits=None）",
-        "S4_d": "schema 为空即登记进 statistics.excluded（原被 schema 过滤静默丢弃）",
-        "S5_R2": "四臂 targets_match/ranking_match 纳入 benchmark 谓词门禁，错位即非 ok",
-        "S6": "assert_inference_only 改为声明+探针；policy.act 统一委托 adapter.act；verify_checkpoint 硬要求 metadata 路径与哈希；ta.enabled=false 时给策略报错",
-        "S8_3a_i": "trap 清理暂存目录；远端 && 链 + head 校验"
-      },
-      "still_open": [],
-      "s1_closed": "第五轮独立复核（06572b6/f9f6c5c）确认 B1/B2 CONFIRMED_FIXED，S1_OPEN 关闭；S3/S5 保留第三轮确认结论，未重复审查",
-      "fifth_round_verification": {
-        "code_sha": "06572b622aa852d2cc4250d15a48d243839991d6",
-        "ledger_sha": "f9f6c5c88379bb0ee31ea8576372501c268e0b17",
-        "verdict": "B1/B2 CONFIRMED_FIXED（所审范围）；S1_OPEN 关闭",
-        "independent_checks": [
-          "外置反例三件在仓内副本上作 AST 比对：逻辑一致，未见删除或放宽断言",
-          "六文件 45 passed, 1 skipped；跳过项 test_ideal_state_time.py:224 不覆盖本三反例",
-          "静态与调用路径核对：_expire_waiting 先发 ctrl_drop 再扣队列、不伪造 service_finish；_resource_timeline 保留该事件；控制账本按统一身份键出队；目标身份要求非 None，数据 FIFO 跳过控制行",
-          "执行链 b7641418 与 VM 工件一致；20/20 result 哈希、身份与谓词重算通过"
-        ],
-        "not_granted": [
-          "不授予 FORMAL_RUN，不证明状态时间对齐有收益",
-          "真实 DDQN 模型读取器仍未实现（内部缺口），固定小模型接口通过不替代真实检查点加载",
-          "P9 继续 PARTIAL：common_strong 与确认样本量尚未冻结"
-        ],
-        "standing_condition": "若今后改变控制重传/重入队、身份或资源窗口语义，必须新增对应守恒验收，不得复用本次绿状态",
-        "scope_limit": "指定身份、指定修复范围的有界独立验收，不是对全部平台实现作无缺陷保证"
-      },
-      "b1b2_rework": {
-        "reviewed_sha": "f78d8edae06c84a64dca4c161c14588b1a2960f4",
-        "verdict": "S3/S5 CONFIRMED_FIXED；S1 PARTIAL（B1 高、B2 中）",
-        "fix": [
-          "B1a：ISLLink._expire_waiting 为过期控制包发 ctrl_drop 行（明确是丢弃，不伪造 service_finish）；_timeline_ctrl 增 control_generated_at 作稳定身份",
-          "B1b：_resource_timeline 保留 ctrl_drop；ctrl 账本改按稳定身份匹配，每个身份离开队列只扣一次，取消 max(0, entered-left) 掩盖",
-          "B2：目标身份比较一律要求 exclude_pid is not None；数据 FIFO 显式跳过控制行"
-        ],
-        "reviewer_counterexamples": "审查方 test_b1f44af_s1_independent.py 在 b1f44af 上 3 failed；本提交后 3 passed，并原样纳入 CODE/experiment_platform/tests/test_s1_independent_review.py（未删改放宽），另补真实目标 PID、目标尚未入队、真实轨迹控制过期守恒三例",
-        "checkpoint_boundary": "inference.load_fixed_adapter_from_checkpoint 在全部元数据闸门后仍无条件抛 no trained-model reader is implemented：真实检查点是**模型读取器未实现**（内部缺口），不得笼统归因于缺 tensorflow/缺检查点"
-      },
-      "resolved_in_round3": [
-        "S1 反例 B/C：内核补 put_ctrl 入队行与控制包 service_start/service_finish 行，重建改由控制时间线测量",
-        "S3：逐流缓存改为请求时冻结，未付费的完整评分不再可能",
-        "S5：工件声明 model_provenance，且被 benchmark 谓词强制"
-      ],
-      "research_design_status": "NOT_READY：开发块配对差恒为 0，common_strong 未冻结、正式样本量无法估计，formal 包为 PENDING_DEV_SELECTION。属研究设计尚未就绪，不等于只差正式授权。",
-      "new_identity_pending_review": "本文件所记身份为 b1f44af / t1-final-b1f44af，自验通过；第三轮独立复核尚未覆盖该新身份。",
-      "counterexample_files": [
-        "CODE/experiment_platform/tests/test_s1_review_counterexamples.py",
-        "CODE/experiment_platform/tests/test_s4_review_counterexamples.py",
-        "CODE/experiment_platform/tests/test_s5_review_counterexamples.py",
-        "CODE/leo_sim/tests/test_s6_review_counterexamples.py",
-        "CODE/tests/test_t1_vm_launch_manifest.py"
-      ],
-      "regression": "1295 passed, 2 skipped, 1 warning in 448.85s"
-    },
-    "historical": [
-      "本机 34µs / 73.9µs 计时与 out/t1 旧产物：本机历史证据，已由 VM 真实在线路径计时取代",
-      "首轮 P4/P6/P8/P9/P10/P11/P12 的完成声明：已被 53aeb30 与 2330701 两轮复审纠正"
-    ]
+  "layers": [
+   "CODE_AVAILABLE",
+   "INTERFACE_RUN",
+   "DEV_RUN",
+   "FORMAL_RUN"
+  ],
+  "rule": "一个 DONE 不得覆盖全部层次；每项分层的状态写在 items 里",
+  "task_book": "平台与实验计划审计-20260927/两轮完成平台并启动实验.md"
+ },
+ "branch": "t1/frozen-branch-and-async-design",
+ "criteria": [
+  {
+   "check": "STATUS.md 记录起始 HEAD==0876b12；artifact_identity.build_identity 输出 git commit/dirty/diff_sha256 + sources.combined_sha256",
+   "evidence": [
+    "CODE/work/WP-T1-COMPLETE/STATUS.md",
+    "CODE/experiment_platform/artifact_identity.py"
+   ],
+   "id": "K01",
+   "statement": "精确基线、dirty 保护、执行链身份可追踪",
+   "status": "IMPLEMENTED",
+   "touches": [
+    "CODE/experiment_platform/artifact_identity.py"
+   ]
+  },
+  {
+   "check": "python3 -m pytest CODE/experiment_platform/tests/test_control_reach_units.py -q",
+   "evidence": [
+    "CODE/experiment_platform/control_reach_probe.py",
+    "CODE/experiment_platform/tests/test_control_reach_units.py"
+   ],
+   "id": "K02",
+   "statement": "秒/比特错误修复且 schema 可辨",
+   "status": "TESTED",
+   "touches": [
+    "CODE/experiment_platform/control_reach_probe.py"
+   ]
+  },
+  {
+   "check": "python3 -m pytest CODE/leo_sim/tests/test_time_alignment.py -q -k timeline",
+   "evidence": [
+    "CODE/leo_sim/time_alignment.py",
+    "CODE/leo_sim/tests/test_time_alignment.py"
+   ],
+   "id": "K03",
+   "statement": "测量/接收/请求/服务/完成/安装不混淆",
+   "status": "TESTED",
+   "touches": [
+    "CODE/leo_sim/kernel.py",
+    "CODE/leo_sim/time_alignment.py"
+   ]
+  },
+  {
+   "check": "python3 -m pytest CODE/leo_sim/tests/test_compute_delay.py -q",
+   "evidence": [
+    "CODE/leo_sim/tests/test_compute_delay.py"
+   ],
+   "id": "K04",
+   "statement": "zero-cost frozen 正确且默认路径兼容",
+   "status": "TESTED",
+   "touches": [
+    "CODE/leo_sim/kernel.py",
+    "CODE/leo_sim/config.py"
+   ]
+  },
+  {
+   "check": "python3 -m pytest CODE/leo_sim/tests/test_time_alignment.py -q -k \"trap or tie or fallback or snapshot\"",
+   "evidence": [
+    "CODE/leo_sim/time_alignment.py"
+   ],
+   "id": "K05",
+   "statement": "四组同输入权限、资源、候选及评分",
+   "status": "TESTED",
+   "touches": [
+    "CODE/leo_sim/time_alignment.py"
+   ]
+  },
+  {
+   "check": "python3 -m pytest CODE/leo_sim/tests/test_time_alignment.py CODE/leo_sim/tests/test_async_routing.py -q",
+   "evidence": [
+    "CODE/leo_sim/time_alignment.py"
+   ],
+   "id": "K06",
+   "statement": "共同未来及候选时刻生成真实存在",
+   "status": "TESTED",
+   "touches": [
+    "CODE/leo_sim/time_alignment.py"
+   ]
+  },
+  {
+   "check": "python3 -m pytest CODE/experiment_platform/tests/test_time_alignment_compare.py -q -k \"arm or oracle or legal\"",
+   "evidence": [
+    "CODE/experiment_platform/time_alignment_compare.py"
+   ],
+   "id": "K07",
+   "statement": "每候选闭环重跑、真假值输入分离",
+   "status": "TESTED",
+   "touches": [
+    "CODE/experiment_platform/time_alignment_compare.py"
+   ]
+  },
+  {
+   "check": "python3 -m pytest CODE/experiment_platform/tests/test_time_alignment_compare.py -q -k \"fallback or mismatch or deadline\"",
+   "evidence": [
+    "CODE/experiment_platform/time_alignment_compare.py"
+   ],
+   "id": "K08",
+   "statement": "命运/缺失/资源错配全部报告",
+   "status": "TESTED",
+   "touches": [
+    "CODE/experiment_platform/time_alignment_compare.py"
+   ]
+  },
+  {
+   "check": "python3 -m pytest CODE/experiment_platform/tests/test_benchmark_decision.py -q -k pool（N=0 负对照 + N=1/2/4 有限池）",
+   "evidence": [
+    "CODE/experiment_platform/benchmark_decision.py"
+   ],
+   "id": "K09",
+   "statement": "包长和每星请求率可复算，finite 池启用",
+   "status": "TESTED",
+   "touches": [
+    "CODE/experiment_platform/benchmark_decision.py",
+    "CODE/leo_sim/config.py"
+   ]
+  },
+  {
+   "check": "python3 -m pytest CODE/experiment_platform/tests/test_benchmark_decision.py -q；工件含 warmup/rounds/p50/p95/p99 与 empty_call_baseline",
+   "evidence": [
+    "CODE/experiment_platform/benchmark_decision.py"
+   ],
+   "id": "K10",
+   "statement": "完整耗时与纯推理、实测与注入分别标注",
+   "status": "TESTED",
+   "touches": [
+    "CODE/experiment_platform/benchmark_decision.py"
+   ]
+  },
+  {
+   "check": "python3 -m pytest CODE/leo_sim/tests/test_async_kernel.py -q；schedule_installed.at == schedule_update_computed.at + install_delay",
+   "evidence": [
+    "CODE/leo_sim/async_routing.py",
+    "CODE/leo_sim/tests/test_async_routing.py"
+   ],
+   "id": "K11",
+   "statement": "后台更新时旧表真正在转发，完成后才安装",
+   "status": "TESTED",
+   "touches": [
+    "CODE/leo_sim/async_routing.py",
+    "CODE/leo_sim/kernel.py"
+   ]
+  },
+  {
+   "check": "python3 -m pytest CODE/experiment_platform/tests/test_execution_compare.py -q；五模式同 trace、仅 execution_mode 差异",
+   "evidence": [
+    "CODE/experiment_platform/execution_compare.py"
+   ],
+   "id": "K12",
+   "statement": "五执行模式公平、调用和查询成本分开",
+   "status": "TESTED",
+   "touches": [
+    "CODE/experiment_platform/execution_compare.py"
+   ]
+  },
+  {
+   "check": "ddqn_status：无检查点 -> EXTERNAL_BLOCKER（test_ddqn_without_a_checkpoint_is_an_external_blocker）；本机无有效 DDQN 检查点，按计划书 §5 列外部阻塞，不冒称实现验证",
+   "evidence": [
+    "CODE/experiment_platform/execution_compare.py"
+   ],
+   "id": "K13",
+   "note": "R6/第三轮：固定推理适配器已实现并用固定参数小模型验证；真实检查点不仅是外部阻塞——inference.load_fixed_adapter_from_checkpoint 在全部元数据闸门之后仍无条件抛 no trained-model reader is implemented，即**模型读取器本身未实现**，须继续标内部未实现，不得笼统归因于缺 tensorflow/缺检查点",
+   "statement": "DDQN 固定推理与训练边界明确",
+   "status": "IMPLEMENTED",
+   "touches": [
+    "CODE/leo_sim/learning.py"
+   ]
+  },
+  {
+   "check": "python3 -m pytest CODE/experiment_platform/tests/test_t1_stats.py CODE/experiment_platform/tests/test_t1_suite.py -q",
+   "evidence": [
+    "CODE/experiment_platform/t1_suite.py"
+   ],
+   "id": "K14",
+   "statement": "统计单元正确、开发确认分离、负结果可终止",
+   "status": "TESTED",
+   "touches": [
+    "CODE/experiment_platform/t1_suite.py"
+   ]
+  },
+  {
+   "check": "compile -> validate -> run --tier acceptance -> report 实跑 7/7 ok；resume 只重试失败 cell、身份变更即失效；篡改 bundle 被 validate 拒绝",
+   "evidence": [
+    "out/t1-complete/acceptance/"
+   ],
+   "id": "K15",
+   "statement": "端到端流水线及恢复/拒绝路径实跑",
+   "status": "TESTED",
+   "touches": [
+    "CODE/experiment_platform/t1_suite.py"
+   ]
+  },
+  {
+   "check": "REPORT.md + STATUS.md + criteria.json 逐条链接证据；全平台回归实际输出见 STATUS.md",
+   "evidence": [
+    "CODE/work/WP-T1-COMPLETE/REPORT.md"
+   ],
+   "id": "K16",
+   "statement": "回归、文档、能力表与最终报告一致",
+   "status": "IMPLEMENTED",
+   "touches": [
+    "ANALYSIS/CAPABILITY-TABLE.md"
+   ]
   }
+ ],
+ "frozen_at_sha": "0876b12dbb0e067a840743dcc57b804d4600e9b0",
+ "note": "计划书 §5 K01–K16。每条可判定：check 是一条命令或一个明确谓词。status 分层 IMPLEMENTED/TESTED/DIAGNOSTIC_RUN/FORMAL_RUN。",
+ "rework": {
+  "items": {
+   "R1": {
+    "evidence": [
+     "CODE/experiment_platform/artifact_identity.py (execution_chain_paths, current_identity)",
+     "CODE/experiment_platform/t1_suite.py (_bundle_fingerprint, _cell_input_binding, _verify_recorded_result)",
+     "CODE/experiment_platform/tests/test_t1_suite.py (四类负例 + 身份变更拒绝)"
+    ],
+    "severity": "high",
+    "status": "FIXED",
+    "what": "证据链/恢复真校验"
+   },
+   "R2": {
+    "evidence": [
+     "CODE/experiment_platform/time_alignment_compare.py (truth_at_instant, score_with_state, ideal_arms, eta_queue_2x2)",
+     "CODE/experiment_platform/tests/test_ideal_state_time.py"
+    ],
+    "severity": "high",
+    "status": "FIXED",
+    "what": "oracle_now/common/candidate 时刻真值三组 + 2x2 分解"
+   },
+   "R3": {
+    "evidence": [
+     "CODE/experiment_platform/scripted_scenarios.py (same_flow)",
+     "CODE/experiment_platform/execution_compare.py (overrides, bin/version counts, scale)",
+     "CODE/experiment_platform/t1_suite.py (check_predicate, _dev_cells, _formal_package)"
+    ],
+    "severity": "high",
+    "status": "FIXED",
+    "what": "验收矩阵覆盖有效查询/缓存命中/N>0/分段窗口/配置机核/行为谓词/包长/请求率/开发扫描/正式待执行包"
+   },
+   "R4": {
+    "evidence": [
+     "CODE/experiment_platform/benchmark_decision.py (phase_closures, count_predict_calls)",
+     "CODE/experiment_platform/tests/test_benchmark_decision.py (R4 段)"
+    ],
+    "severity": "high",
+    "status": "FIXED",
+    "what": "在线接口分段计时与调用计数"
+   },
+   "R5": {
+    "evidence": [
+     "CODE/experiment_platform/time_alignment_compare.py (load_frozen_deadline, write_frozen_deadline, censoring)",
+     "CODE/experiment_platform/t1_suite.py (_statistics_summary)",
+     "CODE/experiment_platform/tests/test_frozen_deadline.py"
+    ],
+    "severity": "medium-high",
+    "status": "FIXED",
+    "what": "冻结 D 与观察窗口/行政删失，统计接入真实 run 汇总"
+   },
+   "R6": {
+    "evidence": [
+     "CODE/leo_sim/inference.py",
+     "CODE/experiment_platform/execution_compare.py (ddqn_status 哈希校验)",
+     "CODE/leo_sim/tests/test_fixed_inference.py"
+    ],
+    "severity": "medium-high",
+    "status": "FIXED",
+    "what": "DDQN 固定推理适配器与检查点哈希校验（真实检查点仍为外部阻塞）"
+   },
+   "R7": {
+    "evidence": [
+     "CODE/leo_sim/kernel.py (_precompute_build/_precomputed_order)",
+     "CODE/leo_sim/tests/test_precomputed_routing.py (3 节点反例 {1:E,2:W})"
+    ],
+    "severity": "high",
+    "status": "FIXED",
+    "what": "预计算路由表按目的节点有向最短距离"
+   },
+   "R8": {
+    "evidence": [
+     "CODE/leo_sim/time_alignment.py (ETA_TERM_KEYS, estimate_eta, score_candidates)",
+     "CODE/leo_sim/kernel.py (_compute_state_now)",
+     "CODE/leo_sim/tests/test_eta_terms.py (8000bit/8000bps -> +1.0s)"
+    ],
+    "severity": "high",
+    "status": "FIXED",
+    "what": "ETA 含本地出口排队与请求时刻可知的计算等待"
+   },
+   "R9": {
+    "evidence": [
+     "CODE/leo_sim/kernel.py (_query_service, decide_deferred)",
+     "CODE/leo_sim/tests/test_query_service.py"
+    ],
+    "severity": "high",
+    "status": "FIXED",
+    "what": "每星公共查询服务，五模式同口径计费"
+   }
+  },
+  "not_claimed": [
+   "FORMAL_RUN：确认性种子 1001+ 的矩阵未执行（正式包仅编译与校验）",
+   "真实 DDQN 检查点性能：本机无 tensorflow 且无检查点，external blocker",
+   "REMOTE_NOT_EXECUTED：未做远端覆盖部署"
+  ],
+  "reviewed_sha": "53aeb309eaf2917d706bb02142b33dd95eb156cc",
+  "verdict": "REQUEST_CHANGES"
+ },
+ "s_rework": {
+  "execution_rule": "所有实验只在 VM 上跑（AGENTS.md）；本机仅代码/测试/只读复核",
+  "historical": [
+   "本机 34µs / 73.9µs 计时与 out/t1 旧产物：本机历史证据，已由 VM 真实在线路径计时取代",
+   "首轮 P4/P6/P8/P9/P10/P11/P12 的完成声明：已被 53aeb30 与 2330701 两轮复审纠正"
+  ],
+  "items": {
+   "S1": {
+    "evidence": [
+     "time_alignment_compare.resource_work_ahead（事件序、前置快照不重复扣目标包、含在服务剩余、区分 FIFO 后方与控制优先）",
+     "复审 2500 bit 反例测试 + 真实内核 backlog_before 对齐测试",
+     "第三轮复审（a124bba）判 PARTIAL：截断服务窗少报 86%、未知折成 0、控制包时间线缺失",
+     "第三轮返工：截断服务窗在目标入队瞬间回退 basis 内的在服务剩余量；未知分量时 work_ahead_bits=None；内核补 put_ctrl 入队行与控制包 service_start/finish 行；重建改用控制时间线测量 ctrl 分量",
+     "反例：test_s1_review_counterexamples.py（2）+ test_s1bc_review_counterexamples.py（3，真实内核轨迹），均验证过禁用修复即失败"
+    ],
+    "severity": "high",
+    "status": "FIXED",
+    "what": "队列真值按内核事件语义重建"
+   },
+   "S2": {
+    "evidence": [
+     "_build_ta_snapshot 先解 packet_bits 再遍历广告；局部名 advertised_bits",
+     "test_eta_terms.py: 999999 bit 广告下 pkt_bits 仍为 8000，顺序/取值不变性"
+    ],
+    "severity": "high",
+    "status": "FIXED",
+    "what": "包长与广告队列分离"
+   },
+   "S3": {
+    "evidence": [
+     "kernel._packet_compute_required + decide_deferred 分支；预计算构建成本单列",
+     "test_execution_cost.py: precomputed/async_* 逐包 compute_request == 0，后台任务仍付 0.05s",
+     "第三轮复审（a124bba）判 PARTIAL：per_flow 在查询排队期间 TTL 过期时，付 0 计算却跑了完整评分",
+     "第三轮返工：按计划书 P2 统一为请求时冻结——_time_aligned_order 接受 frozen_hit，decide_deferred 把请求时刻选定的条目下达；审计标记 frozen_at_request",
+     "反例：test_s3_review_counterexamples.py（4，按决策实例判定未付费评分），禁用冻结时实测 unpaid scoring at [(16, 7.712001)]"
+    ],
+    "severity": "high",
+    "status": "FIXED",
+    "what": "查表模式不付逐包完整计算"
+   },
+   "S4": {
+    "evidence": [
+     "t1_suite._count_records（穷尽计数）/ report 非 ok 即 FAILED_CELLS / 统计仅纳入完整性+谓词均通过区组 / CLI 退出码 3",
+     "test_t1_suite.py: 不可能谓词的 run→report→resume 全流程反例"
+    ],
+    "severity": "high",
+    "status": "FIXED",
+    "what": "谓词失败驱动整轮非成功"
+   },
+   "S5": {
+    "evidence": [
+     "time_alignment.plan_decision/build_predictions/resolve_common_horizon 共用入口；kernel 使用之",
+     "benchmark 截获在线决策输入并冻结 caches/池状态，四臂 targets_match/ranking_match 均为 True（VM 工件）",
+     "第三轮复审（a124bba）判 PARTIAL：对齐只写入工件、未入门禁；工件缺可机器读的模型来源标记",
+     "第三轮返工：benchmark 谓词新增 require_alignment 与 require_model_provenance；工件新增 model_provenance（trained_checkpoint_used=false / ddqn=false / on_board=false），limits 明写不是 DDQN 延迟",
+     "反例：test_s5_review_counterexamples.py（4）+ test_s5_provenance.py（5）；新身份工件 bench 谓词检查由 17 项增至 20 项且全过"
+    ],
+    "severity": "medium-high",
+    "status": "FIXED",
+    "what": "计时走真实在线入口并逐臂对齐"
+   },
+   "S6": {
+    "evidence": [
+     "inference.InferencePolicy/FixedModelPolicy/WidthAdaptiveFixedPolicy/load_fixed_adapter_from_checkpoint 硬门槛",
+     "kernel.inference_policy + counterfactual 透传；真实分支跑通、掩码强制、参数不变、前缀一致测试"
+    ],
+    "severity": "high",
+    "status": "FIXED（真实检查点仍外部阻塞）",
+    "what": "固定推理接入冻结快照与分支重演"
+   },
+   "S7": {
+    "evidence": [
+     "formal_package/formal_design 纳入 bundle 指纹（复审改阈值 999 的复现现被拒绝）",
+     "cell 输入绑定含 deadline 依赖文件哈希；formal_design.ready 时生成真实 confirm cell；未就绪时 PENDING_DEV_SELECTION",
+     "statistics.common_strong 未冻结时给出原因，主比较标签不再冒称 common_strong"
+    ],
+    "severity": "medium-high",
+    "status": "FIXED",
+    "what": "正式包真实冻结与 common_strong 来源"
+   }
+  },
+  "reviewed_sha": "2330701b118d870a6d8cd4b9adf34f995f941dcb",
+  "s8_fix": {
+   "affected_evidence": [
+    "t1-final-c4dd85f",
+    "t1-final-a70d65c"
+   ],
+   "fix": [
+    "清单改为写入 mktemp -d 暂存目录后再打包上送：不再写入任何会被 git 看见的文件（__pycache__ 仍生成但在 .gitignore 内、不参与身份）",
+    "trap rm -rf EXIT 保证 ssh 失败时暂存目录不泄漏；远端改 rm -f && tar && mv 并校验 head，防止提升上一次的清单",
+    ".gitignore 增加 .t1-launch.json 兜底（脚本中途退出时不留脏文件）",
+    "新增 CODE/tests/test_t1_vm_launch_manifest.py：行为复现旧写法的假阳性与新写法的干净结果，并静态钉住暂存位置不变式"
+   ],
+   "root_cause": "t1-vm.sh 用 shell 重定向把 .t1-launch.json 写进本机工作区；重定向目标在命令执行前就被创建，紧随其后的 git status --short 因此总能看见这个未跟踪文件",
+   "severity": "medium",
+   "status": "FIXED",
+   "third_round_followups": [
+    "t1-vm.sh 加 trap rm -rf EXIT：ssh 失败时暂存目录不再泄漏（S8-3a）",
+    "远端改 rm -f && tar && mv 并校验 head：陈旧清单不能被提升为本次清单（S8-i）"
+   ],
+   "title": "runner 身份假阳性：干净提交上 dirty 恒为 true",
+   "verification": "修复后 VM launch.json dirty=false；t1-final-bace1bb 工件 identity.git.dirty=false 且 status_short=[]"
+  },
+  "third_round": {
+   "b1b2_rework": {
+    "checkpoint_boundary": "inference.load_fixed_adapter_from_checkpoint 在全部元数据闸门后仍无条件抛 no trained-model reader is implemented：真实检查点是**模型读取器未实现**（内部缺口），不得笼统归因于缺 tensorflow/缺检查点",
+    "fix": [
+     "B1a：ISLLink._expire_waiting 为过期控制包发 ctrl_drop 行（明确是丢弃，不伪造 service_finish）；_timeline_ctrl 增 control_generated_at 作稳定身份",
+     "B1b：_resource_timeline 保留 ctrl_drop；ctrl 账本改按稳定身份匹配，每个身份离开队列只扣一次，取消 max(0, entered-left) 掩盖",
+     "B2：目标身份比较一律要求 exclude_pid is not None；数据 FIFO 显式跳过控制行"
+    ],
+    "reviewed_sha": "f78d8edae06c84a64dca4c161c14588b1a2960f4",
+    "reviewer_counterexamples": "审查方 test_b1f44af_s1_independent.py 在 b1f44af 上 3 failed；本提交后 3 passed，并原样纳入 CODE/experiment_platform/tests/test_s1_independent_review.py（未删改放宽），另补真实目标 PID、目标尚未入队、真实轨迹控制过期守恒三例",
+    "verdict": "S3/S5 CONFIRMED_FIXED；S1 PARTIAL（B1 高、B2 中）"
+   },
+   "confirmed_fixed": [
+    "S2",
+    "S7",
+    "S8(1)",
+    "evidence_chain_a_e",
+    "S4(a)(b)(c)(e)(f)",
+    "S5 shared-entry/arm-alignment/full-path"
+   ],
+   "counterexample_files": [
+    "CODE/experiment_platform/tests/test_s1_review_counterexamples.py",
+    "CODE/experiment_platform/tests/test_s4_review_counterexamples.py",
+    "CODE/experiment_platform/tests/test_s5_review_counterexamples.py",
+    "CODE/leo_sim/tests/test_s6_review_counterexamples.py",
+    "CODE/tests/test_t1_vm_launch_manifest.py"
+   ],
+   "fifth_round_verification": {
+    "code_sha": "06572b622aa852d2cc4250d15a48d243839991d6",
+    "independent_checks": [
+     "外置反例三件在仓内副本上作 AST 比对：逻辑一致，未见删除或放宽断言",
+     "六文件 45 passed, 1 skipped；跳过项 test_ideal_state_time.py:224 不覆盖本三反例",
+     "静态与调用路径核对：_expire_waiting 先发 ctrl_drop 再扣队列、不伪造 service_finish；_resource_timeline 保留该事件；控制账本按统一身份键出队；目标身份要求非 None，数据 FIFO 跳过控制行",
+     "执行链 b7641418 与 VM 工件一致；20/20 result 哈希、身份与谓词重算通过"
+    ],
+    "ledger_sha": "f9f6c5c88379bb0ee31ea8576372501c268e0b17",
+    "not_granted": [
+     "不授予 FORMAL_RUN，不证明状态时间对齐有收益",
+     "真实 DDQN 模型读取器仍未实现（内部缺口），固定小模型接口通过不替代真实检查点加载",
+     "P9 继续 PARTIAL：common_strong 与确认样本量尚未冻结"
+    ],
+    "scope_limit": "指定身份、指定修复范围的有界独立验收，不是对全部平台实现作无缺陷保证",
+    "standing_condition": "若今后改变控制重传/重入队、身份或资源窗口语义，必须新增对应守恒验收，不得复用本次绿状态",
+    "verdict": "B1/B2 CONFIRMED_FIXED（所审范围）；S1_OPEN 关闭"
+   },
+   "new_identity_pending_review": "本文件所记身份为 b1f44af / t1-final-b1f44af，自验通过；第三轮独立复核尚未覆盖该新身份。",
+   "regression": "1295 passed, 2 skipped, 1 warning in 448.85s",
+   "research_design_status": "NOT_READY：开发块配对差恒为 0，common_strong 未冻结、正式样本量无法估计，formal 包为 PENDING_DEV_SELECTION。属研究设计尚未就绪，不等于只差正式授权。",
+   "resolved_in_round3": [
+    "S1 反例 B/C：内核补 put_ctrl 入队行与控制包 service_start/service_finish 行，重建改由控制时间线测量",
+    "S3：逐流缓存改为请求时冻结，未付费的完整评分不再可能",
+    "S5：工件声明 model_provenance，且被 benchmark 谓词强制"
+   ],
+   "reviewers": [
+    "S1-S3",
+    "S4-S5",
+    "S6-S7",
+    "S8+evidence"
+   ],
+   "reworked": {
+    "S1": "截断服务窗回退内核 backlog_before（目标入队瞬间恒等）；未知分量不再折成数字（work_ahead_bits=None）",
+    "S4_d": "schema 为空即登记进 statistics.excluded（原被 schema 过滤静默丢弃）",
+    "S5_R2": "四臂 targets_match/ranking_match 纳入 benchmark 谓词门禁，错位即非 ok",
+    "S6": "assert_inference_only 改为声明+探针；policy.act 统一委托 adapter.act；verify_checkpoint 硬要求 metadata 路径与哈希；ta.enabled=false 时给策略报错",
+    "S8_3a_i": "trap 清理暂存目录；远端 && 链 + head 校验"
+   },
+   "s1_closed": "第五轮独立复核（06572b6/f9f6c5c）确认 B1/B2 CONFIRMED_FIXED，S1_OPEN 关闭；S3/S5 保留第三轮确认结论，未重复审查",
+   "still_open": []
+  },
+  "verdict": "REQUEST_CHANGES",
+  "vm": {
+   "alias": "vm",
+   "chain_equality_verified": "VM chain 96b3fbaf == local chain 96b3fbaf (57 execution-chain files, after pruning stray metadata)",
+   "host": "cuda-liguang13",
+   "isolated_root": "/data/论文/leo-t1-wt",
+   "live_deployment_untouched": "/data/论文/leo-direct-sim",
+   "runner": "CODE/scripts/remote/t1-vm.sh (sync/run/pull/experiment)"
+  },
+  "vm_evidence": {
+   "latest_identity": {
+    "acceptance": {
+     "not_ok": 0,
+     "ok": 10,
+     "predicate_failed": 0,
+     "verified_ok": 10
+    },
+    "bundle_fingerprint": "67fb0523a29b1573",
+    "chain_equality": "VM 链 == 本机重算（57 个执行链文件）",
+    "commit": "06572b622aa852d2cc4250d15a48d243839991d6",
+    "dev": {
+     "not_ok": 0,
+     "ok": 10,
+     "predicate_failed": 0,
+     "verified_ok": 10
+    },
+    "dirty": false,
+    "execution_chain_sha256": "b76414188dd0bb722bb575a35fb59f7f5655c7bf1b9a813058f8ca983b2c7d70",
+    "note": "b1f44af 及更早的运行均因后续返工改变执行链而失效；t1-final-c4dd85f 与 t1-final-a70d65c 的 identity.git.dirty=true 系 runner 假阳性（见 s8_fix）。当前唯一有效身份是本条",
+    "online_path_p50_s": 0.00050976,
+    "pullback_integrity": "VM Results 的 52 个文件与 out/vm 拉回副本 sha256 逐一相等（逐字节一致）",
+    "run_id": "t1-final-06572b6",
+    "status_short": []
+   },
+   "local_regression": "1275 passed, 2 skipped（pytest 属本机允许项）",
+   "pulled_to": "out/vm/<run-id>/",
+   "run_ids": [
+    "t1-s4-46f9308",
+    "t1-s5-7440596",
+    "t1-s7-377ae9b",
+    "t1-final-a70d65c",
+    "t1-final-8a31496"
+   ]
+  }
+ },
+ "work_id": "WP-T1-COMPLETE"
 }

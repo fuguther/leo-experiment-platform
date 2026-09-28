@@ -339,3 +339,79 @@ statistics.common_strong.frozen = False（开发块配对差恒为 0、无判别
 4. **S4 附加观察（未判缺陷）**：`servers=0` 时异步后台 job 只发 `compute_request/compute_finish`、不发 `compute_start`。
 
 
+
+---
+
+## 第一轮 A0–A6：把平台补成"能跑完整实验"
+
+> 任务书：`平台与实验计划审计-20260927/两轮完成平台并启动实验.md`。
+> 状态分层：代码可用 / 接口实跑 / 开发已跑 / 确认已跑 —— 一个 DONE 不覆盖全部层次。
+> 逐项状态与证据见 `criteria.json#a_round`。
+
+### A1 真实检查点读取与推理接线
+
+之前 `inference.load_fixed_adapter_from_checkpoint` 在全部元数据闸门之后**无条件抛**
+`no trained-model reader is implemented`，所以"模型决定动作"根本无法测。现在：
+
+- `KerasFixedModelAdapter` 真读 `.keras`，并把**观察契约**变成有名字、可重算的对象：
+  契约名、维度、特征顺序、归一化、动作顺序，以及由这些字段重算的
+  `observation_contract_id`。元数据自相矛盾、重贴契约标签、顺序不符一律拒绝。
+- `verify_checkpoint` 收紧：哈希通过只到 `LOAD_PENDING`；`AVAILABLE` 只能由真正读入
+  并通过形状校验 + 确定性有限前向探针之后给出。
+- 接线不只是"能加载"：`kernel` 新增 `_fixed_policy_action`，**冻结观测半程也问模型**。
+  此前冻结半程用自己的 `legal[0]` 规则，等于把检查点读进来、计数、然后忽略掉。
+- 训练接口混入被堵死：`remember` 进入 `TRAINING_ENTRY_POINTS`。`TensorflowDDQN` 只有
+  `remember`、没有 `train_step/observe/update`，在此之前能通过"推理专用"探针。
+
+反例测试 27 项（`CODE/leo_sim/tests/test_checkpoint_inference.py`）。VM 侧由
+`CODE/experiment_platform/t1_a6_check.py` 导出真实格式的 `test_weights` 检查点，
+走完 导出→读取→决策→计时，并跑两个正式 tier 拒绝负例。
+
+### A2 三类实验任务，一个驱动层
+
+`branch_alignment` / `network_alignment` / `execution_modes` 共用
+`experiment_platform/t1_tasks.py`，因此预算、身份、恢复、失败记账对三者完全一致：
+
+- 支路抽样**只看 t0**：前向决策且观测时刻至少两个合法方向；抽样是按决策序号的等距
+  步长，只依赖合格支路**数量**。候选不足保留逐条原因；失败支路记账并降级区组，
+  不静默删除。一个区组内多支路先汇成区组值，再做配对统计（12 支路 ≠ 12 次独立运行）。
+- 四臂各自从同一 trace 全程跑网，队列随各自策略演化；每臂带 `time_alignment_audit`
+  （本臂名、有查询时刻的决策数、真实查询时刻集合），所以"臂其实没生效"和
+  "臂生效了但结果相同"可以被区分。
+- 参数只有一个入口 `apply_parameters()`：共同未来 horizon、预测器、负载、包长、N、
+  周期、窗口、查询/服务成本都进解析配置。历史上硬编码的 2 Mbps 与 `first_forward`
+  被移进显式命名的 `_seed_config_legacy_smoke` 与 acceptance 夹具。
+
+### A3 共同未来：真的比较，再冻结
+
+- `project-horizons` 从**开发基准**的候选 ETA 偏移投影五个预声明候选（mean/median 规则 +
+  p25/p50/p75 固定 h），分位数来源写在产物里。
+- 五个候选各有自己的 dev cell，因此损失表是**逐候选一列**：每个候选只用自己的区组。
+  之前"所有候选共用一份区组集"会让五列完全相同，然后报一个精确并列 ——
+  那是一次没有发生过的比较。
+- 修掉一个真 bug：没有投影文件时曾用两个规则候选报 `SELECTED`。现在先判 `READY`，
+  否则 `PENDING_HORIZON_CANDIDATES` 并点名缺哪三个候选。
+
+### A4 全指标与全部计算成本
+
+`outcome_metrics` 把终止丢包分类、到期未交付、停止时仍在系统（行政删失，不是丢包）、
+两种分母的吞吐、逐星请求率分布与热点最大值、交付子集 E2E 分位、队列峰值与面积、
+命中/后备率、版本年龄、安装延迟、ETA 误差、同资源预测误差，连同
+**含后台更新的总计算成本**，一起挂到每个模式行上。拿不到的原始字段报
+`NOT_COMPUTABLE` 并点名缺哪个字段，绝不填 0。
+
+### A5 正式执行入口：边界是证据，不是永久拒绝
+
+原先 `run_bundle(tier=formal)` 无条件拒绝——那不是授权边界，是缺接线。现在
+`formal_execution_plan` 对**每一个**正式 cell 用既有
+`verify_authorization_for_leo_sim_v2_config` 复核：包被改过、授权指向别的包、缺授权，
+全部拒绝；本函数只复核，不签发任何授权。`estimate_bundle_cost` 把矩阵展开成真实
+模拟调用数，不以外层 cell 数掩盖成本。
+
+### 仍未完成
+
+- VM 上 `t1_a6_check` 与 `project-horizons` 尚未跑；本轮 VM 只跑了
+  `experiment`（compile+validate+acceptance+dev+report+pull，run-id `t1-a6-5e8ab7c`）。
+- A0 的四层状态里，**没有任何一项达到"确认已跑"**；第一轮完成判定要看 VM 拉回结果。
+- 本机跑出的"p25/p50 的 h=0 导致 12/12 支路 `NO_LEGAL_BRANCH`"只是待查线索，
+  必须在 VM 上复现才算数。
