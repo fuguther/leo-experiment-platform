@@ -3988,19 +3988,27 @@ class Kernel:
         return _ta.resolve_common_horizon(probe, rule)
 
     def _time_aligned_order(self, pkt: DataPacket, sat: int, now: float,
-                            cands: list, own_q: dict):
+                            cands: list, own_q: dict, frozen_hit=None):
         """Reorder the legal forward candidates with the shared scorer.
 
         Returns (ordered_candidates, audit).  With time_alignment disabled the
         candidate order and the audit are exactly what the historical path
         produced.  A scoring failure is fail-loud, never a silent fallback.
+
+        frozen_hit is the per_flow cache entry that was selected WHEN THE
+        DECISION WAS REQUESTED.  The frozen contract is "freeze at request,
+        never refresh while queued", so a TTL that lapses during the query
+        service wait must NOT turn an already-granted hit into a surprise
+        full scoring run (review S3): that entry is honoured, and only the
+        legality filters run against the post-wait state.
         """
         if not self.cfg_ta["enabled"] or not cands:
             return cands, None
         if self.async_mode:
             return self._async_order(pkt, sat, now, cands, own_q)
         if self.exec_mode == "per_flow":
-            hit = self._per_flow_hit(pkt, sat, now)
+            hit = (frozen_hit if frozen_hit is not None
+                   else self._per_flow_hit(pkt, sat, now))
             if hit is not None:
                 order = [d for d in hit["ranking"] if d in cands]
                 order += [d for d in cands if d not in order]
@@ -4012,8 +4020,13 @@ class Kernel:
                     "expires_at": hit["expires_at"],
                     "ttl_s": float(self.cfg_ta["per_flow_ttl_s"]),
                     "applied_order": list(order),
+                    "frozen_at_request": frozen_hit is not None,
                     "source": "per-flow cache hit: no scoring, no compute on "
-                              "this decision",
+                              "this decision" +
+                              (" (entry FROZEN when the decision was "
+                               "requested; a TTL lapse during the query "
+                               "wait does not convert it into a miss)"
+                               if frozen_hit is not None else ""),
                 }
             order, audit = self._score_order(pkt, sat, now, cands, own_q)
             self._store_flow_cache(pkt, sat, now, order)
@@ -4817,9 +4830,15 @@ class Kernel:
             # full inference in every arm.  They all still pay the shared query
             # service, and the background update (async) or the miss (per_flow)
             # pays the real computation.
+            # FREEZE AT REQUEST: if this was a per_flow cache hit, hand the
+            # very entry judged valid here down to the decision, so a TTL
+            # that lapses during the query wait cannot silently trigger a
+            # full scoring run that nobody paid for (review S3).
+            frozen_hit = (self._per_flow_hit(pkt, sat, requested)
+                          if self.exec_mode == "per_flow" else None)
             yield from self._query_service(pkt, sat, requested)
             self._decide(pkt, sat, decision_started_at=requested,
-                         observation=None)
+                         observation=None, frozen_flow_hit=frozen_hit)
             return
         observation = (self._observe_preferred_action(pkt, sat)
                        if self.obs_mode == "frozen" else None)
@@ -5170,7 +5189,8 @@ class Kernel:
 
     def _decide(self, pkt: DataPacket, sat: int,
                 decision_started_at: float | None = None,
-                observation: dict | None = None) -> None:
+                observation: dict | None = None,
+                frozen_flow_hit=None) -> None:
         if observation is not None:
             self._decide_from_frozen_observation(
                 pkt, sat, observation, decision_started_at)
@@ -5294,7 +5314,8 @@ class Kernel:
         # T1-P5: reorder by the enabled state-time arm; the legality/looping
         # filters below and the commit rules are unchanged, so the four arms
         # differ ONLY in the ordering they feed the same pipeline.
-        cands, ta_audit = self._time_aligned_order(pkt, sat, now, cands, own_q)
+        cands, ta_audit = self._time_aligned_order(
+            pkt, sat, now, cands, own_q, frozen_hit=frozen_flow_hit)
         unavailable = False
         rate_blocked = False
         recover_at = float("inf")
