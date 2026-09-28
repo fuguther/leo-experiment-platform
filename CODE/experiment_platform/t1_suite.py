@@ -212,21 +212,20 @@ def _load_horizon_candidates(contract):
     if path is None or not path.exists():
         return {"status": "PENDING_HORIZON_CANDIDATES",
                 "file": None if path is None else str(path),
-                "candidates": {
-                    "mean_eta_offset": {"kind": "rule",
-                                        "common_rule": "mean_eta"},
-                    "median_eta_offset": {"kind": "rule",
-                                          "common_rule": "median_eta"},
-                },
+                "candidates": [
+                    {"candidate": "mean_eta_offset", "kind": "rule"},
+                    {"candidate": "median_eta_offset", "kind": "rule"},
+                ],
                 "missing": ["p25_offset", "p50_offset", "p75_offset"],
                 "recovery": "t1_suite project-horizons --contract <contract> "
                             "--out <horizon_candidates_file>"}
     document = json.loads(path.read_text(encoding="utf-8"))
-    candidates = {name: spec for name, spec in document.items()
-                  if isinstance(spec, dict) and spec.get("kind")}
+    candidates = [spec for spec in (document.get("candidates") or [])
+                  if isinstance(spec, dict) and spec.get("candidate")]
+    names = {spec["candidate"] for spec in candidates}
     missing = [name for name in ("mean_eta_offset", "median_eta_offset",
                                  "p25_offset", "p50_offset", "p75_offset")
-               if name not in candidates]
+               if name not in names]
     if missing:
         raise SuiteError(
             f"the horizon candidate file {path} is missing {missing}: the "
@@ -262,7 +261,9 @@ def project_horizon_candidates(contract_path, out_path, root=None):
             collected.extend(offsets["offsets"])
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    projected = t1_tasks.project_horizons(collected)
+    from CODE.experiment_platform import design_selection
+
+    projected = design_selection.build_candidate_horizons(collected)
     projected["dev_seeds"] = seeds
     projected["per_seed_candidate_counts"] = per_seed
     projected["contract_sha256"] = _sha256_file(contract_path)
@@ -472,18 +473,18 @@ def _dev_cells(contract, bundle_dir):
     # the block value carries both that candidate loss and the candidate arm
     # reference it will be compared against.
     horizons = _load_horizon_candidates(contract)
-    for name in ("mean_eta_offset", "median_eta_offset", "p25_offset",
-                 "p50_offset", "p75_offset"):
-        spec = horizons["candidates"].get(name)
-        if spec is None:
-            continue
+    for spec in horizons["candidates"]:
+        name = str(spec["candidate"])
         overrides = {"time_alignment.arm": "common"}
-        if spec.get("kind") == "fixed_horizon":
+        if spec.get("kind") == "fixed_h":
             overrides["time_alignment.common_rule"] = "fixed_horizon"
             overrides["time_alignment.common_horizon_s"] = float(
-                spec["common_horizon_s"])
+                spec["horizon_s"])
         else:
-            overrides["time_alignment.common_rule"] = str(spec["common_rule"])
+            overrides["time_alignment.common_rule"] = str(
+                spec.get("common_rule")
+                or {"mean_eta_offset": "mean_eta",
+                    "median_eta_offset": "median_eta"}[name])
         for seed in seeds:
             cfg = _seed_config(contract, bundle_dir, seed,
                                dict(params, **overrides), tag=f"common-{name}")
@@ -718,6 +719,7 @@ def compile_bundle(contract_path, out_dir):
     if not parent.is_dir() or parent.is_symlink():
         raise SuiteError(f"bundle parent must be a real directory: {parent}")
     out_dir.mkdir()
+    horizon_candidates = _load_horizon_candidates(contract)
     confirm_cells, formal = _formal_cells(contract, out_dir)
     cells = (_acceptance_cells(contract, out_dir) + _dev_cells(contract,
                                                               out_dir)
@@ -751,6 +753,10 @@ def compile_bundle(contract_path, out_dir):
             "formal": [c["cell_id"] for c in confirm_cells],
         },
         "formal_design": contract.get("formal_design") or {"ready": False},
+        # A3: the five projected candidates travel WITH the matrix, so the
+        # report can rebuild the candidate loss table from the same file the
+        # compile used instead of re-deriving the horizons later.
+        "horizon_candidates": horizon_candidates,
         "formal_package": _formal_package(contract, out_dir, formal),
         "cells": cells,
         "pre_registration": {
@@ -826,6 +832,7 @@ def _bundle_fingerprint(bundle):
         # fingerprint, otherwise a threshold could be rewritten silently
         "formal_package": bundle.get("formal_package"),
         "formal_design": bundle.get("formal_design"),
+        "horizon_candidates": bundle.get("horizon_candidates"),
     }
     return hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
 
@@ -1094,6 +1101,21 @@ def _check_execution_predicate(result, require):
     return checks
 
 
+def _background_jobs_count(row):
+    """Background update jobs actually scheduled by this mode row.
+
+    A4: the async modes pay for their updates on the SHARED compute pool, so a
+    row that reports no background job either did not run the mode or is not
+    counting the cost it created.  Both are failures of the same claim.
+    """
+    cost = row.get("total_cost") or {}
+    for key in ("background_updates", "background_jobs"):
+        block = cost.get(key)
+        if isinstance(block, dict) and block.get("jobs") is not None:
+            return int(block["jobs"])
+    return 0
+
+
 def _check_task_predicate(result, require):
     """Machine-check the pre-declared behaviour of a t1_task cell.
 
@@ -1164,11 +1186,9 @@ def _check_task_predicate(result, require):
             checks.append([f"arm {arm} reports hotspot pressure",
                            rates.get("max") is not None, rates.get("max")])
             if require.get("require_background_cost"):
-                cost = (row.get("total_cost") or row.get("compute") or {})
-                background = (cost.get("background_jobs") or {})
+                count = _background_jobs_count(row)
                 checks.append([f"arm {arm} counts background jobs",
-                               int(background.get("jobs") or 0) > 0,
-                               background.get("jobs")])
+                               count > 0, count])
     elif task == "execution_modes":
         rows = {row.get("mode"): row for row in (doc.get("modes") or [])}
         for mode in require.get("modes", []):
@@ -1179,12 +1199,9 @@ def _check_task_predicate(result, require):
             checks.append([f"mode {mode} reports an outcome",
                            row.get("outcome") is not None, None])
         if require.get("require_background_cost"):
-            cost = (rows.get("async_window") or {}).get("total_cost") \
-                or (rows.get("async_window") or {}).get("compute") or {}
-            background = (cost.get("background_jobs") or {})
+            count = _background_jobs_count(rows.get("async_window") or {})
             checks.append(["the async mode schedules real background jobs",
-                           int(background.get("jobs") or 0) > 0,
-                           background.get("jobs")])
+                           count > 0, count])
     return checks
 
 
@@ -1680,7 +1697,7 @@ def report_run(run_dir):
         "counts": counts,
         "cells": rows,
         "by_group": _by_group(run_doc, rows),
-        "statistics": _statistics_summary(run_dir, rows),
+        "statistics": _statistics_summary(run_dir, rows, run_doc),
         "limits": [
             "the acceptance tier proves the mechanisms fire; it is not a "
             "scientific result and carries no confirmatory claim",
@@ -1718,7 +1735,152 @@ def _summarise(payload):
     return None
 
 
-def _statistics_summary(run_dir, rows):
+def _development_design(run_dir, rows, run_doc):
+    """A3: the block set, the FIVE-candidate loss table and the selection.
+
+    The blocks come from the branch-alignment cells: one block value per
+    (candidate, scenario x trace x seed), already merged from up to twelve
+    branches by the driver, which is what makes a block the unit of
+    replication instead of a branch.
+    """
+    from CODE.experiment_platform import design_selection
+
+    bundle_path = Path(str(run_doc.get("bundle_dir") or "")) / "bundle.json"
+    try:
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "NO_BUNDLE",
+                "reason": f"the bundle that produced this run is unreadable: {exc}"}
+    horizons = bundle.get("horizon_candidates") or {}
+    candidates = horizons.get("candidates") or {}
+    blocks, excluded, delivery_samples = [], [], {}
+    seen = set()
+    for row in rows:
+        cell_id = str(row.get("cell_id") or "")
+        if not cell_id.startswith("dev-common-"):
+            continue
+        if row.get("status") != "ok" or not row.get("predicate_passed", True):
+            excluded.append({"unit": cell_id,
+                             "reason": f"cell status {row.get('status')}"})
+            continue
+        path = run_dir / "cells" / cell_id / "result.json"
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            excluded.append({"unit": cell_id, "reason": "result unreadable"})
+            continue
+        document = payload.get("document") or {}
+        block = document.get("block") or {}
+        if block.get("status") not in ("ok", "DEGRADED"):
+            excluded.append({"unit": cell_id,
+                             "reason": f"block status {block.get('status')}: "
+                                       f"{block.get('reason')}"})
+            continue
+        name = cell_id[len("dev-common-"):].rsplit("-seed-", 1)[0]
+        try:
+            seed = int(cell_id.rsplit("-seed-", 1)[1])
+        except (IndexError, ValueError):
+            excluded.append({"unit": cell_id, "reason": "cell id has no seed"})
+            continue
+        source = document.get("source") or {}
+        scenario = str(source.get("scenario") or "config")
+        trace = str(source.get("trace_sha256") or source.get("rows_digest")
+                    or cell_id)
+        deadline = (document.get("deadline") or {}).get("deadline_s")
+        unit = (scenario, trace, seed, name)
+        if unit in seen:
+            excluded.append({"unit": cell_id, "reason": "duplicate block"})
+            continue
+        seen.add(unit)
+        entry = (block.get("arms") or {}).get("common") or {}
+        if entry.get("mean_loss") is None:
+            excluded.append({"unit": cell_id,
+                             "reason": "the block has no common-arm loss"})
+            continue
+        blocks.append({"scenario_id": scenario, "trace_id": trace, "seed": seed,
+                       "phase": "development", "arm": name,
+                       "mode": "branch_alignment",
+                       "eval": {"status": block.get("status"),
+                                "loss": float(entry["mean_loss"]),
+                                "deadline_s": deadline,
+                                "branches": block.get("branch_count"),
+                                "failures": block.get("failure_count")}})
+    document = {"status": "NO_DEVELOPMENT_BLOCKS", "blocks": 0,
+                "candidates": sorted(str(spec.get("candidate"))
+                                     for spec in candidates),
+                "excluded": excluded}
+    if not blocks:
+        document["reason"] = ("no branch-alignment block in this tier: nothing "
+                              "can be paired and no candidate can be selected")
+        return document
+    if horizons.get("status") != "READY":
+        # the five candidates are PRE-DECLARED: selecting from a reduced set
+        # would silently promote a two-candidate comparison into a selection
+        document.update({"status": "PENDING_HORIZON_CANDIDATES",
+                         "blocks": len(blocks),
+                         "candidates": sorted(str(spec.get("candidate"))
+                                              for spec in candidates),
+                         "reason": horizons.get("status"),
+                         "missing": horizons.get("missing"),
+                         "recovery": horizons.get("recovery")})
+        return document
+    # One loss COLUMN per candidate: each candidate own cells are the only
+    # blocks its column may be computed from.  Handing every candidate the
+    # same block set would score them all with one candidate losses and then
+    # report an exact tie -- a comparison that never happened.
+    tables, unscored = [], list(document["excluded"])
+    for spec in candidates:
+        name = str(spec["candidate"])
+        subset = [block for block in blocks if block["arm"] == name]
+        if not subset:
+            unscored.append({"candidate": name,
+                             "reason": "no development block for this "
+                                       "candidate in this tier"})
+            continue
+        try:
+            tables.append(design_selection.evaluate_candidates([spec], subset))
+        except design_selection.SelectionError as exc:
+            unscored.append({"candidate": name, "reason": str(exc)})
+    if not tables:
+        document.update({"status": "SELECTION_REFUSED", "blocks": len(blocks),
+                         "reason": "no candidate had a scorable development "
+                                   "block",
+                         "excluded": unscored})
+        return document
+    table = {
+        "schema": "t1-design-loss-table/v1",
+        "analysis_phase": "development",
+        "candidates": [row for entry in tables
+                       for row in entry["candidates"]],
+        "blocks": [row for entry in tables for row in entry["blocks"]],
+        "losses": {name: values for entry in tables
+                   for name, values in entry["losses"].items()},
+        "unscored": [row for entry in tables for row in entry["unscored"]]
+                    + [item for item in unscored if "candidate" in item],
+        "rule": ("primary loss per candidate x block; a candidate column is "
+                 "built only from that candidate own blocks"),
+    }
+    table["loss_table_sha256"] = design_selection.sha256_hex(table)
+    try:
+        selection = design_selection.select_common_strong(
+            # unit_for(block) = scenario|trace|seed|arm|mode
+            table, block_scenarios={
+                "|".join((block["scenario_id"], block["trace_id"],
+                          str(block["seed"]), block["arm"], block["mode"])):
+                block["scenario_id"] for block in blocks})
+    except design_selection.SelectionError as exc:
+        document.update({"status": "SELECTION_REFUSED", "blocks": len(blocks),
+                         "reason": str(exc), "excluded": unscored})
+        return document
+    document.update({"status": "SELECTED", "blocks": len(blocks),
+                     "loss_table": table, "selection": selection,
+                     "excluded": unscored,
+                     "horizon_source": horizons.get("file")
+                     or horizons.get("status")})
+    return document
+
+
+def _statistics_summary(run_dir, rows, run_doc=None):
     """Wire the frozen statistics into the run summary.
 
     A block is one cell that compared the primary arms at one branch.  With a
@@ -1799,6 +1961,11 @@ def _statistics_summary(run_dir, rows):
         "excluded": excluded,
         "rule": "only cells whose result integrity AND behaviour predicate "
                 "both passed enter the paired analysis",
+        # A3: the real candidate loss table and the frozen selection, built
+        # from the block values the driver already merged.  This SUPERSEDES
+        # the old "same paired difference -> not frozen" heuristic, which
+        # could not tell "not compared" from "compared and tied".
+        "development_design": _development_design(run_dir, rows, run_doc or {}),
     }
     if not blocks:
         summary["note"] = ("no time-alignment block in this tier: nothing to "

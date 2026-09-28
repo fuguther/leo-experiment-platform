@@ -35,7 +35,8 @@ import statistics
 import tempfile
 from pathlib import Path
 
-from CODE.experiment_platform import artifact_identity, scripted_scenarios
+from CODE.experiment_platform import (artifact_identity, outcome_metrics,
+                                      scripted_scenarios)
 from CODE.leo_sim import config as config_mod, kernel, time_alignment as ta
 from CODE.leo_sim import trace as trace_mod
 
@@ -169,6 +170,19 @@ def _row_for_mode(base_resolved, rows, geometry, mode, overrides=None):
     duration = float(resolved["config"]["scenario"]["duration_s"])
     n_sats = int(resolved["config"]["scenario"]["num_satellites"])
     packet_bits = int(resolved["config"]["demand"]["packet_bits"])
+    # A4: the FINAL outcome and the TOTAL compute cost, computed once per mode
+    # from the SAME raw records the row above is built from.  The measurement
+    # window is derived from the trace rows (not from the configured duration)
+    # once per mode and carried on the row, because every window-scoped number
+    # below is uninterpretable without it.
+    measurement_window = outcome_metrics.build_measurement_window(rows)
+    outcome = outcome_metrics.compare_outcome(
+        result, timeline, sink, rows, window=measurement_window,
+        cost={"service_s": resolved["config"]["execution"]["compute_delay_s"],
+              "servers": resolved["config"]["execution"][
+                  "compute_servers_per_satellite"]},
+        context={"cell": mode, "run_id": mode, "mode": mode,
+                 "config_sha256": resolved["sha256"]})
     return {
         "mode": mode,
         "config_sha256": resolved["sha256"],
@@ -228,6 +242,21 @@ def _row_for_mode(base_resolved, rows, geometry, mode, overrides=None):
             "e2e_p95_s": _p95(e2e),
             "events_processed": result["events_processed"],
         },
+        # A4 deliverables: FINAL outcome metrics and TOTAL compute cost, on
+        # every mode row.  Neither replaces nor renames anything above; the
+        # per-metric rows (with their NOT_COMPUTABLE status) stay available in
+        # the outcome document for the CSV writer.
+        "measurement_window": measurement_window,
+        "network_outcome": outcome["network_outcome"],
+        "total_cost": outcome["total_cost"],
+        "outcome_document": {
+            "schema": outcome["schema"],
+            "partition_exact": outcome["partition_exact"],
+            "not_computable": outcome["not_computable"],
+            "e2e_stage_disclaimer": outcome["e2e_stage_disclaimer"],
+            "row_count": len(outcome["rows"]),
+            "rows": outcome["rows"],
+        },
     }
 
 
@@ -274,7 +303,12 @@ def compare(resolved, rows, geometry, source, modes=MODES, overrides=None):
         "ddqn": ddqn_status(resolved),
         "modes": mode_rows,
         "units": {"e2e": "seconds", "compute_wait": "seconds",
-                  "counts": "events"},
+                  "counts": "events",
+                  "outcome": {"schema":
+                              mode_rows[0]["outcome_document"]["schema"],
+                              "service": "seconds", "queue_wait": "seconds",
+                              "queue_area": "bits_s", "rate": "1/s",
+                              "bits": "bits", "counts": "counts"}},
         "limits": [
             "the comparison is one trace, one seed, one arm and one predictor: "
             "no statistical statement is made",
@@ -285,6 +319,17 @@ def compare(resolved, rows, geometry, source, modes=MODES, overrides=None):
             "separately and are never summed into one number",
             "the deterministic scorer is used; DDQN is reported only as "
             "availability/blocker, never as a performance result",
+            "each mode row carries network_outcome (final delivered/lost/"
+            "censored split, both throughput denominators, E2E percentiles, "
+            "per-satellite pressure incl. the hotspot maximum, table and "
+            "prediction quality) and total_cost (per-packet decision compute "
+            "vs background update compute, query service, install and control "
+            "traffic as separate lines); a quantity whose raw field the run "
+            "did not produce is reported NOT_COMPUTABLE with the field named, "
+            "never as 0",
+            "the measurement window is derived from the trace rows' emission "
+            "times and carried on every row, because every window-scoped "
+            "number is uninterpretable without it",
         ],
     }
 

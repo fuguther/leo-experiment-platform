@@ -314,8 +314,10 @@ def test_the_dev_tier_runs_with_behaviour_predicates(tmp_path):
         kinds.add(record["predicate"]["kind"])
         assert record["predicate_verdict"]["passed"] is True
         assert record["predicate_verdict"]["checks"]
-    # the dev tier covers both the execution sweep and the state-time blocks
-    assert kinds == {"execution_modes", "time_alignment"}, kinds
+    # the dev tier covers the execution sweep AND the A2 task cells: the
+    # offline branch blocks, the four-arm network runs and the candidate
+    # horizons all go through the same t1_task predicate
+    assert kinds == {"execution_modes", "t1_task"}, kinds
 
 
 def test_the_formal_package_is_compiled_and_validated_not_run(tmp_path):
@@ -332,10 +334,14 @@ def test_the_formal_package_is_compiled_and_validated_not_run(tmp_path):
         assert field in package
     assert package["sample_size_plan"]["formula_examples"]
     assert "formal" in bundle["tiers"]
+    # A5: the formal tier is no longer refused unconditionally.  With no
+    # confirmation cell compiled there is nothing to authorize, so the refusal
+    # is now about the EMPTY matrix, and with cells present it is about the
+    # missing authorization -- never a permanent "not runnable" flag.
     done = _run("run", "--bundle", str(bundle_dir), "--tier", "formal",
                 "--out", str(tmp_path / "formal"))
     assert done.returncode == 2
-    assert "PENDING PACKAGE" in done.stdout
+    assert "formal tier is empty" in done.stdout
 
 
 def test_validate_requires_the_formal_package(tmp_path):
@@ -517,11 +523,12 @@ def test_a_ready_design_compiles_real_pending_cells(tmp_path):
         assert cell["input"]["files"]["--deadline-from"]["sha256"], cell
     done = _run("validate", "--bundle", str(bundle_dir))
     assert done.returncode == 0, done.stdout + done.stderr
-    # compiled and validated, still NOT runnable without authorization
+    # compiled and validated, and still NOT runnable: the refusal is now the
+    # ABSENT AUTHORIZATION rather than a permanent flag
     done = _run("run", "--bundle", str(bundle_dir), "--tier", "formal",
                 "--out", str(tmp_path / "formal"))
     assert done.returncode == 2
-    assert "PENDING PACKAGE" in done.stdout
+    assert "authorization" in done.stdout
 
 
 def test_a_ready_design_without_a_frozen_deadline_is_refused(tmp_path):
@@ -543,12 +550,85 @@ def test_the_common_strong_state_is_reported_with_its_reason(tmp_path):
          "--out", str(run_dir))
     _run("report", "--run-dir", str(run_dir))
     report = json.loads((run_dir / "report.json").read_text())
+    # The five candidates are still declared, and the legacy heuristic still
+    # refuses to call anything frozen without development blocks.
     state = report["statistics"]["common_strong"]
     assert state["frozen"] is False
     assert set(state["candidates"]) == {
         "mean_eta_offset", "median_eta_offset", "p25_offset", "p50_offset",
         "p75_offset"}
-    assert state["evaluated"]
-    assert "cannot discriminate" in state["reason"]
-    assert "required" in state
+    # the legacy heuristic now has no time-alignment cell to look at, and it
+    # says so instead of reporting a state it did not compute
+    assert state["evaluated"] == []
+    assert state["reason"]
+    # A3: the REAL selection lives in development_design, and with no
+    # projected horizon file it says so instead of inventing three horizons.
+    design = report["statistics"]["development_design"]
+    assert design["status"] == "PENDING_HORIZON_CANDIDATES"
+    assert sorted(design["missing"]) == ["p25_offset", "p50_offset",
+                                         "p75_offset"]
+    assert design["recovery"]
+    assert design["blocks"] > 0, design
+    assert design["loss_table"]["candidates"], design
+
+
+def test_the_five_candidates_get_their_own_loss_columns(tmp_path):
+    """A candidate must be scored on ITS OWN blocks, never on the others'."""
+    contract = yaml.safe_load(CONTRACT.read_text())
+    horizons = tmp_path / "horizons.json"
+    horizons.write_text(json.dumps({
+        "schema": "t1-candidate-horizons/v1",
+        "analysis_phase": "development",
+        "candidates": [
+            {"candidate": "mean_eta_offset", "kind": "rule",
+             "horizon_s": 0.5},
+            {"candidate": "median_eta_offset", "kind": "rule",
+             "horizon_s": 0.25},
+            {"candidate": "p25_offset", "kind": "fixed_h", "horizon_s": 0.1,
+             "quantile": 0.25},
+            {"candidate": "p50_offset", "kind": "fixed_h", "horizon_s": 0.25,
+             "quantile": 0.5},
+            {"candidate": "p75_offset", "kind": "fixed_h", "horizon_s": 0.75,
+             "quantile": 0.75}],
+        "quantile_source": "development_baseline_candidate_eta_offsets",
+    }))
+    contract.setdefault("formal_design", {})["horizon_candidates_file"] = str(
+        horizons)
+    path = tmp_path / "contract-horizons.yaml"
+    path.write_text(yaml.safe_dump(contract, allow_unicode=True))
+    bundle_dir = tmp_path / "compiled-horizons"
+    done = _run("compile", "--contract", str(path), "--out", str(bundle_dir))
+    assert done.returncode == 0, done.stdout + done.stderr
+    bundle = json.loads((bundle_dir / "bundle.json").read_text())
+    ids = [c["cell_id"] for c in bundle["cells"]
+           if c["cell_id"].startswith("dev-common-")]
+    assert len(ids) == 5 * 4, ids
+    run_dir = tmp_path / "dev-horizons"
+    _run("run", "--bundle", str(bundle_dir), "--tier", "dev",
+         "--out", str(run_dir))
+    _run("report", "--run-dir", str(run_dir))
+    report = json.loads((run_dir / "report.json").read_text())
+    design = report["statistics"]["development_design"]
+    table = design["loss_table"]
+    losses = table["losses"]
+    assert losses, table
+    # THE claim that was broken before the integration: a candidate column may
+    # only contain blocks that belong to THAT candidate.  Handing every
+    # candidate the same block set produced one shared column and then an
+    # exact tie -- a comparison that never happened.
+    provenance = {}
+    for row in table["blocks"]:
+        provenance.setdefault(row.get("arm"), set()).add(row.get("unit"))
+    for name, values in losses.items():
+        own = provenance.get(name, set())
+        assert set(values) <= own, (
+            name, sorted(set(values) - own))
+        assert values, name
+    # a candidate with no scorable block must be REPORTED, never scored from
+    # somebody else blocks
+    scored = set(losses)
+    for item in table.get("unscored") or []:
+        name = item.get("candidate")
+        if name and name not in scored:
+            assert item.get("reason"), item
 
