@@ -23,7 +23,7 @@
      "CODE/experiment_platform/t1_a6_check.py（VM 导出→读取→决策→计时→正式拒绝负例）"
     ],
     "reuse": "learning.TensorflowDDQN 的 save_and_verify 写出仓库真实格式；只读读取由 inference 承担，训练 learner 不进冻结路径",
-    "status": "CODE_AVAILABLE + TESTED(本机) + VM 运行在飞"
+    "status": "CODE_AVAILABLE + TESTED + VM 实跑通过（读取器→决策→计时→拒绝负例）"
    },
    "A2": {
     "boundary": "first_forward 与 2Mbps 只存在于显式命名的 legacy smoke 与 acceptance 夹具",
@@ -47,7 +47,7 @@
      "tests/test_t1_suite.py::test_the_five_candidates_get_their_own_loss_columns"
     ],
     "rework": "修复：无投影文件时曾用两个规则候选报 SELECTED，把两候选比较偷偷升级为选择；现先判 READY 否则 PENDING_HORIZON_CANDIDATES 并点名缺失候选",
-    "status": "CODE_AVAILABLE + TESTED(本机)；五候选选择待 VM 数字"
+    "status": "CODE_AVAILABLE + TESTED + VM 五候选投影已产出并入库；选择待五候选运行"
    },
    "A4": {
     "boundary": "拿不到的原始字段报 NOT_COMPUTABLE 并点名字段，不填 0；后台更新计入总计算",
@@ -70,7 +70,7 @@
     "evidence": [
      "tests/test_t1_suite.py 的正式 tier 空矩阵/无授权/移动包拒绝断言"
     ],
-    "status": "CODE_AVAILABLE + TESTED(本机)；VM 负例待跑"
+    "status": "CODE_AVAILABLE + TESTED + VM 负例通过（无授权/移动包均拒绝）"
    },
    "A6": {
     "remaining": [
@@ -78,7 +78,7 @@
      "VM 上 project-horizons 生成五候选并回写 contract 后再跑一次",
      "拉回复核 identity（commit/dirty/chain）"
     ],
-    "status": "IN_PROGRESS",
+    "status": "VM_RUN（A1/A2/A3/A4/A5 入口均有 VM 证据；五候选运行在飞）",
     "vm_run": "t1-a6-5e8ab7c（experiment: compile+validate+acceptance+dev+report+pull）"
    },
    "B0": {
@@ -107,7 +107,92 @@
    "FORMAL_RUN"
   ],
   "rule": "一个 DONE 不得覆盖全部层次；每项分层的状态写在 items 里",
-  "task_book": "平台与实验计划审计-20260927/两轮完成平台并启动实验.md"
+  "task_book": "平台与实验计划审计-20260927/两轮完成平台并启动实验.md",
+  "vm_evidence": {
+   "run_t1_a6_5e8ab7c": {
+    "acceptance": "10/10 verified ok",
+    "boundary": "此运行不含五候选：合同当时未声明 horizon_candidates_file",
+    "commit": "5e8ab7cbac71384aa372344f0747dcaf8bbca43e",
+    "compiled_cells": 37,
+    "dev": "27/27 verified ok",
+    "dev_report_development_design": "PENDING_HORIZON_CANDIDATES（blocks=8，点名缺 p25/p50/p75）",
+    "launch_dirty": false,
+    "pulled_to": "out/vm/t1-a6-5e8ab7c",
+    "validate_valid": true,
+    "what": "t1-vm.sh experiment（compile+validate+acceptance+dev+report+pull）"
+   },
+   "run_t1_five_49c370e": {
+    "commit": "49c370e",
+    "status": "LAUNCHED",
+    "what": "合同声明五候选后的 VM experiment"
+   },
+   "vm_project_horizons": {
+    "artifact_on_vm": "Results/t1-a6-5e8ab7c/horizons/horizon_candidates.json",
+    "commit": "5e8ab7cbac71384aa372344f0747dcaf8bbca43e",
+    "dev_seeds": [
+     7,
+     11,
+     23,
+     42
+    ],
+    "file_sha256": "483019d5d8b06dd96582a87be20fcb7e4f88316012ee899eb9935dee45ed2b7e",
+    "finding": "本 profile 上开发基准的候选 ETA 偏移中位数为 0：median_eta_offset / p25_offset / p50_offset 三个候选塌到 h=0，common 与 now 同义。五个预声明候选中有三个退化。这是 B3 必须分类的零差异，不得换 profile 直到出现正结果",
+    "mean_eta_offset_s": 0.14868833776207063,
+    "median_eta_offset_s": 0.0,
+    "per_seed_candidate_counts": {
+     "11": 196,
+     "23": 273,
+     "42": 263,
+     "7": 217
+    },
+    "population_size": 949,
+    "quantiles_s": {
+     "p25": 0.0,
+     "p50": 0.0,
+     "p75": 0.5187692372654595
+    },
+    "status": "MEASURED (VM)",
+    "vendored_to": "CODE/work/WP-T1-COMPLETE/horizon_candidates.json"
+   },
+   "vm_t1_a6_check": {
+    "artifact": "Results/t1-a6-5e8ab7c/a6/acceptance.json",
+    "boundary": "test_weights：只证明接口，不得称为策略性能",
+    "checkpoint": {
+     "contract": "C3",
+     "feature_width": 14,
+     "sha256": "e347a42230aa27bed920ef5d40a368240a7a4b67009f7d9861b68667de21afeb",
+     "trained": false,
+     "weights_purpose": "test_weights"
+    },
+    "commit": "5e8ab7cbac71384aa372344f0747dcaf8bbca43e",
+    "formal_refusals": {
+     "moved_package": true,
+     "without_authorization": true
+    },
+    "forward_timing": {
+     "best_us": 1414.02,
+     "host": "VM CPU",
+     "median_us": 1452.42,
+     "note": "真实检查点前向；不是星载计时，不是 DDQN 策略结果",
+     "on_board": false
+    },
+    "read_back": {
+     "chosen_directions": [
+      "N",
+      "S"
+     ],
+     "delivered": 24,
+     "finite_probe_checked": true,
+     "forward_decisions": 57,
+     "model_calls": 81,
+     "parameters_stable": true,
+     "receipt_state": "AVAILABLE",
+     "shape_checked": true,
+     "training": false,
+     "updates": 0
+    }
+   }
+  }
  },
  "branch": "t1/frozen-branch-and-async-design",
  "criteria": [
