@@ -182,6 +182,125 @@
     ],
     "run": "t1-b3-7be10f1"
    },
+   "b4_request_rate_x_N": {
+    "load_axis_works": {
+     "delivered": [
+      36,
+      69,
+      118
+     ],
+     "e2e_mean": [
+      0.9926,
+      1.0424,
+      1.1519
+     ],
+     "e2e_p95": [
+      1.7773,
+      1.5927,
+      2.1175
+     ],
+     "fallbacks": [
+      22,
+      48,
+      61
+     ],
+     "loads_mbps": [
+      1.0,
+      2.0,
+      4.0
+     ]
+    },
+    "result": "N 在诊断服务时长下无影响：N=1/2/4 的交付/时延/job 数完全相同，只有 N=1 时 2-11 ms 的微小排队",
+    "run": "t1-b4n-cee9b74",
+    "scenario": "fixed_hotspot (async_window, period 0.5 s)",
+    "service_s": 0.001,
+    "structural_finding": "后台 job 数由更新周期而非流量决定（109/118/121，跨 4 倍负载基本不变）",
+    "why": "service_s=0.001 s 时计算池利用率约 0.3%，池从未接近饱和，所以 N 不是瓶颈"
+   },
+   "b4_service_time_calibration": {
+    "findings": [
+     "计算受压时逐包严格劣化：N=1 累计排队 60.68 s，平均 E2E 从 0.98 s 升到 1.91 s；N=1/2/4 分别为 1.91/1.78/1.77 s。",
+     "异步窗口对 N 几乎不敏感（N=1/2/4 都是 1.038 s）：只做 104 个 job（vs 397-494）且不占包的关键路径，N=1 时排队仅 5.23 s。",
+     "在计算受压工作点上异步复用同时买到计算下降（-74% job）与时延下降（N=1 时 -46% 平均 E2E）；在诊断服务时长下池不饱和，差异只剩 job 数。"
+    ],
+    "note": "把计算服务时长标定到池会饱和的量级后，N 才成为有意义的轴（任务书 B1 的 rho 要求）",
+    "rows": [
+     {
+      "delivered": 63,
+      "e2e_mean_s": 1.1435,
+      "mode": "per_packet",
+      "queue_wait_s": 0.0,
+      "servers": 4,
+      "service_s": 0.05,
+      "total_jobs": 1842
+     },
+     {
+      "delivered": 69,
+      "e2e_mean_s": 1.0424,
+      "mode": "async_window",
+      "queue_wait_s": 0.0,
+      "servers": 4,
+      "service_s": 0.05,
+      "total_jobs": 116
+     },
+     {
+      "delivered": 64,
+      "e2e_mean_s": 1.9139,
+      "mode": "per_packet",
+      "queue_wait_s": 60.68,
+      "servers": 1,
+      "service_s": 0.25,
+      "total_jobs": 397
+     },
+     {
+      "delivered": 68,
+      "e2e_mean_s": 1.038,
+      "mode": "async_window",
+      "queue_wait_s": 5.23,
+      "servers": 1,
+      "service_s": 0.25,
+      "total_jobs": 104
+     },
+     {
+      "delivered": 66,
+      "e2e_mean_s": 1.778,
+      "mode": "per_packet",
+      "queue_wait_s": 0.65,
+      "servers": 2,
+      "service_s": 0.25,
+      "total_jobs": 406
+     },
+     {
+      "delivered": 68,
+      "e2e_mean_s": 1.038,
+      "mode": "async_window",
+      "queue_wait_s": 0.0,
+      "servers": 2,
+      "service_s": 0.25,
+      "total_jobs": 104
+     },
+     {
+      "delivered": 64,
+      "e2e_mean_s": 1.7672,
+      "mode": "per_packet",
+      "queue_wait_s": 0.0,
+      "servers": 4,
+      "service_s": 0.25,
+      "total_jobs": 494
+     },
+     {
+      "delivered": 68,
+      "e2e_mean_s": 1.038,
+      "mode": "async_window",
+      "queue_wait_s": 0.0,
+      "servers": 4,
+      "service_s": 0.25,
+      "total_jobs": 104
+     }
+    ],
+    "run": "t1-b4s-cee9b74",
+    "scenario": "fixed_hotspot"
+   },
    "b4_update_period_scan": {
     "boundary": "单场景单种子；D 用该场景冻结值 2.534 s；无统计声明",
     "commit": "31c7689 (scan) / cbada40 (auditability fix)",
