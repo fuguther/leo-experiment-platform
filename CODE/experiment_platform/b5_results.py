@@ -214,6 +214,94 @@ def write_figures(rows, out_dir):
     return made
 
 
+
+
+def freeze_no_confirmation_decision(dev_report_path, deadline_dir, out_path):
+    """A3/B3 bounded branch: bind everything, invent nothing.
+
+    The development sample cannot size a confirmation (the five pre-declared
+    candidates tie exactly and there are too few blocks), so this artifact
+    does NOT contain an n.  It binds the loss table, the per-scenario frozen
+    D, the rule actually used and the development block set with its hashes,
+    states the no-confirmation decision and names the bounded study design
+    that must pass a validity pre-check first.  No number is fabricated to
+    make the file look complete.
+    """
+    import hashlib
+
+    report = _read(dev_report_path)
+    design = ((report.get("statistics") or {}).get("development_design")
+              or {})
+    if design.get("status") != "SELECTED":
+        raise SystemExit("the development report carries no selection: "
+                         + str(design.get("status")))
+    selection = design["selection"]
+    loss_table = design["loss_table"]
+    deadlines = {}
+    for path in sorted(Path(deadline_dir).glob("deadline_*.json")):
+        doc = _read(path)
+        deadlines[path.stem.replace("deadline_", "")] = {
+            "deadline_s": doc.get("deadline_s"),
+            "samples": doc.get("samples"),
+            "branches_used": doc.get("branches_used"),
+            "source": doc.get("source"),
+            "file": path.name,
+            "file_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    blocks = loss_table.get("blocks") or []
+    artifact = {
+        "schema": "t1-selected-design/v2-no-confirmation",
+        "status": "NO_CONFIRMATION_PLANNED",
+        "why": ("the development sample cannot size a confirmation: the five "
+                "pre-declared candidates tie exactly on the primary loss and "
+                "the block count is below the declared minimum; the selector "
+                "reports this instead of hiding it"),
+        "selection_outcomes": selection.get("outcomes"),
+        "selected_by_declared_tie_rule": selection.get("selected"),
+        "rule": selection.get("rule"),
+        "loss_table": loss_table,
+        "loss_table_sha256": loss_table.get("loss_table_sha256"),
+        "development_blocks": {
+            "count": len(blocks),
+            "units": sorted(str(row.get("unit")) for row in blocks),
+            "set_sha256": hashlib.sha256(json.dumps(
+                sorted(str(row.get("block_id")) for row in blocks),
+                sort_keys=True).encode("utf-8")).hexdigest()},
+        "development_deadlines": deadlines,
+        "sample_size": None,
+        "sample_size_reason": ("not estimated: a bounded design is proposed "
+                               "below rather than a fabricated n"),
+        "confirm_seeds": [],
+        "confirm_seeds_reason": "no confirmation run is planned in this branch",
+        "proposed_bounded_design": {
+            "step_1": ("declare an ASYMMETRIC multi-OD scenario and gate it on "
+                       "a validity pre-check: forward decisions >= N and at "
+                       "least two legal directions per decision"),
+            "step_2": ("only then re-freeze D, re-run the five candidates and "
+                       "decide whether a confirmation is sizeable at all"),
+            "evidence": ("two M-Lab variants were pre-checked and both "
+                         "produced zero forward decisions, so no candidate "
+                         "comparison exists on them yet")},
+        "platform_state": ("development experiments are runnable: three task "
+                           "types, full metrics and the total compute cost "
+                           "are VM-verified"),
+        "authorization": ("no confirmation authorization is held and none is "
+                          "requested by the executing side"),
+    }
+    # The digest is of the canonical body BEFORE this field is added, so a
+    # reader can recompute it from the file by deleting artifact_sha256 and
+    # re-serialising the same way.
+    body = json.dumps(artifact, ensure_ascii=False, sort_keys=True,
+                      separators=(",", ":"))
+    artifact["artifact_sha256"] = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    artifact["artifact_sha256_rule"] = (
+        "sha256 of the canonical body (sorted keys, compact separators) with "
+        "this field removed")
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(artifact, ensure_ascii=False, indent=1,
+                                    sort_keys=True) + "\n", encoding="utf-8")
+    return artifact
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="B5 tables and figures")
     parser.add_argument("--run-dir", type=Path, action="append", required=True)
@@ -221,6 +309,10 @@ def main(argv=None) -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--scenarios", default="steady_uniform,fixed_hotspot,"
                                             "burst_hotspot,mlab_asym")
+    parser.add_argument("--dev-report", type=Path, default=None,
+                        help="development report to freeze the no-confirmation "
+                             "decision from")
+    parser.add_argument("--deadline-dir", type=Path, default=None)
     args = parser.parse_args(argv)
     scenario_ids = [s.strip() for s in args.scenarios.split(",") if s.strip()]
     rows = []
@@ -230,7 +322,13 @@ def main(argv=None) -> int:
         rows.extend(collect_period_scan(args.period_scan))
     tables = write_tables(rows, args.out)
     figures = write_figures(rows, args.out)
+    decision = None
+    if args.dev_report and args.deadline_dir:
+        decision = freeze_no_confirmation_decision(
+            args.dev_report, args.deadline_dir, Path(args.out) / "selected_design.json")
     print(json.dumps({"status": "written", "rows": tables["rows"],
+                      "decision": (None if decision is None
+                                   else decision["status"]),
                       "csv": tables["csv"], "json": tables["json"],
                       "figures": figures}, ensure_ascii=False))
     return 0

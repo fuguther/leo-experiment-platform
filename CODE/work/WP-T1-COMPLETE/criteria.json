@@ -277,6 +277,26 @@
     "run": "t1-b4scan-31c7689",
     "scenario": "fixed_hotspot（40 s，24 星，offered 2.0 / ISL 2.5）"
    },
+   "b5_selected_design": {
+    "artifact_sha256": "3597f5741516879ab9c4…（可由文件自身重算，已验证 recomputes=True）",
+    "authorization": "未持有、也不由执行方申请确认性授权",
+    "binds": [
+     "五候选损失表与 loss_table_sha256",
+     "每场景冻结 D（含样本量/支路清单/文件哈希）",
+     "开发区块集 20 个（unit 列表 + set_sha256）",
+     "实际使用的规则（破同后 median_eta_offset）",
+     "选择器的四个 outcome 标志"
+    ],
+    "file": "CODE/work/WP-T1-COMPLETE/selected_design.json",
+    "proposed_bounded_design": "先声明非对称多 OD 场景并过有效性预检（前向决策数 + 每决策合法方向数），再重冻 D 与重跑五候选",
+    "refuses_to_invent": [
+     "sample_size = null 且写明理由",
+     "confirm_seeds = [] 且写明理由",
+     "不生成任何确认种子，也不伪造 n"
+    ],
+    "schema": "t1-selected-design/v2-no-confirmation",
+    "status": "NO_CONFIRMATION_PLANNED"
+   },
    "budgets": "每 cell 120 s / 最多 120 cell / 总 2 h；b_dev 展开 1060 次模拟调用",
    "burst_multiod_verdict": {
     "meaning": "该缩放在破坏 OD 可达性/合法性，属于任务书说的'场景未充分激活机制'，不得据此宣称算法有效或无效。",
