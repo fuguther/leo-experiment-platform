@@ -499,7 +499,7 @@
      "fig5_compute_pressure.png"
     ],
     "generator": "CODE/experiment_platform/b5_results.py",
-    "long_table_rows": 68,
+    "long_table_rows": 77,
     "selected_design": "CODE/work/WP-T1-COMPLETE/selected_design.json（NO_CONFIRMATION_PLANNED）",
     "tables": [
      "branch_arms 12",
@@ -508,6 +508,7 @@
      "period_scan 15",
      "rate_n_scan 9",
      "service_scan 12",
+     "period_changespeed_scan 9",
      "benchmark 3"
     ],
     "traceability": "每行带 run / cell / config_sha256；生成器只读 VM 产物，不重跑仿真"
@@ -538,6 +539,17 @@
     "measured": "缩到 24 星/3 面/8 站点/60 s 后仍无可用的前向决策：branch 的失败数是 0（不是重放失败，而是根本没有合格支路），benchmark 直接拒绝（无在线决策）。",
     "next": "下一轮必须新声明一个通过有效性预检的第三类场景：先做低成本校准，确认前向决策数、至少两个合法方向的决策占比、后备率与资源可达性，再读性能差。",
     "status": "SCENARIO_NOT_VALID（VM 实测）"
+   },
+   "final_vm_acceptance": {
+    "acceptance": "10/10 ok",
+    "commit": "fe98cd8",
+    "compiled_cells": 59,
+    "dev": "39/39 ok",
+    "launch_dirty": false,
+    "meaning": "第一轮入口矩阵在最终提交上再次端到端通过（含验收层污染修复与单种子健壮性修复之后）",
+    "pulled_to": "out/vm/t1-final-fe98cd8",
+    "run": "t1-final-fe98cd8",
+    "validate_valid": true
    },
    "local_regression": {
     "after_fix_result": "两个受影响用例单独复跑：2 passed in 24.86s（此前一次 5 分 40 秒）",
