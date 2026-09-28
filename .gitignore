@@ -7,3 +7,4 @@ remote.env
 .DS_Store
 out/
 leo_sim_out/
+.t1-launch.json

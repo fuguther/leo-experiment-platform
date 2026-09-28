@@ -71,7 +71,13 @@ cmd_sync() {
         --exclude 'CODE/scripts/remote/remote.env' \
         CODE | "$SSH_BIN" -o BatchMode=yes "$REMOTE_HOST" \
         "tar xzf - -C '$REMOTE_ROOT' 2>&1 | grep -v 'LIBARCHIVE.xattr' || true"
-    python3 - "$LOCAL_WORKSPACE" "$head" > "$LOCAL_WORKSPACE/.t1-launch.json" <<'PYEOF'
+    # the manifest is staged OUTSIDE the checkout on purpose: a file written
+    # into the workspace is itself seen by the `git status --short` below, which
+    # made every run record dirty=true even on a clean commit (false positive
+    # introduced by c4dd85f, present in the c4dd85f and a70d65c evidence)
+    local staging
+    staging="$(mktemp -d "${TMPDIR:-/tmp}/t1-launch.XXXXXX")"
+    python3 - "$LOCAL_WORKSPACE" "$head" > "$staging/.t1-launch.json" <<'PYEOF'
 import json, subprocess, sys, datetime
 from pathlib import Path
 sys.path.insert(0, str(Path(sys.argv[1]) / "CODE" / ".."))
@@ -91,9 +97,9 @@ print(json.dumps({
 }, indent=2))
 PYEOF
     COPYFILE_DISABLE=1 "$TAR_BIN" czf - --no-mac-metadata \
-        -C "$LOCAL_WORKSPACE" .t1-launch.json | "$SSH_BIN" -o BatchMode=yes "$REMOTE_HOST" \
+        -C "$staging" .t1-launch.json | "$SSH_BIN" -o BatchMode=yes "$REMOTE_HOST" \
         "tar xzf - -C '$REMOTE_ROOT' 2>/dev/null; mv '$REMOTE_ROOT/.t1-launch.json' '$REMOTE_ROOT/launch.json'"
-    rm -f "$LOCAL_WORKSPACE/.t1-launch.json"
+    rm -rf "$staging"
     # a tar stream cannot delete: AFTER the manifest exists, prune the deployed
     # tree to exactly the file set this commit declares, so a stray file (e.g.
     # a macOS ._ sidecar) can never change the execution identity
