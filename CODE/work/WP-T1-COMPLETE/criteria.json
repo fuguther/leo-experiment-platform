@@ -34,6 +34,78 @@
      }
     }
    },
+   "b4_first_cut_fixed_hotspot": {
+    "boundary": "单场景单种子，无统计声明；D 仍为声明的 30 s，B3 需按 p95×2 重新冻结",
+    "cell": "b-fixed_hotspot-execution-modes",
+    "finding": "实验二在固定热点上是**可辨的**：复用把计算量降一个数量级、交付数上升，代价是平均时延略升。async_point 与 async_window 在本场景完全相同（40 s 窗、0.5 s 更新周期下 4 段窗口没有额外收益），这是需要 B4 后续扫 更新周期×变化速度 才能解释的点。",
+    "note": "实验二首轮：同一热点场景、同一评分器与信息预算，五模式各自全程跑网",
+    "primary_comparison_async_window_vs_per_packet": {
+     "delivered": "69 vs 63（+6 包）",
+     "e2e_mean_s": "1.0424 vs 0.9827（+0.06 s，即复用带来转发代价）",
+     "note": "后台更新已计入总计算；查询/安装/控制各自单列，未与 E2E 相加",
+     "total_compute_jobs": "118 vs 1710（-93%）"
+    },
+    "rows": [
+     {
+      "background_jobs": 0,
+      "decision_jobs": 1710,
+      "delivered": 63,
+      "e2e_mean_s": 0.9827,
+      "e2e_p95_s": 1.2154,
+      "mode": "per_packet",
+      "total_jobs": 1710,
+      "total_service_s": 1.71
+     },
+     {
+      "background_jobs": 0,
+      "decision_jobs": 479,
+      "delivered": 68,
+      "e2e_mean_s": 1.0318,
+      "e2e_p95_s": 1.5991,
+      "mode": "per_flow",
+      "per_flow_cache_hits": 48,
+      "total_jobs": 479,
+      "total_service_s": 0.479
+     },
+     {
+      "background_jobs": 0,
+      "decision_jobs": 0,
+      "delivered": 69,
+      "e2e_mean_s": 1.0424,
+      "e2e_p95_s": 1.5927,
+      "mode": "precomputed",
+      "total_jobs": 0,
+      "total_service_s": 0.0
+     },
+     {
+      "background_jobs": 118,
+      "decision_jobs": 0,
+      "delivered": 69,
+      "e2e_mean_s": 1.0424,
+      "e2e_p95_s": 1.5927,
+      "fallbacks": 48,
+      "mode": "async_point",
+      "schedule_installs": 116,
+      "schedule_queries": 139,
+      "total_jobs": 118,
+      "total_service_s": 0.118
+     },
+     {
+      "background_jobs": 118,
+      "decision_jobs": 0,
+      "delivered": 69,
+      "e2e_mean_s": 1.0424,
+      "e2e_p95_s": 1.5927,
+      "fallbacks": 48,
+      "mode": "async_window",
+      "schedule_installs": 116,
+      "schedule_queries": 139,
+      "total_jobs": 118,
+      "total_service_s": 0.118
+     }
+    ],
+    "run": "t1-b3-7be10f1"
+   },
    "budgets": "每 cell 120 s / 最多 120 cell / 总 2 h；b_dev 展开 1060 次模拟调用",
    "burst_multiod_verdict": {
     "meaning": "该缩放在破坏 OD 可达性/合法性，属于任务书说的'场景未充分激活机制'，不得据此宣称算法有效或无效。",
