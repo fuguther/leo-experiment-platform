@@ -111,6 +111,33 @@ def collect_period_scan(path):
     return rows
 
 
+
+
+def collect_scan(path, table):
+    """Long rows from a B4 scan artifact: every axis is carried explicitly."""
+    doc = _read(path)
+    rows = []
+    for row in doc["rows"]:
+        entry = {"table": table, "run": doc["run"],
+                 "cell": Path(path).stem, "scenario": "fixed_hotspot",
+                 "arm": row.get("mode"), "config_sha256": None,
+                 "load_mbps": row.get("load"),
+                 "servers": row.get("servers"),
+                 "service_s": row.get("service_s"),
+                 "period_s": row.get("period"),
+                 "delivered": row.get("delivered"),
+                 "e2e_mean_s": row.get("e2e_mean"),
+                 "e2e_p95_s": row.get("e2e_p95"),
+                 "total_jobs": row.get("total_jobs"),
+                 "background_jobs": row.get("bg_jobs"),
+                 "decision_jobs": row.get("pd_jobs"),
+                 "background_wait_s": row.get("bg_wait_s"),
+                 "decision_wait_s": row.get("pd_wait_s"),
+                 "installs": row.get("installs"),
+                 "fallbacks": row.get("fallbacks")}
+        rows.append(entry)
+    return rows
+
 def write_tables(rows, out_dir):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -211,6 +238,42 @@ def write_figures(rows, out_dir):
         fig.savefig(path, dpi=140)
         plt.close(fig)
         made.append(str(path))
+    scan = [r for r in rows if r["table"] == "service_scan"]
+    if scan:
+        fig, axes = plt.subplots(1, 2, figsize=(9, 3.6))
+        for service in sorted({r["service_s"] for r in scan}):
+            for mode in sorted({r["arm"] for r in scan if r["arm"]}):
+                pts = sorted((r["servers"], r["e2e_mean_s"]) for r in scan
+                             if r["service_s"] == service and r["arm"] == mode)
+                if not pts:
+                    continue
+                axes[0].plot([p[0] for p in pts], [p[1] for p in pts],
+                             marker="o", label=f"{mode} svc={service}s")
+            pts = sorted((r["servers"], r["total_jobs"]) for r in scan
+                         if r["service_s"] == service and r["arm"])
+        axes[0].set_xlabel("compute servers N")
+        axes[0].set_ylabel("mean E2E (s)")
+        axes[0].set_title("compute pressure: latency vs N", fontsize=10)
+        axes[0].grid(alpha=0.3)
+        axes[0].legend(fontsize=6)
+        for service in sorted({r["service_s"] for r in scan}):
+            for mode in sorted({r["arm"] for r in scan if r["arm"]}):
+                pts = sorted((r["servers"], r["total_jobs"]) for r in scan
+                             if r["service_s"] == service and r["arm"] == mode)
+                if not pts:
+                    continue
+                axes[1].plot([p[0] for p in pts], [p[1] for p in pts],
+                             marker="s", linestyle="--",
+                             label=f"{mode} svc={service}s")
+        axes[1].set_xlabel("compute servers N")
+        axes[1].set_ylabel("total compute jobs")
+        axes[1].set_title("compute cost vs N", fontsize=10)
+        axes[1].grid(alpha=0.3)
+        fig.tight_layout()
+        path = out_dir / "fig5_compute_pressure.png"
+        fig.savefig(path, dpi=140)
+        plt.close(fig)
+        made.append(str(path))
     return made
 
 
@@ -306,6 +369,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="B5 tables and figures")
     parser.add_argument("--run-dir", type=Path, action="append", required=True)
     parser.add_argument("--period-scan", type=Path, default=None)
+    parser.add_argument("--scan", type=Path, action="append", default=[],
+                        help="a B4 scan artifact; the table name is the file stem")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--scenarios", default="steady_uniform,fixed_hotspot,"
                                             "burst_hotspot,mlab_asym")
@@ -320,6 +385,8 @@ def main(argv=None) -> int:
         rows.extend(collect_b_dev(run_dir, scenario_ids))
     if args.period_scan:
         rows.extend(collect_period_scan(args.period_scan))
+    for scan in args.scan:
+        rows.extend(collect_scan(scan, Path(scan).stem))
     tables = write_tables(rows, args.out)
     figures = write_figures(rows, args.out)
     decision = None

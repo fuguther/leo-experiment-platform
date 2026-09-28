@@ -396,6 +396,28 @@
     "run": "t1-b4scan-31c7689",
     "scenario": "fixed_hotspot（40 s，24 星，offered 2.0 / ISL 2.5）"
    },
+   "b5_artifacts": {
+    "figures": [
+     "fig1_branch_loss.png",
+     "fig2_network_outcome.png",
+     "fig3_pressure_cost.png",
+     "fig4_modes_cost.png",
+     "fig5_compute_pressure.png"
+    ],
+    "generator": "CODE/experiment_platform/b5_results.py",
+    "long_table_rows": 68,
+    "selected_design": "CODE/work/WP-T1-COMPLETE/selected_design.json（NO_CONFIRMATION_PLANNED）",
+    "tables": [
+     "branch_arms 12",
+     "network_arms 12",
+     "execution_modes 5",
+     "period_scan 15",
+     "rate_n_scan 9",
+     "service_scan 12",
+     "benchmark 3"
+    ],
+    "traceability": "每行带 run / cell / config_sha256；生成器只读 VM 产物，不重跑仿真"
+   },
    "b5_selected_design": {
     "artifact_sha256": "3597f5741516879ab9c4…（可由文件自身重算，已验证 recomputes=True）",
     "authorization": "未持有、也不由执行方申请确认性授权",
