@@ -5,9 +5,9 @@
 > 结论分层：IMPLEMENTED / TESTED / DIAGNOSTIC_RUN / FORMAL_RUN。**本报告不含任何 FORMAL_RUN。**
 
 > ### ⚠️ 现状与历史分界（2026-09-28）
-> 本报告的**现行证据只有一处**：文末「VM 执行证据」节，run-id **`t1-final-b1f44af`**
-> （HEAD `b1f44af`，`identity.git.dirty=false`，执行链 `96b3fbaf…`，acceptance/dev 各 10/10）。
-> 计时 518.8 µs 只能按**确定性评分器的 VM 主机计时**引用：工件 `model_provenance` 已声明 
+> 本报告的**现行证据只有一处**：文末「VM 执行证据」节，run-id **`t1-final-06572b6`**
+> （HEAD `06572b6`，`identity.git.dirty=false`，执行链 `b7641418…`，acceptance/dev 各 10/10）。
+> 计时 509.8 µs 只能按**确定性评分器的 VM 主机计时**引用：工件 `model_provenance` 已声明 
 > `trained_checkpoint_used=false` / `ddqn=false` / `on_board=false`，且被 benchmark 谓词强制。
 > **第 3–8 节是 VM 规则生效之前的本机口径**（工件 `out/t1/**`、acceptance 7 cells、决策计时 p50 34 µs）；
 > 按 `AGENTS.md` §1，这些本机产物自 2026-09-28 起**不得再作为实验证据来源**，其中 34 µs / 73.9 µs 计时已作废。
@@ -227,8 +227,8 @@ R1 反问例复核（复现脚本 tmp_r1_final.py，已删除）：
 
 ## VM 执行证据（实验只在 VM）
 
-> 最新一轮 = `t1-final-b1f44af`（HEAD `b1f44af`，`identity.git.dirty=false`，链 `96b3fbaf…`）。
-> 更早的 `t1-final-bace1bb` / `t1-final-8a31496` 均因后续返工改变执行链而失效，不再作为现行证据。
+> 最新一轮 = `t1-final-06572b6`（HEAD `06572b6`，`identity.git.dirty=false`，链 `b7641418…`）。
+> 更早的 `t1-final-b1f44af` / `t1-final-bace1bb` / `t1-final-8a31496` 均因后续返工改变执行链而失效。
 > `t1-final-a70d65c` 与 `t1-final-c4dd85f` 两次工件的 `identity.git.dirty` 为 **true**，成因是已修掉的 runner 身份假阳性；
 > `t1-s7-377ae9b` 及更早的 VM 工件为历史证据，其 507–517 µs 计时已被取代。
 
@@ -237,20 +237,20 @@ ssh vm -> cuda-liguang13   /data 471G 可用   conda: /data/liguang13/conda-envs
 隔离实验根: /data/论文/leo-t1-wt        # 你的正式部署 /data/论文/leo-direct-sim 从未被写入
 runner: CODE/scripts/remote/t1-vm.sh sync|run|pull|experiment
 
-run-id:   t1-final-b1f44af        pulled -> out/vm/t1-final-b1f44af/
-工件身份: identity.git.source=launch_manifest, commit=b1f44af…, dirty=false, status_short=[]
-链一致性: VM 链 96b3fbaf… == 本机重算 96b3fbaf…（57 个执行链文件）
-拉回完整性: VM Results/t1-final-b1f44af 的 52 个文件与 out/vm/t1-final-b1f44af 逐字节一致（sha256 逐一相等）
+run-id:   t1-final-06572b6        pulled -> out/vm/t1-final-06572b6/
+工件身份: identity.git.source=launch_manifest, commit=06572b6…, dirty=false, status_short=[]
+链一致性: VM 链 b7641418… == 本机重算 b7641418…（57 个执行链文件）
+拉回完整性: VM Results/t1-final-06572b6 的 52 个文件与 out/vm/t1-final-06572b6 逐字节一致（sha256 逐一相等）
 平台:     Linux-6.6.0-…aarch64   python 3.11.15 / simpy 4.0.1 / numpy 1.24.3
 
 t1_suite compile  -> 20 cells
-t1_suite validate -> valid true（bundle_fingerprint f197dc0e…）
+t1_suite validate -> valid true（bundle_fingerprint 67fb0523…）
 t1_suite run --tier acceptance -> {"ok":10,"error":0,"timeout":0,"predicate_failed":0,"not_ok":0}
 t1_suite run --tier dev        -> {"ok":10,"error":0,"timeout":0,"predicate_failed":0,"not_ok":0}
 report -> run_status ok；verified_ok 10/10；逐格 predicate_passed=true 且盘上 result_sha256 与报告内嵌哈希一一相等
 statistics.common_strong.frozen = False（开发块配对差恒为 0、无判别力——诚实标注，非工程缺口）
 四臂对齐（VM）: candidate/common/now/stale targets_match=True ranking_match=True
-真实在线路径（观测构造→预测→评分→排名→选动作）p50: 518.8 µs
+真实在线路径（观测构造→预测→评分→排名→选动作）p50: 509.8 µs
   —— **确定性评分器的 VM 主机计时，非 DDQN、非星载**（工件 model_provenance；仅推理 12.04 µs 不得当完整成本）
 四臂对齐: 已纳入 benchmark 谓词门禁（S5-R2），错位即 cell 非 ok
   调用计数: end_to_end predict=2/次决策（= 每候选一次）；inference_only predict=0

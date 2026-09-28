@@ -399,18 +399,18 @@
         "t1-final-8a31496"
       ],
       "latest_identity": {
-        "run_id": "t1-final-b1f44af",
-        "commit": "b1f44af0900373604c2f0e29b55027b362d33a0d",
+        "run_id": "t1-final-06572b6",
+        "commit": "06572b622aa852d2cc4250d15a48d243839991d6",
         "dirty": false,
         "status_short": [],
-        "execution_chain_sha256": "96b3fbaf6cebae8e79152eb4f77b1b9605f3e1dce02195c02956091cc69eb8a2",
+        "execution_chain_sha256": "b76414188dd0bb722bb575a35fb59f7f5655c7bf1b9a813058f8ca983b2c7d70",
         "chain_equality": "VM 链 == 本机重算（57 个执行链文件）",
         "pullback_integrity": "VM Results 的 52 个文件与 out/vm 拉回副本 sha256 逐一相等（逐字节一致）",
-        "bundle_fingerprint": "f197dc0e9f73369d",
+        "bundle_fingerprint": "67fb0523a29b1573",
         "acceptance": {"ok": 10, "predicate_failed": 0, "not_ok": 0, "verified_ok": 10},
         "dev": {"ok": 10, "predicate_failed": 0, "not_ok": 0, "verified_ok": 10},
-        "online_path_p50_s": 0.000518824,
-        "note": "bace1bb 及更早的运行均因第三轮返工改变执行链而失效；t1-final-c4dd85f 与 t1-final-a70d65c 的 identity.git.dirty=true 系 runner 假阳性（见 s8_fix）。当前唯一有效身份是本条"
+        "online_path_p50_s": 0.00050976,
+        "note": "b1f44af 及更早的运行均因后续返工改变执行链而失效；t1-final-c4dd85f 与 t1-final-a70d65c 的 identity.git.dirty=true 系 runner 假阳性（见 s8_fix）。当前唯一有效身份是本条"
       },
       "pulled_to": "out/vm/<run-id>/",
       "local_regression": "1275 passed, 2 skipped（pytest 属本机允许项）"
@@ -443,7 +443,20 @@
         "S6": "assert_inference_only 改为声明+探针；policy.act 统一委托 adapter.act；verify_checkpoint 硬要求 metadata 路径与哈希；ta.enabled=false 时给策略报错",
         "S8_3a_i": "trap 清理暂存目录；远端 && 链 + head 校验"
       },
-      "still_open": [],
+      "still_open": [
+        "S1：第四轮复核判 S1_OPEN（B1 控制包过期未扣除、B2 exclude_pid=None 误认控制行为目标）；本轮已回修，**待第五轮独立复核确认**，未确认前不得标已关闭"
+      ],
+      "b1b2_rework": {
+        "reviewed_sha": "f78d8edae06c84a64dca4c161c14588b1a2960f4",
+        "verdict": "S3/S5 CONFIRMED_FIXED；S1 PARTIAL（B1 高、B2 中）",
+        "fix": [
+          "B1a：ISLLink._expire_waiting 为过期控制包发 ctrl_drop 行（明确是丢弃，不伪造 service_finish）；_timeline_ctrl 增 control_generated_at 作稳定身份",
+          "B1b：_resource_timeline 保留 ctrl_drop；ctrl 账本改按稳定身份匹配，每个身份离开队列只扣一次，取消 max(0, entered-left) 掩盖",
+          "B2：目标身份比较一律要求 exclude_pid is not None；数据 FIFO 显式跳过控制行"
+        ],
+        "reviewer_counterexamples": "审查方 test_b1f44af_s1_independent.py 在 b1f44af 上 3 failed；本提交后 3 passed，并原样纳入 CODE/experiment_platform/tests/test_s1_independent_review.py（未删改放宽），另补真实目标 PID、目标尚未入队、真实轨迹控制过期守恒三例",
+        "checkpoint_boundary": "inference.load_fixed_adapter_from_checkpoint 在全部元数据闸门后仍无条件抛 no trained-model reader is implemented：真实检查点是**模型读取器未实现**（内部缺口），不得笼统归因于缺 tensorflow/缺检查点"
+      },
       "resolved_in_round3": [
         "S1 反例 B/C：内核补 put_ctrl 入队行与控制包 service_start/service_finish 行，重建改由控制时间线测量",
         "S3：逐流缓存改为请求时冻结，未付费的完整评分不再可能",
