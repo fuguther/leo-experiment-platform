@@ -561,19 +561,47 @@ def test_the_common_strong_state_is_reported_with_its_reason(tmp_path):
     # says so instead of reporting a state it did not compute
     assert state["evaluated"] == []
     assert state["reason"]
-    # A3: the REAL selection lives in development_design, and with no
-    # projected horizon file it says so instead of inventing three horizons.
+    # A3: with the VM-projected candidate file in the contract the REAL
+    # selection runs.  What it finds is reported, not tuned: on this profile
+    # the five candidates tie exactly and the loss is identical for all four
+    # arms, which is a RESULT (the scenario does not discriminate) and not a
+    # platform failure.
+    design = report["statistics"]["development_design"]
+    assert design["status"] == "SELECTED", design
+    losses = design["loss_table"]["losses"]
+    assert sorted(losses) == ["mean_eta_offset", "median_eta_offset",
+                              "p25_offset", "p50_offset", "p75_offset"]
+    selection = design["selection"]
+    assert selection["selected"] in losses
+    outcomes = selection["outcomes"]
+    assert set(outcomes) == {"tie", "zero_variance",
+                             "insufficient_scenario_coverage",
+                             "insufficient_statistical_evidence"}
+    assert outcomes["insufficient_statistical_evidence"] is True, (
+        "four development blocks cannot size a confirmation")
+
+
+def test_a_contract_without_the_projected_candidates_refuses_to_select(tmp_path):
+    """The five candidates are pre-declared: two are not a selection."""
+    contract = yaml.safe_load(CONTRACT.read_text())
+    contract["formal_design"] = {k: v for k, v in
+                                 (contract.get("formal_design") or {}).items()
+                                 if k != "horizon_candidates_file"}
+    path = tmp_path / "contract-no-horizons.yaml"
+    path.write_text(yaml.safe_dump(contract, allow_unicode=True))
+    bundle_dir = tmp_path / "compiled-no-horizons"
+    done = _run("compile", "--contract", str(path), "--out", str(bundle_dir))
+    assert done.returncode == 0, done.stdout + done.stderr
+    run_dir = tmp_path / "dev-no-horizons"
+    _run("run", "--bundle", str(bundle_dir), "--tier", "dev",
+         "--out", str(run_dir))
+    _run("report", "--run-dir", str(run_dir))
+    report = json.loads((run_dir / "report.json").read_text())
     design = report["statistics"]["development_design"]
     assert design["status"] == "PENDING_HORIZON_CANDIDATES"
     assert sorted(design["missing"]) == ["p25_offset", "p50_offset",
                                          "p75_offset"]
-    assert design["recovery"]
-    assert design["blocks"] > 0, design
-    # the blocks exist, but with three of the five candidates unprojected there
-    # is deliberately NO loss table and NO selection: the comparison is not
-    # silently run on a reduced candidate set
-    assert "loss_table" not in design, sorted(design)
-    assert "selection" not in design, sorted(design)
+    assert "loss_table" not in design and "selection" not in design
 
 
 def test_the_five_candidates_get_their_own_loss_columns(tmp_path):
