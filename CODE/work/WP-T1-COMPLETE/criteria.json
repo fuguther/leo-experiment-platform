@@ -7,6 +7,33 @@
     "fixed_hotspot": "固定热点（40 s, 24 星, offered 2.0 / isl 2.5 = 0.8 利用率；缩窗保机制）",
     "steady_uniform": "阴性对照（70 s, 24 星, 0.5 Mbps）——已实测四臂同值"
    },
+   "b2_experiment_one_result": {
+    "diagnosis": "两个根因，都可用现有证据定位：(1) D=30 s 约为实测 E2E p95（1.2-1.6 s）的 20 倍，归一化损失被压到约 0.05 且永不产生丢包事件——这是 D 选取问题，按 A3/B3 应由业务截止或开发基准 p95×2 给出；(2) 更根本：三个已声明场景的候选路径是**对称**的（走廊只有一个 OD 对，两个方向走同一条路），臂改变排序也改变不了结局。要让实验一可辨，必须使用**非对称多 OD** 场景——也就是被延期的 M-Lab 加权拓扑。",
+    "finding": "四臂在三场景上网络结局完全相同（交付数、p50/p95、命运计数、计算 job 数、热点最大值全部一致）",
+    "mechanism_fired": "臂确实进入了状态时间路径：每个场景都有 45/62、101/133、78/103 次决策的applied_order 非字典序（记录为 reordered），热点卫星决策数等于交付数",
+    "next_action": "用户决策点：M-Lab 140 星场景单臂 888 s，远超 120 s/cell。要么为它单独声明更大的 cell 预算（需要新身份与新授权边界），要么构造一个保留 M-Lab OD 权重但规模更小的非对称拓扑。在此之前，实验一只能作为阴性/不可辨结果交付，不得声称收益。",
+    "no_loss_anywhere": "三场景只有 DELIVERED 与 IN_SYSTEM_AT_STOP（行政删失），零丢包、零到期未交付",
+    "numbers": {
+     "burst_hotspot": {
+      "arms_identical": true,
+      "delivered": 50,
+      "p50_s": 0.8441,
+      "p95_s": 1.2037
+     },
+     "fixed_hotspot": {
+      "arms_identical": true,
+      "delivered": 63,
+      "p50_s": 0.8442,
+      "p95_s": 1.2154
+     },
+     "steady_uniform": {
+      "arms_identical": true,
+      "delivered": 28,
+      "p50_s": 1.5616,
+      "p95_s": 1.5621
+     }
+    }
+   },
    "budgets": "每 cell 120 s / 最多 120 cell / 总 2 h；b_dev 展开 1060 次模拟调用",
    "burst_multiod_verdict": {
     "meaning": "该缩放在破坏 OD 可达性/合法性，属于任务书说的'场景未充分激活机制'，不得据此宣称算法有效或无效。",
@@ -33,7 +60,33 @@
      "steady_uniform": "branch 13.3 s / network 6.4 s / benchmark 35.6 s —— 全部达标"
     }
    },
-   "status": "B0 已预声明；B1 校准进行中；B2-B5 待做"
+   "status": "B0/B1 完成（三场景全部在预算内跑通）；B2 已跑出四臂同值的可诊断结论；B3-B5 待做",
+   "t1_b3_7be10f1": {
+    "b_dev": "10/10 ok",
+    "commit": "7be10f1",
+    "compiled_cells": 59,
+    "pulled_to": "out/vm/t1-b3-7be10f1",
+    "validate_valid": true,
+    "wall_s": {
+     "burst_hotspot": {
+      "benchmark": 33.8,
+      "branch": 13.3,
+      "network": 6.6
+     },
+     "fixed_hotspot": {
+      "benchmark": 37.6,
+      "branch": 17.4,
+      "network": 8.3
+     },
+     "fixed_hotspot_execution_modes": 7.5,
+     "steady_uniform": {
+      "benchmark": 34.2,
+      "branch": 13.4,
+      "network": 6.3
+     }
+    },
+    "what": "三个预声明业务场景的 b_dev 层"
+   }
   },
   "b_round_findings": {
    "degenerate_candidates": "开发基准候选 ETA 偏移中位数为 0（949 样本），p25=p50=0 与 median 规则三个候选塌到 h=0，common 与 now 同义。五个预声明候选中三个退化；不得换 profile 直到出现正结果。",
