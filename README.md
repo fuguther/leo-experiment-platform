@@ -26,7 +26,7 @@ WORKING-MODEL.md          # 提交、复核、版本
 lines/                    # 研究主线登记与各线文档
 
 CODE/                     # 导入根,不可改名
-├── leo_sim/              # 仿真核心 —— 与源仓库字节级一致
+├── leo_sim/              # 仿真核心 —— 基线源自源仓库；本分支已扩展（见「与源仓库的关系」）
 ├── experiment_platform/  # 编译 / 授权 / 指标重算
 ├── scripts/remote/       # 部署与受控执行(仅 .template,无凭据)
 ├── tests/                # 顶层测试
@@ -59,6 +59,14 @@ EXPERIMENTS/              # 契约与模板(不含实验实例)
 - 不在本仓库对复制来的源码做"顺手优化"
 - 需要改动时,按 `CHARTER.md` 的边界判断是否属于平台本体
 
+> **📌 状态更新 (2026-09-28)**:上面两条是 `main` 的规则。在当前分支
+> `t1/frozen-branch-and-async-design` 上,`leo_sim/` **已不再是字节级复制**:
+> T1 工作新增 `time_alignment.py` / `async_routing.py` / `inference.py`,
+> 并扩展 `kernel.py`(+1218 行)、`control.py`、`counterfactual.py`;
+> 相对 `origin/main` 共 21 个文件、+5218/-61 行。这是本分支的**有意分叉**,
+> 交付身份与证据见 `CODE/work/WP-T1-COMPLETE/STATUS.md`(现行证据身份 `8a31496`)。
+> 回 `main` 时上述规则照旧成立。
+
 ---
 
 ## 未包含
@@ -81,6 +89,7 @@ EXPERIMENTS/              # 契约与模板(不含实验实例)
 ```
 python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q
 → 1020 passed, 1 skipped        (本机 Python 3.14.2, 2026-09-26)
+→ 1278 passed, 2 skipped        (本机, 2026-09-28, T1-COMPLETE 分支; 含本分支新增测试)
 ```
 
 若在 VM 的部署树上跑,同一范围**会有 3 条失败**——原因不是代码:部署树是"父研究仓 + 平台 `CODE/`
