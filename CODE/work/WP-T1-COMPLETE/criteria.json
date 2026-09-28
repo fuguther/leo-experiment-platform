@@ -443,9 +443,26 @@
         "S6": "assert_inference_only 改为声明+探针；policy.act 统一委托 adapter.act；verify_checkpoint 硬要求 metadata 路径与哈希；ta.enabled=false 时给策略报错",
         "S8_3a_i": "trap 清理暂存目录；远端 && 链 + head 校验"
       },
-      "still_open": [
-        "S1：第四轮复核判 S1_OPEN（B1 控制包过期未扣除、B2 exclude_pid=None 误认控制行为目标）；本轮已回修，**待第五轮独立复核确认**，未确认前不得标已关闭"
-      ],
+      "still_open": [],
+      "s1_closed": "第五轮独立复核（06572b6/f9f6c5c）确认 B1/B2 CONFIRMED_FIXED，S1_OPEN 关闭；S3/S5 保留第三轮确认结论，未重复审查",
+      "fifth_round_verification": {
+        "code_sha": "06572b622aa852d2cc4250d15a48d243839991d6",
+        "ledger_sha": "f9f6c5c88379bb0ee31ea8576372501c268e0b17",
+        "verdict": "B1/B2 CONFIRMED_FIXED（所审范围）；S1_OPEN 关闭",
+        "independent_checks": [
+          "外置反例三件在仓内副本上作 AST 比对：逻辑一致，未见删除或放宽断言",
+          "六文件 45 passed, 1 skipped；跳过项 test_ideal_state_time.py:224 不覆盖本三反例",
+          "静态与调用路径核对：_expire_waiting 先发 ctrl_drop 再扣队列、不伪造 service_finish；_resource_timeline 保留该事件；控制账本按统一身份键出队；目标身份要求非 None，数据 FIFO 跳过控制行",
+          "执行链 b7641418 与 VM 工件一致；20/20 result 哈希、身份与谓词重算通过"
+        ],
+        "not_granted": [
+          "不授予 FORMAL_RUN，不证明状态时间对齐有收益",
+          "真实 DDQN 模型读取器仍未实现（内部缺口），固定小模型接口通过不替代真实检查点加载",
+          "P9 继续 PARTIAL：common_strong 与确认样本量尚未冻结"
+        ],
+        "standing_condition": "若今后改变控制重传/重入队、身份或资源窗口语义，必须新增对应守恒验收，不得复用本次绿状态",
+        "scope_limit": "指定身份、指定修复范围的有界独立验收，不是对全部平台实现作无缺陷保证"
+      },
       "b1b2_rework": {
         "reviewed_sha": "f78d8edae06c84a64dca4c161c14588b1a2960f4",
         "verdict": "S3/S5 CONFIRMED_FIXED；S1 PARTIAL（B1 高、B2 中）",

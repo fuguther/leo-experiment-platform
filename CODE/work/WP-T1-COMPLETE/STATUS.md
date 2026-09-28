@@ -11,7 +11,9 @@
 | 仓库根 | `/Users/lge/Desktop/topic/leo-exp-main` |
 | 分支 | `t1/frozen-branch-and-async-design` |
 | 起始 HEAD | `0876b12dbb0e067a840743dcc57b804d4600e9b0` |
-| 复审轮次 | 53aeb30（R1–R9，已修）→ 2330701（S1–S7，已修）→ 本轮 S8（runner 身份假阳性，已修） |
+| 复审轮次 | 53aeb30（R1–R9）→ 2330701（S1–S7）→ a124bba（第三轮：S1/S3/S5/S6/S8 返工）
+  → b1f44af（第四轮：S1 B1/B2 回修）→ **06572b6 / f9f6c5c（第五轮：B1/B2 CONFIRMED_FIXED，S1_OPEN 关闭）** |
+| 独立验收状态 | S1 已关闭；S3/S5 第三轮确认；**真实 DDQN 模型读取器未实现（内部缺口）**；**P9 PARTIAL（研究设计未就绪）** |
 | 最新证据 | run-id `t1-final-06572b6`；HEAD `06572b6`；`identity.git.dirty=false`；执行链 `b7641418…` |
 | 第三轮复审 | 四路只读验收回齐；S2/S7/S8(1)/证据链已确认；S1(A/D)、S4(d)、S5-R2、S6、S8(3a/i) 已返工；S1(B/C)、S3、S5 非 DDQN 标记仍未修（见 REPORT 末节） |
 | VM | `ssh vm` = cuda-liguang13；隔离实验根 `/data/论文/leo-t1-wt`；正式部署 `/data/论文/leo-direct-sim` **从未写入** |

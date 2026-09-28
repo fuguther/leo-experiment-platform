@@ -321,6 +321,16 @@ statistics.common_strong.frozen = False（开发块配对差恒为 0、无判别
 3. **S5** → 工件声明 `model_provenance`（`trained_checkpoint_used=false` / `ddqn=false`），
    并被 benchmark 谓词 `require_model_provenance` 强制；新身份工件谓词检查由 17 项增至 20 项且全过。
 
+## 第四/五轮：S1 B1/B2 回修与关闭
+
+第四轮复核判 S1 仍 PARTIAL（B1 控制包过期未从重建账本扣除；B2 `exclude_pid=None` 误认控制行为目标）。
+两项已回修（内核发 `ctrl_drop` 不伪造 `service_finish`；控制账本按稳定身份出队一次；目标身份比较要求非 None，数据 FIFO 跳过控制行），
+审查方外置反例在 `b1f44af` 上 3 failed、回修后 3 passed，并**原样纳入**项目测试。
+
+**第五轮独立复核（`06572b6` / `f9f6c5c`）：B1/B2 CONFIRMED_FIXED，S1_OPEN 关闭。**
+本轮同时确认：不授予 FORMAL_RUN、不证明状态时间对齐有收益；真实 DDQN 模型读取器仍是内部缺口；P9 继续 PARTIAL。
+若今后改变控制重传/重入队、身份或资源窗口语义，必须新增对应守恒验收，不得复用本次绿状态。
+
 仍未处置（**未判为缺陷**，仅记账）：
 
 - **S4 附加观察**：`servers=0` 时异步后台 job 只发 `compute_request/compute_finish`、不发 `compute_start`。
