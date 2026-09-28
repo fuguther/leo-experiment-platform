@@ -49,6 +49,10 @@ def execution_chain_paths(root: Path = REPO_ROOT) -> tuple:
             parts = path.parts
             if "tests" in parts or "__pycache__" in parts:
                 continue
+            # macOS tar writes AppleDouble sidecars (._name.py); a metadata
+            # file is not source and must never change the execution identity
+            if path.name.startswith("._") or path.name.startswith("."):
+                continue
             out.append(str(path.relative_to(root)))
     return tuple(out)
 

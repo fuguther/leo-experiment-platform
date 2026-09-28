@@ -67,19 +67,38 @@ cmd_sync() {
     # push-remote.sh), excluding results, caches and the private config
     COPYFILE_DISABLE=1 "$TAR_BIN" czf - --no-mac-metadata -C "$LOCAL_WORKSPACE" \
         --exclude 'Results' --exclude '__pycache__' --exclude '.pytest_cache' \
-        --exclude '*.pyc' --exclude '*.log' \
+        --exclude '._*' --exclude '.DS_Store' --exclude '*.pyc' --exclude '*.log' \
         --exclude 'CODE/scripts/remote/remote.env' \
         CODE | "$SSH_BIN" -o BatchMode=yes "$REMOTE_HOST" \
         "tar xzf - -C '$REMOTE_ROOT' 2>&1 | grep -v 'LIBARCHIVE.xattr' || true"
-    printf '{\n  "schema": "t1-vm-launch/v1",\n  "head": "%s",\n  "dirty": %s,\n  "local_workspace": "%s",\n  "synced_at": "%s"\n}\n' \
-        "$head" \
-        "$([[ -n "$(cd "$LOCAL_WORKSPACE" && git status --short)" ]] && echo true || echo false)" \
-        "$LOCAL_WORKSPACE" \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$LOCAL_WORKSPACE/.t1-launch.json"
+    python3 - "$LOCAL_WORKSPACE" "$head" > "$LOCAL_WORKSPACE/.t1-launch.json" <<'PYEOF'
+import json, subprocess, sys, datetime
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "CODE" / ".."))
+sys.path.insert(0, str(Path(sys.argv[1])))
+from CODE.experiment_platform import artifact_identity
+root = Path(sys.argv[1])
+dirty = bool(subprocess.run(["git", "-C", str(root), "status", "--short"],
+                            capture_output=True, text=True).stdout.strip())
+print(json.dumps({
+    "schema": "t1-vm-launch/v1",
+    "head": sys.argv[2],
+    "dirty": dirty,
+    "local_workspace": str(root),
+    "synced_at": datetime.datetime.now(datetime.timezone.utc)
+                       .strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "chain_files": list(artifact_identity.execution_chain_paths()),
+}, indent=2))
+PYEOF
     COPYFILE_DISABLE=1 "$TAR_BIN" czf - --no-mac-metadata \
         -C "$LOCAL_WORKSPACE" .t1-launch.json | "$SSH_BIN" -o BatchMode=yes "$REMOTE_HOST" \
         "tar xzf - -C '$REMOTE_ROOT' 2>/dev/null; mv '$REMOTE_ROOT/.t1-launch.json' '$REMOTE_ROOT/launch.json'"
     rm -f "$LOCAL_WORKSPACE/.t1-launch.json"
+    # a tar stream cannot delete: AFTER the manifest exists, prune the deployed
+    # tree to exactly the file set this commit declares, so a stray file (e.g.
+    # a macOS ._ sidecar) can never change the execution identity
+    "$SSH_BIN" -o BatchMode=yes "$REMOTE_HOST" \
+        "cd '$REMOTE_ROOT' && python3 CODE/scripts/remote/prune_remote_chain.py"
     echo "[t1-vm] synced $head -> $REMOTE_HOST:$REMOTE_CODE"
 }
 
