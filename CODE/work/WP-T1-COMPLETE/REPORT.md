@@ -95,7 +95,7 @@ validate 篡改拒绝：删除某 cell 的 driver 后 -> "bundle validation fail
 ## 6. 不能支持的判断
 
 - **没有 FORMAL_RUN**：确认性种子 1001+ 的大规模矩阵未执行；本报告任何数字都不能当作确认性结果。
-- **没有 DDQN 结果**：本机无有效固定推理检查点，`ddqn_status` 返回 `EXTERNAL_BLOCKER`（精确原因与恢复方法见工件）；不把确定性评分器结果当 DDQN 结果。
+- **没有 DDQN 结果，且真实检查点读取器未实现**：`ddqn_status` 返回 `EXTERNAL_BLOCKER`；即便补齐检查点与 TensorFlow，`load_fixed_adapter_from_checkpoint` 也会在元数据闸门后无条件抛 `no trained-model reader is implemented`。不把确定性评分器结果当 DDQN 结果。
 - **没有星载实测**：计时全部是主机/VM；配置服务时长是诊断情景输入，不是标定值。
 - **没有远端覆盖部署**：标 `REMOTE_NOT_EXECUTED`；未触碰用户正在使用的 VM。
 - 不声称状态时间对齐有收益或没有收益——当前单分支诊断在 contention 上显示零增量，但这是「场景未激活机制」，不是算法结论。
@@ -222,7 +222,7 @@ R1 反问例复核（复现脚本 tmp_r1_final.py，已删除）：
 | **S3** | 查表模式仍逐包付完整计算（预计算/异步均 41 次 compute_request） | FIXED | `_packet_compute_required`：precomputed / async_point / async_window **逐包 0 次计算请求**，只付公共查询成本；后台异步任务仍付真实计算（0.05 s）；预计算构建成本单列（`build_wall_s` + 说明"不是逐包推理收费"） |
 | **S4** | 谓词失败仍整轮报成功、统计仍计入该区组 | FIXED | 计数穷尽（`predicate_failed/not_ok`）；非 ok 即 `FAILED_CELLS`；统计只纳入**完整性+行为谓词均通过**的区组并列出排除原因；CLI 非成功**退出码 3**。反例：不可能谓词的 run→report→resume 全流程 |
 | **S5** | 计时不是真实在线路径（各臂都查 `snapshot_at`） | FIXED | 抽出共用入口 `plan_decision/build_predictions/resolve_common_horizon`，内核也改用它；计时截获**在线决策的真实输入**并冻结当时的 caches/池状态，四臂逐一比对在线审计：`targets_match`/`ranking_match` **全部 True**（VM 工件） |
-| **S6** | 固定推理模块未接入任何分支/执行路径 | FIXED（真实检查点仍外部阻塞） | `inference` 新增推理专用接口与硬门槛；`kernel.inference_policy`（拒绝与训练 learner 组合）+ `counterfactual` 透传；**真实分支跑通**，掩码强制、参数不变、两次运行前缀动作一致 |
+| **S6** | 固定推理模块未接入任何分支/执行路径 | FIXED（真实检查点：**读取器未实现**，非仅缺依赖） | `inference` 新增推理专用接口与硬门槛；`kernel.inference_policy`（拒绝与训练 learner 组合）+ `counterfactual` 透传；**真实分支跑通**，掩码强制、参数不变、两次运行前缀动作一致 |
 | **S7** | 正式包未真正冻结；改阈值不改哈希；common_strong 未选择 | FIXED | `formal_package`/`formal_design` 纳入 bundle 指纹（复审的"阈值改 999 仍 valid"现被拒绝）；cell 输入绑定纳入 deadline 依赖文件哈希；`formal_design.ready` 时生成**真实 confirm cell**（种子+冻结 D+身份），未就绪时诚实标 `PENDING_DEV_SELECTION`；`statistics.common_strong` 未冻结时给出原因，主比较标签不再冒称 common_strong |
 
 ## VM 执行证据（实验只在 VM）
@@ -276,7 +276,11 @@ statistics.common_strong.frozen = False（开发块配对差恒为 0、无判别
 ## 仍未做（未做范围）
 
 1. **FORMAL_RUN**：确认性矩阵未执行；formal 包已能生成/校验，运行需授权（显式拒绝）。
-2. **真实 DDQN 检查点**：本机与 VM 均无 tensorflow 训练产物与检查点；适配器接口与硬门槛已验证，**不得**作为策略性能结论。
+2. **真实 DDQN 检查点（能力边界，不只缺依赖）**：本机与 VM 均无 tensorflow 训练产物与检查点，
+   **而且 `inference.load_fixed_adapter_from_checkpoint` 在所有元数据闸门之后仍无条件抛**
+   `"no trained-model reader is implemented"`——即**真实检查点的模型读取器本身没有实现**。
+   因此这不是"只差检查点文件/TensorFlow"：固定小模型的接口接线可单独验收，
+   真实检查点加载必须继续标**内部未实现**。本任务不启动训练或性能实验。
 3. **REMOTE 正式部署**：未写入 `/data/论文/leo-direct-sim`，未做正式远端验收部署。
 4. 开发块配对差仍恒为 0 → `common_strong` 保持未冻结，样本量不可由此估计（已在报告中显式标注）。
 

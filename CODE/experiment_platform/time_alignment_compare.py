@@ -132,7 +132,12 @@ def _resource_timeline(timeline, resource_link_id, t_after):
             if m.get("link_id") == resource_link_id
             and float(m["at"]) >= float(t_after)
             and m.get("milestone") in ("queue_enter", "service_start",
-                                       "service_finish")]
+                                       "service_finish",
+                                       # B1: a control packet that left the
+                                       # queue without being served must stay
+                                       # visible, otherwise the rebuild counts
+                                       # it as backlog forever
+                                       "ctrl_drop")]
 
 
 def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
@@ -170,11 +175,16 @@ def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
             "components_method": {}, "basis": None,
         }
     target_index = None
-    for i, row in enumerate(rows):
-        if (row.get("milestone") == "queue_enter"
-                and row.get("pid") == exclude_pid):
-            target_index = i
-            break
+    # B2: a control row carries pid=None, so an unset exclude_pid must
+    # never match it -- otherwise the first control enqueue became "the
+    # target" and every later data packet was filed as FIFO-behind it.
+    if exclude_pid is not None:
+        for i, row in enumerate(rows):
+            if (row.get("milestone") == "queue_enter"
+                    and row.get("packet_kind") != "control"
+                    and row.get("pid") == exclude_pid):
+                target_index = i
+                break
     target_enqueue_at = (None if target_index is None
                          else float(rows[target_index]["at"]))
 
@@ -238,7 +248,11 @@ def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
         backlog = row.get("backlog_before")
         if isinstance(backlog, dict):
             last_backlog = backlog
-        if pid == exclude_pid:
+        if row.get("packet_kind") == "control":
+            # control traffic has its own ledger; it is never a data
+            # FIFO member and never the excluded data packet
+            continue
+        if exclude_pid is not None and pid == exclude_pid:
             if i == target_index:
                 basis = backlog
             bits = _bits(pid)
@@ -309,23 +323,40 @@ def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
     # old estimator so historical artifacts still reconstruct.
     ctrl_rows = [r for r in rows if r.get("packet_kind") == "control"]
     if ctrl_rows:
-        entered = 0.0
-        left = 0.0
+        # B1: each control packet is matched by its STABLE IDENTITY and
+        # removed once when it leaves the queue (service_start, or a
+        # drop such as CONTROL_EXPIRED).  A running total minus a
+        # running total would need a max(0, ...) clamp to hide double
+        # deductions; identity matching cannot double count at all.
+        control_entered = {}
+        control_left = set()
+        # the identity tuple must have ONE shape within a window, or a row
+        # carrying the generation stamp would fail to cancel its own row
+        # that does not: use the full identity when every row has it, and
+        # fall back to (origin, seq) for traces/fixtures that do not
+        full_identity = all(
+            r.get("control_generated_at") is not None for r in ctrl_rows)
         for r in ctrl_rows:
             if float(r["at"]) > instant + 1e-12:
                 continue
-            amount = (0.0 if r.get("bits") is None
-                      else float(r["bits"]))
+            key = ((r.get("origin"), r.get("seq"),
+                    r.get("control_generated_at"))
+                   if full_identity
+                   else (r.get("origin"), r.get("seq")))
             if r.get("milestone") == "queue_enter":
-                entered += amount
-            elif r.get("milestone") in ("service_start", "queue_drop",
-                                        "ctrl_drop"):
-                # started service => already left the queue; dropped => never
-                # served.  Either way it no longer delays the target.
-                left += amount
-        ctrl_ahead = max(0.0, entered - left)
-        ctrl_method = ("control timeline on the named resource: queue_enter "
-                       "bits minus started/dropped bits at or before the "
+                amount = (0.0 if r.get("bits") is None
+                          else float(r["bits"]))
+                control_entered[key] = control_entered.get(key, 0.0) + amount
+            elif r.get("milestone") in ("service_start", "ctrl_drop",
+                                        "queue_drop"):
+                # started service => already dequeued; dropped => never served.
+                # Either way it no longer delays the target.
+                control_left.add(key)
+        ctrl_ahead = sum(bits for key, bits in control_entered.items()
+                         if key not in control_left)
+        ctrl_method = ("control timeline on the named resource: enqueued "
+                       "bits per control identity, minus identities that "
+                       "started service or were dropped at or before the "
                        "instant")
     elif last_backlog is not None:
         value = last_backlog.get("queued_ctrl_bits_before")

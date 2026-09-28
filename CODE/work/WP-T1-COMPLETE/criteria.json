@@ -167,7 +167,7 @@
         "CODE/leo_sim/learning.py"
       ],
       "status": "IMPLEMENTED",
-      "note": "R6：固定推理适配器已实现并用固定参数小模型验证；真实检查点仍为外部阻塞（无 tensorflow/无检查点）"
+      "note": "R6/第三轮：固定推理适配器已实现并用固定参数小模型验证；真实检查点不仅是外部阻塞——inference.load_fixed_adapter_from_checkpoint 在全部元数据闸门之后仍无条件抛 no trained-model reader is implemented，即**模型读取器本身未实现**，须继续标内部未实现，不得笼统归因于缺 tensorflow/缺检查点"
     },
     {
       "id": "K14",

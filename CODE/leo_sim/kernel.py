@@ -1069,6 +1069,16 @@ class ISLLink:
         kept_ctrl = deque()
         for pkt in self.ctrl_q:
             if now >= pkt.generated_at + pkt.ttl_s:
+                # B1: leaving the queue without being served must be
+                # recorded, or a reconstruction keeps counting this
+                # packet as control backlog forever (the kernel own
+                # ctrl_bits drops to 0 while the rebuild stays at 100).
+                # It is a DROP event, never a fake service_finish.
+                if self.k.timeline_sink is not None:
+                    self.k._timeline_ctrl(
+                        "ctrl_drop", pkt, f"isl:{self.sat}:{self.peer}",
+                        queue="isl_egress", priority="control",
+                        reason="CONTROL_EXPIRED", left_queue="expired")
                 self.ctrl_bits -= pkt.bits
                 self.ctrl_area.remove(pkt.bits, now)
                 self.k._fail(pkt, "CONTROL_EXPIRED")
@@ -1720,6 +1730,7 @@ class Kernel:
             "link_id": link_id,
             "origin": pkt.origin,
             "seq": pkt.seq,
+            "control_generated_at": float(pkt.generated_at),
             "bits": int(pkt.bits),
         }
         row.update(extra)
