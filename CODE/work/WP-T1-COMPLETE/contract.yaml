@@ -303,22 +303,29 @@ b_round:
       同义）。
   - id: mlab_asym
     business: 非对称多 OD（M-Lab 加权有向环，可达性待预检）
-    profile: CODE/leo_sim/profiles/mlab_measured_od_burst.yaml
+    profile: CODE/leo_sim/profiles/mlab_multiod_burst_t0.yaml
     expectation: asymmetric_candidate
     parameters:
-      scenario.duration_s: 10.0
+      scenario.duration_s: 12.0
+      endpoints.mlab_max_sites: 16
       demand.offered_mbps: 2.0
       demand.packet_bits: 1000000
-      demand.burst_start_s: 3.0
-      demand.burst_duration_s: 2.0
-      demand.burst_multiplier: 2.0
+      demand.burst_start_s: 4.0
+      demand.burst_duration_s: 3.0
+      demand.burst_multiplier: 3.0
       execution.compute_delay_s: 0.001
       execution.compute_servers_per_satellite: 2
       time_alignment.enabled: true
     max_branches: 3
     status: VALIDITY_PRE_CHECK_PENDING
-    why: 三个已声明场景的候选方向对称，臂无法产生差异；这是唯一保留 M-Lab OD 权重的非对称拓扑（Seattle→Beavercreek→Vancouver
-      有向环）
+    why: mlab_measured_od_burst 的三站点是相邻城市（同簇直达），预检实测 18/18 决策全是 deliver、0 个前向分支 ——
+      场景不激活机制。改用 mlab_multiod_burst_t0（140 星、mlab_auto 全局 OD），OD 跨区域才需要 ISL 转发。
+    pre_check_1:
+      profile: mlab_measured_od_burst.yaml
+      rows: 18
+      forward: 0
+      eligible: 0
+      verdict: SCENARIO_NOT_VALID（同簇直达，无前向分支）
   deadline_rule: 每个业务场景一个 D：预声明业务截止，或独立开发基准合法候选交付样本 p95×2；该场景所有臂/模式共用
   budgets:
     cell_wall_s: 120
