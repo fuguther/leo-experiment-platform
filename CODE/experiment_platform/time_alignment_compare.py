@@ -175,6 +175,8 @@ def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
                 and row.get("pid") == exclude_pid):
             target_index = i
             break
+    target_enqueue_at = (None if target_index is None
+                         else float(rows[target_index]["at"]))
 
     def _bits(pid):
         value = bits_by_pid.get(pid)
@@ -255,8 +257,24 @@ def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
             in_service_remaining = 0.0
             in_service_method = "packet_in_service_is_the_excluded_packet"
         elif finish_at is None:
-            in_service_remaining = None
-            in_service_method = "service_window_unfinished"
+            # The timeline cannot close this service window: a long service
+            # may still be running at the recorded horizon.  At the excluded
+            # packet OWN enqueue instant the kernel handed us the
+            # authoritative backlog, so use its in-service residual instead
+            # of reporting unknown.  Review S1-A measured an 86% shortfall
+            # here while the correct number sat unused in rec["basis"].
+            residual = None
+            if (basis is not None and target_enqueue_at is not None
+                    and abs(float(instant) - target_enqueue_at) <= 1e-12):
+                residual = basis.get("in_service_remaining_bits_before")
+            if residual is None:
+                in_service_remaining = None
+                in_service_method = "service_window_unfinished"
+            else:
+                in_service_remaining = float(residual)
+                in_service_method = (
+                    "kernel backlog_before in_service residual at the "
+                    "excluded packet own enqueue instant")
         else:
             bits = _bits(s_pid)
             duration = finish_at - s_at
@@ -313,7 +331,11 @@ def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
         "in_service_remaining_bits": in_service_remaining,
         "fifo_behind_bits": fifo_behind,
         "excluded_target_bits": target_bits,
-        "work_ahead_bits": float(total),
+        # an unknown component must NOT be folded into a number a caller
+        # can mistake for the truth (review S1-D: this used to return the
+        # partial sum, so "unknown" was readable as 0)
+        "work_ahead_bits": (None if unknown_components else float(total)),
+        "work_ahead_bits_known_components_sum": float(total),
         "complete": not unknown_components and not ahead_unknown,
         "unknown": ahead_unknown,
         "components_method": {
