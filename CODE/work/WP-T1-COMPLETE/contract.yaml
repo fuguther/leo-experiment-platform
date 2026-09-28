@@ -281,22 +281,26 @@ b_round:
     analytic: 同一解析窗口按比例缩小：利用率 = offered/isl_rate = 2.0/2.5 = 0.8 不变，包数从 1440 降到 80。VM
       实测原始尺寸单臂 105 s，四臂/多支路必然超 120 s/cell。
     max_branches: 3
-  - id: burst_multiod
-    business: 变化热点/突发（M-Lab OD 权重 + 预声明突发窗）
-    profile: CODE/leo_sim/profiles/mlab_multiod_burst_t0_queue_280x14_e25_10mbps.yaml
+  - id: burst_hotspot
+    business: 变化热点/突发（同一走廊上的预声明突发窗）
+    profile: CODE/leo_sim/profiles/t1_pressure_corridor.yaml
     expectation: stress_transform
     parameters:
-      scenario.duration_s: 60.0
-      time_alignment.enabled: true
+      scenario.duration_s: 40.0
+      demand.mode: burst
+      demand.offered_mbps: 0.8
+      demand.packet_bits: 1000000
+      demand.burst_start_s: 10.0
+      demand.burst_duration_s: 20.0
+      demand.burst_multiplier: 3.0
+      links.isl_rate_mbps: 2.5
+      access.unavailable_policy: queue
       execution.compute_delay_s: 0.001
       execution.compute_servers_per_satellite: 2
-      scenario.num_satellites: 24
-      scenario.num_planes: 3
-      endpoints.mlab_max_sites: 8
-      demand.offered_mbps: 10.0
-    analytic: M-Lab OD 权重 + 预声明突发窗（压力变换）。VM 实测原始尺寸（140 星/120 s）单臂 888 s，远超 120 s/cell，故按任务书缩小拓扑与时窗并生成本身份；OD
-      权重来源不变。
+      time_alignment.enabled: true
     max_branches: 3
+    analytic: 基础利用率 0.8/2.5 = 0.32，突发窗内 2.4/2.5 = 0.96；突发是预声明的压力变换，不是实测突发（data/traffic/README.md
+      同义）。
   deadline_rule: 每个业务场景一个 D：预声明业务截止，或独立开发基准合法候选交付样本 p95×2；该场景所有臂/模式共用
   budgets:
     cell_wall_s: 120
@@ -313,3 +317,9 @@ b_round:
   - 固定包长 372/891/1500 B；有限池 N=1/2/4，无界 N=0 仅作负对照
   - 按目标 rho 构造受控请求流并验证等待/积压与守恒
   - 确定性评分器与真实文件模型分开计时，不共用同一个数
+  deferred_scenarios:
+  - id: mlab_multiod_burst
+    status: DEFERRED_MEASURED_INFEASIBLE
+    profile: CODE/leo_sim/profiles/mlab_multiod_burst_t0_queue_280x14_e25_10mbps.yaml
+    measured: 140 星 120 s 单臂 888 s；缩到 24 星后 OD 可达性被破坏（NO_LEGAL_BRANCH，failed_units=0）
+    why_not_dropped_silently: M-Lab OD 权重是任务书列出的来源之一；把它跑起来需要更大的 cell 预算或一个保留 OD 权重的更小拓扑，这属于需要用户决策的预算问题，不能悄悄换成别的场景
