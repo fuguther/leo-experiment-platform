@@ -285,6 +285,7 @@
     "status": "SCENARIO_NOT_VALID（VM 实测）"
    },
    "local_regression": {
+    "after_fix_result": "两个受影响用例单独复跑：2 passed in 24.86s（此前一次 5 分 40 秒）",
     "after_fix_tiers": {
      "acceptance": 10,
      "b_dev": 10,
@@ -297,7 +298,9 @@
     "two_failures_were_real_and_fixed": [
      "test_a_predicate_failure_fails_run_report_and_resume: predicate_failed 期望 1 实得 2。根因：为 b_round 加 cell 时把 acceptance 的选取条件写成 group != dev_sweep，b_round 的 cell 被静默并入 acceptance 层（10 -> 20），于是重跑命中两个失败格。已改为显式排除 b_round。",
      "test_resume_retries_only_failed_cells: 第一次报 execution chain changed（我在测试运行期间提交了 commit，套件正确地拒绝复用旧 bundle——这是预期的 fail-closed）；改成验收层被污染后它又报 returncode 3，同一根因。"
-    ]
+    ],
+    "vm_evidence_not_contaminated": "所有 b_dev 运行都是显式 --tier b_dev；最后一次跑 experiment（内含 acceptance）是 t1-five2-52d551f，发生在 b_round 之前。所以 VM 证据未受此 bug 影响",
+    "why_so_slow_before": "acceptance 层被 b_round 的重场景污染后，每跑一次验收就要连带跑走廊/突发场景，单次 5 分钟以上；污染修复后同两个用例 25 秒完成"
    },
    "scenario_sizing_evidence": {
     "t1-b0-a742516": {
