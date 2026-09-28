@@ -207,12 +207,14 @@ def test_a_missing_result_invalidates_the_cell_and_is_rerun(tmp_path):
     run = json.loads((run_dir / "run.json").read_text())
     victim = run["cells"][0]["cell_id"]
     (run_dir / "cells" / victim / "result.json").unlink()
-    # the report must NOT still claim the run is ok
+    # the report must NOT still claim the run is ok -- and its exit status
+    # must say so too, so automation cannot read a broken round as green
     done = _run("report", "--run-dir", str(run_dir))
-    assert done.returncode == 0, done.stdout + done.stderr
+    assert done.returncode == 3, done.stdout + done.stderr
     report = json.loads((run_dir / "report.json").read_text())
     assert report["run_status"] == "FAILED_CELLS"
     assert report["counts"]["invalidated_at_report"] == 1
+    assert report["counts"]["not_ok_at_report"] == 1
     # resume re-runs exactly that cell and restores a verified ok
     done = _run("resume", "--run-dir", str(run_dir))
     assert done.returncode == 0, done.stdout + done.stderr
@@ -233,7 +235,7 @@ def test_a_tampered_result_is_detected_by_its_hash(tmp_path):
     payload["tampered"] = True
     result.write_text(json.dumps(payload))
     done = _run("report", "--run-dir", str(run_dir))
-    assert done.returncode == 0, done.stdout + done.stderr
+    assert done.returncode == 3, done.stdout + done.stderr
     report = json.loads((run_dir / "report.json").read_text())
     assert report["run_status"] == "FAILED_CELLS"
     row = next(r for r in report["cells"] if r["cell_id"] == victim)
@@ -256,10 +258,12 @@ def test_a_tiny_total_budget_marks_budget_exceeded_and_keeps_cells(tmp_path):
     run_dir = tmp_path / "acceptance"
     done = _run("run", "--bundle", str(bundle_dir), "--tier", "acceptance",
                 "--out", str(run_dir))
-    assert done.returncode == 0, done.stdout + done.stderr
+    # a budget-exceeded round is NOT a success and its exit status says so
+    assert done.returncode == 3, done.stdout + done.stderr
     run = json.loads((run_dir / "run.json").read_text())
     assert run["status"] == "BUDGET_EXCEEDED"
     assert run["counts"]["executed"] == 0
+    assert run["counts"]["not_ok"] == run["counts"]["total"]
 
 
 def test_an_unknown_tier_is_refused(tmp_path):
@@ -376,4 +380,72 @@ def test_the_acceptance_matrix_records_its_declared_overrides(tmp_path):
     assert overrides["execution"]["compute_servers_per_satellite"] == 1
     assert overrides["execution"]["compute_delay_s"] == 0.05
     assert overrides["time_alignment"]["query_delay_s"] == 0.001
+
+
+
+# ------------------------------- S4: a predicate failure fails the whole round
+def _compiled_with_impossible_predicate(tmp_path):
+    """A bundle as a compiler WOULD produce it, but with one cell whose
+    pre-declared behaviour can never pass."""
+    import CODE.experiment_platform.t1_suite as suite
+
+    bundle_dir = _compiled(tmp_path)
+    bundle = json.loads((bundle_dir / "bundle.json").read_text())
+    cell = next(c for c in bundle["cells"]
+                if c["cell_id"] == "hand-reachability")
+    cell["predicate"] = {"kind": "time_alignment",
+                         "require": {"min_candidates": 999}}
+    cell["input"] = suite._cell_input_binding(cell)
+    bundle["bundle_fingerprint"] = suite._bundle_fingerprint(bundle)
+    (bundle_dir / "bundle.json").write_text(json.dumps(bundle))
+    return bundle_dir
+
+
+def test_a_predicate_failure_fails_run_report_and_resume(tmp_path):
+    bundle_dir = _compiled_with_impossible_predicate(tmp_path)
+    run_dir = tmp_path / "acceptance"
+    done = _run("run", "--bundle", str(bundle_dir), "--tier", "acceptance",
+                "--out", str(run_dir))
+    assert done.returncode == 3, done.stdout + done.stderr
+    run = json.loads((run_dir / "run.json").read_text())
+    assert run["status"] == "FAILED_CELLS"
+    assert run["counts"]["predicate_failed"] == 1
+    assert run["counts"]["not_ok"] == 1
+    assert run["counts"]["ok"] == run["counts"]["total"] - 1
+    assert run["counts"]["not_ok"] == (run["counts"]["executed"]
+                                       - run["counts"]["ok"])
+    victim = next(r for r in run["cells"]
+                  if r["status"] == "predicate_failed")
+    assert "candidates >= min" in victim["exit_reason"]
+
+    done = _run("report", "--run-dir", str(run_dir))
+    assert done.returncode == 3, done.stdout + done.stderr
+    report = json.loads((run_dir / "report.json").read_text())
+    assert report["run_status"] == "FAILED_CELLS"
+    assert report["counts"]["predicate_failed_at_report"] == 1
+    assert report["counts"]["not_ok_at_report"] == 1
+    stats = report["statistics"]
+    excluded = {e["unit"]: e["reason"] for e in stats["excluded"]}
+    assert "hand-reachability" in excluded
+    assert "predicate" in excluded["hand-reachability"]
+    assert all(b["unit"] != "hand-reachability"
+               for b in stats["per_block"])
+    assert stats["blocks"] == len(stats["per_block"])
+    assert "integrity AND behaviour predicate" in stats["rule"]
+
+    # resume must NOT turn a behaviour failure into a green round
+    done = _run("resume", "--run-dir", str(run_dir))
+    assert done.returncode == 3, done.stdout + done.stderr
+    resumed = json.loads((run_dir / "run.json").read_text())
+    assert resumed["status"] == "FAILED_CELLS"
+    assert resumed["counts"]["predicate_failed"] == 1
+
+
+def test_a_successful_round_still_exits_zero(tmp_path):
+    bundle_dir = _compiled(tmp_path)
+    done = _run("run", "--bundle", str(bundle_dir), "--tier", "acceptance",
+                "--out", str(tmp_path / "ok"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    done = _run("report", "--run-dir", str(tmp_path / "ok"))
+    assert done.returncode == 0, done.stdout + done.stderr
 

@@ -859,7 +859,7 @@ def run_bundle(bundle_dir, tier, out_dir):
         record["identity"] = _cell_identity(bundle, cell)
         _write_json(out_dir / "cells" / cell_id / "cell.json", record)
         records.append(record)
-    failed = sum(1 for r in records if r["status"] in ("error", "timeout"))
+    failed = sum(1 for r in records if r["status"] != "ok")
     if status != "BUDGET_EXCEEDED" and failed:
         status = "FAILED_CELLS"
     run_doc = {
@@ -871,16 +871,31 @@ def run_bundle(bundle_dir, tier, out_dir):
         "identity": bundle.get("identity"),
         "started_wall_s": started,
         "cells": records,
-        "counts": {
-            "total": len(cell_ids),
-            "executed": len(records),
-            "ok": sum(1 for r in records if r["status"] == "ok"),
-            "error": sum(1 for r in records if r["status"] == "error"),
-            "timeout": sum(1 for r in records if r["status"] == "timeout"),
-        },
+        "counts": _count_records(records, len(cell_ids)),
     }
     _write_json(out_dir / "run.json", run_doc)
     return run_doc
+
+
+def _count_records(records, total):
+    """Exhaustive cell tally.
+
+    Every terminal state is counted and not_ok sums everything that is not ok,
+    including cells that were never executed, so a predicate failure (or any
+    future state) cannot be left out of the verdict.
+    """
+    counts = {"total": total, "executed": len(records),
+              "ok": 0, "error": 0, "timeout": 0, "predicate_failed": 0,
+              "invalidated": 0, "other": 0}
+    for record in records:
+        status = record.get("status")
+        if status in counts:
+            counts[status] += 1
+        else:
+            counts["other"] += 1
+    counts["not_ok"] = (counts["executed"] - counts["ok"]
+                        + (total - counts["executed"]))
+    return counts
 
 
 def _verify_recorded_result(run_dir, record):
@@ -977,16 +992,9 @@ def resume_run(run_dir):
     run_doc["resume"] = {"revalidated": revalidated, "retried": retried,
                          "current_chain_sha256": current_code,
                          "bundle_fingerprint": bundle.get("bundle_fingerprint")}
-    run_doc["counts"] = {
-        "total": len((bundle.get("tiers") or {}).get(run_doc["tier"], [])),
-        "executed": len(records),
-        "ok": sum(1 for r in records if r.get("status") == "ok"),
-        "error": sum(1 for r in records if r.get("status") == "error"),
-        "timeout": sum(1 for r in records if r.get("status") == "timeout"),
-        "invalidated": sum(1 for r in records
-                           if r.get("status") == "invalidated"),
-    }
-    if run_doc["counts"]["error"] or run_doc["counts"]["timeout"]:
+    tier_total = len((bundle.get("tiers") or {}).get(run_doc["tier"], []))
+    run_doc["counts"] = _count_records(records, tier_total)
+    if run_doc["counts"]["not_ok"]:
         run_doc["status"] = "FAILED_CELLS"
     elif run_doc.get("status") not in ("BUDGET_EXCEEDED",):
         run_doc["status"] = "ok"
@@ -1010,11 +1018,14 @@ def report_run(run_dir):
         # a report must never call a cell ok when its result vanished or moved
         reason = _verify_recorded_result(run_dir, record)
         status = record["status"] if reason is None else "invalidated"
+        verdict = record.get("predicate_verdict") or {}
         rows.append({
             "cell_id": record["cell_id"],
             "status": status,
             "recorded_status": record["status"],
             "invalid_reason": reason,
+            "predicate_passed": bool(verdict.get("passed", True)),
+            "predicate_checks": len(verdict.get("checks") or []),
             "wall_s": record["wall_s"],
             "schema": (payload or {}).get("schema"),
             "result_sha256": record.get("result_sha256"),
@@ -1024,8 +1035,13 @@ def report_run(run_dir):
     counts["verified_ok"] = sum(1 for r in rows if r["status"] == "ok")
     counts["invalidated_at_report"] = sum(1 for r in rows
                                           if r["status"] == "invalidated")
+    counts["predicate_failed_at_report"] = sum(
+        1 for r in rows if r["status"] == "predicate_failed")
+    counts["not_ok_at_report"] = sum(1 for r in rows if r["status"] != "ok")
     run_status = run_doc["status"]
-    if counts["invalidated_at_report"]:
+    if counts["not_ok_at_report"]:
+        # a predicate failure, a lost result or an invalidated cell means the
+        # round did NOT succeed, whatever the individual exit codes said
         run_status = "FAILED_CELLS"
     report = {
         "schema": SCHEMA_REPORT,
@@ -1083,18 +1099,31 @@ def _statistics_summary(run_dir, rows):
     import statistics as _statistics
 
     blocks = []
+    excluded = []
     for row in rows:
         if row.get("schema") != "time-alignment-compare/v1":
+            continue
+        if row.get("status") != "ok":
+            excluded.append({"unit": row["cell_id"],
+                             "reason": f"cell status {row.get('status')}"})
+            continue
+        if not row.get("predicate_passed", True):
+            excluded.append({"unit": row["cell_id"],
+                             "reason": "behaviour predicate failed"})
             continue
         path = run_dir / "cells" / row["cell_id"] / "result.json"
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
+            excluded.append({"unit": row["cell_id"],
+                             "reason": "result unreadable"})
             continue
         arms = payload.get("arms") or {}
         common = (arms.get("common") or {}).get("regret")
         candidate = (arms.get("candidate") or {}).get("regret")
         if common is None or candidate is None:
+            excluded.append({"unit": row["cell_id"],
+                             "reason": "primary arms missing"})
             continue
         blocks.append({"unit": row["cell_id"],
                        "common_strong_regret": float(common),
@@ -1110,6 +1139,9 @@ def _statistics_summary(run_dir, rows):
             t1_stats.MINIMUM_SUBSTANTIVE_DIFFERENCE),
         "sensitivity": [0.005, 0.02],
         "per_block": blocks,
+        "excluded": excluded,
+        "rule": "only cells whose result integrity AND behaviour predicate "
+                "both passed enter the paired analysis",
     }
     if not blocks:
         summary["note"] = ("no time-alignment block in this tier: nothing to "
@@ -1213,17 +1245,22 @@ def main(argv=None):
             run = run_bundle(args.bundle, args.tier, args.out)
             print(json.dumps({"status": run["status"], "out": str(args.out),
                               "counts": run["counts"]}, ensure_ascii=False))
+            # exit status is machine-readable: 0 only when the tier fully
+            # succeeded, so automation cannot read a failed round as green
+            return 0 if run["status"] == "ok" else 3
         elif args.command == "resume":
             run = resume_run(args.run_dir)
             print(json.dumps({"status": run["status"],
                               "counts": run["counts"],
                               "resume": run.get("resume")}, ensure_ascii=False))
+            return 0 if run["status"] == "ok" else 3
         elif args.command == "report":
             report = report_run(args.run_dir)
             print(json.dumps({"status": "reported",
                               "run_status": report["run_status"],
                               "cells": len(report["cells"])},
                              ensure_ascii=False))
+            return 0 if report["run_status"] == "ok" else 3
     except (SuiteError, BudgetExceeded) as exc:
         print(f"SUITE REFUSED: {exc}")
         return 2

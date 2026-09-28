@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# T1 VM experiment runner.
+#
+# HARD RULE (AGENTS.md): experiments run ONLY on the VM.  This script is the
+# only sanctioned path from this checkout to the VM, and it writes ONLY inside
+# the T1 isolated root.  The user's live deployment at
+# /data/论文/leo-direct-sim is never touched by this script.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_WORKSPACE="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+LOCAL_CODE="$LOCAL_WORKSPACE/CODE"
+LOCAL_OUT="$LOCAL_WORKSPACE/out/vm"
+
+REMOTE_HOST="${T1_REMOTE_HOST:-vm}"
+REMOTE_ROOT="${T1_REMOTE_ROOT:-/data/论文/leo-t1-wt}"
+REMOTE_CODE="$REMOTE_ROOT/CODE"
+REMOTE_RESULTS="$REMOTE_ROOT/Results"
+REMOTE_ENV_ACTIVATE='source /opt/anaconda3/bin/activate /data/liguang13/conda-envs/leo-i39'
+SSH_BIN="${SSH_BIN:-/usr/bin/ssh}"
+RSYNC_BIN="${RSYNC_BIN:-/usr/bin/rsync}"
+
+die() { echo "[t1-vm] $*" >&2; exit 1; }
+
+[[ "$REMOTE_ROOT" == "/data/论文/leo-t1-wt" ]] \
+    || die "REMOTE_ROOT must stay the isolated T1 root (got $REMOTE_ROOT)"
+[[ "$REMOTE_ROOT" != "/data/论文/leo-direct-sim" ]] \
+    || die "refusing to write into the live deployment"
+
+usage() {
+    cat <<'EOF'
+Usage:
+  t1-vm.sh status
+  t1-vm.sh sync
+  t1-vm.sh run <run-id> <command...>      # runs inside $REMOTE_CODE
+  t1-vm.sh pull <run-id>
+  t1-vm.sh experiment [<run-id>]          # sync + compile/validate/acceptance/dev + pull
+
+Environment overrides: T1_REMOTE_HOST, T1_REMOTE_ROOT (must stay isolated)
+EOF
+}
+
+require_clean() {
+    local head dirty
+    head="$(cd "$LOCAL_WORKSPACE" && git rev-parse HEAD)"
+    dirty="$(cd "$LOCAL_WORKSPACE" && git status --short)"
+    echo "[t1-vm] local HEAD $head"
+    if [[ -n "$dirty" ]]; then
+        echo "[t1-vm] WARNING: worktree is dirty:" >&2
+        echo "$dirty" >&2
+    fi
+    echo "$head"
+}
+
+cmd_status() {
+    local remote
+    remote="hostname; echo ROOT='$REMOTE_ROOT'; if [ -d '$REMOTE_ROOT' ]; then ls -la '$REMOTE_ROOT' | head -12; else echo NO_T1_ROOT; fi; echo ---launch---; cat '$REMOTE_ROOT/launch.json' 2>/dev/null || true; echo ---results---; ls '$REMOTE_RESULTS' 2>/dev/null | tail -10 || true"
+    "$SSH_BIN" -o BatchMode=yes "$REMOTE_HOST" "bash -lc $(printf '%q' "$remote")"
+}
+
+cmd_sync() {
+    local head
+    head="$(require_clean)"
+    "$SSH_BIN" -o BatchMode=yes "$REMOTE_HOST" \
+        "mkdir -p '$REMOTE_CODE' '$REMOTE_RESULTS'"
+    "$RSYNC_BIN" -az --delete \
+        --exclude 'Results/' --exclude 'out/' --exclude '__pycache__/' \
+        --exclude '.pytest_cache/' --exclude '*.pyc' --exclude '*.log' \
+        --exclude 'remote.env' \
+        "$LOCAL_CODE/" "$REMOTE_HOST:$REMOTE_CODE/"
+    printf '{\n  "schema": "t1-vm-launch/v1",\n  "head": "%s",\n  "dirty": %s,\n  "local_workspace": "%s",\n  "synced_at": "%s"\n}\n' \
+        "$head" \
+        "$([[ -n "$(cd "$LOCAL_WORKSPACE" && git status --short)" ]] && echo true || echo false)" \
+        "$LOCAL_WORKSPACE" \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$LOCAL_WORKSPACE/.t1-launch.json"
+    "$RSYNC_BIN" -az "$LOCAL_WORKSPACE/.t1-launch.json" \
+        "$REMOTE_HOST:$REMOTE_ROOT/launch.json"
+    rm -f "$LOCAL_WORKSPACE/.t1-launch.json"
+    echo "[t1-vm] synced $head -> $REMOTE_HOST:$REMOTE_CODE"
+}
+
+cmd_run() {
+    local run_id="$1"; shift
+    [[ $# -gt 0 ]] || die "run needs a command"
+    local quoted=""
+    local arg
+    for arg in "$@"; do
+        quoted="$quoted $(printf '%q' "$arg")"
+    done
+    local remote="cd '$REMOTE_CODE' && $REMOTE_ENV_ACTIVATE && mkdir -p '$REMOTE_RESULTS/$run_id' && $quoted 2>&1 | tee '$REMOTE_RESULTS/$run_id/run.log'; exit \${PIPESTATUS[0]}"
+    "$SSH_BIN" -o BatchMode=yes -t "$REMOTE_HOST" "bash -lc $(printf '%q' "$remote")"
+}
+
+cmd_pull() {
+    local run_id="$1"
+    mkdir -p "$LOCAL_OUT"
+    "$RSYNC_BIN" -az "$REMOTE_HOST:$REMOTE_RESULTS/$run_id/" "$LOCAL_OUT/$run_id/"
+    echo "[t1-vm] pulled $REMOTE_HOST:$REMOTE_RESULTS/$run_id -> $LOCAL_OUT/$run_id"
+}
+
+cmd_experiment() {
+    local run_id="${1:-t1-\$(date -u +%Y%m%dT%H%M%SZ)}"
+    cmd_sync
+    local rc=0
+    cmd_run "$run_id" true || rc=$?
+    cmd_run "$run_id" python3 -m CODE.experiment_platform.t1_suite compile \
+        --contract CODE/work/WP-T1-COMPLETE/contract.yaml \
+        --out "Results/$run_id/compiled" || rc=$?
+    if [[ $rc -eq 0 ]]; then
+        cmd_run "$run_id" python3 -m CODE.experiment_platform.t1_suite validate \
+            --bundle "Results/$run_id/compiled" || rc=$?
+    fi
+    if [[ $rc -eq 0 ]]; then
+        cmd_run "$run_id" python3 -m CODE.experiment_platform.t1_suite run \
+            --bundle "Results/$run_id/compiled" --tier acceptance \
+            --out "Results/$run_id/acceptance" || rc=$?
+    fi
+    if [[ $rc -eq 0 ]]; then
+        cmd_run "$run_id" python3 -m CODE.experiment_platform.t1_suite run \
+            --bundle "Results/$run_id/compiled" --tier dev \
+            --out "Results/$run_id/dev" || rc=$?
+    fi
+    if [[ $rc -eq 0 ]]; then
+        cmd_run "$run_id" python3 -m CODE.experiment_platform.t1_suite report \
+            --run-dir "Results/$run_id/acceptance" || rc=$?
+        cmd_run "$run_id" python3 -m CODE.experiment_platform.t1_suite report \
+            --run-dir "Results/$run_id/dev" || rc=$?
+    fi
+    cmd_pull "$run_id" || true
+    echo "[t1-vm] experiment $run_id finished with rc=$rc (pulled to $LOCAL_OUT/$run_id)"
+    return "$rc"
+}
+
+case "${1:-}" in
+    status) cmd_status ;;
+    sync) cmd_sync ;;
+    run) shift; [[ $# -ge 2 ]] || die "run <run-id> <command...>"; cmd_run "$@" ;;
+    pull) shift; [[ $# -eq 1 ]] || die "pull <run-id>"; cmd_pull "$1" ;;
+    experiment) shift; cmd_experiment "$@" ;;
+    *) usage; exit 2 ;;
+esac
