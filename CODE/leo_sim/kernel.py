@@ -1092,6 +1092,15 @@ class Kernel:
         self.inference_policy = inference_policy
         if inference_policy is not None:
             _inference.assert_inference_only(inference_policy)
+            if not self.cfg_ta["enabled"]:
+                # without time alignment there is no frozen snapshot for the
+                # policy to act on, so it would be silently ignored (S6
+                # review, finding 4): refuse the configuration instead
+                raise KernelError(
+                    "an inference policy was supplied but "
+                    "time_alignment.enabled is false, so there is no frozen "
+                    "snapshot for it to act on; supplying a policy without "
+                    "enabling time alignment would silently ignore it")
             if str(cfg["learning"]["algorithm"]) != "none":
                 raise KernelError(
                     "an inference-only policy may not be combined with a "

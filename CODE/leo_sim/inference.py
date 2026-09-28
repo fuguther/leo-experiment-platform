@@ -44,7 +44,12 @@ class FixedInferenceAdapter:
       * normalisation is frozen at construction;
       * the action mask is enforced, and an all-masked request is an error;
       * ties break by the declared action order.
+
+    The training entry points below exist in order to REFUSE.  The class
+    therefore also declares ``inference_only``, so the frozen path can
+    VERIFY the refusal instead of inferring a capability from a name.
     """
+    inference_only = True
 
     def __init__(self, weights, *, actions=ACTIONS, feature_mean=None,
                  feature_std=None, name="fixed-small-model"):
@@ -162,6 +167,10 @@ class InferencePolicy:
 
     name = "abstract"
     parameter_sha256 = ""
+    #: declared contract: a policy usable on a frozen snapshot cannot learn.
+    #: assert_inference_only still PROBES that claim; the declaration only
+    #: says where to look.
+    inference_only = True
 
     def act(self, snapshot):
         raise NotImplementedError
@@ -170,13 +179,50 @@ class InferencePolicy:
         raise NotImplementedError
 
 
+#: entry points that only a learner has any business exposing
+TRAINING_ENTRY_POINTS = ("train_step", "observe", "update", "set_epsilon",
+                        "learn")
+
+
 def assert_inference_only(policy) -> None:
-    """Refuse a policy that can learn: the frozen branch path is inference-only."""
-    for forbidden in ("train_step", "observe", "update", "set_epsilon",
-                      "learn"):
-        if hasattr(policy, forbidden):
+    """Refuse anything that can learn: the frozen path is inference-only.
+
+    A NAME IS NOT A CAPABILITY.  The previous check rejected on
+    hasattr(train_step), which also refused the fixed adapter -- whose
+    training entry points exist precisely in order to refuse.  The
+    contract is now:
+
+      * a policy declaring inference_only = True is accepted only after
+        every training entry point it does expose is PROBED and shown to
+        raise; the declaration alone is never enough;
+      * a policy that does not declare it is accepted only when it exposes
+        no training entry point at all.
+    """
+    if getattr(policy, "inference_only", False):
+        for name in TRAINING_ENTRY_POINTS:
+            entry = getattr(policy, name, None)
+            if entry is None:
+                continue
+            args = (0.5,) if name == "set_epsilon" else ()
+            try:
+                entry(*args)
+            except FixedInferenceError:
+                continue          # refusal confirmed
+            except Exception as exc:
+                raise FixedInferenceError(
+                    f"policy {type(policy).__name__} declares inference_only "
+                    f"but {name}() could not be shown to refuse "
+                    f"({type(exc).__name__}: {exc})") from exc
             raise FixedInferenceError(
-                f"policy {type(policy).__name__} exposes {forbidden!r}: it is a "
+                f"policy {type(policy).__name__} declares inference_only but "
+                f"{name}() accepted a training call: it IS a training "
+                "learner, and the frozen branch path accepts inference-only "
+                "policies")
+        return
+    for name in TRAINING_ENTRY_POINTS:
+        if hasattr(policy, name):
+            raise FixedInferenceError(
+                f"policy {type(policy).__name__} exposes {name!r}: it is a "
                 "training learner, and the frozen branch path accepts "
                 "inference-only policies")
 
@@ -237,10 +283,16 @@ class FixedModelPolicy(InferencePolicy):
             raise FixedInferenceError(
                 f"feature width {len(features)} != model width {width}; the "
                 "checkpoint was trained for a different observation contract")
-        q = self.adapter.q_values(features)
-        scores = {a: float(q[self.adapter.actions.index(a)]) for a in legal}
-        return max(legal, key=lambda a: (scores[a],
-                                         -self.adapter.actions.index(a)))
+        unknown = [a for a in legal if a not in self.adapter.actions]
+        if unknown:
+            raise FixedInferenceError(
+                f"legal directions {unknown} are outside the model action "
+                f"set {list(self.adapter.actions)}")
+        # ONE masked-argmax implementation: the adapter owns the mask, the
+        # tie-break AND the call counter, so counters()["calls"] is real
+        # (the S6 review found it permanently 0 because this method
+        # bypassed act() and re-implemented the argmax on q_values).
+        return self.adapter.act(features, mask=legal)
 
     def counters(self) -> dict:
         return dict(self.adapter.counters(), policy=self.name,
@@ -277,11 +329,17 @@ class WidthAdaptiveFixedPolicy(InferencePolicy):
             raise FixedInferenceError("the snapshot has no legal direction")
         adapter = self._adapter_for(observation_feature_width(snapshot))
         features = build_features(snapshot)
-        q = adapter.q_values(features)
-        scores = {a: float(q[adapter.actions.index(a)]) for a in legal}
+        if len(features) != adapter.weights.shape[1]:
+            raise FixedInferenceError(
+                f"feature width {len(features)} != model width "
+                f"{adapter.weights.shape[1]} for the selected sub-model")
+        unknown = [a for a in legal if a not in adapter.actions]
+        if unknown:
+            raise FixedInferenceError(
+                f"legal directions {unknown} are outside the model action set")
         self._calls += 1
-        return max(legal, key=lambda a: (scores[a],
-                                         -adapter.actions.index(a)))
+        # the same single code path as FixedModelPolicy
+        return adapter.act(features, mask=legal)
 
     def parameter_sha256(self):
         h = hashlib.sha256()
@@ -296,6 +354,9 @@ class WidthAdaptiveFixedPolicy(InferencePolicy):
             "fixed_inference_policy", "seed": self.seed,
             "calls": self._calls, "epsilon": 0.0, "updates": 0,
             "grad_steps": 0, "training": False,
+            # adapter-level evidence that the same act() path ran
+            "adapter_calls": sum(a.counters()["calls"]
+                                 for a in self._cache.values()),
             "widths": sorted(self._cache),
             "parameter_sha256": self.parameter_sha256(),
         }
@@ -365,8 +426,12 @@ def verify_checkpoint(checkpoint_path, checkpoint_sha256=None,
                       metadata_path=None, metadata_sha256=None) -> dict:
     """Hash-verified availability of a REAL trained checkpoint.
 
-    AVAILABLE requires: a path, a matching file hash, a matching sibling
-    metadata hash and an importable loader.  Existence alone is never enough.
+    AVAILABLE requires ALL of: a path, a matching file hash, a DECLARED
+    sibling metadata path, a DECLARED and matching metadata hash, and an
+    importable loader.  Existence alone is never enough, and neither is a
+    metadata file whose hash was never pinned: the S6 review showed that
+    omitting metadata_sha256 (or metadata_path entirely) let a fabricated
+    120-byte file reach AVAILABLE.
     """
     report = {"schema": SCHEMA, "checkpoint_path": (None if checkpoint_path
                                                     is None
@@ -402,28 +467,42 @@ def verify_checkpoint(checkpoint_path, checkpoint_sha256=None,
                              "sha256",
                       recovery="re-export the checkpoint or correct the hash")
         return report
-    if metadata_path:
-        meta = Path(metadata_path)
-        if not meta.exists():
-            report.update(state="METADATA_MISSING",
-                          reason=f"sibling metadata missing: {meta}",
-                          recovery="ship the metadata that pins the "
-                                   "observation contract")
-            return report
-        meta_actual = _sha256_file(meta)
-        if metadata_sha256 and meta_actual != metadata_sha256:
-            report.update(state="METADATA_HASH_MISMATCH",
-                          metadata_sha256=meta_actual,
-                          declared_metadata_sha256=metadata_sha256,
-                          reason="sibling metadata does not match its declared "
-                                 "hash")
-            return report
-        try:
-            report["metadata"] = json.loads(meta.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            report.update(state="METADATA_UNREADABLE",
-                          reason="sibling metadata is not valid JSON")
-            return report
+    if not metadata_path:
+        report.update(state="METADATA_MISSING",
+                      reason="the checkpoint declares no sibling metadata, "
+                             "so its observation contract cannot be "
+                             "verified",
+                      recovery="declare learning.metadata_path and "
+                               "learning.metadata_sha256")
+        return report
+    if not metadata_sha256:
+        report.update(state="METADATA_HASH_MISSING",
+                      reason="the sibling metadata is declared but no "
+                             "sha256 is given, so its identity cannot be "
+                             "verified",
+                      recovery="declare learning.metadata_sha256")
+        return report
+    meta = Path(metadata_path)
+    if not meta.exists():
+        report.update(state="METADATA_MISSING",
+                      reason=f"sibling metadata missing: {meta}",
+                      recovery="ship the metadata that pins the "
+                               "observation contract")
+        return report
+    meta_actual = _sha256_file(meta)
+    if meta_actual != metadata_sha256:
+        report.update(state="METADATA_HASH_MISMATCH",
+                      metadata_sha256=meta_actual,
+                      declared_metadata_sha256=metadata_sha256,
+                      reason="sibling metadata does not match its declared "
+                             "hash")
+        return report
+    try:
+        report["metadata"] = json.loads(meta.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        report.update(state="METADATA_UNREADABLE",
+                      reason="sibling metadata is not valid JSON")
+        return report
     report["actual_sha256"] = actual
     if not report["loader_available"]:
         report.update(state="EXTERNAL_BLOCKER",

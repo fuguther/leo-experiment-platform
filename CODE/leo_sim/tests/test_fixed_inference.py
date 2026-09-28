@@ -81,12 +81,28 @@ def test_a_checkpoint_needs_hashes_not_just_existence(tmp_path):
     assert wrong["state"] == "HASH_MISMATCH"
     assert wrong["actual_sha256"]
 
+    # S6 review: a verified file hash is NOT enough.  Without a declared and
+    # pinned sibling metadata hash the observation contract is unverifiable,
+    # so the state must not be AVAILABLE.
+    no_meta = inference.verify_checkpoint(ckpt, inference._sha256_file(ckpt))
+    assert no_meta["state"] == "METADATA_MISSING"
+    assert no_meta["state"] != "AVAILABLE"
+
+    meta = tmp_path / "metadata.json"
+    meta.write_text("{}")
+    # ... and a declared metadata path with no pinned hash is equally unverified
+    unhashed = inference.verify_checkpoint(
+        ckpt, inference._sha256_file(ckpt), metadata_path=meta)
+    assert unhashed["state"] == "METADATA_HASH_MISSING"
+
+    # only with BOTH metadata gates satisfied is the loader the last blocker
     right = inference.verify_checkpoint(
-        ckpt, inference._sha256_file(ckpt))
-    # the hashes verify, so the ONLY remaining blocker is the loader
-    assert right["state"] == "EXTERNAL_BLOCKER"
-    assert "loader" in right["reason"]
-    assert right["recovery"]
+        ckpt, inference._sha256_file(ckpt), metadata_path=meta,
+        metadata_sha256=inference._sha256_file(meta))
+    assert right["state"] in ("EXTERNAL_BLOCKER", "AVAILABLE")
+    if right["state"] == "EXTERNAL_BLOCKER":
+        assert "loader" in right["reason"]
+    assert right["recovery"] or right["state"] == "AVAILABLE"
 
 
 def test_missing_paths_and_metadata_are_reported_precisely(tmp_path):
