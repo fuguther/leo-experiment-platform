@@ -4,6 +4,13 @@
 > 账本：`CODE/work/WP-T1-COMPLETE/STATUS.md`、`criteria.json`、`contract.yaml`
 > 结论分层：IMPLEMENTED / TESTED / DIAGNOSTIC_RUN / FORMAL_RUN。**本报告不含任何 FORMAL_RUN。**
 
+> ### ⚠️ 现状与历史分界（2026-09-28）
+> 本报告的**现行证据只有一处**：文末「VM 执行证据」节，run-id **`t1-final-8a31496`**
+> （HEAD `8a31496`，`identity.git.dirty=false`，执行链 `e8537aed…`，acceptance/dev 各 10/10）。
+> **第 3–8 节是 VM 规则生效之前的本机口径**（工件 `out/t1/**`、acceptance 7 cells、决策计时 p50 34 µs）；
+> 按 `AGENTS.md` §1，这些本机产物自 2026-09-28 起**不得再作为实验证据来源**，其中 34 µs / 73.9 µs 计时已作废。
+> 第 9 节起为两轮独立复审的返工史（R1–R9 @53aeb30、S1–S7 @2330701）与本轮 S8 修复，保留完整历史。
+
 ## 1. 用户问题
 
 在同样可收到的本地与邻居历史信息下，把候选资源的预计使用时刻对齐，能否改善选择；
@@ -49,7 +56,8 @@ python3 -m pytest CODE/experiment_platform/tests/test_control_reach_units.py -q 
 
 端到端流水线实跑（acceptance 层）：
 ```
-t1_suite compile  -> 7 cells, contract_sha256 b5cdeb41...
+t1_suite compile  -> 7 cells, contract_sha256 b5cdeb41...   # 历史口径
+                                                              # 现行：编译产 20 cells，acceptance/dev 各 10 格全过
 t1_suite validate -> valid true, 7 cells
 t1_suite run --tier acceptance -> {"ok": 7, "error": 0, "timeout": 0}
 t1_suite report   -> run_status ok, 7/7 cells, REPORT.md 生成
@@ -61,7 +69,8 @@ validate 篡改拒绝：删除某 cell 的 driver 后 -> "bundle validation fail
 
 ## 4. 有界诊断结果（DIAGNOSTIC_RUN）
 
-可从 `out/t1/` 复现，命令见第 7 节。**均为单分支/单 trace 诊断，不构成统计结论。**
+> ⚠️ **本节为历史（本机口径）**：曾由 `out/t1/` 复现，该路径按 `AGENTS.md` §1 已不得再作为证据来源。
+> 现行证据见文末「VM 执行证据」节。**均为单分支/单 trace 诊断，不构成统计结论。**
 
 | 诊断 | 结果 | 解释 |
 |---|---|---|
@@ -72,7 +81,7 @@ validate 篡改拒绝：删除某 cell 的 driver 后 -> "bundle validation fail
 | 恒状态退化 | 四组动作一致 | 恒队列时预测外推退化一致 |
 | 计算池手算夹具 | 1 服务台 starts [0,0.1] / finishes [0.1,0.2]；2 服务台 finishes [0.1,0.1] | 与计划书手算一致 |
 | 异步跨版本时间例 | 请求 1 s、服务 2 s、安装 0.5 s → 1.5/3.2 s 查 v1，3.5 s 安装后查 v2 | 与计划书时间例一致 |
-| 决策路径计时 | full p50 ≈ 34 µs、p99 ≈ 50 µs；空调用基线 ≈ 0.018 µs | 主机/VM 实测，非星载 |
+| 决策路径计时（**已作废**） | ~~full p50 ≈ 34 µs、p99 ≈ 50 µs~~ | 旧值只计评分调用、且未按臂取真实时刻；已被 S5 修正后的真实在线路径 **526–529 µs** 取代 |
 | 五执行模式复用 | per_flow 命中缓存后计算请求低于 per_packet；async 模式查询表、按窗口安装 | 机制计数与事件对齐 |
 
 ## 5. 能支持的判断
@@ -124,7 +133,7 @@ python3 -m CODE.experiment_platform.t1_suite report --run-dir out/t1/suite/accep
 ## 8. 证据链
 
 - 源码与测试：本仓库提交（见 `STATUS.md` 身份表；`git log`）。
-- 运行工件：`out/t1/`（gitignored，未提交；由上述命令可逐条重建）。
+- 运行工件（历史）：`out/t1/`（gitignored，未提交）。**现行运行工件是 `out/vm/<run-id>/`**，由 `t1-vm.sh experiment` 在 VM 上产生并拉回，本机不产出实验数值。
 - 身份：每个新工件内嵌 `identity`（Git commit/dirty/diff_sha256 + 逐文件哈希 + runtime）。
 - 旧证据：`out/` 既有文件未改写；新运行拒绝覆盖旧目录。
 
