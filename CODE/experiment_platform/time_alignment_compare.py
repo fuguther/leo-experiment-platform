@@ -627,6 +627,16 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
                     float(measurement["received_at"]),
                     float(cr["advertised_queue_bits"]),
                     None if rate_bps is None else float(rate_bps)))
+    # A3: the probe snapshot is built with the CONFIGURED rule, so a
+    # fixed_horizon config must carry its horizon here too -- otherwise the
+    # snapshot constructor refuses the pair and EVERY fixed-h candidate fails
+    # to build a branch at all (measured on the VM: 12/12 branches refused
+    # with "fixed_horizon requires a finite common_horizon_s").  The horizon
+    # itself is only used to resolve rule-based candidates; for a fixed-h
+    # candidate the caller passes the candidate own value.
+    if common_horizon_s is None and str(cfg_ta["common_rule"]) == \
+            "fixed_horizon":
+        common_horizon_s = cfg_ta.get("common_horizon_s")
     return ta.make_snapshot(
         satellite=int(obs.get("sat", row["sat"])),
         snapshot_at=float(row["t_decision_start"]),
