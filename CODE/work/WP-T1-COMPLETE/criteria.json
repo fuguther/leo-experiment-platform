@@ -54,6 +54,47 @@
      }
     }
    },
+   "b2b_corrected_blocker": {
+    "corrected": "实测推翻了那个归因：短时长下 M-Lab 场景单次基线只有 2.8 s（66 星/10 s）和 61.8 s（140 星/12 s），**成本不是约束**；真正的约束是**场景有效性**——两个 M-Lab 变体都产生不了「至少两个合法前向方向」的决策。之前的 888 s 是 140 星 × 120 s × 高负载下的数字，不能用来论证预算不足。",
+    "earlier_claim": "上一轮把实验一不可辨归因于 120 s/cell 预算，并据此请求提高预算",
+    "note": "这一条更正在被用户据以决策，必须显式记录，不得只在对话里说",
+    "what_is_actually_needed": "一个 OD 两端足够远、目的星不可直接可见的场景（才需要 ISL 转发），且测量窗要覆盖决策真正发生的时段。可选路径：(a) 在 M-Lab 全局 OD 上提高负载/延长地平线到决策饱和；(b) 用手工声明的远距离 OD 对（保持声明来源，不伪称实测）；(c) 接受实验一为有边界的阴性结果。"
+   },
+   "b2b_validity_prechecks": {
+    "pre_checks": [
+     {
+      "measured": {
+       "baseline_s": 2.8,
+       "decisions": 18,
+       "design_s": 0.8,
+       "eligible": 0,
+       "forward": 0,
+       "rejected": 18,
+       "rows": 18
+      },
+      "run": "t1-val2-caff29c",
+      "variant": "mlab_measured_od_burst.yaml（66 星，Seattle/Beavercreek/Vancouver 有向环，10 s）",
+      "verdict": "SCENARIO_NOT_VALID：三站点是相邻城市（同簇直达），18/18 决策都是 deliver，没有任何前向分支可选"
+     },
+     {
+      "measured": {
+       "baseline_s": 61.8,
+       "decisions": 10,
+       "design_s": 0.8,
+       "eligible": 0,
+       "kinds": {
+        "deliver": 10
+       },
+       "rejected": 10,
+       "rows": 34
+      },
+      "run": "t1-val3-917fa70",
+      "variant": "mlab_multiod_burst_t0.yaml（140 星，mlab_auto 全局 OD，12 s，16 站点）",
+      "verdict": "SCENARIO_NOT_VALID：本时长/负载下仍全部直达，且多数行在 12 s 地平线内根本没走到决策"
+     }
+    ],
+    "rule": "任务书 B0：先做低成本校准观测覆盖、请求率与资源可达性，再读性能差"
+   },
    "b3_deadline_freeze": {
     "auditability_gap": "冻结文件目前未把 samples / branches_used 写进去（只在 freeze 的返回里），下一轮补进文件",
     "files": [
