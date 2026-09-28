@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import math
 import hashlib
+import time
 from collections import deque
 
 import numpy as np
@@ -3657,6 +3658,7 @@ class Kernel:
         for target in range(self.num_sats):
             self._dist_to[target] = routing._multi_source_bfs(adj, [target])
         self._precompute_cost["bfs_runs"] = self.num_sats
+        build_started = time.perf_counter()
         for sat in range(self.num_sats):
             table = {}
             for other in range(self.num_sats):
@@ -3680,6 +3682,11 @@ class Kernel:
         self._precompute_cost["targets"] = sum(
             len(t) for t in self._precomputed_dirs.values())
         self._precompute_cost["installs"] += 1
+        self._precompute_cost["build_wall_s"] = (
+            time.perf_counter() - build_started)
+        self._precompute_cost["cost_kind"] = (
+            "offline host build, reported separately from any packet "
+            "inference; it is NOT a per-packet compute charge")
 
     def _precomputed_order(self, pkt, sat: int, cands: list, now: float):
         """Order candidates from the installed table plus advertisements."""
@@ -3751,10 +3758,10 @@ class Kernel:
             horizon = float(self.cfg_ta["common_horizon_s"])
         else:
             probe = self._build_ta_snapshot(None, sat, now, cands, own_q, arm,
-                                            None, dst=dst, bits=bits)
+                                            None, dst=dst, packet_bits=bits)
             horizon = self._ta_common_horizon(probe, rule)
         snap = self._build_ta_snapshot(None, sat, now, cands, own_q, arm,
-                                       horizon, dst=dst, bits=bits)
+                                       horizon, dst=dst, packet_bits=bits)
         return snap, cands, status
 
     def _async_order(self, pkt, sat: int, now: float, cands: list,
@@ -3873,15 +3880,29 @@ class Kernel:
     # ------------------------------------------- T1-COMPLETE P5 online arms
     def _build_ta_snapshot(self, pkt, sat: int, now: float,
                            cands: list, own_q: dict, arm: str,
-                           common_horizon_s, dst=None, bits=None):
+                           common_horizon_s, dst=None, packet_bits=None):
         """ObservationSnapshot for the online state-time arms.
 
         Reads only what the decision may read: this node own queues, its
         received advertisements, the visible topology rule and the configured
         per-hop costs.  No kernel truth, no peer cache, no future event.
+
+        The packet size is resolved BEFORE anything else and from its own
+        source only.  An earlier version reused one local name for both the
+        packet size and the advertised queue value, so the last advertisement
+        silently overwrote the packet size and the transmit term became an
+        advertisement reading.
         """
+        if packet_bits is not None:
+            target_bits = float(packet_bits)
+        elif pkt is not None:
+            target_bits = float(pkt.bits)
+        else:
+            target_bits = float(self.cfg_dm["packet_bits"])
+        target_dst = (pkt.dst if (pkt is not None and dst is None) else
+                      (dst if dst is not None else None))
         cand_map = self._candidate_resource_map(pkt, sat, now, cands,
-                                                force=True, dst=dst)
+                                                force=True, dst=target_dst)
         legal = []
         resources = {}
         history = []
@@ -3905,21 +3926,19 @@ class Kernel:
             remaining[direction] = cr.get("remaining_prop_s")
             for rec in self._advertisement_history(sat, int(cr["peer"]), now,
                                                    force=True):
-                bits = (rec.get("advertised_isl_queue_bits") or {}).get(
-                    cr["egress_direction"])
-                if bits is None:
+                advertised_bits = (rec.get("advertised_isl_queue_bits")
+                                   or {}).get(cr["egress_direction"])
+                if advertised_bits is None:
                     continue
                 history.append(_ta.StateSample(
                     key, float(rec["generated_at"]), float(rec["received_at"]),
-                    float(bits),
+                    float(advertised_bits),
                     None if cr.get("isl_rate_bps") is None
                     else float(cr["isl_rate_bps"])))
         def _finite_pairs(values):
             return {d: float(v) for d, v in values.items()
                     if v is not None and isinstance(v, (int, float))
                     and not isinstance(v, bool) and math.isfinite(float(v))}
-        target_dst = pkt.dst if dst is None else dst
-        target_bits = float(pkt.bits) if bits is None else float(bits)
         scope = "scope:|%s|%s|default" % (sat, target_dst)
         compute_state = self._compute_state_now(int(sat))
         return _ta.make_snapshot(
@@ -4754,13 +4773,14 @@ class Kernel:
         # frozen: the observation and the inference happen NOW, before the
         # timeout; only the legality check and the commit happen after it.
         self._reset_query_charge()
-        if (self.exec_mode == "per_flow"
-                and self._per_flow_hit(pkt, sat, requested) is not None):
-            # A cache hit must not pay the compute interval: that is the whole
-            # difference between per_flow and per_packet.  The check happens
-            # BEFORE the pre-compute observation, so a miss cannot consume the
-            # entry it is about to store itself.  It DOES pay the shared query
-            # service, like every other mode.
+        if not self._packet_compute_required(pkt, sat, requested):
+            # A TABLE LOOKUP IS NOT A COMPUTATION.  precomputed, async_point and
+            # async_window read an installed table, and a per-flow cache hit
+            # reads a cached answer: none of them may pay the per-packet
+            # compute interval, or the comparison would be measuring the same
+            # full inference in every arm.  They all still pay the shared query
+            # service, and the background update (async) or the miss (per_flow)
+            # pays the real computation.
             yield from self._query_service(pkt, sat, requested)
             self._decide(pkt, sat, decision_started_at=requested,
                          observation=None)
@@ -4878,6 +4898,21 @@ class Kernel:
                               wait_s=0.0, service_s=finished - started)
         pool.release(slot)
         return wait, finished - started
+
+    def _packet_compute_required(self, pkt, sat: int, requested: float) -> bool:
+        """Does THIS decision have to run a full computation?
+
+        per_packet : always.
+        per_flow   : only on a cache miss/expiry (the hit already ran once).
+        precomputed, async_point, async_window : never -- the packet reads an
+                     installed table; the computation happened (or will happen)
+                     as a separate, separately-accounted background job.
+        """
+        if self.exec_mode == "per_flow":
+            return self._per_flow_hit(pkt, sat, requested) is None
+        if self.exec_mode in ("precomputed", "async_point", "async_window"):
+            return False
+        return True
 
     def _compute_scope(self, pkt: DataPacket, sat: int) -> str:
         """(satellite, destination_cell, traffic_class) as a stable string."""

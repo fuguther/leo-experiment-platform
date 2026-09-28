@@ -122,7 +122,12 @@ def _compute_interval(timeline, pid, t_request):
 
 
 def _resource_timeline(timeline, resource_link_id, t_after):
-    """Queue/service rows for ONE named resource from ONE branch."""
+    """Queue/service rows for ONE named resource from ONE branch.
+
+    EVENT ORDER IS PRESERVED (the timeline is appended in event order, and rows
+    at the same instant are ordered by it).  Sorting by instant would destroy
+    the tie-break that says which of two same-instant enqueues came first.
+    """
     return [m for m in timeline
             if m.get("link_id") == resource_link_id
             and float(m["at"]) >= float(t_after)
@@ -130,8 +135,220 @@ def _resource_timeline(timeline, resource_link_id, t_after):
                                        "service_finish")]
 
 
+def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
+    """Work AHEAD of one packet on one named resource, at one instant.
+
+    Built from the branch's own event stream, in EVENT ORDER (the timeline is
+    appended in event order, and rows at the same instant are ordered by it).
+
+    Components, reported SEPARATELY and never silently folded:
+      queued_data_ahead_bits       data waiting at the instant that is ahead of
+                                   the excluded packet in FIFO order
+      queued_ctrl_ahead_bits       control backlog at the instant; control has
+                                   non-preemptive priority, so it is ahead
+      in_service_remaining_bits    remaining bits of the packet in service,
+                                   from its own service window (None if unknown)
+      fifo_behind_bits             data that entered AFTER the excluded packet;
+                                   it is behind it and does NOT delay it
+      excluded_target_bits         the excluded packet's own contribution
+
+    The kernel measures work ahead BEFORE inserting a packet, so at that packet
+    own enqueue instant this reconstruction is EXACT:
+        queued_data_ahead + queued_ctrl_ahead + in_service_remaining
+        == backlog_before.queued_bits_before
+           + backlog_before.in_service_remaining_bits_before
+    """
+    rows = list(resource_rows)
+    if not rows:
+        return {
+            "instant": float(instant), "available": False,
+            "reason": "resource_never_appears_in_this_branch",
+            "queued_data_ahead_bits": None, "queued_ctrl_ahead_bits": None,
+            "in_service_remaining_bits": None, "fifo_behind_bits": None,
+            "excluded_target_bits": None, "work_ahead_bits": None,
+            "complete": False, "unknown": ["resource_absent"],
+            "components_method": {}, "basis": None,
+        }
+    target_index = None
+    for i, row in enumerate(rows):
+        if (row.get("milestone") == "queue_enter"
+                and row.get("pid") == exclude_pid):
+            target_index = i
+            break
+
+    def _bits(pid):
+        value = bits_by_pid.get(pid)
+        return None if value is None else float(value)
+
+    starts = []
+    finishes = []
+    for i, row in enumerate(rows):
+        if row.get("milestone") == "service_start":
+            starts.append((i, float(row["at"]), row.get("pid")))
+        elif row.get("milestone") == "service_finish":
+            finishes.append((i, float(row["at"]), row.get("pid")))
+
+    def _window_finish(index, pid):
+        for j, f_at, f_pid in finishes:
+            if j > index and f_pid == pid:
+                return f_at
+        return None
+
+    target_served_by_instant = any(
+        pid == exclude_pid and at <= instant + 1e-12
+        for _i, at, pid in finishes)
+
+    queued_data_ahead = 0.0
+    fifo_behind = 0.0
+    target_bits = 0.0
+    ahead_unknown = []
+    ctrl_ahead = None
+    ctrl_method = None
+    last_backlog = None
+    in_service_remaining = None
+    in_service_method = None
+    basis = None
+    target_in_service_at_instant = False
+
+    for i, row in enumerate(rows):
+        if row.get("milestone") != "queue_enter":
+            continue
+        at = float(row["at"])
+        if at > instant + 1e-12:
+            break
+        pid = row.get("pid")
+        backlog = row.get("backlog_before")
+        if isinstance(backlog, dict):
+            last_backlog = backlog
+        if pid == exclude_pid:
+            if i == target_index:
+                basis = backlog
+            bits = _bits(pid)
+            target_bits = 0.0 if bits is None else bits
+            continue
+        started = any(s_at <= instant + 1e-12 and s_pid == pid
+                      for _j, s_at, s_pid in starts)
+        if started:
+            continue
+        bits = _bits(pid)
+        if bits is None:
+            ahead_unknown.append("queued_bits_unknown_pid_%s" % (pid,))
+            continue
+        if target_index is None:
+            # the excluded packet has not entered yet: everything queued is
+            # ahead of it
+            queued_data_ahead += bits
+        elif i < target_index:
+            queued_data_ahead += bits
+        else:
+            fifo_behind += bits
+
+    serving = None
+    for i, at, pid in starts:
+        if at <= instant + 1e-12:
+            serving = (i, at, pid)
+    if serving is not None:
+        i, s_at, s_pid = serving
+        finish_at = _window_finish(i, s_pid)
+        if s_pid == exclude_pid:
+            target_in_service_at_instant = True
+            in_service_remaining = 0.0
+            in_service_method = "packet_in_service_is_the_excluded_packet"
+        elif finish_at is None:
+            in_service_remaining = None
+            in_service_method = "service_window_unfinished"
+        else:
+            bits = _bits(s_pid)
+            duration = finish_at - s_at
+            if bits is None or duration <= 0:
+                in_service_remaining = None
+                in_service_method = "service_window_bits_or_duration_unknown"
+            else:
+                fraction = max(0.0, min(1.0, (finish_at - instant) / duration))
+                in_service_remaining = bits * fraction
+                in_service_method = "constant_rate_residual_of_service_window"
+
+    if last_backlog is not None:
+        value = last_backlog.get("queued_ctrl_bits_before")
+        if value is not None:
+            ctrl_ahead = float(value)
+            ctrl_method = ("queued_ctrl_bits_before of the last data enqueue "
+                           "at or before the instant")
+        else:
+            ctrl_method = "last_backlog_has_no_ctrl_breakdown"
+    else:
+        ctrl_method = "no_data_enqueue_at_or_before_the_instant"
+
+    if target_served_by_instant:
+        return {
+            "instant": float(instant), "available": True,
+            "reason": "excluded_packet_already_served",
+            "queued_data_ahead_bits": 0.0, "queued_ctrl_ahead_bits": 0.0,
+            "in_service_remaining_bits": 0.0,
+            "fifo_behind_bits": fifo_behind,
+            "excluded_target_bits": target_bits,
+            "work_ahead_bits": 0.0, "complete": True, "unknown": [],
+            "components_method": {
+                "queued_data_ahead_bits": "excluded_packet_already_served",
+                "in_service_remaining_bits": "excluded_packet_already_served",
+                "queued_ctrl_ahead_bits": ctrl_method},
+            "basis": basis,
+            "target_in_service_at_instant": target_in_service_at_instant,
+        }
+
+    components = {
+        "queued_data_ahead_bits": queued_data_ahead,
+        "queued_ctrl_ahead_bits": ctrl_ahead,
+        "in_service_remaining_bits": in_service_remaining,
+    }
+    unknown_components = sorted(k for k, v in components.items() if v is None)
+    total = sum(v for v in components.values() if v is not None)
+    return {
+        "instant": float(instant),
+        "available": not unknown_components,
+        "reason": (None if not unknown_components
+                   else "unknown_components:" + ",".join(unknown_components)),
+        "queued_data_ahead_bits": queued_data_ahead,
+        "queued_ctrl_ahead_bits": ctrl_ahead,
+        "in_service_remaining_bits": in_service_remaining,
+        "fifo_behind_bits": fifo_behind,
+        "excluded_target_bits": target_bits,
+        "work_ahead_bits": float(total),
+        "complete": not unknown_components and not ahead_unknown,
+        "unknown": ahead_unknown,
+        "components_method": {
+            "queued_data_ahead_bits":
+                "FIFO order: enqueued at/before the instant, not yet started, "
+                "ahead of the excluded packet",
+            "queued_ctrl_ahead_bits": ctrl_method,
+            "in_service_remaining_bits": in_service_method},
+        "basis": basis,
+        "target_in_service_at_instant": target_in_service_at_instant,
+    }
+
+
 def truth_at_instant(resource_timeline_rows, bits_by_pid, instant,
                      exclude_pid):
+    """Compatibility wrapper: the work-ahead total + its components.
+
+    The returned "bits" is resource_work_ahead's total, i.e. queued data ahead
+    + priority control ahead + in-service remaining.  It never subtracts the
+    excluded packet a second time (the kernel's own pre-insertion measurement
+    already excludes it).
+    """
+    record = resource_work_ahead(resource_timeline_rows, bits_by_pid, instant,
+                                 exclude_pid)
+    record = dict(record)
+    record["bits"] = (record["work_ahead_bits"]
+                      if record.get("available") else None)
+    if record.get("reason") is not None:
+        record.setdefault("missing_reason", record["reason"])
+    record["source"] = "own-branch event trace of the named resource"
+    return record
+
+
+def _legacy_truth_at_instant(resource_timeline_rows, bits_by_pid, instant,
+                             exclude_pid):
     """Reconstruct the work ahead on a named resource at one instant.
 
     Built ONLY from that candidate own branch event trace.  The value is the
