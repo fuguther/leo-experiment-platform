@@ -345,7 +345,16 @@ def freeze_scenario_deadlines(contract_path, out_dir, root=None):
                 frozen[sid] = {"status": "NO_DELIVERED_CANDIDATE",
                                "branches": len(used)}
                 continue
-            report = t1_stats.default_deadline(delays)
+            report = dict(t1_stats.default_deadline(delays))
+            # The sample that produced D must be auditable FROM THE FILE: a
+            # frozen deadline whose provenance is only in a run log cannot be
+            # re-checked by the confirmation side.
+            report.update({"samples": len(delays),
+                           "branches_used": len(used),
+                           "branch_ids": used,
+                           "sample_rule": ("legal-candidate delivery delays of "
+                                           "the development baseline, "
+                                           "aggregated over branches")})
             path = out_dir / f"deadline_{sid}.json"
             t1_tasks.tac.write_frozen_deadline(path, report, resolved, "dev")
             frozen[sid] = {"status": "FROZEN",
