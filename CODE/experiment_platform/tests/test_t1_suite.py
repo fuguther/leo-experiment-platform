@@ -569,7 +569,11 @@ def test_the_common_strong_state_is_reported_with_its_reason(tmp_path):
                                          "p75_offset"]
     assert design["recovery"]
     assert design["blocks"] > 0, design
-    assert design["loss_table"]["candidates"], design
+    # the blocks exist, but with three of the five candidates unprojected there
+    # is deliberately NO loss table and NO selection: the comparison is not
+    # silently run on a reduced candidate set
+    assert "loss_table" not in design, sorted(design)
+    assert "selection" not in design, sorted(design)
 
 
 def test_the_five_candidates_get_their_own_loss_columns(tmp_path):
