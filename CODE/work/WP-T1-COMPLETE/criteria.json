@@ -413,7 +413,8 @@
       "root_cause": "t1-vm.sh 用 shell 重定向把 .t1-launch.json 写进本机工作区；重定向目标在命令执行前就被创建，紧随其后的 git status --short 因此总能看见这个未跟踪文件",
       "affected_evidence": ["t1-final-c4dd85f", "t1-final-a70d65c"],
       "fix": [
-        "清单改为写入 mktemp -d 暂存目录后再打包上送，本机工作区不再被 runner 写入",
+        "清单改为写入 mktemp -d 暂存目录后再打包上送：不再写入任何会被 git 看见的文件（__pycache__ 仍生成但在 .gitignore 内、不参与身份）",
+        "trap rm -rf EXIT 保证 ssh 失败时暂存目录不泄漏；远端改 rm -f && tar && mv 并校验 head，防止提升上一次的清单",
         ".gitignore 增加 .t1-launch.json 兜底（脚本中途退出时不留脏文件）",
         "新增 CODE/tests/test_t1_vm_launch_manifest.py：行为复现旧写法的假阳性与新写法的干净结果，并静态钉住暂存位置不变式"
       ],

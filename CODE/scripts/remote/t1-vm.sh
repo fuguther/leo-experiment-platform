@@ -77,6 +77,9 @@ cmd_sync() {
     # introduced by c4dd85f, present in the c4dd85f and a70d65c evidence)
     local staging
     staging="$(mktemp -d "${TMPDIR:-/tmp}/t1-launch.XXXXXX")"
+    # the staging dir must not survive a failure between here and the upload:
+    # the explicit rm below is skipped by `set -e` when ssh fails (review S8-3a)
+    trap "rm -rf '$staging'" EXIT
     python3 - "$LOCAL_WORKSPACE" "$head" > "$staging/.t1-launch.json" <<'PYEOF'
 import json, subprocess, sys, datetime
 from pathlib import Path
@@ -96,9 +99,16 @@ print(json.dumps({
     "chain_files": list(artifact_identity.execution_chain_paths()),
 }, indent=2))
 PYEOF
+    # `rm -f` first and `&&` rather than `;`: review S8-i showed that a leftover
+    # manifest plus a truncated stream would otherwise let `mv` promote the
+    # PREVIOUS run manifest -- and report success while doing it
     COPYFILE_DISABLE=1 "$TAR_BIN" czf - --no-mac-metadata \
         -C "$staging" .t1-launch.json | "$SSH_BIN" -o BatchMode=yes "$REMOTE_HOST" \
-        "tar xzf - -C '$REMOTE_ROOT' 2>/dev/null; mv '$REMOTE_ROOT/.t1-launch.json' '$REMOTE_ROOT/launch.json'"
+        "rm -f '$REMOTE_ROOT/.t1-launch.json' && tar xzf - -C '$REMOTE_ROOT' 2>/dev/null && mv '$REMOTE_ROOT/.t1-launch.json' '$REMOTE_ROOT/launch.json'"
+    # the manifest that landed must be THIS run manifest, not an older one
+    "$SSH_BIN" -o BatchMode=yes "$REMOTE_HOST" \
+        "grep -q '\"head\": \"$head\"' '$REMOTE_ROOT/launch.json'" \
+        || die "remote launch.json does not declare head $head"
     rm -rf "$staging"
     # a tar stream cannot delete: AFTER the manifest exists, prune the deployed
     # tree to exactly the file set this commit declares, so a stray file (e.g.

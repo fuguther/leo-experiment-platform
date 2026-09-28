@@ -83,3 +83,47 @@ def test_runner_no_longer_stages_the_manifest_inside_the_workspace() -> None:
     assert '> "$LOCAL_WORKSPACE/.t1-launch.json"' not in text
     assert '-C "$staging" .t1-launch.json' in text
     assert ".t1-launch.json" in (REPO_ROOT / ".gitignore").read_text()
+
+
+def test_a_failed_manifest_upload_does_not_leak_the_staging_dir(tmp_path: Path) -> None:
+    """Review S8-3a: the staging dir leaked when ssh failed before the cleanup.
+
+    `set -e` skips the explicit rm, so only an EXIT trap can clean up.
+    """
+    import os
+
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    calls = tmp_path / "calls"
+    ssh = fake / "ssh"
+    ssh.write_text(
+        "#!/bin/sh\n"
+        f"n=$(cat {calls} 2>/dev/null || echo 0)\n"
+        "n=$((n + 1))\n"
+        f"echo $n > {calls}\n"
+        "[ $n -ge 3 ] && exit 1\n"        # the 3rd call is the manifest upload
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    ssh.chmod(0o755)
+    tar_bin = fake / "tar"
+    tar_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    tar_bin.chmod(0o755)
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    env = dict(os.environ, SSH_BIN=str(ssh), TAR_BIN=str(tar_bin),
+               TMPDIR=str(scratch))
+    done = subprocess.run(["bash", str(RUNNER), "sync"], cwd=REPO_ROOT,
+                          env=env, capture_output=True, text=True)
+    assert done.returncode != 0, "a failed manifest upload must fail the sync"
+    leaked = [p.name for p in scratch.glob("t1-launch.*")]
+    assert not leaked, f"the staging dir must not survive a failed upload: {leaked}"
+
+
+def test_the_runner_refuses_to_promote_a_stale_remote_manifest() -> None:
+    """Review S8-i: `;` let `mv` promote a previous run manifest as success."""
+    text = RUNNER.read_text()
+    assert "rm -f '$REMOTE_ROOT/.t1-launch.json' && tar xzf" in text
+    assert "does not declare head" in text
+    assert 'trap "rm -rf \'$staging\'" EXIT' in text

@@ -262,9 +262,12 @@ statistics.common_strong.frozen = False（开发块配对差恒为 0、无判别
 就被创建；紧随其后的 `git status --short` 因此总能看见这个未跟踪文件——干净提交上 `dirty`
 也恒为 true。该假阳性已进入 `c4dd85f`、`a70d65c` 两次拉回工件的身份声明。
 
-- 清单改为写入 `mktemp -d` 暂存目录后再上送，本机工作区不再被 runner 写入
+- 清单改为写入 `mktemp -d` 暂存目录后再上送：runner 不再向本机工作区写入**任何会被 git 看见的文件**
+  （`CODE/**/__pycache__/` 仍会生成，但在 `.gitignore` 内且不参与执行链身份——第三轮验收把这一条判为 PARTIAL 并纠正了原措辞）
 - `.gitignore` 增加 `.t1-launch.json` 兜底（脚本中途退出时不留脏文件）
 - 新增 `CODE/tests/test_t1_vm_launch_manifest.py`：行为复现旧写法的假阳性、新写法的干净结果，并静态钉住暂存位置不变式
+- 第三轮验收的两条低危修复：`trap "rm -rf $staging" EXIT`（ssh 失败时暂存目录不再泄漏）；
+  远端改为 `rm -f … && tar … && mv …` 并在上传后校验 `head`（原先的 `;` 会让 `mv` 把**上一次**的清单提升为本次清单还报成功）
 - 修复后实测：VM `launch.json` `dirty=false`；`t1-final-8a31496` 工件 `identity.git.dirty=false` 且 `status_short=[]`
 
 ## 仍未做（未做范围）
