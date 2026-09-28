@@ -178,7 +178,10 @@ def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
     target_enqueue_at = (None if target_index is None
                          else float(rows[target_index]["at"]))
 
-    def _bits(pid):
+    def _bits(pid, row=None):
+        # the row own bits win: control rows carry no pid at all
+        if row is not None and row.get("bits") is not None:
+            return float(row["bits"])
         value = bits_by_pid.get(pid)
         return None if value is None else float(value)
 
@@ -190,15 +193,28 @@ def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
         elif row.get("milestone") == "service_finish":
             finishes.append((i, float(row["at"]), row.get("pid")))
 
-    def _window_finish(index, pid):
+    def _window_finish(index, pid, row):
+        # S1-B/C: a control packet has no pid, so it is matched by kind; a
+        # link serves one packet at a time, so the next control finish after
+        # a control start IS that packet finish.
+        is_ctrl = row.get("packet_kind") == "control"
         for j, f_at, f_pid in finishes:
-            if j > index and f_pid == pid:
+            if j <= index:
+                continue
+            if is_ctrl:
+                if rows[j].get("packet_kind") == "control":
+                    return f_at
+            elif f_pid == pid:
                 return f_at
         return None
 
-    target_served_by_instant = any(
-        pid == exclude_pid and at <= instant + 1e-12
-        for _i, at, pid in finishes)
+    # a control row carries pid=None, so an unset exclude_pid must never
+    # match it (S1-B/C: that turned a control service into "the excluded
+    # packet is already served")
+    target_served_by_instant = (
+        exclude_pid is not None
+        and any(pid == exclude_pid and at <= instant + 1e-12
+                for _i, at, pid in finishes))
 
     queued_data_ahead = 0.0
     fifo_behind = 0.0
@@ -251,8 +267,8 @@ def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
             serving = (i, at, pid)
     if serving is not None:
         i, s_at, s_pid = serving
-        finish_at = _window_finish(i, s_pid)
-        if s_pid == exclude_pid:
+        finish_at = _window_finish(i, s_pid, rows[i])
+        if exclude_pid is not None and s_pid == exclude_pid:
             target_in_service_at_instant = True
             in_service_remaining = 0.0
             in_service_method = "packet_in_service_is_the_excluded_packet"
@@ -276,7 +292,7 @@ def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
                     "kernel backlog_before in_service residual at the "
                     "excluded packet own enqueue instant")
         else:
-            bits = _bits(s_pid)
+            bits = _bits(s_pid, rows[i])
             duration = finish_at - s_at
             if bits is None or duration <= 0:
                 in_service_remaining = None
@@ -286,12 +302,38 @@ def resource_work_ahead(resource_rows, bits_by_pid, instant, exclude_pid):
                 in_service_remaining = bits * fraction
                 in_service_method = "constant_rate_residual_of_service_window"
 
-    if last_backlog is not None:
+    # S1-B/C: control traffic has its own timeline rows on the same named
+    # resource now, so the control backlog can be MEASURED instead of
+    # inherited from the last DATA enqueue -- which went stale the moment a
+    # control packet arrived after it.  Traces without control rows keep the
+    # old estimator so historical artifacts still reconstruct.
+    ctrl_rows = [r for r in rows if r.get("packet_kind") == "control"]
+    if ctrl_rows:
+        entered = 0.0
+        left = 0.0
+        for r in ctrl_rows:
+            if float(r["at"]) > instant + 1e-12:
+                continue
+            amount = (0.0 if r.get("bits") is None
+                      else float(r["bits"]))
+            if r.get("milestone") == "queue_enter":
+                entered += amount
+            elif r.get("milestone") in ("service_start", "queue_drop",
+                                        "ctrl_drop"):
+                # started service => already left the queue; dropped => never
+                # served.  Either way it no longer delays the target.
+                left += amount
+        ctrl_ahead = max(0.0, entered - left)
+        ctrl_method = ("control timeline on the named resource: queue_enter "
+                       "bits minus started/dropped bits at or before the "
+                       "instant")
+    elif last_backlog is not None:
         value = last_backlog.get("queued_ctrl_bits_before")
         if value is not None:
             ctrl_ahead = float(value)
             ctrl_method = ("queued_ctrl_bits_before of the last data enqueue "
-                           "at or before the instant")
+                           "at or before the instant (no control timeline in "
+                           "this trace)")
         else:
             ctrl_method = "last_backlog_has_no_ctrl_breakdown"
     else:

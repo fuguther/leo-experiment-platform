@@ -853,6 +853,28 @@ class ISLLink:
         self.k._poke(self.wake)
 
     def put_ctrl(self, pkt: ControlPacket) -> None:
+        # S1-B/C: control traffic must be visible on the SAME named resource
+        # as data.  Without this row a reconstruction that only sees data
+        # enqueues reports a control backlog frozen at the last data enqueue,
+        # so a control packet arriving after it is invisible.
+        if self.k.timeline_sink is not None:
+            bits, remaining, _phase, _is_ctrl, method = \
+                self.k._in_service_remaining(self, self.k.env.now)
+            self.k._timeline_ctrl(
+                "queue_enter", pkt, f"isl:{self.sat}:{self.peer}",
+                queue="isl_egress", priority="control",
+                backlog_before={
+                    "resource": f"isl:{self.sat}:{self.peer}",
+                    "resource_kind": "isl_egress",
+                    "queued_bits_before": int(self.data_bits + self.ctrl_bits),
+                    "queued_data_bits_before": int(self.data_bits),
+                    "queued_ctrl_bits_before": int(self.ctrl_bits),
+                    "in_service_remaining_bits_before": (
+                        None if remaining is None else float(remaining)),
+                    "in_service_remaining_method": method,
+                    "measured": "before_insertion",
+                    "excludes": "the enqueueing packet",
+                })
         self.ctrl_q.append(pkt)
         self.ctrl_bits += pkt.bits
         self.ctrl_area.add(pkt.bits, self.k.env.now)
@@ -1681,6 +1703,28 @@ class Kernel:
         self.timeline_sink.append(row)
 
     # ------------------------------------------------------- raw metrics
+    def _timeline_ctrl(self, milestone: str, pkt, link_id, **extra) -> None:
+        """Append one CONTROL-plane milestone to the optional sink.
+
+        S1-B/C: a ControlPacket has no pid (it is not a routing decision),
+        so the row carries the control identity instead and is marked with
+        packet_kind.  Output only: never influences routing, learning,
+        timing or fates.  Callers guard on timeline_sink being present.
+        """
+        row = {
+            "milestone": milestone,
+            "at": float(self.env.now),
+            "pid": None,
+            "decision_id": None,
+            "packet_kind": "control",
+            "link_id": link_id,
+            "origin": pkt.origin,
+            "seq": pkt.seq,
+            "bits": int(pkt.bits),
+        }
+        row.update(extra)
+        self.timeline_sink.append(row)
+
     def _metric_packet_emitted(self, pkt: DataPacket) -> None:
         self.packet_events.append({
             "kind": "packet_emitted", "pid": pkt.pid,
@@ -2761,8 +2805,25 @@ class Kernel:
                         pkt, metric_stage, metric_link_id,
                         metric_window_start, self.env.now,
                         metric_rate_bps, outcome)
+                elif (isinstance(pkt, ControlPacket)
+                      and self.timeline_sink is not None):
+                    _stage, _link_id = self._metric_link_id(link_ref,
+                                                           occ_key)
+                    self._timeline_ctrl("service_finish", pkt,
+                                        _link_id, queue=_stage,
+                                        priority="control",
+                                        outcome=outcome)
             if isinstance(pkt, ControlPacket):
                 self.mech["control_tx_started"] += 1
+                # S1-B/C: the service window of a control packet must be
+                # visible, otherwise "a control packet is in service right
+                # now" is indistinguishable from an idle link.
+                if self.timeline_sink is not None:
+                    _stage, _link_id = self._metric_link_id(link_ref,
+                                                       occ_key)
+                    self._timeline_ctrl("service_start", pkt, _link_id,
+                                        queue=_stage,
+                                        priority="control")
             if (link_ref[0] == "isl" and isinstance(pkt, DataPacket)
                     and pkt.learning_state is not None
                     and pkt.isl_enqueued_at is not None):

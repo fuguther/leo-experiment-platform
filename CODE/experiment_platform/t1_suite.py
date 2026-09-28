@@ -164,7 +164,8 @@ def _acceptance_cells(contract, bundle_dir):
                                      # WRITTEN to the artifact, never gated, so a fully misaligned
                                      # run still passed and its p50 was still quoted as the real
                                      # online decision cost
-                                     "require_alignment": True}}),
+                                     "require_alignment": True,
+                                     "require_model_provenance": True}}),
     ]
     for size in (372, 891, 1500):
         cells.append(_cell(
@@ -888,6 +889,20 @@ def check_predicate(result, predicate):
                            row.get("queued", 0) > 0,
                            {"queued": row.get("queued"),
                             "max_wait_s": row.get("max_wait_s")}])
+        if require.get("require_model_provenance"):
+            # S5: a benchmark artifact that does not state which model it
+            # timed can be misread as a DDQN measurement
+            prov = result.get("model_provenance") or {}
+            checks.append([
+                "artifact declares model provenance", bool(prov),
+                sorted(prov) or None])
+            checks.append([
+                "no trained checkpoint was used",
+                prov.get("trained_checkpoint_used") is False,
+                prov.get("trained_checkpoint_used")])
+            checks.append([
+                "not a DDQN measurement", prov.get("ddqn") is False,
+                prov.get("ddqn")])
         if require.get("require_alignment"):
             # review S5-R2: without this the cell stayed ok even when every arm
             # queried the wrong instant, and its p50 was still reported as the
