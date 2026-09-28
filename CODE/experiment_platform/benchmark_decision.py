@@ -428,6 +428,22 @@ def run_benchmark(resolved, rows, geometry, source, *, warmup, rounds,
                        execution_mode=resolved["config"]["time_alignment"][
                            "execution_mode"]),
         "clock": "time.perf_counter",
+        # S5 (third-round review): the timings below come from the shared
+        # DETERMINISTIC scorer.  No trained model is loaded and no DDQN policy
+        # is evaluated, so the artifact says that machine-readably instead of
+        # leaving the reader to infer it from prose.
+        "model_provenance": {
+            "scorer": "deterministic_shared_scorer",
+            "scorer_entry": "CODE.leo_sim.time_alignment.plan_decision",
+            "policy_under_test": "deterministic_scorer",
+            "trained_checkpoint_used": False,
+            "ddqn": False,
+            "learner_involved": False,
+            "measurement_host": "host_cpu",
+            "on_board": False,
+            "note": "deterministic scorer; NOT a DDQN result; host/VM "
+                    "timing, not satellite hardware",
+        },
         "environment": {
             "python": platform.python_version(),
             "platform": platform.platform(),
@@ -468,6 +484,10 @@ def run_benchmark(resolved, rows, geometry, source, *, warmup, rounds,
             "produces",
             "inference_only is reported separately and must never be quoted as "
             "the full decision cost",
+            "the timed path runs the deterministic shared scorer and no "
+            "trained checkpoint exists on this host: these numbers are "
+            "NOT a DDQN latency and must never be quoted as one "
+            "(see model_provenance)",
             "the four arms are each measured on their OWN query instant "
             "(targets_match is asserted against the online audit); an earlier "
             "version queried snapshot_at for every arm and understated the "
