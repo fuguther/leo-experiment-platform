@@ -302,5 +302,98 @@
       "真实 DDQN 检查点性能：本机无 tensorflow 且无检查点，external blocker",
       "REMOTE_NOT_EXECUTED：未做远端覆盖部署"
     ]
+  },
+  "s_rework": {
+    "reviewed_sha": "2330701b118d870a6d8cd4b9adf34f995f941dcb",
+    "verdict": "REQUEST_CHANGES",
+    "execution_rule": "所有实验只在 VM 上跑（AGENTS.md）；本机仅代码/测试/只读复核",
+    "vm": {
+      "host": "cuda-liguang13",
+      "alias": "vm",
+      "isolated_root": "/data/论文/leo-t1-wt",
+      "live_deployment_untouched": "/data/论文/leo-direct-sim",
+      "runner": "CODE/scripts/remote/t1-vm.sh (sync/run/pull/experiment)",
+      "chain_equality_verified": "VM chain e8537aed == local chain e8537aed (after pruning 556 stray files)"
+    },
+    "items": {
+      "S1": {
+        "severity": "high",
+        "status": "FIXED",
+        "what": "队列真值按内核事件语义重建",
+        "evidence": [
+          "time_alignment_compare.resource_work_ahead（事件序、前置快照不重复扣目标包、含在服务剩余、区分 FIFO 后方与控制优先）",
+          "复审 2500 bit 反例测试 + 真实内核 backlog_before 对齐测试"
+        ]
+      },
+      "S2": {
+        "severity": "high",
+        "status": "FIXED",
+        "what": "包长与广告队列分离",
+        "evidence": [
+          "_build_ta_snapshot 先解 packet_bits 再遍历广告；局部名 advertised_bits",
+          "test_eta_terms.py: 999999 bit 广告下 pkt_bits 仍为 8000，顺序/取值不变性"
+        ]
+      },
+      "S3": {
+        "severity": "high",
+        "status": "FIXED",
+        "what": "查表模式不付逐包完整计算",
+        "evidence": [
+          "kernel._packet_compute_required + decide_deferred 分支；预计算构建成本单列",
+          "test_execution_cost.py: precomputed/async_* 逐包 compute_request == 0，后台任务仍付 0.05s"
+        ]
+      },
+      "S4": {
+        "severity": "high",
+        "status": "FIXED",
+        "what": "谓词失败驱动整轮非成功",
+        "evidence": [
+          "t1_suite._count_records（穷尽计数）/ report 非 ok 即 FAILED_CELLS / 统计仅纳入完整性+谓词均通过区组 / CLI 退出码 3",
+          "test_t1_suite.py: 不可能谓词的 run→report→resume 全流程反例"
+        ]
+      },
+      "S5": {
+        "severity": "medium-high",
+        "status": "FIXED",
+        "what": "计时走真实在线入口并逐臂对齐",
+        "evidence": [
+          "time_alignment.plan_decision/build_predictions/resolve_common_horizon 共用入口；kernel 使用之",
+          "benchmark 截获在线决策输入并冻结 caches/池状态，四臂 targets_match/ranking_match 均为 True（VM 工件）"
+        ]
+      },
+      "S6": {
+        "severity": "high",
+        "status": "FIXED（真实检查点仍外部阻塞）",
+        "what": "固定推理接入冻结快照与分支重演",
+        "evidence": [
+          "inference.InferencePolicy/FixedModelPolicy/WidthAdaptiveFixedPolicy/load_fixed_adapter_from_checkpoint 硬门槛",
+          "kernel.inference_policy + counterfactual 透传；真实分支跑通、掩码强制、参数不变、前缀一致测试"
+        ]
+      },
+      "S7": {
+        "severity": "medium-high",
+        "status": "FIXED",
+        "what": "正式包真实冻结与 common_strong 来源",
+        "evidence": [
+          "formal_package/formal_design 纳入 bundle 指纹（复审改阈值 999 的复现现被拒绝）",
+          "cell 输入绑定含 deadline 依赖文件哈希；formal_design.ready 时生成真实 confirm cell；未就绪时 PENDING_DEV_SELECTION",
+          "statistics.common_strong 未冻结时给出原因，主比较标签不再冒称 common_strong"
+        ]
+      }
+    },
+    "vm_evidence": {
+      "run_ids": [
+        "t1-s4-46f9308",
+        "t1-s5-7440596",
+        "t1-s7-377ae9b",
+        "t1-final"
+      ],
+      "pulled_to": "out/vm/<run-id>/",
+      "local_regression": "1275 passed, 2 skipped（pytest 属本机允许项）"
+    },
+    "historical": [
+      "本机 34µs / 73.9µs 计时与 out/t1 旧产物：本机历史证据，已由 VM 真实在线路径计时取代",
+      "首轮 P4/P6/P8/P9/P10/P11/P12 的完成声明：已被 53aeb30 与 2330701 两轮复审纠正"
+    ]
   }
 }

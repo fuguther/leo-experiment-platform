@@ -187,3 +187,57 @@ R1 反问例复核（复现脚本 tmp_r1_final.py，已删除）：
 3. **REMOTE_NOT_EXECUTED**：未做远端覆盖部署。
 4. 开发集配对差在本次 acceptance/dev 夹具上恒为 0，样本量规划因此标 `degenerate`：它只说明这些夹具不具判别力，不能用于估计确认样本量。
 
+
+
+---
+
+# 第二轮复审返工（S1–S7，审查身份 2330701）
+
+裁决仍为 REQUEST_CHANGES，已按 **S1 → S7** 顺序逐项返工。**执行位置规则同时变更：所有实验只在 VM 上跑**（见 `AGENTS.md`），本报告此后的数值一律来自 VM。
+
+## ⚠️ 历史声明（旧数据不再作为依据）
+
+- 本报告更早章节里的 **"34 µs / 73.9 µs"** 计时、以及 `out/t1/**` 下的**全部本机产物**，均属**本机历史证据**：
+  其中 34 µs 的版本只计了评分调用，既非完整决策路径也非真实在线时刻，**已被取代且不得引用**。
+- 首轮 P4/P6/P8/P9/P10/P11/P12 的"完成"标记，已先后被 53aeb30、2330701 两轮复审纠正；
+  以本节的 S 表与 `criteria.json` 的 `s_rework` 块为准。
+
+## S 表：逐条状态与证据
+
+| 项 | 复审问题 | 状态 | 修复与证据 |
+|---|---|---|---|
+| **S1** | 理想队列真值算错：`backlog_before` 已排除目标包却再次扣它，且忽略在服务剩余量 | FIXED | 新 `resource_work_ahead`：按事件序重建，区分**排队数据 / 在服务剩余 / 控制优先 / 目标自身 / FIFO 后方**，未知项保持未知；在目标入队瞬间**恒等于内核自己的 `queued_bits_before + in_service_remaining_bits_before`**（真实内核对齐测试）。复审的 2000+500 → **2500 bit** 反例已作为测试固化 |
+| **S2** | 广告队列值覆盖包长（`bits` 同名局部变量） | FIXED | `_build_ta_snapshot` 先解包长再遍历广告，局部名改为 `advertised_bits`；测试：喂 999999 bit 广告后 `pkt_bits` 仍为 8000，且对广告取值/顺序不变 |
+| **S3** | 查表模式仍逐包付完整计算（预计算/异步均 41 次 compute_request） | FIXED | `_packet_compute_required`：precomputed / async_point / async_window **逐包 0 次计算请求**，只付公共查询成本；后台异步任务仍付真实计算（0.05 s）；预计算构建成本单列（`build_wall_s` + 说明"不是逐包推理收费"） |
+| **S4** | 谓词失败仍整轮报成功、统计仍计入该区组 | FIXED | 计数穷尽（`predicate_failed/not_ok`）；非 ok 即 `FAILED_CELLS`；统计只纳入**完整性+行为谓词均通过**的区组并列出排除原因；CLI 非成功**退出码 3**。反例：不可能谓词的 run→report→resume 全流程 |
+| **S5** | 计时不是真实在线路径（各臂都查 `snapshot_at`） | FIXED | 抽出共用入口 `plan_decision/build_predictions/resolve_common_horizon`，内核也改用它；计时截获**在线决策的真实输入**并冻结当时的 caches/池状态，四臂逐一比对在线审计：`targets_match`/`ranking_match` **全部 True**（VM 工件） |
+| **S6** | 固定推理模块未接入任何分支/执行路径 | FIXED（真实检查点仍外部阻塞） | `inference` 新增推理专用接口与硬门槛；`kernel.inference_policy`（拒绝与训练 learner 组合）+ `counterfactual` 透传；**真实分支跑通**，掩码强制、参数不变、两次运行前缀动作一致 |
+| **S7** | 正式包未真正冻结；改阈值不改哈希；common_strong 未选择 | FIXED | `formal_package`/`formal_design` 纳入 bundle 指纹（复审的"阈值改 999 仍 valid"现被拒绝）；cell 输入绑定纳入 deadline 依赖文件哈希；`formal_design.ready` 时生成**真实 confirm cell**（种子+冻结 D+身份），未就绪时诚实标 `PENDING_DEV_SELECTION`；`statistics.common_strong` 未冻结时给出原因，主比较标签不再冒称 common_strong |
+
+## VM 执行证据（本轮起，实验只在 VM）
+
+```
+ssh vm -> cuda-liguang13   /data 471G 可用   conda: /data/liguang13/conda-envs/leo-i39
+隔离实验根: /data/论文/leo-t1-wt        # 你的正式部署 /data/论文/leo-direct-sim 从未被写入
+runner: CODE/scripts/remote/t1-vm.sh sync|run|pull|experiment
+
+链一致性: VM 链 e8537aed… == 本机链 e8537aed…（剪除 556 个 macOS ._ 残留文件后）
+工件身份: identity.git.source=launch_manifest, commit=377ae9b…, dirty=False
+平台:     Linux-6.6.0-…aarch64        # 不再是 macOS
+
+t1_suite compile  -> 20 cells
+t1_suite validate -> valid true
+t1_suite run --tier acceptance -> {"ok":10,"error":0,"timeout":0,"predicate_failed":0,"not_ok":0}
+t1_suite run --tier dev        -> {"ok":10,"error":0,"timeout":0,"predicate_failed":0,"not_ok":0}
+report -> run_status ok；statistics.common_strong.frozen = False（诚实）
+四臂对齐（VM）: candidate/common/now/stale targets_match=True ranking_match=True
+真实在线路径端到端 p50（VM，含观测构造+预测+评分+选动作）: 507–517 µs
+```
+
+## 仍未做（未做范围）
+
+1. **FORMAL_RUN**：确认性矩阵未执行；formal 包已能生成/校验，运行需授权（显式拒绝）。
+2. **真实 DDQN 检查点**：本机与 VM 均无 tensorflow 训练产物与检查点；适配器接口与硬门槛已验证，**不得**作为策略性能结论。
+3. **REMOTE 正式部署**：未写入 `/data/论文/leo-direct-sim`，未做正式远端验收部署。
+4. 开发块配对差仍恒为 0 → `common_strong` 保持未冻结，样本量不可由此估计（已在报告中显式标注）。
+
