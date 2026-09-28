@@ -2137,7 +2137,8 @@ def main(argv=None):
             projected = project_horizon_candidates(args.contract, args.out,
                                                    args.root)
             print(json.dumps({"status": projected["quantile_source"],
-                              "samples": projected["samples"],
+                              "population_size": projected.get("population_size"),
+                              "quantiles": projected.get("quantiles"),
                               "out": str(args.out)}, ensure_ascii=False))
         elif args.command == "cost":
             bundle = json.loads(
