@@ -415,3 +415,40 @@ statistics.common_strong.frozen = False（开发块配对差恒为 0、无判别
 - A0 的四层状态里，**没有任何一项达到"确认已跑"**；第一轮完成判定要看 VM 拉回结果。
 - 本机跑出的"p25/p50 的 h=0 导致 12/12 支路 `NO_LEGAL_BRANCH`"只是待查线索，
   必须在 VM 上复现才算数。
+
+---
+
+## VM 证据（第一轮 A6）
+
+| run-id | commit | 内容 | 结果 |
+|---|---|---|---|
+| `t1-a6-5e8ab7c` | `5e8ab7c` | compile+validate+acceptance+dev+report+pull | 37 cell 编译通过；acceptance 10/10；dev 27/27；`launch.json` dirty=false |
+| `t1-a6-5e8ab7c` | `5e8ab7c` | `t1_a6_check`（真实检查点导出→读取→决策→计时） | 读取 `AVAILABLE`、形状与有限探针通过；81 次模型调用驱动 57 次前向决策，交付 24；参数不变、training=False、updates=0；前向中位 **1452.42 µs**（VM CPU）；正式 tier 两个拒绝负例均成立 |
+| `t1-a6-5e8ab7c` | `5e8ab7c` | `project-horizons` | 949 个开发基准候选 ETA 偏移；p25=p50=**0.0 s**，p75=**0.518769 s**，mean=0.148688 s；文件 sha256 `483019d5…` |
+| `t1-five-49c370e` | `49c370e` | 五候选 dev | 12 格失败：**12/12 支路全部被拒**（`fixed_horizon requires a finite common_horizon_s`） |
+| `t1-five2-52d551f` | `52d551f` | 修复后五候选 dev | 49 cell；acceptance 10/10；**dev 39/39 ok**；选择状态 `SELECTED` |
+
+### 修复：固定 h 候选的探针快照必须带配置 horizon
+
+`time_alignment_compare.build_snapshot` 用**配置里的** `common_rule` 造探针快照，
+却在 `common_rule=fixed_horizon` 时把 `common_horizon_s` 传成 `None`，
+于是 `make_snapshot` 直接拒绝——三个固定 h 候选在 VM 上 12 条支路全灭。
+修好后 39/39 通过。这是任务书说的"发现与目标直接相关的错误就修掉并继续"。
+
+### B3 的开发结果（VM 实测，不是平台故障）
+
+- 五个候选的主损失**完全相同**：mean 0.05327343，方差 6.0176e-06，各 4 个区组。
+  选择器按预声明破同规则选了 `median_eta_offset`，并如实报出
+  `tie=true`、`insufficient_scenario_coverage=true`、
+  `insufficient_statistical_evidence=true`（4 区组 < 20）。
+- 四臂**同值**：以 `dev-common-p75_offset-seed-7`（12 支路）为例，
+  `stale/now/common/candidate` 的平均主损失都是 0.052048，后悔值全部为 0；
+  配对计数为 2 个候选全部有效、0 后备、0 失配、0 删失。
+- 结论边界：机制**确实触发**（候选进了配对、没有走后备），但在该开发 profile 上
+  **没有产生任何可测的差异**。这是"已触发但无额外收益 / 场景不可辨"，
+  既不是收益证据，也不是软件故障。要主张或否证收益，必须先由 B0/B1 定义并
+  校准真正受压的场景。
+- 另一条硬约束：开发基准的候选 ETA 偏移**中位数为 0**，因此
+  `median_eta_offset`、`p25_offset`、`p50_offset` 三个候选塌到 h=0，
+  `common` 与 `now` 同义。五个预声明候选中三个退化——按任务书不得换 profile
+  直到出现正结果。
