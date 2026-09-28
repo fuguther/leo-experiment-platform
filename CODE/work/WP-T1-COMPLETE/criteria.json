@@ -1,6 +1,40 @@
 {
  "a_round": {
   "anchor_commit": "5e8ab7c",
+  "b_round": {
+   "b0_declared_scenarios": {
+    "burst_multiod": "变化热点/突发（M-Lab OD 权重 + 预声明突发窗）——本轮不可用，见上",
+    "fixed_hotspot": "固定热点（40 s, 24 星, offered 2.0 / isl 2.5 = 0.8 利用率；缩窗保机制）",
+    "steady_uniform": "阴性对照（70 s, 24 星, 0.5 Mbps）——已实测四臂同值"
+   },
+   "budgets": "每 cell 120 s / 最多 120 cell / 总 2 h；b_dev 展开 1060 次模拟调用",
+   "burst_multiod_verdict": {
+    "meaning": "该缩放在破坏 OD 可达性/合法性，属于任务书说的'场景未充分激活机制'，不得据此宣称算法有效或无效。",
+    "measured": "缩到 24 星/3 面/8 站点/60 s 后仍无可用的前向决策：branch 的失败数是 0（不是重放失败，而是根本没有合格支路），benchmark 直接拒绝（无在线决策）。",
+    "next": "下一轮必须新声明一个通过有效性预检的第三类场景：先做低成本校准，确认前向决策数、至少两个合法方向的决策占比、后备率与资源可达性，再读性能差。",
+    "status": "SCENARIO_NOT_VALID（VM 实测）"
+   },
+   "scenario_sizing_evidence": {
+    "t1-b0-a742516": {
+     "commit": "a742516",
+     "reason": "profile 里加了 config schema 不接受的 source 组（本轮引入的回归，VM 抓到）",
+     "result": "10/10 error"
+    },
+    "t1-b1-e9d000d": {
+     "commit": "e9d000d",
+     "reason": "原始尺寸超 120 s/cell：fixed_hotspot 180 s 单臂 105 s；burst 140 星 120 s 单臂 888 s",
+     "result": "3 ok / 7 timeout"
+    },
+    "t1-b2-301f4bd": {
+     "burst_multiod": "仍不可用：branch 报 NO_LEGAL_BRANCH 且 failed_units=0（没有合法前向决策，不是重放失败）；network 超时；benchmark 报 the fixture produced no online decision",
+     "commit": "301f4bd",
+     "fixed_hotspot": "branch 17.4 s / network 8.5 s / benchmark 37.6 s / 五模式 8.3 s —— 全部达标",
+     "result": "7 ok / 1 error / 2 timeout",
+     "steady_uniform": "branch 13.3 s / network 6.4 s / benchmark 35.6 s —— 全部达标"
+    }
+   },
+   "status": "B0 已预声明；B1 校准进行中；B2-B5 待做"
+  },
   "b_round_findings": {
    "degenerate_candidates": "开发基准候选 ETA 偏移中位数为 0（949 样本），p25=p50=0 与 median 规则三个候选塌到 h=0，common 与 now 同义。五个预声明候选中三个退化；不得换 profile 直到出现正结果。",
    "dev_profile_does_not_discriminate": "VM 实测：四臂与五候选的主损失相同（0.052048 / 0.053273），后悔值恒 0。按任务书 B3，这属于开发结果；在 B0/B1 定义并校准受压场景之前，既不能主张增益，也不能据此否证机制。"
