@@ -31,7 +31,7 @@ from pathlib import Path
 
 import yaml
 
-from CODE.experiment_platform import artifact_identity, t1_stats
+from CODE.experiment_platform import artifact_identity, t1_stats, t1_tasks
 
 SCHEMA_BUNDLE = "t1-suite-bundle/v1"
 SCHEMA_RUN = "t1-suite-run/v1"
@@ -94,11 +94,186 @@ def _require_new_dir(path, label):
 
 
 # --------------------------------------------------------------- compile
+#: A2: EVERY experiment parameter the frozen design fixes, in ONE place.
+#: The development tier and the confirmation tier run through the same
+#: _apply_parameters(), so a value cannot be frozen in metadata and then not
+#: reach the resolved configuration the driver actually runs.
+DEFAULT_EXPERIMENT_PARAMETERS = {
+    "time_alignment.enabled": True,
+    "time_alignment.arm": "candidate",
+    "time_alignment.predictor": "bounded_linear",
+    "time_alignment.common_rule": "median_eta",
+    "time_alignment.execution_mode": "per_packet",
+    "time_alignment.per_flow_ttl_s": 0.5,
+    "time_alignment.query_delay_s": 0.000001,
+    "async_routing.update_interval_s": 0.5,
+    "async_routing.window_bins": 4,
+    "execution.compute_servers_per_satellite": 2,
+    "execution.compute_delay_s": 0.0001,
+    "execution.decision_observation_mode": "frozen",
+    "demand.offered_mbps": 0.5,
+    "demand.packet_bits": 1000000,
+}
+
+#: Parameters whose value is a MULTIPLE of another one.  Declared rather than
+#: hard-coded so "the window is two update periods" is a checked property and
+#: not a comment that can drift.
+EXPERIMENT_PARAMETER_MULTIPLES = {
+    "async_routing.valid_window_s": ("async_routing.update_interval_s", 2.0),
+}
+
+#: The dev deadline is a DECLARED diagnostic assumption for the development
+#: tier only; the confirmation tier must read a frozen D from
+#: selected_design.json instead (A3).
+DEV_DEADLINE_S = 30.0
+
+#: Measurement window for the development blocks: after the warm-up in which
+#: the control advertisements become reachable, and early enough to leave a
+#: drain tail.  Declared here, not inferred from the run.
+DEV_WINDOW_S = (5.0, 40.0)
+
+#: The ACCEPTANCE tier is a mechanism fixture, not a research configuration.
+#: It keeps the historical 2 Mbps offered load so that a forward decision
+#: exists at every seed; every research tier takes its load from
+#: DEFAULT_EXPERIMENT_PARAMETERS or from the frozen design file.
+ACCEPTANCE_PARAMETERS = dict(DEFAULT_EXPERIMENT_PARAMETERS,
+                             **{"demand.offered_mbps": 2.0})
+
+
+def apply_parameters(doc, params):
+    """Write every frozen parameter into the profile document, or refuse.
+
+    An unknown key means the artifact and the config schema have drifted apart,
+    so it is an error rather than a silently ignored line.
+    """
+    merged = dict(DEFAULT_EXPERIMENT_PARAMETERS)
+    merged.update(dict(params or {}))
+    for key, factor in EXPERIMENT_PARAMETER_MULTIPLES.items():
+        source, multiple = factor
+        if source in merged:
+            merged[key] = float(merged[source]) * float(multiple)
+    mode = merged.get("time_alignment.execution_mode")
+    if mode in ("async_point", "async_window"):
+        # A derived consistency rule, not a second place to set the value: an
+        # async execution mode with the async router off does not resolve at
+        # all, and a config that never resolves cannot be an experiment.
+        merged["async_routing.enabled"] = True
+    for dotted, value in sorted(merged.items()):
+        group, _, name = dotted.partition(".")
+        if not name:
+            raise SuiteError(f"experiment parameter {dotted!r} is not dotted")
+        doc.setdefault(group, {})
+        if not isinstance(doc[group], dict):
+            raise SuiteError(f"profile group {group!r} is not a mapping")
+        doc[group][name] = value
+    return merged
+
+
 def _cell(cell_id, group, driver, args, description, seed=None,
           predicate=None):
     return {"cell_id": cell_id, "group": group, "driver": driver,
             "args": list(args), "description": description, "seed": seed,
             "predicate": predicate or {"kind": None}}
+
+
+def _task_cell(cell_id, group, task, config_path, extra_args=(),
+               description="", seed=None, require=None):
+    """One cell of ANY of the three A2 task types.
+
+    Every task cell goes through the same driver, so the suite budget, the
+    input binding, the identity, the resumption rules and the failure
+    accounting apply identically to all three; a new task type cannot be given
+    its own private rules behind the suite back.
+    """
+    args = ["--task", task, "--config", str(config_path), *list(extra_args)]
+    return _cell(cell_id, group, "CODE.experiment_platform.t1_tasks", args,
+                 description, seed=seed,
+                 predicate={"kind": "t1_task",
+                            "require": dict(require or {})})
+
+
+def horizon_candidates_path(contract):
+    """Where the projected five candidates live, if the contract declares one."""
+    design = contract.get("formal_design") or {}
+    raw = design.get("horizon_candidates_file")
+    return None if not raw else (REPO_ROOT / raw)
+
+
+def _load_horizon_candidates(contract):
+    """The FIVE projected common-future candidates, or a declared PENDING state.
+
+    A3: the three fixed horizons are quantiles of the DEVELOPMENT baseline
+    candidate ETA offsets, so they cannot be invented at compile time.  Without
+    the projection file the compile still emits the two rule-based candidates
+    and says, machine-readably, that three are missing and how to produce
+    them -- it never fills the gap with a made-up number.
+    """
+    path = horizon_candidates_path(contract)
+    if path is None or not path.exists():
+        return {"status": "PENDING_HORIZON_CANDIDATES",
+                "file": None if path is None else str(path),
+                "candidates": {
+                    "mean_eta_offset": {"kind": "rule",
+                                        "common_rule": "mean_eta"},
+                    "median_eta_offset": {"kind": "rule",
+                                          "common_rule": "median_eta"},
+                },
+                "missing": ["p25_offset", "p50_offset", "p75_offset"],
+                "recovery": "t1_suite project-horizons --contract <contract> "
+                            "--out <horizon_candidates_file>"}
+    document = json.loads(path.read_text(encoding="utf-8"))
+    candidates = {name: spec for name, spec in document.items()
+                  if isinstance(spec, dict) and spec.get("kind")}
+    missing = [name for name in ("mean_eta_offset", "median_eta_offset",
+                                 "p25_offset", "p50_offset", "p75_offset")
+               if name not in candidates]
+    if missing:
+        raise SuiteError(
+            f"the horizon candidate file {path} is missing {missing}: the "
+            "five candidates are pre-declared and may not be reduced silently")
+    return {"status": "READY", "file": str(path), "candidates": candidates,
+            "file_sha256": _sha256_file(path),
+            "quantile_source": document.get("quantile_source"),
+            "samples": document.get("samples")}
+
+
+def project_horizon_candidates(contract_path, out_path, root=None):
+    """Run the DEVELOPMENT baseline and project the five candidates (A3).
+
+    One cheap baseline pass per development seed; the offsets come from the
+    online audit of those baselines, and no confirmation run is ever read.
+    """
+    contract_path = Path(contract_path)
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+    params = dict(contract.get("dev_parameters") or {})
+    seeds = [int(s) for s in (contract.get("statistics", {}).get("dev_seeds")
+                              or (7, 11, 23, 42))]
+    work = Path(tempfile.mkdtemp(prefix="t1-horizons-",
+                                 dir=str(root or Path.cwd())))
+    collected, per_seed = [], {}
+    try:
+        for seed in seeds:
+            cfg = _seed_config(contract, work, seed, params)
+            resolved, rows, geometry, _source = t1_tasks.design(
+                config_path=cfg, root=work)
+            decisions = t1_tasks._baseline_decisions(resolved, rows, geometry)
+            offsets = t1_tasks.candidate_eta_offsets(decisions)
+            per_seed[str(seed)] = offsets["candidates"]
+            collected.extend(offsets["offsets"])
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    projected = t1_tasks.project_horizons(collected)
+    projected["dev_seeds"] = seeds
+    projected["per_seed_candidate_counts"] = per_seed
+    projected["contract_sha256"] = _sha256_file(contract_path)
+    projected["identity"] = artifact_identity.build_identity(
+        driver_paths=artifact_identity.execution_chain_paths())
+    out_path = Path(out_path)
+    if out_path.exists():
+        raise SuiteError(
+            f"refusing to overwrite an existing projection: {out_path}")
+    _write_json(out_path, projected)
+    return projected
 
 
 def _acceptance_cells(contract, bundle_dir):
@@ -181,7 +356,8 @@ def _acceptance_cells(contract, bundle_dir):
                                                     "bins": 4}}}))
     seed_cells = []
     for seed in (7, 11, 23):
-        cfg = _seed_config(contract, bundle_dir, seed)
+        cfg = _seed_config(contract, bundle_dir, seed,
+                           ACCEPTANCE_PARAMETERS, tag="acceptance")
         seed_cells.append(_cell(
             f"constellation-seed-{seed}", "constellation",
             "CODE.experiment_platform.time_alignment_compare",
@@ -238,27 +414,92 @@ def _dev_cells(contract, bundle_dir):
          "--compute-servers", "1", "--service-s", "0.05"],
         "single factor: query service switched off (historical path)",
         {"per_packet": {"compute_servers": 1}}))
-    # development state-time blocks: these are what size the deadline and the
-    # confirmation sample, so the dev tier must contain them
-    hand_predicate = {
-        "kind": "time_alignment",
-        "require": {"min_candidates": 2, "max_invalid_pairs": 0,
-                    "ideal_arms": ["oracle_now", "oracle_common",
-                                   "oracle_candidate"],
-                    "decomposition": ["eta_estimated_x_queue_predicted",
-                                      "eta_estimated_x_queue_truth",
-                                      "eta_true_x_queue_predicted",
-                                      "eta_true_x_queue_truth"]},
-    }
-    for seed in (7, 11, 23):
-        cfg = _seed_config(contract, bundle_dir, seed)
-        cells.append(_cell(
-            f"dev-ta-seed-{seed}", "dev_sweep",
-            "CODE.experiment_platform.time_alignment_compare",
-            ["--config", str(cfg), "--decision-id", "first_forward",
-             "--run-kind", "dev"],
-            "development state-time block for the deadline/sample-size plan",
-            seed=seed, predicate=hand_predicate))
+    # ---- A2: the THREE task types on the SAME frozen dev parameters ------
+    params = dict(contract.get("dev_parameters") or {})
+    seeds = [int(s) for s in (contract.get("statistics", {}).get("dev_seeds")
+                              or (7, 11, 23, 42))]
+    for seed in seeds:
+        cfg = _seed_config(contract, bundle_dir, seed, params)
+        cells.append(_task_cell(
+            f"dev-branch-seed-{seed}", "dev_sweep", "branch_alignment", cfg,
+            extra_args=["--deadline-s", str(DEV_DEADLINE_S),
+                        "--max-branches", "12",
+                        "--window-start", str(DEV_WINDOW_S[0]),
+                        "--window-end", str(DEV_WINDOW_S[1])],
+            description="offline branch block: up to 12 legal branches of one "
+                        "baseline trajectory, merged into one block value",
+            seed=seed,
+            require={"require_task": "branch_alignment",
+                     "require_sampling_rule": t1_tasks.BRANCH_SAMPLING_RULE,
+                     "min_branches": 1,
+                     "require_eligibility_reasons": True}))
+        cells.append(_task_cell(
+            f"dev-network-seed-{seed}", "dev_sweep", "network_alignment", cfg,
+            description="four online arms, each running the whole network from "
+                        "the same trace",
+            seed=seed,
+            require={"require_task": "network_alignment",
+                     "arms": list(t1_tasks.NETWORK_ARMS),
+                     "min_decisions_per_arm": 1, "min_satellites": 1}))
+    # ---- one execution-modes cell on the same frozen parameters -----------
+    async_cfg = _seed_config(contract, bundle_dir, seeds[0], dict(
+        params, **{"time_alignment.execution_mode": "async_window",
+                   "time_alignment.common_rule": "fixed_horizon",
+                   "time_alignment.common_horizon_s": 0.5}), tag="modes")
+    cells.append(_task_cell(
+        "dev-execution-modes", "dev_sweep", "execution_modes", async_cfg,
+        description="the five execution modes on one frozen arm, including the "
+                    "background update cost",
+        seed=seeds[0],
+        require={"require_task": "execution_modes",
+                 "modes": list(t1_tasks.EXECUTION_MODES),
+                 "require_background_cost": True}))
+    # ---- offered load as a SINGLE factor, reaching the resolved config ----
+    for load in ("0.5", "2.0", "6.0"):
+        load_cfg = _seed_config(contract, bundle_dir, seeds[1], dict(
+            params, **{"demand.offered_mbps": float(load)}),
+            tag=f"load{load}")
+        cells.append(_task_cell(
+            f"dev-offered-{load}", "dev_sweep", "network_alignment", load_cfg,
+            extra_args=["--arms", "candidate"],
+            description=f"single factor: offered load {load} Mbps",
+            seed=seeds[1],
+            require={"require_task": "network_alignment",
+                     "arms": ["candidate"], "min_decisions_per_arm": 1,
+                     "min_satellites": 1}))
+    # ---- A3: ALL FIVE pre-declared common-future candidates --------------
+    # Each cell runs the block with the 'common' arm set to ONE candidate, so
+    # the block value carries both that candidate loss and the candidate arm
+    # reference it will be compared against.
+    horizons = _load_horizon_candidates(contract)
+    for name in ("mean_eta_offset", "median_eta_offset", "p25_offset",
+                 "p50_offset", "p75_offset"):
+        spec = horizons["candidates"].get(name)
+        if spec is None:
+            continue
+        overrides = {"time_alignment.arm": "common"}
+        if spec.get("kind") == "fixed_horizon":
+            overrides["time_alignment.common_rule"] = "fixed_horizon"
+            overrides["time_alignment.common_horizon_s"] = float(
+                spec["common_horizon_s"])
+        else:
+            overrides["time_alignment.common_rule"] = str(spec["common_rule"])
+        for seed in seeds:
+            cfg = _seed_config(contract, bundle_dir, seed,
+                               dict(params, **overrides), tag=f"common-{name}")
+            cells.append(_task_cell(
+                f"dev-common-{name}-seed-{seed}", "dev_sweep",
+                "branch_alignment", cfg,
+                extra_args=["--deadline-s", str(DEV_DEADLINE_S),
+                            "--max-branches", "12",
+                            "--window-start", str(DEV_WINDOW_S[0]),
+                            "--window-end", str(DEV_WINDOW_S[1]),
+                            "--arms", "common,candidate"],
+                description=f"common-future candidate {name} on dev seed {seed}",
+                seed=seed,
+                require={"require_task": "branch_alignment",
+                         "require_sampling_rule": t1_tasks.BRANCH_SAMPLING_RULE,
+                         "min_branches": 1}))
     return cells
 
 
@@ -410,8 +651,36 @@ def _formal_cells(contract, bundle_dir):
                    "sample_size": design.get("sample_size")}
 
 
-def _seed_config(contract, bundle_dir, seed):
-    """Write a per-seed copy of the frozen branch profile into the bundle."""
+def _seed_config(contract, bundle_dir, seed, params=None, tag=None):
+    """Write a per-seed copy of the frozen branch profile into the bundle.
+
+    A2: the SAME apply_parameters() the confirmation tier uses writes the
+    frozen horizon, predictor, load, packet size, pool size, update period,
+    window and query/service cost into the resolved configuration.  Before
+    this the development profile hard-coded a 2 Mbps offered load that no
+    frozen parameter controlled, so a "frozen" horizon was metadata only.
+    """
+    profile = contract.get("source", {}).get(
+        "constellation_profile",
+        "CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml")
+    src = REPO_ROOT / profile
+    if not src.exists():
+        raise SuiteError(f"constellation profile missing: {profile}")
+    doc = yaml.safe_load(src.read_text(encoding="utf-8")) or {}
+    doc.setdefault("scenario", {})
+    if isinstance(doc["scenario"], dict):
+        doc["scenario"]["seed"] = int(seed)
+    apply_parameters(doc, params)
+    configs = Path(bundle_dir) / "configs"
+    configs.mkdir(exist_ok=True)
+    name = f"seed-{seed}.yaml" if tag is None else f"seed-{seed}-{tag}.yaml"
+    out = configs / name
+    out.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+    return out
+
+
+def _seed_config_legacy_smoke(contract, bundle_dir, seed):
+    """The OLD 2 Mbps / first_forward smoke fixture, kept under its own name."""
     profile = contract.get("source", {}).get(
         "constellation_profile", "CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml")
     src = REPO_ROOT / profile
@@ -825,12 +1094,108 @@ def _check_execution_predicate(result, require):
     return checks
 
 
+def _check_task_predicate(result, require):
+    """Machine-check the pre-declared behaviour of a t1_task cell.
+
+    A2: all three task types are dispatched through the same driver, so ONE
+    predicate checks the envelope (the task ran, no sub-run failed, the
+    declared type is the one that ran) and then the per-type evidence that the
+    task really did what its name claims.
+    """
+    checks = [
+        ["the task driver completed", result.get("status") == "ok",
+         result.get("status")],
+        ["no sub-run failed", int(result.get("failed_units") or 0) == 0,
+         result.get("failed_units")],
+    ]
+    task = result.get("task")
+    checks.append(["the declared task type is known",
+                   task in ("branch_alignment", "network_alignment",
+                            "execution_modes"), task])
+    if require.get("require_task") is not None:
+        checks.append([f"the task that ran is {require['require_task']}",
+                       task == require["require_task"], task])
+    doc = result.get("document") or {}
+    checks.append(["the driver document is present", bool(doc), None])
+    if not doc:
+        return checks
+    if task == "branch_alignment":
+        sampling = doc.get("sampling") or {}
+        block = doc.get("block") or {}
+        deadline = (doc.get("deadline") or {}).get("deadline_s")
+        checks.append(["one deadline covers every branch in the block",
+                       deadline is not None, deadline])
+        if require.get("require_sampling_rule") is not None:
+            checks.append(["the declared sampling rule was used",
+                           sampling.get("rule") == require["require_sampling_rule"],
+                           sampling.get("rule")])
+        if "min_branches" in require:
+            checks.append(["the block merged enough branches",
+                           block.get("branch_count", 0)
+                           >= require["min_branches"],
+                           {"branches": block.get("branch_count"),
+                            "eligible": sampling.get("eligible")}])
+        if require.get("require_eligibility_reasons"):
+            eligibility = doc.get("eligibility") or {}
+            checks.append(["ineligible decisions keep their reasons",
+                           isinstance(eligibility.get("rejected"), list),
+                           eligibility.get("rejected_count")])
+    elif task == "network_alignment":
+        rows = {row.get("arm"): row for row in (doc.get("arms") or [])}
+        for arm in require.get("arms", []):
+            row = rows.get(arm)
+            checks.append([f"arm {arm} ran the network", row is not None, None])
+            if row is None:
+                continue
+            audit = row.get("time_alignment_audit") or {}
+            checks.append([f"arm {arm} used the state-time path",
+                           audit.get("arms_seen_in_the_audit") == [arm],
+                           audit.get("arms_seen_in_the_audit")])
+            checks.append([f"arm {arm} queried real instants",
+                           audit.get("decisions_with_query_targets", 0)
+                           >= require.get("min_decisions_per_arm", 1),
+                           audit.get("decisions_with_query_targets")])
+            scope = row.get("scope") or {}
+            checks.append([f"arm {arm} ran network-wide",
+                           scope.get("satellites_that_decided", 0)
+                           >= require.get("min_satellites", 1),
+                           scope.get("satellites_that_decided")])
+            rates = row.get("request_rate_per_satellite") or {}
+            checks.append([f"arm {arm} reports hotspot pressure",
+                           rates.get("max") is not None, rates.get("max")])
+            if require.get("require_background_cost"):
+                cost = (row.get("total_cost") or row.get("compute") or {})
+                background = (cost.get("background_jobs") or {})
+                checks.append([f"arm {arm} counts background jobs",
+                               int(background.get("jobs") or 0) > 0,
+                               background.get("jobs")])
+    elif task == "execution_modes":
+        rows = {row.get("mode"): row for row in (doc.get("modes") or [])}
+        for mode in require.get("modes", []):
+            row = rows.get(mode)
+            checks.append([f"mode {mode} present", row is not None, None])
+            if row is None:
+                continue
+            checks.append([f"mode {mode} reports an outcome",
+                           row.get("outcome") is not None, None])
+        if require.get("require_background_cost"):
+            cost = (rows.get("async_window") or {}).get("total_cost") \
+                or (rows.get("async_window") or {}).get("compute") or {}
+            background = (cost.get("background_jobs") or {})
+            checks.append(["the async mode schedules real background jobs",
+                           int(background.get("jobs") or 0) > 0,
+                           background.get("jobs")])
+    return checks
+
+
 def check_predicate(result, predicate):
     """Evaluate a cell predicate against its result document."""
     kind = (predicate or {}).get("kind")
     if kind is None:
         return {"passed": True, "checks": [], "kind": None}
-    if kind == "execution_modes":
+    if kind == "t1_task":
+        checks = _check_task_predicate(result, predicate.get("require") or {})
+    elif kind == "execution_modes":
         checks = _check_execution_predicate(result,
                                             predicate.get("require") or {})
     elif kind == "time_alignment":
@@ -943,6 +1308,122 @@ def check_predicate(result, predicate):
             else "; ".join(c[0] for c in checks if not c[1])}
 
 
+#: A5: the number of simulator runs ONE task cell expands into.  Declared here
+#: because the outer cell count hides the real cost: a branch block of twelve
+#: branches is not one run, and a four-arm network cell is four.
+BRANCH_REPLAY_CANDIDATES = 2   # the mechanism needs at least two legal ones
+
+
+def estimate_bundle_cost(bundle):
+    """Expand the matrix into REAL simulator calls, not outer cell count.
+
+    The expansion coefficients are declared, not measured, and the returned
+    document says so: a budget built from the number of cells would hide a
+    twelve-branch block behind a single line.
+    """
+    rows = []
+    total = 0
+    for cell in bundle.get("cells", []):
+        args = list(cell.get("args") or [])
+        flags = dict(zip(args, args[1:]))
+        task = flags.get("--task")
+        if task == "branch_alignment":
+            branches = int(flags.get("--max-branches", 12))
+            calls = 1 + branches * (1 + BRANCH_REPLAY_CANDIDATES)
+            why = ("one baseline pass to locate the branch points, then per "
+                   "sampled branch one baseline replay plus one full replay "
+                   "per legal candidate")
+        elif task == "network_alignment":
+            arms = flags.get("--arms") or ",".join(t1_tasks.NETWORK_ARMS)
+            calls = len([a for a in arms.split(",") if a.strip()])
+            why = "one whole-network run per arm"
+        elif task == "execution_modes":
+            modes = flags.get("--modes") or ",".join(t1_tasks.EXECUTION_MODES)
+            calls = len([m for m in modes.split(",") if m.strip()])
+            why = "one whole-network run per execution mode"
+        else:
+            calls = 1
+            why = "single-driver cell"
+        rows.append({"cell_id": cell.get("cell_id"), "task": task,
+                     "simulator_calls": int(calls), "why": why})
+        total += int(calls)
+    return {"schema": "t1-bundle-cost/v1", "cells": len(rows),
+            "simulator_calls": total,
+            "coefficients": {
+                "branch_replay_candidates_assumed": BRANCH_REPLAY_CANDIDATES,
+                "note": "declared assumption, not a measurement"},
+            "per_cell": rows,
+            "note": "the outer cell count is NOT the cost: the expansion into "
+                    "simulator calls is what the wall-clock budget must cover"}
+
+
+def formal_execution_plan(bundle_dir, authorization_path,
+                          run_id_prefix="t1-confirm"):
+    """Verify the EXISTING authorization for THIS package, then plan the run.
+
+    A5: refusing the formal tier unconditionally was not an authorization
+    boundary, it was a missing wire.  The boundary is the EVIDENCE: every
+    formal cell must be one exact run id named by an authorization that still
+    recomputes from the current artifacts and the current execution chain.  A
+    modified package, an authorization issued for a different package, or a
+    missing authorization all fail closed -- and no authorization is ever
+    invented here.
+    """
+    bundle_dir = Path(bundle_dir)
+    validate_bundle(bundle_dir)
+    bundle = json.loads((bundle_dir / "bundle.json").read_text(encoding="utf-8"))
+    cell_ids = (bundle.get("tiers") or {}).get("formal") or []
+    if not cell_ids:
+        raise SuiteError(
+            "the formal tier is empty: there is no confirmation matrix to "
+            "authorize, so there is nothing to run")
+    if not authorization_path:
+        raise SuiteError(
+            "running the formal tier requires --authorization: the "
+            "confirmation matrix may only be executed under an authorization "
+            "that already exists")
+    from CODE.experiment_platform import authorize_experiment
+
+    cells = {c["cell_id"]: c for c in bundle["cells"]}
+    planned, payloads = [], set()
+    for cell_id in cell_ids:
+        cell = cells[cell_id]
+        config_path = (cell.get("input") or {}).get("config_path")
+        if not config_path:
+            raise SuiteError(
+                f"formal cell {cell_id} names no config file, so it cannot be "
+                "bound to an authorization")
+        run_id = f"{run_id_prefix}-{cell_id}"
+        try:
+            authorization = (
+                authorize_experiment.verify_authorization_for_leo_sim_v2_config(
+                    REPO_ROOT, Path(authorization_path), Path(config_path),
+                    run_id))
+        except authorize_experiment.AuthorizationError as exc:
+            raise SuiteError(
+                f"formal cell {cell_id} is not authorized as {run_id}: "
+                f"{exc}") from exc
+        payloads.add(authorization.get("payload_sha256"))
+        planned.append({"cell_id": cell_id, "run_id": run_id,
+                        "config_path": config_path,
+                        "config_sha256": (cell.get("input") or {}).get(
+                            "config_sha256"),
+                        "authorized_experiment": authorization.get(
+                            "experiment_id")})
+    return {"schema": "t1-formal-execution-plan/v1",
+            "bundle_dir": str(bundle_dir),
+            "authorization": str(authorization_path),
+            "authorization_payload_sha256": sorted(p for p in payloads if p),
+            "cells": planned,
+            "cost": estimate_bundle_cost(bundle),
+            "limits": [
+                "the authorization is RE-VERIFIED here from current artifacts; "
+                "this function issues nothing and approves nothing",
+                "the confirmation matrix is executed by the same runner as the "
+                "development tiers: there is no private formal path",
+            ]}
+
+
 def _inspect_result(result_path):
     """Existence + parseability + schema + content hash of one cell result."""
     result_path = Path(result_path)
@@ -966,16 +1447,18 @@ def _inspect_result(result_path):
     return probe
 
 
-def run_bundle(bundle_dir, tier, out_dir):
+def run_bundle(bundle_dir, tier, out_dir, authorization=None):
     bundle_dir = Path(bundle_dir)
     # a run must never start from a bundle whose inputs or code have moved
     validate_bundle(bundle_dir)
     bundle = json.loads((bundle_dir / "bundle.json").read_text(encoding="utf-8"))
+    formal_plan = None
     if tier == "formal":
-        raise SuiteError(
-            "the formal tier is a COMPILED PENDING PACKAGE, not a runnable "
-            "matrix: executing it needs an explicit authorization this task "
-            "does not hold; it is validated by validate, never run here")
+        # A5: the boundary is evidence, not a refusal.  The plan re-verifies the
+        # existing authorization against the CURRENT artifacts before a single
+        # cell runs; a package that changed, or an authorization for another
+        # package, cannot start.
+        formal_plan = formal_execution_plan(bundle_dir, authorization)
     cell_ids = (bundle.get("tiers") or {}).get(tier)
     if cell_ids is None:
         raise SuiteError(f"unknown tier {tier!r}; "
@@ -1016,6 +1499,9 @@ def run_bundle(bundle_dir, tier, out_dir):
         "cells": records,
         "counts": _count_records(records, len(cell_ids)),
     }
+    if formal_plan is not None:
+        run_doc["formal_plan"] = formal_plan
+        _write_json(out_dir / "formal-plan.json", formal_plan)
     _write_json(out_dir / "run.json", run_doc)
     return run_doc
 
@@ -1440,8 +1926,17 @@ def main(argv=None):
     p.add_argument("--bundle", type=Path, required=True)
     p.add_argument("--tier", default="acceptance")
     p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--authorization", type=Path, default=None,
+                   help="existing execution authorization; REQUIRED by the "
+                        "formal tier, which re-verifies it before running")
     p = sub.add_parser("resume")
     p.add_argument("--run-dir", type=Path, required=True)
+    p = sub.add_parser("project-horizons")
+    p.add_argument("--contract", type=Path, required=True)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--root", type=Path, default=Path.cwd())
+    p = sub.add_parser("cost")
+    p.add_argument("--bundle", type=Path, required=True)
     p = sub.add_parser("report")
     p.add_argument("--run-dir", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -1458,7 +1953,8 @@ def main(argv=None):
                               "cells": report["cells"],
                               "valid": report["valid"]}, ensure_ascii=False))
         elif args.command == "run":
-            run = run_bundle(args.bundle, args.tier, args.out)
+            run = run_bundle(args.bundle, args.tier, args.out,
+                             authorization=args.authorization)
             print(json.dumps({"status": run["status"], "out": str(args.out),
                               "counts": run["counts"]}, ensure_ascii=False))
             # exit status is machine-readable: 0 only when the tier fully
@@ -1470,6 +1966,16 @@ def main(argv=None):
                               "counts": run["counts"],
                               "resume": run.get("resume")}, ensure_ascii=False))
             return 0 if run["status"] == "ok" else 3
+        elif args.command == "project-horizons":
+            projected = project_horizon_candidates(args.contract, args.out,
+                                                   args.root)
+            print(json.dumps({"status": projected["quantile_source"],
+                              "samples": projected["samples"],
+                              "out": str(args.out)}, ensure_ascii=False))
+        elif args.command == "cost":
+            bundle = json.loads(
+                (Path(args.bundle) / "bundle.json").read_text(encoding="utf-8"))
+            print(json.dumps(estimate_bundle_cost(bundle), ensure_ascii=False))
         elif args.command == "report":
             report = report_run(args.run_dir)
             print(json.dumps({"status": "reported",

@@ -55,6 +55,9 @@ BRANCH_SAMPLING_RULE = "even_stride_over_eligible_decision_ids/v1"
 DEFAULT_MAX_BRANCHES = 12
 #: The four online arms, in the frozen contract order.
 NETWORK_ARMS = ("stale", "now", "common", "candidate")
+#: The five execution modes, re-exported so the suite declares its cells from
+#: the driver own list instead of a second copy that can drift.
+EXECUTION_MODES = execution_compare.MODES
 
 
 class TaskError(RuntimeError):
@@ -166,6 +169,78 @@ def sample_branches(eligible, *, max_branches=DEFAULT_MAX_BRANCHES):
             unique.append(item["decision_id"])
     return {"rule": BRANCH_SAMPLING_RULE, "eligible": total,
             "sampled": len(unique), "stride": stride, "decisions": unique}
+
+
+# ------------------------ development baseline: candidate ETA offsets (A3)
+def candidate_eta_offsets(decision_rows, *, window=None):
+    """Per-decision candidate ETA offsets from a DEVELOPMENT BASELINE.
+
+    The offset is (the instant this decision queried for a candidate) minus
+    (the request instant), read from the ONLINE audit of a baseline run.  A
+    quantile taken from confirmation data is refused by construction: this
+    function only ever receives a development baseline.
+    """
+    offsets, per_decision = [], []
+    for row in decision_rows:
+        if row.get("kind") != "forward":
+            continue
+        t0 = row.get("t_decision_start")
+        if t0 is None:
+            continue
+        if window is not None and not (float(window[0]) <= float(t0)
+                                       <= float(window[1])):
+            continue
+        audit = (row.get("observation_at_start") or {}).get("time_alignment")
+        targets = (audit or {}).get("query_targets") or {}
+        values = [float(target) - float(t0) for target in targets.values()]
+        if not values:
+            continue
+        per_decision.append({"decision_id": row.get("decision_id"),
+                             "t_decision_start": float(t0),
+                             "offsets": values})
+        offsets.extend(values)
+    return {"offsets": offsets, "per_decision": per_decision,
+            "decisions": len(per_decision), "candidates": len(offsets),
+            "rule": "offset = queried instant - request instant, read from "
+                    "the online audit of a development baseline"}
+
+
+def project_horizons(offsets):
+    """The FIVE pre-declared common-future candidates, from dev data only.
+
+    Two rule-based candidates (mean and median of the per-decision offset) and
+    three FIXED horizons taken from the p25/p50/p75 of the development
+    baseline offset population.  The quantile source is named in the result so
+    a frozen artifact can prove where the numbers came from.
+    """
+    values = sorted(float(v) for v in offsets)
+    if not values:
+        raise TaskError(
+            "no development-baseline ETA offset was observed, so no horizon "
+            "candidate can be projected")
+
+    def _quantile(q):
+        if len(values) == 1:
+            return values[0]
+        pos = q * (len(values) - 1)
+        low, high = int(pos), min(int(pos) + 1, len(values) - 1)
+        frac = pos - low
+        return values[low] * (1 - frac) + values[high] * frac
+
+    return {
+        "mean_eta_offset": {"kind": "rule", "common_rule": "mean_eta"},
+        "median_eta_offset": {"kind": "rule", "common_rule": "median_eta"},
+        "p25_offset": {"kind": "fixed_horizon",
+                       "common_horizon_s": _quantile(0.25)},
+        "p50_offset": {"kind": "fixed_horizon",
+                       "common_horizon_s": _quantile(0.50)},
+        "p75_offset": {"kind": "fixed_horizon",
+                       "common_horizon_s": _quantile(0.75)},
+        "quantile_source": "development_baseline_candidate_eta_offsets",
+        "samples": len(values),
+        "mean": statistics.fmean(values),
+        "median": _quantile(0.50),
+    }
 
 
 def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
