@@ -7,6 +7,26 @@
     "fixed_hotspot": "固定热点（40 s, 24 星, offered 2.0 / isl 2.5 = 0.8 利用率；缩窗保机制）",
     "steady_uniform": "阴性对照（70 s, 24 星, 0.5 Mbps）——已实测四臂同值"
    },
+   "b2_after_deadline_fix": {
+    "b_dev": "10/10 ok",
+    "blocker": "实验一的可辨性依赖一个**非对称多 OD** 场景，即被延期的 M-Lab 加权拓扑（140 星 120 s 单臂实测 888 s，远超 120 s/cell）。这是需要用户决定的预算问题。",
+    "conclusion": "修正 D 后四臂仍然完全同值、后悔值恒 0。**D 不是臂不变性的原因**，被证实的是第二个根因：三个已声明场景的候选方向是**对称**的（走廊只有一个 OD 对，两个方向走同一条路），臂改变排序也改变不了结局。损失尺度现在有意义了（0.33-0.50，而不是被压扁的 0.05），所以修 D 是必要的，但它不产生臂差异。",
+    "result": {
+     "burst_hotspot": {
+      "D_s": 2.3784,
+      "all_arm_mean_loss": 0.354888
+     },
+     "fixed_hotspot": {
+      "D_s": 2.534,
+      "all_arm_mean_loss": 0.33309
+     },
+     "steady_uniform": {
+      "D_s": 3.123,
+      "all_arm_mean_loss": 0.499965
+     }
+    },
+    "run": "t1-b6-f55c6fe"
+   },
    "b2_experiment_one_result": {
     "diagnosis": "两个根因，都可用现有证据定位：(1) D=30 s 约为实测 E2E p95（1.2-1.6 s）的 20 倍，归一化损失被压到约 0.05 且永不产生丢包事件——这是 D 选取问题，按 A3/B3 应由业务截止或开发基准 p95×2 给出；(2) 更根本：三个已声明场景的候选路径是**对称**的（走廊只有一个 OD 对，两个方向走同一条路），臂改变排序也改变不了结局。要让实验一可辨，必须使用**非对称多 OD** 场景——也就是被延期的 M-Lab 加权拓扑。",
     "finding": "四臂在三场景上网络结局完全相同（交付数、p50/p95、命运计数、计算 job 数、热点最大值全部一致）",
@@ -32,6 +52,21 @@
       "p50_s": 1.5616,
       "p95_s": 1.5621
      }
+    }
+   },
+   "b3_deadline_freeze": {
+    "auditability_gap": "冻结文件目前未把 samples / branches_used 写进去（只在 freeze 的返回里），下一轮补进文件",
+    "files": [
+     "CODE/work/WP-T1-COMPLETE/deadlines/deadline_{steady_uniform,fixed_hotspot,burst_hotspot}.json"
+    ],
+    "rework_1": "第一版只用单支路的候选样本：p95 就是最大值，D=2×max，结果把每个候选的损失钉死在 0.5000（四臂全等）。改为聚合多支路样本。",
+    "rework_2": "声明值 D=30 s 是数据导出值的 10-18 倍。按任务书这是诊断假设，现已由数据替代：稳态 3.12 s / 热点 2.53 s / 突发 2.38 s。",
+    "rule": "D = 2 x p95 of the aggregated development-baseline legal-candidate delivery samples",
+    "status": "D 已按 A3/B3 冻结并入库（VM t1-b5-6c6852f）",
+    "values_s": {
+     "burst_hotspot": 2.3784,
+     "fixed_hotspot": 2.534,
+     "steady_uniform": 3.123
     }
    },
    "b4_first_cut_fixed_hotspot": {
