@@ -181,7 +181,10 @@ class InferencePolicy:
 
 #: entry points that only a learner has any business exposing
 TRAINING_ENTRY_POINTS = ("train_step", "observe", "update", "set_epsilon",
-                        "learn")
+                        "learn", "remember")
+#: a replay buffer is the mark of a LEARNER.  TensorflowDDQN exposes remember()
+#: and no train_step/observe/update at all, so before A1 it passed the
+#: inference-only probe while still being a training learner.
 
 
 def assert_inference_only(policy) -> None:
@@ -377,34 +380,485 @@ class ScorerPolicy(InferencePolicy):
                 "epsilon": None, "updates": 0, "training": False}
 
 
-def load_fixed_adapter_from_checkpoint(checkpoint_path, checkpoint_sha256,
-                                       metadata_path, metadata_sha256,
-                                       *, expected_width=None,
-                                       name="checkpoint-model"):
-    """HARD-GATED load of a real checkpoint: every gate must pass.
+# --------------------------------------------------------------------------
+# A1: READING THE REPOSITORY OWN TENSORFLOW CHECKPOINT
+# --------------------------------------------------------------------------
+#: The observation contract is a NAMED, PINNED object.  The kernel builds the
+#: model input with leo_sim.learning.build_observation, whose feature ORDER is
+#: owned by that function; a checkpoint trained against any other order must be
+#: refused, never fed a vector whose meaning silently changed.
+OBSERVATION_FEATURE_ORDER = "leo_sim.learning.build_observation/v1"
+CONTRACT_SCHEMA = "leo-sim-observation-contract/v1"
+CHECKPOINT_SCHEMA = "leo-sim-ddqn/v1"
+#: "test_weights" marks an interface-validation export; it must never be
+#: quoted as a trained-policy performance result.
+WEIGHTS_PURPOSES = ("trained", "test_weights")
+NORMALISATION_MODES = ("none", "affine")
 
-    Gates: path exists, file hash matches, sibling metadata exists and its hash
-    matches, metadata declares the observation contract, the declared feature
-    width matches, and the loader is importable.  Any failure is a precise
-    blocker, never a silent fallback to a random model.
+
+def _canonical_json(payload) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False)
+
+
+def observation_contract_id(*, contract, feature_width, feature_order,
+                            normalisation, actions) -> str:
+    """Content hash of everything that defines what the numbers mean.
+
+    Two checkpoints with the same width but a different feature order, action
+    order or normalisation are DIFFERENT contracts and must not collide.
     """
-    report = verify_checkpoint(checkpoint_path, checkpoint_sha256,
-                               metadata_path, metadata_sha256)
-    if report["state"] != "AVAILABLE":
-        raise FixedInferenceError(
-            "checkpoint not loadable: " + str(report.get("reason")))
-    metadata = report.get("metadata") or {}
-    declared = metadata.get("feature_width")
+    return hashlib.sha256(_canonical_json({
+        "schema": CONTRACT_SCHEMA,
+        "contract": str(contract),
+        "feature_width": int(feature_width),
+        "feature_order": str(feature_order),
+        "normalisation": normalisation,
+        "actions": list(actions),
+    }).encode("utf-8")).hexdigest()
+
+
+def observation_contract_fields(*, contract, feature_width,
+                                feature_order=OBSERVATION_FEATURE_ORDER,
+                                normalisation=None, actions=ACTIONS) -> dict:
+    """The block a checkpoint must declare for its input to be readable.
+
+    Written by learning.TensorflowDDQN.save_and_verify and required back by
+    the reader, so the producer and the consumer cannot drift apart.
+    """
+    norm = dict(normalisation or {"mode": "none"})
+    return {
+        "contract": str(contract),
+        "feature_width": int(feature_width),
+        "input_dim": int(feature_width),
+        "feature_order": str(feature_order),
+        "normalisation": norm,
+        "action_order": list(actions),
+        "observation_contract_id": observation_contract_id(
+            contract=contract, feature_width=feature_width,
+            feature_order=feature_order, normalisation=norm,
+            actions=actions),
+    }
+
+
+def validate_observation_contract(metadata, *, expected_contract=None,
+                                  expected_width=None, actions=ACTIONS) -> dict:
+    """Fail-closed validation of a declared observation contract.
+
+    Order matters: the width is checked before anything else so a width-only
+    mismatch keeps its precise message, and the contract id is recomputed
+    from the declared fields so a relabelled metadata file cannot pass.
+    """
+    if not isinstance(metadata, dict):
+        raise FixedInferenceError("checkpoint metadata is not a mapping")
+    declared = metadata.get("feature_width", metadata.get("input_dim"))
     if declared is None:
         raise FixedInferenceError(
             "checkpoint metadata does not declare feature_width, so the "
             "observation contract cannot be validated")
-    if expected_width is not None and int(declared) != int(expected_width):
+    width = int(declared)
+    if metadata.get("input_dim") is not None \
+            and int(metadata.get("input_dim")) != width:
+        raise FixedInferenceError(
+            "checkpoint metadata disagrees with itself: input_dim "
+            + repr(metadata.get("input_dim")) + " != feature_width "
+            + repr(width))
+    if expected_width is not None and width != int(expected_width):
         raise FixedInferenceError(
             f"checkpoint feature_width {declared} != expected {expected_width}")
-    raise FixedInferenceError(
-        "this host can import the loader but no trained-model reader is "
-        "implemented; a real checkpoint run stays an external blocker")
+    contract = metadata.get("contract")
+    if contract is None:
+        raise FixedInferenceError(
+            "checkpoint metadata does not declare the observation contract "
+            "(contract), so the feature meaning cannot be validated")
+    if expected_contract is not None and str(contract) != str(expected_contract):
+        raise FixedInferenceError(
+            f"checkpoint contract {contract!r} != expected "
+            f"{expected_contract!r}")
+    order = metadata.get("feature_order")
+    if order is None:
+        raise FixedInferenceError(
+            "checkpoint metadata does not declare feature_order: the feature "
+            "ORDER is part of the contract and cannot be assumed")
+    if str(order) != OBSERVATION_FEATURE_ORDER:
+        raise FixedInferenceError(
+            f"checkpoint feature_order {order!r} is not the kernel "
+            f"observation order {OBSERVATION_FEATURE_ORDER!r}; refusing to "
+            "feed a differently ordered vector")
+    norm = metadata.get("normalisation")
+    if not isinstance(norm, dict) or norm.get("mode") not in NORMALISATION_MODES:
+        raise FixedInferenceError(
+            "checkpoint metadata must declare normalisation as a mapping with "
+            f"mode in {list(NORMALISATION_MODES)}, got {norm!r}")
+    if norm["mode"] == "affine":
+        for key in ("mean", "std"):
+            values = norm.get(key)
+            if not isinstance(values, (list, tuple)) or len(values) != width:
+                raise FixedInferenceError(
+                    f"affine normalisation must carry {width} {key} values")
+    declared_actions = metadata.get("action_order")
+    if declared_actions is None:
+        raise FixedInferenceError(
+            "checkpoint metadata does not declare action_order, so the output "
+            "index -> direction mapping cannot be validated")
+    if list(declared_actions) != list(actions):
+        raise FixedInferenceError(
+            f"checkpoint action_order {list(declared_actions)} != the kernel "
+            f"action order {list(actions)}")
+    declared_id = metadata.get("observation_contract_id")
+    if declared_id is None:
+        raise FixedInferenceError(
+            "checkpoint metadata does not declare observation_contract_id")
+    recomputed = observation_contract_id(
+        contract=contract, feature_width=width, feature_order=order,
+        normalisation=dict(norm), actions=list(declared_actions))
+    if str(declared_id) != recomputed:
+        raise FixedInferenceError(
+            "checkpoint observation_contract_id does not match its own "
+            "declared contract: the metadata was edited or produced by a "
+            "different contract version")
+    purpose = metadata.get("weights_purpose", "trained")
+    if purpose not in WEIGHTS_PURPOSES:
+        raise FixedInferenceError(
+            f"checkpoint weights_purpose {purpose!r} is not one of "
+            f"{list(WEIGHTS_PURPOSES)}")
+    return {"contract": str(contract), "feature_width": width,
+            "feature_order": str(order), "normalisation": dict(norm),
+            "actions": list(declared_actions),
+            "observation_contract_id": recomputed,
+            "weights_purpose": purpose}
+
+
+def _load_keras_model(path):
+    """Read a real Keras artifact with the repository custom layers.
+
+    Kept as a one-line seam so the reader can be exercised without TensorFlow
+    installed; it is the ONLY place that touches the framework.
+    """
+    import tensorflow as tf
+
+    from .learning import _graph_custom_objects
+
+    return tf.keras.models.load_model(Path(path), compile=False,
+                                      custom_objects=_graph_custom_objects())
+
+
+class KerasFixedModelAdapter:
+    """A READ real checkpoint behind the inference-only contract.
+
+    What is enforced rather than documented:
+      * the model is called with training=False on every path;
+      * the declared input width, output width and action order are checked
+        against the live graph, not trusted from metadata;
+      * a deterministic forward probe must return finite values of the right
+        shape before the adapter exists at all;
+      * the action mask is enforced and an all-masked request is an error;
+      * no replay buffer, no update path: remember/observe/train_step/update/
+        learn/set_epsilon all refuse;
+      * ties break by the declared action order, exactly as the pure-numpy
+        adapter does, so the two are interchangeable at the call site.
+    """
+    inference_only = True
+
+    def __init__(self, model, *, contract, feature_width, feature_order,
+                 normalisation, actions=ACTIONS, name="checkpoint-model",
+                 weights_purpose="trained", checkpoint_sha256=None,
+                 metadata_sha256=None, checkpoint_path=None):
+        self.model = model
+        self.contract = str(contract)
+        self.actions = tuple(actions)
+        self.feature_width = int(feature_width)
+        self.feature_order = str(feature_order)
+        self.normalisation = dict(normalisation or {"mode": "none"})
+        self.name = str(name)
+        self.weights_purpose = str(weights_purpose)
+        self.checkpoint_sha256 = checkpoint_sha256
+        self.metadata_sha256 = metadata_sha256
+        self.checkpoint_path = (None if checkpoint_path is None
+                                else str(checkpoint_path))
+        self.epsilon = 0.0
+        self._calls = 0
+        self._probe_max_abs = None
+        self._check_graph()
+        self.parameter_sha256_value = self._weights_sha256()
+        self._probe_max_abs = self._finite_probe()
+        self.observation_contract_id = observation_contract_id(
+            contract=self.contract, feature_width=self.feature_width,
+            feature_order=self.feature_order,
+            normalisation=self.normalisation, actions=self.actions)
+
+    # -- construction-time gates -----------------------------------------
+    def _shapes(self):
+        try:
+            in_shape = tuple(self.model.input_shape)
+        except TypeError:
+            raise FixedInferenceError(
+                "the checkpoint declares several inputs; the repository DDQN "
+                "contract has exactly one flat observation input")
+        try:
+            out_shape = tuple(self.model.output_shape)
+        except TypeError:
+            raise FixedInferenceError(
+                "the checkpoint declares several outputs; the repository DDQN "
+                "contract has exactly one Q-value vector")
+        return in_shape, out_shape
+
+    def _check_graph(self):
+        in_shape, out_shape = self._shapes()
+        if len(in_shape) != 2 or in_shape[1] != self.feature_width:
+            raise FixedInferenceError(
+                f"checkpoint input shape {in_shape} does not match the "
+                f"declared feature_width {self.feature_width}: the file was "
+                "not trained for this observation contract")
+        if len(out_shape) != 2 or out_shape[1] != len(self.actions):
+            raise FixedInferenceError(
+                f"checkpoint output shape {out_shape} does not match the "
+                f"declared action set of {len(self.actions)} actions")
+
+    def _forward(self, batch):
+        values = self.model(batch, training=False)
+        return np.asarray(values, dtype=np.float64)
+
+    def _finite_probe(self):
+        """A read is not a load: prove the graph can actually answer.
+
+        Deterministic, no random probe: a NaN that only appears for some
+        inputs must not be discovered in the middle of a run.
+        """
+        probes = np.zeros((3, self.feature_width), dtype=np.float32)
+        if self.feature_width:
+            probes[1] = np.linspace(-0.5, 0.5, self.feature_width,
+                                    dtype=np.float32)
+            probes[2] = np.linspace(0.25, 1.25, self.feature_width,
+                                    dtype=np.float32)
+        try:
+            out = self._forward(probes)
+        except FixedInferenceError:
+            raise
+        except Exception as exc:
+            raise FixedInferenceError(
+                "the checkpoint could not be evaluated: "
+                f"{type(exc).__name__}: {exc}") from exc
+        if out.shape != (3, len(self.actions)):
+            raise FixedInferenceError(
+                f"the checkpoint returned shape {out.shape}, expected "
+                f"{(3, len(self.actions))}")
+        if not np.all(np.isfinite(out)):
+            raise FixedInferenceError(
+                "the checkpoint returned non-finite Q values on a finite "
+                "probe input; the file is not usable for inference")
+        return float(np.max(np.abs(out)))
+
+    def _weights_sha256(self):
+        """Stable hash of the frozen parameter set (not the file bytes).
+
+        Two exports of the same weights must hash the same even if the Keras
+        container differs; a training update must move it.
+        """
+        handle = hashlib.sha256()
+        try:
+            weights = self.model.get_weights()
+        except Exception as exc:
+            raise FixedInferenceError(
+                "the checkpoint exposes no readable weights: "
+                f"{type(exc).__name__}: {exc}") from exc
+        if not weights:
+            raise FixedInferenceError(
+                "the checkpoint exposes an empty parameter set")
+        for array in weights:
+            value = np.asarray(array)
+            handle.update(str(value.dtype).encode())
+            handle.update(str(value.shape).encode())
+            handle.update(np.ascontiguousarray(value).tobytes())
+        return handle.hexdigest()
+
+    # -- inference --------------------------------------------------------
+    def _prepare(self, features):
+        f = np.asarray(features, dtype=np.float64).reshape(-1)
+        if f.shape[0] != self.feature_width:
+            raise FixedInferenceError(
+                f"features width {f.shape[0]} != checkpoint width "
+                f"{self.feature_width}")
+        if not np.all(np.isfinite(f)):
+            raise FixedInferenceError("features contain non-finite values")
+        if self.normalisation.get("mode") == "affine":
+            mean = np.asarray(self.normalisation["mean"], dtype=np.float64)
+            std = np.asarray(self.normalisation["std"], dtype=np.float64)
+            if np.any(std <= 0):
+                raise FixedInferenceError(
+                    "affine normalisation has a non-positive std")
+            f = (f - mean) / std
+        return f.astype(np.float32)
+
+    def q_values(self, features) -> np.ndarray:
+        batch = self._prepare(features)[None, :]
+        try:
+            out = self._forward(batch)
+        except FixedInferenceError:
+            raise
+        except Exception as exc:
+            raise FixedInferenceError(
+                "checkpoint inference failed: "
+                f"{type(exc).__name__}: {exc}") from exc
+        values = out.reshape(-1)
+        if values.shape[0] != len(self.actions):
+            raise FixedInferenceError(
+                f"checkpoint returned {values.shape[0]} Q values for "
+                f"{len(self.actions)} actions")
+        if not np.all(np.isfinite(values)):
+            raise FixedInferenceError(
+                "the checkpoint returned non-finite Q values for this "
+                "observation")
+        return values
+
+    def _allowed(self, mask):
+        if mask is None:
+            return list(self.actions)
+        if isinstance(mask, dict):
+            return [a for a in self.actions if mask.get(a)]
+        return [a for a in self.actions if a in set(mask)]
+
+    def act(self, features, mask=None) -> str:
+        """Masked, deterministic argmax.  Never explores, never trains.
+        """
+        q = self.q_values(features)
+        allowed = self._allowed(mask)
+        if not allowed:
+            raise FixedInferenceError("every action is masked out")
+        self._calls += 1
+        best = max(allowed, key=lambda a: (q[self.actions.index(a)],
+                                           -self.actions.index(a)))
+        return best
+
+    def choose(self, observation, mask, now=None) -> str:
+        """Learner-shaped entry: (observation, mask, now) -> action.
+
+        It exists so a fixed checkpoint can occupy the SAME call site as a
+        training learner without being one; the frozen path never calls
+        remember() on it because there is no replay buffer to call it on.
+        """
+        return self.act(observation, mask=mask)
+
+    def counters(self) -> dict:
+        return {"schema": SCHEMA, "name": self.name,
+                "kind": "checkpoint_fixed_inference_policy",
+                "calls": self._calls, "epsilon": 0.0, "updates": 0,
+                "grad_steps": 0, "training": False,
+                "replay_size": 0, "transitions": 0,
+                "actions": list(self.actions),
+                "contract": self.contract,
+                "feature_width": self.feature_width,
+                "feature_order": self.feature_order,
+                "normalisation_mode": self.normalisation.get("mode"),
+                "observation_contract_id": self.observation_contract_id,
+                "weights_purpose": self.weights_purpose,
+                "checkpoint_sha256": self.checkpoint_sha256,
+                "metadata_sha256": self.metadata_sha256,
+                "parameter_sha256": self.parameter_sha256(),
+                "probe_max_abs_q": self._probe_max_abs}
+
+    def parameter_sha256(self) -> str:
+        return self.parameter_sha256_value
+
+    def receipt(self) -> dict:
+        """Machine-readable provenance of the read that produced this.
+        """
+        return {"schema": SCHEMA, "state": "AVAILABLE",
+                "reader": "CODE.leo_sim.inference.KerasFixedModelAdapter",
+                "checkpoint_path": self.checkpoint_path,
+                "checkpoint_sha256": self.checkpoint_sha256,
+                "metadata_sha256": self.metadata_sha256,
+                "contract": self.contract,
+                "feature_width": self.feature_width,
+                "feature_order": self.feature_order,
+                "normalisation": dict(self.normalisation),
+                "action_order": list(self.actions),
+                "observation_contract_id": self.observation_contract_id,
+                "weights_purpose": self.weights_purpose,
+                "parameter_sha256": self.parameter_sha256(),
+                "shape_checked": True, "finite_probe_checked": True,
+                "training": False, "epsilon": 0.0,
+                "note": "a real checkpoint read through the inference-only "
+                        "contract; a test_weights export validates the "
+                        "interface only and is NOT a policy result"}
+
+    # -- forbidden paths --------------------------------------------------
+    def observe(self, *args, **kwargs):
+        raise FixedInferenceError(
+            "the checkpoint adapter has no observation buffer: it never learns")
+
+    def train_step(self, *args, **kwargs):
+        raise FixedInferenceError(
+            "the checkpoint adapter is inference-only: training is refused")
+
+    def update(self, *args, **kwargs):
+        raise FixedInferenceError(
+            "the checkpoint adapter is inference-only: update is refused")
+
+    def learn(self, *args, **kwargs):
+        raise FixedInferenceError(
+            "the checkpoint adapter is inference-only: learn is refused")
+
+    def remember(self, *args, **kwargs):
+        raise FixedInferenceError(
+            "the checkpoint adapter builds no replay buffer: it never learns")
+
+    def set_epsilon(self, *args, **kwargs):
+        raise FixedInferenceError(
+            "epsilon is fixed at 0.0 for a checkpoint inference adapter")
+
+
+def load_fixed_adapter_from_checkpoint(checkpoint_path, checkpoint_sha256,
+                                       metadata_path, metadata_sha256,
+                                       *, expected_width=None,
+                                       expected_contract=None,
+                                       name="checkpoint-model",
+                                       require_weights_purpose=None):
+    """HARD-GATED READ of a real repository checkpoint.
+
+    Gates, in order: path exists, file hash matches, sibling metadata path and
+    hash are declared and match, the loader is installed, the metadata
+    declares a complete observation contract, the contract id recomputes, the
+    declared width/contract match what the caller asked for, the live graph
+    shapes agree, and a finite forward probe returns the right shape.  Only
+    then is the state AVAILABLE.  Every failure is a precise blocker; there
+    is no silent fallback to a random model.
+
+    Returns the adapter; its receipt() carries the full provenance.
+    """
+    report = verify_checkpoint(checkpoint_path, checkpoint_sha256,
+                               metadata_path, metadata_sha256)
+    if report.get("state") != "LOAD_PENDING":
+        raise FixedInferenceError(
+            "checkpoint not loadable: " + str(report.get("reason")))
+    metadata = report.get("metadata") or {}
+    declared = validate_observation_contract(
+        metadata, expected_contract=expected_contract,
+        expected_width=expected_width)
+    if require_weights_purpose is not None \
+            and declared["weights_purpose"] != str(require_weights_purpose):
+        raise FixedInferenceError(
+            "checkpoint weights_purpose "
+            + repr(declared["weights_purpose"]) + " != required "
+            + repr(require_weights_purpose))
+    try:
+        model = _load_keras_model(checkpoint_path)
+    except FixedInferenceError:
+        raise
+    except Exception as exc:
+        raise FixedInferenceError(
+            "checkpoint could not be read by the framework: "
+            f"{type(exc).__name__}: {exc}") from exc
+    return KerasFixedModelAdapter(
+        model, contract=declared["contract"],
+        feature_width=declared["feature_width"],
+        feature_order=declared["feature_order"],
+        normalisation=declared["normalisation"],
+        actions=declared["actions"], name=name,
+        weights_purpose=declared["weights_purpose"],
+        checkpoint_sha256=report.get("actual_sha256"),
+        metadata_sha256=report.get("metadata_actual_sha256"),
+        checkpoint_path=checkpoint_path)
 
 
 def _sha256_file(path: Path) -> str | None:
@@ -438,7 +892,8 @@ def verify_checkpoint(checkpoint_path, checkpoint_sha256=None,
                                                     else str(checkpoint_path)),
               "metadata_path": (None if metadata_path is None
                                 else str(metadata_path)),
-              "loader": "tensorflow", "loader_available": tf_available()}
+              "loader": "tensorflow", "loader_available": tf_available(),
+              "reader": "CODE.leo_sim.inference.load_fixed_adapter_from_checkpoint"}
     if not checkpoint_path:
         report.update(state="EXTERNAL_BLOCKER",
                       reason="no checkpoint_path is configured",
@@ -504,6 +959,7 @@ def verify_checkpoint(checkpoint_path, checkpoint_sha256=None,
                       reason="sibling metadata is not valid JSON")
         return report
     report["actual_sha256"] = actual
+    report["metadata_actual_sha256"] = meta_actual
     if not report["loader_available"]:
         report.update(state="EXTERNAL_BLOCKER",
                       reason="the checkpoint hashes verify but the loader "
@@ -511,8 +967,13 @@ def verify_checkpoint(checkpoint_path, checkpoint_sha256=None,
                       recovery="install the pinned loader on the execution "
                                "host")
         return report
-    report.update(state="AVAILABLE",
-                  reason=None,
-                  note="hash-verified; a real policy run is still required "
-                       "before any performance claim")
+    report.update(
+        state="LOAD_PENDING",
+        reason="the artifact hashes verify and the loader is installed, but "
+               "the model has NOT been read yet, so nothing about its "
+               "format, shape or numerical output is known",
+        recovery="call inference.load_fixed_adapter_from_checkpoint, which "
+                 "reports AVAILABLE only after a shape-checked, "
+                 "finite-value read",
+        note="hash-verified only; A1 requires AVAILABLE to mean loaded")
     return report

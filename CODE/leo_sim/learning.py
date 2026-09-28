@@ -903,12 +903,23 @@ class TensorflowDDQN:
         after = loaded(probe, training=False).numpy()
         verified = bool(np.allclose(before, after, rtol=0.0, atol=1e-7))
         metadata = self.diagnostics()
+        # A1: a checkpoint must DECLARE its observation contract, otherwise a
+        # reader cannot tell "trained for C3 with this feature order" from
+        # "some 40-wide vector".  The block is produced by the same module that
+        # defines the observation, and the reader recomputes the contract id
+        # from the declared fields, so the two cannot drift apart silently.
+        from . import inference as _inference
+
+        metadata.update(_inference.observation_contract_fields(
+            contract=self.contract, feature_width=self.input_dim,
+            normalisation={"mode": "none"}))
         metadata.update({
             "schema": "leo-sim-ddqn/v1",
             "checkpoint": model_path.name,
             "checkpoint_sha256": checkpoint_sha,
             "checkpoint_verified": verified,
             "probe_max_abs_error": float(np.max(np.abs(before - after))),
+            "weights_purpose": str(self.cfg.get("weights_purpose", "trained")),
             **resume,
         })
         (out / "metadata.json").write_text(

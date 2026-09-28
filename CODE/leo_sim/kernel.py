@@ -45,6 +45,7 @@ import math
 import hashlib
 import time
 from collections import deque
+from pathlib import Path
 
 import numpy as np
 import simpy
@@ -1183,7 +1184,24 @@ class Kernel:
         self.learning_gate(cfg)
         self.learning_out_dir = learning_out_dir
         algorithm = cfg["learning"]["algorithm"]
-        if algorithm == "ddqn":
+        # A1: an INFERENCE-ONLY read of a real checkpoint occupies the SAME
+        # decision call site as a training learner, but has no replay buffer and
+        # no update path -- which is exactly why the frozen observation mode,
+        # refused together with a learner below, is allowed with it.
+        self.fixed_policy = None
+        self.policy_source = "deterministic_scorer"
+        if algorithm != "none" and self.cfg_learning.get("fixed_inference"):
+            self.fixed_policy = _inference.load_fixed_adapter_from_checkpoint(
+                self.cfg_learning["checkpoint_path"],
+                self.cfg_learning["checkpoint_sha256"],
+                self._fixed_policy_metadata_path(),
+                self.cfg_learning["checkpoint_metadata_sha256"],
+                expected_contract=self.cfg_rt["contract"],
+                name="checkpoint-ddqn")
+            self.learner = None
+            self.policy_source = "fixed_inference_checkpoint"
+            self.mech_fixed_policy_calls = 0
+        elif algorithm == "ddqn":
             self.learner = _learning.TensorflowDDQN(
                 self.cfg_rt["contract"], cfg["learning"],
                 cfg["learning"]["seed"]
@@ -1197,6 +1215,8 @@ class Kernel:
                 else self.cfg_sc["seed"])
         else:
             self.learner = None
+        if self.learner is not None:
+            self.policy_source = "training_learner"
 
         if geometry is None:
             geometry = model.Constellation(
@@ -1475,7 +1495,8 @@ class Kernel:
             "control_initialized": bool(self.cfg_cp["enabled"]),
             "ge_initialized": self.ge_enabled,
             "mbb_events": 0,
-            "learning_initialized": self.learner is not None,
+            "learning_initialized": (self.learner is not None
+                                     or self.fixed_policy is not None),
             "learning_decisions": 0,
             "learning_transitions": 0,
             "learning_train_steps": 0,
@@ -3477,6 +3498,17 @@ class Kernel:
         ep = self.endpoints[cell]
         return sorted(s for s, l in ep.links.items() if l.state == "active")
 
+    def _fixed_policy_metadata_path(self) -> str:
+        """The sibling metadata that pins the observation contract.
+
+        The artifact format has no separate config key for it: a repository
+        checkpoint is always accompanied by the metadata.json written next to
+        it by save_and_verify, and its content hash is what the resolved
+        config pins.
+        """
+        path = Path(str(self.cfg_learning["checkpoint_path"]))
+        return str(path.with_name("metadata.json"))
+
     def _learning_observation(self, sat: int, dst_cell: str) -> np.ndarray:
         queues = {d: lnk.data_bits + lnk.ctrl_bits
                   for d, lnk in self.isls[sat].items()}
@@ -3554,8 +3586,36 @@ class Kernel:
             self.mech["learning_discarded_at_stop"] += 1
         self._learning_open.clear()
 
+    def _fixed_policy_action(self, pkt: DataPacket, sat: int, legal):
+        """Ask the LOADED checkpoint for the action, or None when there is none.
+
+        A1: the frozen observation half and the direct decision half must not
+        disagree about who chooses.  Before this helper the frozen half used
+        its own first-legal rule, so a checkpoint could be read, counted and
+        then silently ignored -- which is precisely the failure a real reader
+        is supposed to make impossible.  The mask is the legal set in both
+        halves, so the model can never pick outside it.
+        """
+        if self.fixed_policy is None:
+            return None
+        mask = {a: a in legal for a in _learning.ACTIONS}
+        action = self._learning_action(pkt, sat, mask)
+        if action not in legal:
+            raise KernelError(
+                f"fixed policy selected action {action!r} outside the legal "
+                f"mask {sorted(legal)}")
+        return action
+
     def _learning_action(self, pkt: DataPacket, sat: int, mask: dict) -> str:
         state = self._learning_observation(sat, pkt.dst)
+        if self.fixed_policy is not None:
+            # A1 fixed-inference path.  The observation contract, the mask and
+            # the tie-break are the SAME as the learner path; what is absent is
+            # the transition: no reward is settled, no replay row is written
+            # and no gradient step can happen, because the adapter refuses all
+            # of them.  The adapter owns the call counter, so the artifact can
+            # prove the model -- not the scorer -- produced the action.
+            return self.fixed_policy.choose(state, mask, self.env.now)
         if pkt.learning_state is not None and pkt.learning_reward is None:
             # The only action allowed to be open without a settled reward is
             # deliver: its arrival reward exists only at real delivery. A
@@ -5119,6 +5179,9 @@ class Kernel:
             kind, action = "deliver", "deliver"
             legal, cands, status = ["deliver"], ["deliver"], "ok"
             ta_audit = None
+            chosen = self._fixed_policy_action(pkt, sat, legal)
+            if chosen is not None:
+                action = chosen
         else:
             cands, status = routing.choose_next_hop(
                 self.cfg_rt["policy"], sat, pkt.dst, now, self.geometry,
@@ -5139,7 +5202,11 @@ class Kernel:
             cands, ta_audit = self._time_aligned_order(pkt, sat, now, cands,
                                                        own_q)
             legal = self._forward_legal_now(pkt, sat, now, cands)
-            if legal:
+            chosen = (self._fixed_policy_action(pkt, sat, legal)
+                      if legal else None)
+            if chosen is not None:
+                kind, action = "forward", chosen
+            elif legal:
                 kind, action = "forward", legal[0]
             else:
                 kind, action, legal = "hold", None, []
@@ -5320,7 +5387,7 @@ class Kernel:
                 return
             dl = self.downlinks[sat]
             if dl.room(pkt.bits):
-                if self.learner is not None:
+                if self.learner is not None or self.fixed_policy is not None:
                     action = self._learning_action(
                         pkt, sat,
                         {a: a == "deliver" for a in _learning.ACTIONS},
@@ -5347,7 +5414,7 @@ class Kernel:
         # its configured observation crops away (R1-A2).  C1 is intrinsically
         # one-hop; other contracts use obs_hops=None for the full vis_k cache.
         cache_hops = None
-        if self.learner is not None:
+        if self.learner is not None or self.fixed_policy is not None:
             cache_hops = (1 if self.cfg_rt["contract"] == "C1"
                           else self.cfg_learning.get("obs_hops"))
         cands, status = routing.choose_next_hop(
@@ -5423,7 +5490,7 @@ class Kernel:
             if link.room(pkt.bits):
                 legal.append(d)
         if legal:
-            if self.learner is not None:
+            if self.learner is not None or self.fixed_policy is not None:
                 mask = {a: a in legal for a in _learning.ACTIONS}
                 action = self._learning_action(pkt, sat, mask)
                 if action not in legal:
@@ -5706,9 +5773,15 @@ class Kernel:
             "monitor": self.monitor,
             "learning_algorithm": (
                 self.cfg_learning["algorithm"]
-                if self.learner is not None else "none"),
+                if (self.learner is not None or self.fixed_policy is not None)
+                else "none"),
             "learning_mode": (
-                self.learner.mode if self.learner is not None else "train"),
+                self.learner.mode if self.learner is not None
+                else ("eval" if self.fixed_policy is not None else "train")),
+            # A1: WHICH policy drove the actions.  Reported from the object that
+            # actually exists, not re-derived from the config, so a run cannot
+            # claim a model it did not read.
+            "learning_policy": self.policy_source,
             "topology_recompute_interval_s": self.cfg_topo["recompute_interval_s"],
             "topology_matching": self.cfg_topo["matching"],
         }
@@ -5764,6 +5837,14 @@ class Kernel:
                 self.learner.train_steps > 0 if self.learner.mode == "train"
                 else self.learner.decisions > 0
             )
+        elif self.fixed_policy is not None:
+            # The read receipt and the live counter are merged: the artifact
+            # must show both WHAT was read (hashes, contract, purpose) and that
+            # it really produced actions (calls).
+            learning_result = dict(self.fixed_policy.receipt())
+            counters = self.fixed_policy.counters()
+            learning_result.update(counters)
+            effective["learning"] = int(counters["calls"]) > 0
         # A local kernel cannot self-authorize a scientific result. Mechanism
         # effectiveness is reported above; research eligibility requires an
         # externally anchored review/authorization/deployment receipt and is

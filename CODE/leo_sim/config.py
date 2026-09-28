@@ -179,6 +179,11 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "checkpoint_path": (str, type(None)),
         "checkpoint_sha256": (str, type(None)),
         "checkpoint_metadata_sha256": (str, type(None)),
+        # A1: read the checkpoint with the INFERENCE-ONLY reader
+        # (leo_sim.inference) instead of constructing a training learner.
+        # A fixed-inference run has no replay buffer and no update path, so it
+        # may run under the frozen observation mode a learner may not.
+        "fixed_inference": bool,
         # Exact training continuation bundle.  This is distinct from an
         # eval-only model checkpoint: it binds replay, optimizer/target state,
         # counters and RNG state to the same training contract.
@@ -429,6 +434,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "checkpoint_path": None,
         "checkpoint_sha256": None,
         "checkpoint_metadata_sha256": None,
+        "fixed_inference": False,
         "resume_path": None,
         "resume_sha256": None,
         "gamma": 0.99,
@@ -926,6 +932,30 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(
             "learning.mode=eval with algorithm=ddqn requires "
             "checkpoint_metadata_sha256 (sibling metadata trust anchor)")
+    if lr["fixed_inference"]:
+        # A1: the fixed-inference reader is a DIFFERENT execution path from the
+        # training learner.  Every condition it depends on is checked here so a
+        # configuration cannot ask for a read that has no artifact to read.
+        if lr["algorithm"] != "ddqn":
+            raise ConfigError(
+                "learning.fixed_inference requires learning.algorithm=ddqn (it "
+                "reads the repository DDQN artifact format)")
+        if lr["mode"] != "eval":
+            raise ConfigError(
+                "learning.fixed_inference requires learning.mode=eval: a fixed "
+                "checkpoint is never updated")
+        if lr["checkpoint_path"] is None or lr["checkpoint_sha256"] is None:
+            raise ConfigError(
+                "learning.fixed_inference requires checkpoint_path and "
+                "checkpoint_sha256")
+        if lr["checkpoint_metadata_sha256"] is None:
+            raise ConfigError(
+                "learning.fixed_inference requires checkpoint_metadata_sha256: "
+                "the observation contract lives in the sibling metadata and "
+                "must be pinned")
+        if lr["resume_path"] is not None:
+            raise ConfigError(
+                "learning.fixed_inference cannot load a training resume bundle")
     if lr["mode"] == "eval" and lr["resume_path"] is not None:
         raise ConfigError("learning.mode=eval cannot load a training resume bundle")
     if lr["mode"] == "train" and (lr["checkpoint_path"] is not None

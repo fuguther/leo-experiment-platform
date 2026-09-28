@@ -99,6 +99,12 @@ REQUESTED_KEYS = {"policy", "association", "ge_enabled", "control_enabled", "mon
                   "topology_recompute_interval_s", "topology_matching"}
 REQUESTED_KEYS |= {"rate_model"}
 REQUESTED_KEYS |= {"forward_step_penalty"}
+#: A1: WHICH policy actually chose the actions.  Without it, a fixed-inference
+#: checkpoint run and a deterministic-scorer run would carry the same
+#: requested block and the receipt could not tell them apart.
+REQUESTED_KEYS |= {"learning_policy"}
+LEARNING_POLICIES = ("deterministic_scorer", "training_learner",
+                     "fixed_inference_checkpoint")
 EFFECTIVE_KEYS = {"control_plane", "mcs", "ge", "mbb", "learning",
                    "dynamic_topology"}
 
@@ -185,6 +191,15 @@ def dependency_versions(with_tensorflow: bool = False) -> dict:
     return deps
 
 
+def requested_learning_policy(cfg: dict) -> str:
+    """Which policy drives the action choice, rebuilt from the config alone."""
+    learning = cfg.get("learning") or {}
+    if str(learning.get("algorithm", "none")) == "none":
+        return "deterministic_scorer"
+    return ("fixed_inference_checkpoint" if learning.get("fixed_inference")
+            else "training_learner")
+
+
 def requested_from_config(cfg: dict) -> dict:
     """Requested mechanisms, rebuilt from the resolved config alone."""
     return {
@@ -196,6 +211,7 @@ def requested_from_config(cfg: dict) -> dict:
         "monitor": bool(cfg["execution"]["monitor"]),
         "learning_algorithm": cfg["learning"]["algorithm"],
         "learning_mode": cfg["learning"]["mode"],
+        "learning_policy": requested_learning_policy(cfg),
         # Bind the safe learning objective to the receipt; the resolved config
         # hash alone is not enough for human-readable mechanism audits.
         "forward_step_penalty": cfg["learning"]["forward_step_penalty"],
@@ -879,9 +895,62 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
     learning = ledgers.get("learning")
     requested_learning = receipt.get("mechanisms", {}).get(
         "requested", {}).get("learning_algorithm")
-    if requested_learning == "none":
-        if learning != {"algorithm": "none"}:
-            errors.append("non-learning ledger must be exactly {'algorithm': 'none'}")
+    learning_policy = receipt.get("mechanisms", {}).get(
+        "requested", {}).get("learning_policy")
+    if learning_policy not in LEARNING_POLICIES:
+        errors.append(f"unknown learning_policy {learning_policy!r}")
+    elif learning_policy == "deterministic_scorer" \
+            and requested_learning != "none":
+        errors.append(
+            "learning_policy=deterministic_scorer requires learning_algorithm=none")
+    elif learning_policy == "fixed_inference_checkpoint":
+        # A1: a FIXED-INFERENCE run reads a real artifact and never trains.
+        # It is verified on its own terms: no replay buffer, no gradient step,
+        # no saved training bundle, and the artifact identity it ran against
+        # must be the one the resolved config pinned.
+        if not isinstance(learning, dict):
+            errors.append("fixed-inference run must have a model ledger")
+        else:
+            expected_contract = ((resolved_cfg or {}).get("routing", {})
+                                 .get("contract"))
+            if expected_contract is not None \
+                    and learning.get("contract") != expected_contract:
+                errors.append("model.contract != resolved routing.contract")
+            if learning.get("kind") != "checkpoint_fixed_inference_policy":
+                errors.append("model ledger is not a fixed-inference read")
+            if learning.get("training") is not False \
+                    or learning.get("updates") != 0 \
+                    or learning.get("grad_steps") != 0:
+                errors.append(
+                    "fixed-inference run must not train (training=false, "
+                    "updates=0, grad_steps=0)")
+            if learning.get("transitions") != 0 \
+                    or learning.get("replay_size") != 0:
+                errors.append(
+                    "fixed-inference run must build no replay buffer")
+            if not _is_nonneg_int(learning.get("calls")):
+                errors.append("model.calls must be a non-negative integer")
+            if learning.get("shape_checked") is not True \
+                    or learning.get("finite_probe_checked") is not True:
+                errors.append(
+                    "fixed-inference read must be shape-checked and "
+                    "finite-probe-checked")
+            for key in ("parameter_sha256", "observation_contract_id"):
+                value = learning.get(key)
+                if not (isinstance(value, str) and SHA256_HEX.match(value)):
+                    errors.append(f"model.{key} must be a lowercase sha256")
+            expected_ckpt = (resolved_cfg or {}).get("learning", {}).get(
+                "checkpoint_sha256")
+            if expected_ckpt is not None \
+                    and learning.get("checkpoint_sha256") != expected_ckpt:
+                errors.append(
+                    "model.checkpoint_sha256 != resolved config pin")
+            expected_meta = (resolved_cfg or {}).get("learning", {}).get(
+                "checkpoint_metadata_sha256")
+            if expected_meta is not None \
+                    and learning.get("metadata_sha256") != expected_meta:
+                errors.append(
+                    "model.metadata_sha256 != resolved config pin")
     elif requested_learning == "ddqn":
         if not isinstance(learning, dict):
             errors.append("DDQN run must have a learning ledger")

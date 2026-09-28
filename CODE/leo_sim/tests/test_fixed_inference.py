@@ -99,10 +99,15 @@ def test_a_checkpoint_needs_hashes_not_just_existence(tmp_path):
     right = inference.verify_checkpoint(
         ckpt, inference._sha256_file(ckpt), metadata_path=meta,
         metadata_sha256=inference._sha256_file(meta))
-    assert right["state"] in ("EXTERNAL_BLOCKER", "AVAILABLE")
+    # A1 tightened this boundary: hashes + an installed loader are NOT the
+    # checkpoint being readable.  AVAILABLE is now produced only by
+    # load_fixed_adapter_from_checkpoint, after a shape-checked, finite-value
+    # read; verify_checkpoint stops at LOAD_PENDING.
+    assert right["state"] in ("EXTERNAL_BLOCKER", "LOAD_PENDING")
+    assert right["state"] != "AVAILABLE"
     if right["state"] == "EXTERNAL_BLOCKER":
         assert "loader" in right["reason"]
-    assert right["recovery"] or right["state"] == "AVAILABLE"
+    assert right["recovery"]
 
 
 def test_missing_paths_and_metadata_are_reported_precisely(tmp_path):
@@ -286,7 +291,7 @@ def test_the_checkpoint_load_gate_requires_a_declared_width(tmp_path,
     meta = tmp_path / "metadata.json"
     meta.write_text(json.dumps({"contract": "C3"}))
     monkeypatch.setattr(inference, "verify_checkpoint",
-                        lambda *a, **k: {"state": "AVAILABLE",
+                        lambda *a, **k: {"state": "LOAD_PENDING",
                                          "metadata": {"contract": "C3"}})
     with pytest.raises(inference.FixedInferenceError) as excinfo:
         inference.load_fixed_adapter_from_checkpoint(
@@ -301,7 +306,7 @@ def test_the_checkpoint_load_gate_checks_the_declared_width(tmp_path,
     meta = tmp_path / "metadata.json"
     meta.write_text(json.dumps({"feature_width": 16}))
     monkeypatch.setattr(inference, "verify_checkpoint",
-                        lambda *a, **k: {"state": "AVAILABLE",
+                        lambda *a, **k: {"state": "LOAD_PENDING",
                                          "metadata": {"feature_width": 16}})
     with pytest.raises(inference.FixedInferenceError) as excinfo:
         inference.load_fixed_adapter_from_checkpoint(

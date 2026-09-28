@@ -133,6 +133,18 @@ class ScriptedGeometry:
     def positions(self, t):
         return tuple((0.0, 0.0, 0.0) for _ in range(NUM_SATELLITES))
 
+    def subpoint(self, sat_id, t):
+        """Nadir point of a satellite: (lat_deg, lon_deg, alt_km).
+
+        A1 gap: the LEARNING observation asks for the root satellite own
+        position (leo_sim.learning.destination_features), so the geometry
+        duck-type must answer it.  ScriptedGeometry declared itself as
+        implementing the kernel geometry contract but never needed this method
+        while every scripted scenario ran with learning.algorithm=none; the
+        first real checkpoint read reached it immediately.
+        """
+        return (0.0, 0.0, 500.0)
+
     def gsl_available(self, sat_id, lat, lon, t):
         return self.ground_visible(sat_id, lat, lon, t)
 
