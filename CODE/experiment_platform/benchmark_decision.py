@@ -31,6 +31,7 @@ HONESTY BOUNDS
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import os
@@ -139,77 +140,112 @@ def _null_baseline(iterations=100_000):
                     "per-iteration numbers when it matters"}
 
 
-def _fixture(resolved, rows, geometry):
-    """The RAW kernel observation row the benchmark rebuilds from.
+def _capture_online_decision(resolved, rows, geometry):
+    """Run the fixture and CAPTURE the inputs the online path actually used.
 
-    Returning the row (not a pre-built snapshot) is what lets the benchmark
-    time observation construction as part of the full decision path.
+    The timed closures then call the kernel's own snapshot builder and the
+    shared planner with those exact inputs, so the benchmark measures the real
+    online path instead of a parallel offline reconstruction.
     """
-    sink, timeline = [], []
-    kernel.run_simulation(resolved, rows, geometry=geometry,
-                          decision_sink=sink, timeline_sink=timeline)
-    row = next((r for r in sink if r.get("kind") == "forward"), None)
-    if row is None:
-        raise BenchmarkError("the fixture produced no forward decision")
-    pid = row["pid"]
-    bits = next((float(r["bits"]) for r in rows if r.get("packet_id") == pid),
-                float(resolved["config"]["demand"]["packet_bits"]))
-    from CODE.experiment_platform import time_alignment_compare as cmp
-    snapshot = cmp.build_snapshot(
-        row, resolved, str(resolved["config"]["time_alignment"]["arm"]),
-        None, bits, 0.0,
-        float(resolved["config"]["execution"]["compute_delay_s"]))
-    if not snapshot.legal_directions:
-        raise BenchmarkError("the fixture snapshot has no legal candidate")
-    return row, bits, snapshot
+    captured = {}
+    real = kernel.Kernel._time_aligned_order
+
+    def spy(self, pkt, sat, now, cands, own_q):
+        result = real(self, pkt, sat, now, cands, own_q)
+        audit = (result[1] if isinstance(result, tuple) and len(result) > 1
+                 else None)
+        # capture the first decision that REALLY scored candidates: an early
+        # call with an empty candidate set has no instants to align against.
+        # The caches and the compute-pool state are frozen at THIS instant, so
+        # a later timed rebuild sees exactly what the decision saw (a rebuild
+        # against the end-of-run caches would query fresher advertisements and
+        # is the bug this check exists to catch).
+        if not captured and cands and isinstance(audit, dict):
+            captured.update(
+                kern=self, pkt=pkt, sat=sat, now=float(now),
+                cands=list(cands), own_q=dict(own_q), audit=audit,
+                caches_frozen=copy.deepcopy(self.caches),
+                compute_state={s: self._compute_state_now(s)
+                               for s in range(self.num_sats)})
+        return result
+
+    kernel.Kernel._time_aligned_order = spy
+    try:
+        kern = kernel.Kernel(resolved, rows, geometry=geometry,
+                             decision_sink=[], timeline_sink=[])
+        kern.run()
+    finally:
+        kernel.Kernel._time_aligned_order = real
+    if not captured:
+        raise BenchmarkError("the fixture produced no online decision")
+    captured["arm"] = str(kern.cfg_ta["arm"])
+    captured["rule"] = str(kern.cfg_ta["common_rule"])
+    return captured
 
 
-def _build_message(snapshot, target):
-    """(predictions, etas) for every legal direction, built ONCE."""
-    predictions, etas = {}, {}
-    for direction in snapshot.legal_directions:
-        resource = snapshot.resource_for(direction)
-        eta = ta.estimate_eta(snapshot, direction)
-        etas[direction] = eta
-        predictions[direction] = ta.predict_resource(
-            snapshot.history_for(resource) if resource is not None else (),
-            snapshot_at=snapshot.snapshot_at, target_at=target,
-            method=snapshot.predictor,
-            history_limit=snapshot.history_limit,
-            max_queue_bits=snapshot.max_resource_queue_bits,
-            resource=resource)
-    return predictions, etas
+def _with_frozen_inputs(kern, captured, fn):
+    """Run fn with the kernel's decision inputs restored to the captured
+    instant: same received advertisements, same pool occupancy."""
+    saved_caches = kern.caches
+    saved_state = kern._compute_state_now
+    kern.caches = captured["caches_frozen"]
+    kern._compute_state_now = lambda sat: dict(captured["compute_state"][sat])
+    try:
+        return fn()
+    finally:
+        kern.caches = saved_caches
+        kern._compute_state_now = saved_state
 
 
-def phase_closures(row, resolved, pkt_bits, arm, capture):
+def online_observation_build(captured, arm, capture=None):
+    """The kernel's OWN snapshot builder, including the double build the
+    common-horizon rule performs online, on the frozen decision inputs."""
+    kern = captured["kern"]
+    pkt, sat, now = captured["pkt"], captured["sat"], captured["now"]
+    cands, own_q = captured["cands"], captured["own_q"]
+    rule = captured["rule"]
+
+    def build():
+        if rule == "fixed_horizon":
+            horizon = float(kern.cfg_ta["common_horizon_s"])
+        else:
+            probe = kern._build_ta_snapshot(pkt, sat, now, cands, own_q, arm,
+                                            None)
+            horizon = ta.resolve_common_horizon(probe, rule)
+        return kern._build_ta_snapshot(pkt, sat, now, cands, own_q, arm,
+                                       horizon)
+
+    snap = _with_frozen_inputs(kern, captured, build)
+    if capture is not None:
+        capture["snapshot"] = snap
+    return snap
+
+
+def phase_closures(captured, arm, capture):
     """The REAL online interface, split into its actual phases.
 
-    constructing the observation  -> raw kernel observation record to
-                                    immutable ObservationSnapshot
-    prediction                    -> per-candidate resource prediction + ETA
-    scoring/inference             -> the shared scorer over those inputs
-    mask/selection                -> legality filter and action choice
-    end_to_end                    -> all four in one call, which is what a
-                                    deployment actually pays per decision
+    observation construction -> the kernel's own builder (with the same double
+                               build the common rule performs online)
+    prediction               -> ta.build_predictions (the SAME loop the planner
+                               uses; per-arm query instants)
+    scoring                  -> ta.score_candidates over those inputs
+    mask/selection           -> action choice from the ranking
+    end_to_end               -> ta.plan_decision on the built snapshot: what a
+                               deployment actually pays per decision
+    inference_only           -> scoring + selection with predictions ALREADY
+                               built: no prediction call at all
     """
-    from CODE.experiment_platform import time_alignment_compare as cmp
-
     def observation_build():
         capture["observation_build"] += 1
-        snapshot = cmp.build_snapshot(row, resolved, arm, None, pkt_bits,
-                                      0.0,
-                                      float(resolved["config"]["execution"][
-                                          "compute_delay_s"]))
-        capture["snapshot"] = snapshot
-        return snapshot
+        return online_observation_build(captured, arm, capture)
 
     snapshot = observation_build()
-    target = snapshot.snapshot_at
 
     def prediction():
         capture["prediction"] += 1
-        predictions, etas = _build_message(snapshot, target)
+        predictions, etas, targets = ta.build_predictions(snapshot)
         capture["message"] = (predictions, etas)
+        capture["targets"] = dict(targets)
         return predictions, etas
 
     predictions, etas = prediction()
@@ -228,15 +264,13 @@ def phase_closures(row, resolved, pkt_bits, arm, capture):
 
     def end_to_end():
         capture["end_to_end"] += 1
-        snap = cmp.build_snapshot(row, resolved, arm, None, pkt_bits, 0.0,
-                                  float(resolved["config"]["execution"][
-                                      "compute_delay_s"]))
-        preds, es = _build_message(snap, snap.snapshot_at)
-        sc = ta.score_candidates(snap, preds, es)
-        return sc.ranking[0] if sc.ranking else None
+        snap = online_observation_build(captured, arm)
+        plan = ta.plan_decision(snap)
+        capture["plan_targets"] = dict(plan.targets)
+        capture["plan_ranking"] = list(plan.scored.ranking)
+        return plan.chosen()
 
     def inference_only():
-        # scoring + selection on ALREADY BUILT inputs: no prediction call
         capture["inference_only"] += 1
         sc = ta.score_candidates(snapshot, predictions, etas)
         return sc.ranking[0] if sc.ranking else None
@@ -307,39 +341,88 @@ def pool_sweep(resolved, rows, geometry, pools=POOL_SWEEP,
     return out
 
 
+def _align_arm(resolved, rows, geometry, source, *, warmup, rounds,
+               iterations, cap_s):
+    """Measure the REAL online path for every state-time arm and check that the
+    benchmark queries the same instants the online run did."""
+    table = {}
+    for arm in ta.ARMS:
+        cfg = json.loads(json.dumps(resolved["config"]))
+        cfg["time_alignment"]["arm"] = arm
+        local = config_mod.resolve_config(cfg)
+        captured = _capture_online_decision(local, rows, geometry)
+        capture = {"observation_build": 0, "prediction": 0, "scoring": 0,
+                   "selection": 0, "end_to_end": 0, "inference_only": 0}
+        closures = phase_closures(captured, arm, capture)
+        null = _null_baseline(iterations=10_000)
+        measured = {name: _measure(fn, warmup=warmup, rounds=rounds,
+                                   iterations=iterations, cap_s=cap_s)
+                    for name, fn in closures.items()}
+        snapshot = capture.get("snapshot")
+        real_audit = captured.get("audit") or {}
+        bench_targets = capture.get("plan_targets") or {}
+        real_targets = real_audit.get("query_targets") or {}
+        table[arm] = {
+            "config_sha256": local["sha256"],
+            "legal_directions": list(snapshot.legal_directions),
+            "full_decision": measured["end_to_end"],
+            "inference_only": measured["inference_only"],
+            "phases": {name: measured[name] for name in (
+                "observation_build", "prediction", "scoring", "selection")},
+            "empty_call_baseline": null,
+            "call_counts": {
+                "end_to_end_predict_calls": count_predict_calls(
+                    closures["end_to_end"]),
+                "inference_only_predict_calls": count_predict_calls(
+                    closures["inference_only"]),
+                "prediction_phase_predict_calls": count_predict_calls(
+                    closures["prediction"]),
+                "expected_predict_calls_per_full_decision":
+                    len(snapshot.legal_directions),
+            },
+            "alignment": {
+                "online_query_targets": real_targets,
+                "benchmark_query_targets": bench_targets,
+                "targets_match": bool(real_targets)
+                and _targets_equal(real_targets, bench_targets),
+                "online_ranking": list(real_audit.get("ranking") or []),
+                "benchmark_ranking": list(capture.get("plan_ranking") or []),
+                "ranking_match": (list(real_audit.get("ranking") or [])
+                                  == list(capture.get("plan_ranking") or [])),
+            },
+        }
+    return table
+
+
+def _targets_equal(left, right):
+    if set(left) != set(right):
+        return False
+    return all(abs(float(left[k]) - float(right[k])) <= 1e-12 for k in left)
+
+
 def run_benchmark(resolved, rows, geometry, source, *, warmup, rounds,
                   iterations, cap_s):
-    row, bits, snapshot = _fixture(resolved, rows, geometry)
-    capture = {"observation_build": 0, "prediction": 0, "scoring": 0,
-               "selection": 0, "end_to_end": 0, "inference_only": 0}
-    closures = phase_closures(row, resolved, bits,
-                              str(resolved["config"]["time_alignment"]["arm"]),
-                              capture)
-    null = _null_baseline()
-    measured = {name: _measure(fn, warmup=warmup, rounds=rounds,
-                               iterations=iterations, cap_s=cap_s)
-                for name, fn in closures.items()}
-    full_stats = measured["end_to_end"]
-    inference_stats = measured["inference_only"]
-    # prove the phase split is real: the full path must call the predictor and
-    # inference-only must not call it again
-    call_counts = {
-        "end_to_end_predict_calls": count_predict_calls(closures["end_to_end"]),
-        "inference_only_predict_calls": count_predict_calls(
-            closures["inference_only"]),
-        "prediction_phase_predict_calls": count_predict_calls(
-            closures["prediction"]),
-        "expected_predict_calls_per_full_decision":
-            len(snapshot.legal_directions),
-    }
+    """Per-arm timing on the REAL online path, plus the four-arm alignment."""
+    arms = _align_arm(resolved, rows, geometry, source, warmup=warmup,
+                      rounds=rounds, iterations=iterations, cap_s=cap_s)
+    primary = str(resolved["config"]["time_alignment"]["arm"])
+    capture = arms[primary]
+    snapshot_candidates = capture["call_counts"][
+        "expected_predict_calls_per_full_decision"]
+    full_stats = capture["full_decision"]
+    inference_stats = capture["inference_only"]
+    call_counts = dict(capture["call_counts"],
+                       expected_predict_calls_per_full_decision=
+                       snapshot_candidates)
     return {
         "schema": SCHEMA,
         "identity": artifact_identity.build_identity(
             config=resolved, trace_digest=source.get("trace_sha256"),
             driver_paths=artifact_identity.execution_chain_paths(),
-            extra={"candidates": len(snapshot.legal_directions)}),
+            extra={"candidates": snapshot_candidates}),
         "source": dict(source, config_sha256=resolved["sha256"],
-                       legal_directions=list(snapshot.legal_directions),
+                       legal_directions=list(
+                           arms[primary].get("legal_directions") or []),
                        arm=resolved["config"]["time_alignment"]["arm"],
                        predictor=resolved["config"]["time_alignment"]["predictor"],
                        execution_mode=resolved["config"]["time_alignment"][
@@ -358,12 +441,18 @@ def run_benchmark(resolved, rows, geometry, source, *, warmup, rounds,
             "note": "host/VM measurement only; no satellite hardware exists "
                     "here",
         },
-        "empty_call_baseline": null,
+        "empty_call_baseline": capture["empty_call_baseline"],
         "full_decision": full_stats,
         "inference_only": inference_stats,
-        "phases": {name: measured[name] for name in (
-            "observation_build", "prediction", "scoring", "selection")},
+        "phases": capture["phases"],
         "phase_call_counts": call_counts,
+        "arms": arms,
+        "primary_arm": primary,
+        "alignment_rule": (
+            "every arm was measured through the kernel own snapshot builder "
+            "and the shared plan_decision; targets_match/ranking_match compare "
+            "the benchmark against the audit the ONLINE run recorded for the "
+            "same decision"),
         "units": {"stats": "seconds per call",
                   "requests_per_s": "calls per second"},
         "limits": [
@@ -379,20 +468,42 @@ def run_benchmark(resolved, rows, geometry, source, *, warmup, rounds,
             "produces",
             "inference_only is reported separately and must never be quoted as "
             "the full decision cost",
+            "the four arms are each measured on their OWN query instant "
+            "(targets_match is asserted against the online audit); an earlier "
+            "version queried snapshot_at for every arm and understated the "
+            "decision span",
         ],
     }
+
+
+def _require_enabled(resolved):
+    """The benchmark measures the STATE-TIME decision path; with the feature
+    disabled there is no such path to time, so it refuses instead of quietly
+    timing the historical policy."""
+    if not resolved["config"]["time_alignment"]["enabled"]:
+        raise BenchmarkError(
+            "the benchmark times the state-time decision path, so it requires "
+            "time_alignment.enabled=true; this config has it disabled")
+    return resolved
 
 
 def _design(config_path, scenario, root):
     if scenario:
         resolved, rows, geometry, meta = scripted_scenarios.build(scenario)
+        # a scripted scenario does not enable the feature by default: the
+        # benchmark turns it ON explicitly and says so in the artifact
+        cfg = json.loads(json.dumps(resolved["config"]))
+        cfg["time_alignment"]["enabled"] = True
+        resolved = config_mod.resolve_config(cfg)
         source = {"scenario": scenario, "config": None, "trace_sha256": None,
-                  "rows": len(rows)}
+                  "rows": len(rows),
+                  "time_alignment_forced_enabled": True}
         return resolved, rows, geometry, source
     try:
         resolved = config_mod.load_config_file(str(config_path))
     except (config_mod.ConfigError, FileNotFoundError) as exc:
         raise BenchmarkError(f"config invalid: {exc}") from exc
+    _require_enabled(resolved)
     work = Path(tempfile.mkdtemp(prefix="bench-", dir=str(root)))
     try:
         manifest = trace_mod.compile_trace(resolved, str(work))

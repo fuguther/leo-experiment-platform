@@ -738,14 +738,66 @@ def _scope_of(snapshot: ObservationSnapshot) -> tuple:
     return (snapshot.satellite, None, traffic_class)
 
 
-def score_snapshot_at(snapshot: ObservationSnapshot, target_at: float) -> ScoredCandidates:
-    """Predict every legal candidate at target_at and score them.
+@dataclass(frozen=True)
+class DecisionPlan:
+    """One arm's complete decision input, with the instants it actually used.
 
-    Shared by the online forward path and by build_schedule so a schedule bin
-    and a per-packet query cannot drift apart.
+    targets is the per-direction query instant the arm chose; it is recorded so
+    an online run, an offline replay and a benchmark can be checked against each
+    other instead of each assuming its own instant.
     """
+
+    snapshot: ObservationSnapshot
+    targets: tuple
+    scored: ScoredCandidates
+    horizon_s: float | None
+
+    def chosen(self):
+        return self.scored.ranking[0] if self.scored.ranking else None
+
+    def target_of(self, direction: str):
+        for name, instant in self.targets:
+            if name == direction:
+                return instant
+        return None
+
+
+def resolve_common_horizon(snapshot: ObservationSnapshot,
+                           rule: str | None = None) -> float:
+    """The shared t0+h for the common arm, from candidate ETA offsets.
+
+    Uses the SAME estimator the scorer uses, so the horizon and the per-candidate
+    ETAs cannot come from two different models.
+    """
+    rule = rule or snapshot.common_rule
+    if rule == "fixed_horizon":
+        if snapshot.common_horizon_s is None:
+            raise TimeAlignmentError(
+                "fixed_horizon requires a configured common_horizon_s")
+        return float(snapshot.common_horizon_s)
+    offsets = sorted(estimate_eta(snapshot, d).target_at - snapshot.snapshot_at
+                     for d in snapshot.legal_directions)
+    if not offsets:
+        return 0.0
+    if rule == "mean_eta":
+        return float(sum(offsets) / len(offsets))
+    mid = len(offsets) // 2
+    if len(offsets) % 2:
+        return float(offsets[mid])
+    return float(0.5 * (offsets[mid - 1] + offsets[mid]))
+
+
+def build_predictions(snapshot: ObservationSnapshot):
+    """(predictions, etas, targets) for every legal candidate at the arm instant.
+
+    Extracted so the benchmark can time prediction separately from scoring
+    WITHOUT re-implementing the instant rule: plan_decision calls this, and so
+    does the timer.
+    """
+    reject_future_input(snapshot)
     predictions = {}
     etas = {}
+    targets = {}
     for direction in snapshot.legal_directions:
         resource = snapshot.resource_for(direction)
         eta = estimate_eta(snapshot, direction)
@@ -761,13 +813,39 @@ def score_snapshot_at(snapshot: ObservationSnapshot, target_at: float) -> Scored
                 last_measured_at=last_measured,
                 common_horizon_s=snapshot.common_horizon_s,
                 candidate_target_at=eta.target_at)
+        targets[direction] = target
         predictions[direction] = predict_resource(
             snapshot.history_for(resource) if resource is not None else (),
             snapshot_at=snapshot.snapshot_at, target_at=target,
             method=snapshot.predictor, history_limit=snapshot.history_limit,
             max_queue_bits=snapshot.max_resource_queue_bits, resource=resource,
             allow_past=(snapshot.arm == "stale"))
-    return score_candidates(snapshot, predictions, etas)
+    return predictions, etas, targets
+
+
+def plan_decision(snapshot: ObservationSnapshot) -> DecisionPlan:
+    """THE decision entry point: query instant -> prediction -> score.
+
+    The kernel online path, the offline replay and the benchmark all call THIS
+    function with a snapshot that already carries the arm and its horizon, so
+    the three cannot query different instants for the same arm.
+    """
+    predictions, etas, targets = build_predictions(snapshot)
+    return DecisionPlan(snapshot=snapshot,
+                        targets=tuple(sorted(targets.items())),
+                        scored=score_candidates(snapshot, predictions, etas),
+                        horizon_s=snapshot.common_horizon_s)
+
+
+def score_snapshot_at(snapshot: ObservationSnapshot,
+                      target_at: float | None = None) -> ScoredCandidates:
+    """Backward-compatible wrapper around plan_decision.
+
+    The per-candidate query instant is derived from the arm (see
+    arm_target_at), NOT from the target_at argument; that argument is kept only
+    so older callers keep working and is deliberately ignored.
+    """
+    return plan_decision(snapshot).scored
 
 
 def _last_measured_at(snapshot: ObservationSnapshot, resource):

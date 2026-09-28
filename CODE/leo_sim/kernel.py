@@ -3961,19 +3961,8 @@ class Kernel:
             provenance=(scope,))
 
     def _ta_common_horizon(self, probe, rule):
-        offsets = []
-        for direction in probe.legal_directions:
-            eta = _ta.estimate_eta(probe, direction)
-            offsets.append(eta.target_at - probe.snapshot_at)
-        if not offsets:
-            return 0.0
-        offsets.sort()
-        if rule == "mean_eta":
-            return float(sum(offsets) / len(offsets))
-        mid = len(offsets) // 2
-        if len(offsets) % 2:
-            return float(offsets[mid])
-        return float(0.5 * (offsets[mid - 1] + offsets[mid]))
+        """Delegates to the shared resolver (kept for existing callers)."""
+        return _ta.resolve_common_horizon(probe, rule)
 
     def _time_aligned_order(self, pkt: DataPacket, sat: int, now: float,
                             cands: list, own_q: dict):
@@ -4046,11 +4035,13 @@ class Kernel:
             else:
                 probe = self._build_ta_snapshot(pkt, sat, now, cands, own_q,
                                                 arm, None)
-                horizon = self._ta_common_horizon(probe, rule)
+                # the shared horizon resolver, so the online path and the
+                # benchmark cannot compute different common instants
+                horizon = _ta.resolve_common_horizon(probe, rule)
                 probe = self._build_ta_snapshot(pkt, sat, now, cands, own_q,
                                                 arm, horizon)
-            target = probe.snapshot_at + horizon
-            scored = _ta.score_snapshot_at(probe, target)
+            plan = _ta.plan_decision(probe)
+            scored = plan.scored
         except _ta.TimeAlignmentError as exc:
             raise KernelError(
                 f"time_alignment could not score decision at {now}: {exc}")
@@ -4072,6 +4063,11 @@ class Kernel:
             "eta_targets": {
                 d: _ta.estimate_eta(probe, d).target_at
                 for d in probe.legal_directions},
+            # THE instants this decision actually queried, from the shared
+            # planner: the benchmark is checked against these, not against its
+            # own idea of the arm
+            "query_targets": dict(plan.targets),
+            "arm": probe.arm,
             "eta_unknown_terms": {
                 d: list(_ta.estimate_eta(probe, d).unknown_terms)
                 for d in probe.legal_directions},

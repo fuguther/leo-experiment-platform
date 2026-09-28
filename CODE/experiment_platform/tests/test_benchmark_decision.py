@@ -179,3 +179,44 @@ def test_the_pool_sweep_in_the_acceptance_shape_reports_congestion(tmp_path):
     assert sweep[1]["queued"] > 0
     assert sweep[1]["total_wait_s"] > 0.0
     assert sweep[2]["total_wait_s"] <= sweep[1]["total_wait_s"]
+
+
+# ------------------- S5: the timing must follow the REAL online decision path
+def test_every_arm_queries_the_same_instant_the_online_run_did(tmp_path):
+    doc = _bench(tmp_path)
+    assert doc["primary_arm"]
+    assert set(doc["arms"]) == {"stale", "now", "common", "candidate"}
+    for arm, row in doc["arms"].items():
+        alignment = row["alignment"]
+        assert alignment["online_query_targets"], arm
+        assert alignment["benchmark_query_targets"], arm
+        assert alignment["targets_match"] is True, (arm, alignment)
+        assert alignment["ranking_match"] is True, (arm, alignment)
+        assert (alignment["online_ranking"]
+                == alignment["benchmark_ranking"]), arm
+
+
+def test_the_arms_are_measured_on_different_instants(tmp_path):
+    """The stale arm queries the last measurement, so its target must differ
+    from the projected arms the moment an advertisement exists."""
+    doc = _bench(tmp_path)
+    stale = doc["arms"]["stale"]["alignment"]["online_query_targets"]
+    now = doc["arms"]["now"]["alignment"]["online_query_targets"]
+    assert stale != now, (stale, now)
+
+
+def test_the_observation_build_phase_uses_the_kernel_builder(tmp_path):
+    doc = _bench(tmp_path)
+    for arm, row in doc["arms"].items():
+        phases = row["phases"]
+        assert phases["observation_build"]["stats"]["mean_s"] > 0
+        assert phases["prediction"]["stats"]["mean_s"] > 0
+        assert phases["scoring"]["stats"]["mean_s"] > 0
+        full = row["full_decision"]["stats"]["mean_s"]
+        assert full > phases["scoring"]["stats"]["mean_s"], arm
+        counts = row["call_counts"]
+        assert (counts["end_to_end_predict_calls"]
+                == counts["expected_predict_calls_per_full_decision"]), arm
+        assert counts["inference_only_predict_calls"] == 0, arm
+        assert (counts["prediction_phase_predict_calls"]
+                == counts["expected_predict_calls_per_full_decision"]), arm
