@@ -301,6 +301,24 @@ b_round:
     max_branches: 3
     analytic: 基础利用率 0.8/2.5 = 0.32，突发窗内 2.4/2.5 = 0.96；突发是预声明的压力变换，不是实测突发（data/traffic/README.md
       同义）。
+  - id: mlab_asym
+    business: 非对称多 OD（M-Lab 加权有向环，可达性待预检）
+    profile: CODE/leo_sim/profiles/mlab_measured_od_burst.yaml
+    expectation: asymmetric_candidate
+    parameters:
+      scenario.duration_s: 10.0
+      demand.offered_mbps: 2.0
+      demand.packet_bits: 1000000
+      demand.burst_start_s: 3.0
+      demand.burst_duration_s: 2.0
+      demand.burst_multiplier: 2.0
+      execution.compute_delay_s: 0.001
+      execution.compute_servers_per_satellite: 2
+      time_alignment.enabled: true
+    max_branches: 3
+    status: VALIDITY_PRE_CHECK_PENDING
+    why: 三个已声明场景的候选方向对称，臂无法产生差异；这是唯一保留 M-Lab OD 权重的非对称拓扑（Seattle→Beavercreek→Vancouver
+      有向环）
   deadline_rule: 每个业务场景一个 D：预声明业务截止，或独立开发基准合法候选交付样本 p95×2；该场景所有臂/模式共用
   budgets:
     cell_wall_s: 120
