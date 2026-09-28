@@ -386,10 +386,37 @@
         "t1-s4-46f9308",
         "t1-s5-7440596",
         "t1-s7-377ae9b",
-        "t1-final"
+        "t1-final-a70d65c",
+        "t1-final-8a31496"
       ],
+      "latest_identity": {
+        "run_id": "t1-final-8a31496",
+        "commit": "8a314966bf2cd0508f73225d9b4978bfe4f7e5be",
+        "dirty": false,
+        "status_short": [],
+        "execution_chain_sha256": "e8537aedbcb46858848fe1c4d3234a56997a849fe0e113748b93a22281f0a4ce",
+        "chain_equality": "VM 链 == 本机重算（57 个执行链文件）",
+        "bundle_fingerprint": "334dbbd20a70a236db886eee7c32892773db7f9eb58b0666891c5dfd6991f38e",
+        "acceptance": {"ok": 10, "predicate_failed": 0, "not_ok": 0, "verified_ok": 10},
+        "dev": {"ok": 10, "predicate_failed": 0, "not_ok": 0, "verified_ok": 10},
+        "online_path_p50_s": 0.0005259346216917038,
+        "note": "t1-final-c4dd85f 与 t1-final-a70d65c 的 identity.git.dirty=true 系 runner 假阳性（见 s8_fix），不作为身份依据"
+      },
       "pulled_to": "out/vm/<run-id>/",
       "local_regression": "1275 passed, 2 skipped（pytest 属本机允许项）"
+    },
+    "s8_fix": {
+      "title": "runner 身份假阳性：干净提交上 dirty 恒为 true",
+      "severity": "medium",
+      "status": "FIXED",
+      "root_cause": "t1-vm.sh 用 shell 重定向把 .t1-launch.json 写进本机工作区；重定向目标在命令执行前就被创建，紧随其后的 git status --short 因此总能看见这个未跟踪文件",
+      "affected_evidence": ["t1-final-c4dd85f", "t1-final-a70d65c"],
+      "fix": [
+        "清单改为写入 mktemp -d 暂存目录后再打包上送，本机工作区不再被 runner 写入",
+        ".gitignore 增加 .t1-launch.json 兜底（脚本中途退出时不留脏文件）",
+        "新增 CODE/tests/test_t1_vm_launch_manifest.py：行为复现旧写法的假阳性与新写法的干净结果，并静态钉住暂存位置不变式"
+      ],
+      "verification": "修复后 VM launch.json dirty=false；t1-final-8a31496 工件 identity.git.dirty=false 且 status_short=[]"
     },
     "historical": [
       "本机 34µs / 73.9µs 计时与 out/t1 旧产物：本机历史证据，已由 VM 真实在线路径计时取代",

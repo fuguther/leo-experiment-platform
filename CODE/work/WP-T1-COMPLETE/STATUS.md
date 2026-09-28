@@ -11,7 +11,8 @@
 | 仓库根 | `/Users/lge/Desktop/topic/leo-exp-main` |
 | 分支 | `t1/frozen-branch-and-async-design` |
 | 起始 HEAD | `0876b12dbb0e067a840743dcc57b804d4600e9b0` |
-| 复审轮次 | 53aeb30（R1–R9，已修）→ 2330701（S1–S7，已修） |
+| 复审轮次 | 53aeb30（R1–R9，已修）→ 2330701（S1–S7，已修）→ 本轮 S8（runner 身份假阳性，已修） |
+| 最新证据 | run-id `t1-final-8a31496`；HEAD `8a31496`；`identity.git.dirty=false`；执行链 `e8537aed…` |
 | VM | `ssh vm` = cuda-liguang13；隔离实验根 `/data/论文/leo-t1-wt`；正式部署 `/data/论文/leo-direct-sim` **从未写入** |
 | VM runner | `CODE/scripts/remote/t1-vm.sh sync|run|pull|experiment` |
 | 链一致性 | VM 链 `e8537aed…` == 本机链 `e8537aed…`（执行链已排除 ._ 元数据并远端剪枝） |
@@ -36,16 +37,21 @@
 ```
 # 本机（允许：单元/回归测试）
 python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q
-1275 passed, 2 skipped in 467.75s
+1278 passed, 2 skipped, 1 warning in 454.63s
+  （1275 + 本轮新增 CODE/tests/test_t1_vm_launch_manifest.py 的 3 项）
 
 # VM（实验唯一位置），隔离根 /data/论文/leo-t1-wt
+run-id: t1-final-8a31496   pulled -> out/vm/t1-final-8a31496/
 t1_suite compile  -> 20 cells
-t1_suite validate -> valid true
-t1_suite run --tier acceptance -> ok 10/10（谓词全过，not_ok=0）
+t1_suite validate -> valid true（bundle_fingerprint 334dbbd2…）
+t1_suite run --tier acceptance -> ok 10/10（谓词全过，not_ok=0，result_sha256 逐格核对）
 t1_suite run --tier dev        -> ok 10/10
-report -> run_status ok；common_strong.frozen = False（诚实）
-链一致性: VM == 本机（e8537aed…），平台 Linux-…aarch64
-四臂对齐: targets_match/ranking_match 全 True；真实在线路径 p50 ≈ 510 µs
+report -> run_status ok；common_strong.frozen = False（诚实：开发块配对差恒为 0）
+身份一致性: commit=8a31496…, dirty=false, status_short=[]；VM 链 == 本机重算（e8537aed…）；平台 Linux-…aarch64
+四臂对齐: targets_match/ranking_match 全 True
+真实在线路径 p50 = 526–529 µs（分相：观测构造 398–399 µs｜仅推理 12.07 µs｜调用基线 46 ns）
+有限池: N=1 41 请求 23 排队 | N=2 47 请求 25 排队 | N=0 无界 0 排队
+五模式: per_packet 41 计算请求；per_flow 34 请求 + 7 缓存命中；precomputed/async_point/async_window 各 0
 ```
 
 ## 3. 未做范围（非工程缺口）

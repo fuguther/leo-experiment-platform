@@ -214,25 +214,48 @@ R1 反问例复核（复现脚本 tmp_r1_final.py，已删除）：
 | **S6** | 固定推理模块未接入任何分支/执行路径 | FIXED（真实检查点仍外部阻塞） | `inference` 新增推理专用接口与硬门槛；`kernel.inference_policy`（拒绝与训练 learner 组合）+ `counterfactual` 透传；**真实分支跑通**，掩码强制、参数不变、两次运行前缀动作一致 |
 | **S7** | 正式包未真正冻结；改阈值不改哈希；common_strong 未选择 | FIXED | `formal_package`/`formal_design` 纳入 bundle 指纹（复审的"阈值改 999 仍 valid"现被拒绝）；cell 输入绑定纳入 deadline 依赖文件哈希；`formal_design.ready` 时生成**真实 confirm cell**（种子+冻结 D+身份），未就绪时诚实标 `PENDING_DEV_SELECTION`；`statistics.common_strong` 未冻结时给出原因，主比较标签不再冒称 common_strong |
 
-## VM 执行证据（本轮起，实验只在 VM）
+## VM 执行证据（实验只在 VM）
+
+> 最新一轮 = `t1-final-8a31496`（HEAD `8a31496`，`identity.git.dirty=false`）。
+> `t1-final-a70d65c` 与 `t1-final-c4dd85f` 两次工件的 `identity.git.dirty` 为 **true**，
+> 成因是本轮修掉的 runner 身份假阳性（见下「S8 身份假阳性修复」），
+> **不再作为身份声明依据**；`t1-s7-377ae9b` 及更早的 VM 工件为历史证据，其 507–517 µs 计时已被本轮数字取代。
 
 ```
 ssh vm -> cuda-liguang13   /data 471G 可用   conda: /data/liguang13/conda-envs/leo-i39
 隔离实验根: /data/论文/leo-t1-wt        # 你的正式部署 /data/论文/leo-direct-sim 从未被写入
 runner: CODE/scripts/remote/t1-vm.sh sync|run|pull|experiment
 
-链一致性: VM 链 e8537aed… == 本机链 e8537aed…（剪除 556 个 macOS ._ 残留文件后）
-工件身份: identity.git.source=launch_manifest, commit=377ae9b…, dirty=False
-平台:     Linux-6.6.0-…aarch64        # 不再是 macOS
+run-id:   t1-final-8a31496        pulled -> out/vm/t1-final-8a31496/
+工件身份: identity.git.source=launch_manifest, commit=8a31496…, dirty=false, status_short=[]
+链一致性: VM 链 e8537aed… == 本机重算 e8537aed…（57 个执行链文件）
+平台:     Linux-6.6.0-…aarch64   python 3.11.15 / simpy 4.0.1 / numpy 1.24.3
 
 t1_suite compile  -> 20 cells
-t1_suite validate -> valid true
+t1_suite validate -> valid true（bundle_fingerprint 334dbbd2…）
 t1_suite run --tier acceptance -> {"ok":10,"error":0,"timeout":0,"predicate_failed":0,"not_ok":0}
 t1_suite run --tier dev        -> {"ok":10,"error":0,"timeout":0,"predicate_failed":0,"not_ok":0}
-report -> run_status ok；statistics.common_strong.frozen = False（诚实）
+report -> run_status ok；verified_ok 10/10；逐格 predicate_passed=true 且盘上 result_sha256 与报告内嵌哈希一一相等
+statistics.common_strong.frozen = False（开发块配对差恒为 0、无判别力——诚实标注，非工程缺口）
 四臂对齐（VM）: candidate/common/now/stale targets_match=True ranking_match=True
-真实在线路径端到端 p50（VM，含观测构造+预测+评分+选动作）: 507–517 µs
+真实在线路径（观测构造→预测→评分→排名→选动作）p50: 526–529 µs
+  分相 p50: 观测构造 398–399 µs | 仅推理 12.07 µs | 计时调用基线 46 ns
+  调用计数: end_to_end predict=2/次决策（= 每候选一次）；inference_only predict=0
+有限池: N=0 无界 56 请求 0 排队 | N=1 41 请求 23 排队 max_wait 0.312 s | N=2 47 请求 25 排队 max_wait 0.112 s
+五模式（acceptance）: per_packet 41 次计算请求 / per_flow 34 次请求 + 7 次缓存命中 /
+  precomputed 0 / async_point 0 / async_window 0（异步各自 32 次安装，后台计算另计）
 ```
+
+## S8 身份假阳性修复（本轮新增）
+
+`t1-vm.sh` 用 shell 重定向把 `.t1-launch.json` 写进本机工作区，而重定向目标在命令执行前
+就被创建；紧随其后的 `git status --short` 因此总能看见这个未跟踪文件——干净提交上 `dirty`
+也恒为 true。该假阳性已进入 `c4dd85f`、`a70d65c` 两次拉回工件的身份声明。
+
+- 清单改为写入 `mktemp -d` 暂存目录后再上送，本机工作区不再被 runner 写入
+- `.gitignore` 增加 `.t1-launch.json` 兜底（脚本中途退出时不留脏文件）
+- 新增 `CODE/tests/test_t1_vm_launch_manifest.py`：行为复现旧写法的假阳性、新写法的干净结果，并静态钉住暂存位置不变式
+- 修复后实测：VM `launch.json` `dirty=false`；`t1-final-8a31496` 工件 `identity.git.dirty=false` 且 `status_short=[]`
 
 ## 仍未做（未做范围）
 
