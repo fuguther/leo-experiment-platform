@@ -1194,8 +1194,21 @@ def _statistics_summary(run_dir, rows):
     blocks = []
     excluded = []
     for row in rows:
-        if row.get("schema") != "time-alignment-compare/v1":
+        schema = row.get("schema")
+        if not schema:
+            # The cell produced no readable result at all.  It is a failed
+            # BLOCK CANDIDATE, not a different kind of cell, so it must be
+            # listed with its reason.  The schema filter used to run first
+            # and silently dropped these from `excluded` (review S4-d).
+            excluded.append({
+                "unit": row.get("cell_id"),
+                "reason": (f"no readable result (recorded status "
+                           f"{row.get('status')!r}, schema {schema!r}"
+                           + (f", {row['invalid_reason']}"
+                              if row.get("invalid_reason") else "") + ")")})
             continue
+        if schema != "time-alignment-compare/v1":
+            continue          # a different kind of cell: never a block
         if row.get("status") != "ok":
             excluded.append({"unit": row["cell_id"],
                              "reason": f"cell status {row.get('status')}"})
