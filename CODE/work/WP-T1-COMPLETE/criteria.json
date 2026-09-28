@@ -454,6 +454,14 @@
      "formal": 0
     },
     "fix": "tiers.acceptance 只含机制夹具；status != READY 的场景不进入运行层（无效场景留在合同里带实测理由）",
+    "fix_applied": {
+     "evidence": "两个用例：2 passed in 190.74s（此前各自 6-8 分钟）",
+     "semantics_unchanged": "同一批代码路径与谓词，只缩小矩阵；平台语义未变",
+     "what": [
+      "新增 _small_contract/_small_compiled 夹具：单开发种子 + b_round 场景标记为夹具跳过；两个最重的 dev 层用例改用它",
+      "顺带修掉一个真 bug：_dev_cells 的负载扫描用 seeds[1]，开发种子少于 2 个时 IndexError"
+     ]
+    },
     "full_file_run_is_not_completable_locally": {
      "cause": "该文件的多个用例各自要跑整层 dev（39 格，含 24 星 40 s 走廊与突发场景，由 subprocess 拉起），累计内存/时间超过本机这条流水线的上限。",
      "evidence": [

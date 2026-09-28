@@ -21,6 +21,33 @@ def _run(*args):
         cwd=str(ROOT), capture_output=True, text=True, timeout=1800, check=False)
 
 
+def _small_contract(tmp_path):
+    """A contract whose dev tier is SMALL ENOUGH for this machine to finish.
+
+    Several tests only need "a dev tier that runs".  Running them on the full
+    contract (39 dev cells, four seeds, plus the 24-satellite corridor and the
+    burst scenario in the b_round tier) made the whole file exceed this
+    pipeline resource limit, and the process was killed part way with no
+    traceback (measured twice).  The fixture keeps the SAME code paths and
+    predicates and only shrinks the matrix: one development seed, and the
+    b_round scenarios marked as not-for-this-fixture.
+    """
+    contract = yaml.safe_load(CONTRACT.read_text())
+    contract.setdefault("statistics", {})["dev_seeds"] = [7]
+    for spec in (contract.get("b_round") or {}).get("scenarios") or []:
+        spec["status"] = "FIXTURE_SKIPPED"
+    path = tmp_path / "contract-small.yaml"
+    path.write_text(yaml.safe_dump(contract, allow_unicode=True))
+    return path
+
+
+def _small_compiled(tmp_path):
+    out = tmp_path / "compiled-small"
+    done = _run("compile", "--contract", str(_small_contract(tmp_path)),
+                "--out", str(out))
+    assert done.returncode == 0, done.stdout + done.stderr
+    return out
+
 def _compiled(tmp_path):
     out = tmp_path / "compiled"
     done = _run("compile", "--contract", str(CONTRACT), "--out", str(out))
@@ -299,7 +326,7 @@ def test_a_cell_whose_predicate_fails_is_not_reported_ok(tmp_path):
 
 
 def test_the_dev_tier_runs_with_behaviour_predicates(tmp_path):
-    bundle_dir = _compiled(tmp_path)
+    bundle_dir = _small_compiled(tmp_path)
     run_dir = tmp_path / "dev"
     done = _run("run", "--bundle", str(bundle_dir), "--tier", "dev",
                 "--out", str(run_dir))
@@ -544,7 +571,7 @@ def test_a_ready_design_without_a_frozen_deadline_is_refused(tmp_path):
 
 
 def test_the_common_strong_state_is_reported_with_its_reason(tmp_path):
-    bundle_dir = _compiled(tmp_path)
+    bundle_dir = _small_compiled(tmp_path)
     run_dir = tmp_path / "dev"
     _run("run", "--bundle", str(bundle_dir), "--tier", "dev",
          "--out", str(run_dir))

@@ -632,14 +632,16 @@ def _dev_cells(contract, bundle_dir):
                  "require_background_cost": True}))
     # ---- offered load as a SINGLE factor, reaching the resolved config ----
     for load in ("0.5", "2.0", "6.0"):
-        load_cfg = _seed_config(contract, bundle_dir, seeds[1], dict(
+        # the LAST declared seed, so a contract with a single development seed
+        # still compiles (this crashed with IndexError before)
+        load_cfg = _seed_config(contract, bundle_dir, seeds[-1], dict(
             params, **{"demand.offered_mbps": float(load)}),
             tag=f"load{load}")
         cells.append(_task_cell(
             f"dev-offered-{load}", "dev_sweep", "network_alignment", load_cfg,
             extra_args=["--arms", "candidate"],
             description=f"single factor: offered load {load} Mbps",
-            seed=seeds[1],
+            seed=seeds[-1],
             require={"require_task": "network_alignment",
                      "arms": ["candidate"], "min_decisions_per_arm": 1,
                      "min_satellites": 1}))
