@@ -277,6 +277,67 @@ def project_horizon_candidates(contract_path, out_path, root=None):
     return projected
 
 
+def _b_cells(contract, bundle_dir):
+    """B0/B1: the PRE-DECLARED business scenarios, one small cell set each.
+
+    Every scenario runs the SAME task types with the SAME parameter
+    application, so experiment one and experiment two differ in SCENARIO,
+    never in plumbing.  The scenario list is read from the contract, so a
+    scenario cannot be added after seeing which one wins.
+    """
+    plan = (contract.get("b_round") or {}).get("scenarios") or []
+    if not plan:
+        return []
+    cells = []
+    for spec in plan:
+        sid = str(spec["id"])
+        profile = str(spec["profile"])
+        params = dict(spec.get("parameters") or {})
+        cfg = _seed_config(contract, bundle_dir, 7, params, tag=f"b-{sid}",
+                           profile=profile)
+        cells.append(_task_cell(
+            f"b-{sid}-branch-seed-7", "b_round", "branch_alignment", cfg,
+            extra_args=["--deadline-s", str(DEV_DEADLINE_S),
+                        "--max-branches", "12",
+                        "--window-start", str(DEV_WINDOW_S[0]),
+                        "--window-end", str(DEV_WINDOW_S[1])],
+            description=f"{sid}: offline branch block", seed=7,
+            require={"require_task": "branch_alignment",
+                     "require_sampling_rule": t1_tasks.BRANCH_SAMPLING_RULE,
+                     "min_branches": 1}))
+        cells.append(_task_cell(
+            f"b-{sid}-network-seed-7", "b_round", "network_alignment", cfg,
+            description=f"{sid}: four online arms, whole network", seed=7,
+            require={"require_task": "network_alignment",
+                     "arms": list(t1_tasks.NETWORK_ARMS),
+                     "min_decisions_per_arm": 1, "min_satellites": 1}))
+        cells.append(_cell(
+            f"b-{sid}-benchmark", "b_round",
+            "CODE.experiment_platform.benchmark_decision",
+            ["--config", str(cfg)],
+            f"{sid}: decision-path timing and finite-pool sweep", seed=7,
+            predicate={"kind": "benchmark",
+                       "require": {"min_complete_rounds": 1,
+                                   "pool_servers": [1, 2],
+                                   "min_pool_requests": True,
+                                   "require_model_provenance": True,
+                                   "require_alignment": True}}))
+    hotspot = next((s for s in plan if s["id"] == "fixed_hotspot"), None)
+    if hotspot is not None:
+        params = dict(hotspot.get("parameters") or {})
+        params["time_alignment.execution_mode"] = "async_window"
+        cfg = _seed_config(contract, bundle_dir, 7, params, tag="b-modes",
+                           profile=str(hotspot["profile"]))
+        cells.append(_task_cell(
+            "b-fixed_hotspot-execution-modes", "b_round", "execution_modes",
+            cfg, description="the five execution modes on the declared hotspot",
+            seed=7,
+            require={"require_task": "execution_modes",
+                     "modes": list(t1_tasks.EXECUTION_MODES),
+                     "require_background_cost": True}))
+    return cells
+
+
 def _acceptance_cells(contract, bundle_dir):
     """A small, deliberately non-exhaustive acceptance matrix.
 
@@ -652,7 +713,8 @@ def _formal_cells(contract, bundle_dir):
                    "sample_size": design.get("sample_size")}
 
 
-def _seed_config(contract, bundle_dir, seed, params=None, tag=None):
+def _seed_config(contract, bundle_dir, seed, params=None, tag=None,
+                 profile=None):
     """Write a per-seed copy of the frozen branch profile into the bundle.
 
     A2: the SAME apply_parameters() the confirmation tier uses writes the
@@ -661,7 +723,7 @@ def _seed_config(contract, bundle_dir, seed, params=None, tag=None):
     this the development profile hard-coded a 2 Mbps offered load that no
     frozen parameter controlled, so a "frozen" horizon was metadata only.
     """
-    profile = contract.get("source", {}).get(
+    profile = profile or contract.get("source", {}).get(
         "constellation_profile",
         "CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml")
     src = REPO_ROOT / profile
@@ -671,6 +733,11 @@ def _seed_config(contract, bundle_dir, seed, params=None, tag=None):
     doc.setdefault("scenario", {})
     if isinstance(doc["scenario"], dict):
         doc["scenario"]["seed"] = int(seed)
+    doc.setdefault("source", {})
+    if isinstance(doc["source"], dict):
+        # B0: record WHICH declared scenario profile this config came from, so a
+        # result can never be attributed to the wrong business class.
+        doc["source"]["scenario_profile"] = profile
     apply_parameters(doc, params)
     configs = Path(bundle_dir) / "configs"
     configs.mkdir(exist_ok=True)
@@ -721,9 +788,10 @@ def compile_bundle(contract_path, out_dir):
     out_dir.mkdir()
     horizon_candidates = _load_horizon_candidates(contract)
     confirm_cells, formal = _formal_cells(contract, out_dir)
+    b_cells = _b_cells(contract, out_dir)
     cells = (_acceptance_cells(contract, out_dir) + _dev_cells(contract,
                                                               out_dir)
-             + confirm_cells)
+             + b_cells + confirm_cells)
     if len(cells) > budgets["max_cells"]:
         raise BudgetExceeded(
             f"{len(cells)} cells exceed the pre-declared max_cells "
@@ -750,6 +818,7 @@ def compile_bundle(contract_path, out_dir):
             "acceptance": [c["cell_id"] for c in cells
                            if c["group"] != "dev_sweep"],
             "dev": [c["cell_id"] for c in cells if c["group"] == "dev_sweep"],
+            "b_dev": [c["cell_id"] for c in cells if c["group"] == "b_round"],
             "formal": [c["cell_id"] for c in confirm_cells],
         },
         "formal_design": contract.get("formal_design") or {"ready": False},

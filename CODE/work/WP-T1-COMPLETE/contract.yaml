@@ -244,3 +244,55 @@ formal_design:
   horizon_candidates_file: CODE/work/WP-T1-COMPLETE/horizon_candidates.json
   horizon_candidates_note: 由 VM 开发基准投影，见同目录 horizon_candidates.json；分位数来源 development_baseline_candidate_eta_offsets，样本
     949
+b_round:
+  note: 第二轮：预声明业务场景、来源与预算。场景选择不按 candidate 的胜负调整；同一场景所有臂/模式共用同一个 D。
+  sources:
+    od_weights: CODE/data/traffic/mlab_2026-05-27.csv（M-Lab 小时级城际代理，只作 OD 权重）
+    burst: 预声明突发窗是压力变换，不是实测突发
+    packet_bytes:
+    - 372
+    - 891
+    - 1500
+    packet_bits_note: 固定包长作敏感性；不伪称真实包分布
+    load_note: 100 Mbps 是情景输入，不是已测单星负载
+  scenarios:
+  - id: steady_uniform
+    business: 平稳较均匀（阴性对照）
+    profile: CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml
+    expectation: negative_control
+    parameters:
+      demand.offered_mbps: 0.5
+      demand.packet_bits: 1000000
+      scenario.duration_s: 70.0
+    measured: t1-five2-52d551f：四臂与五候选同值，不区分
+  - id: fixed_hotspot
+    business: 固定热点（单 OD 走廊，0.8×ISL 容量）
+    profile: CODE/leo_sim/profiles/t1_pressure_corridor.yaml
+    expectation: discriminating_candidate
+    parameters:
+      demand.offered_mbps: 8.0
+      demand.packet_bits: 1000000
+      scenario.duration_s: 180.0
+      time_alignment.enabled: true
+      execution.compute_delay_s: 0.001
+      execution.compute_servers_per_satellite: 2
+    analytic: 每条走廊链路承载 offered_mbps，期望有向 ISL 利用率 = min(1, F/isl_rate_mbps) = 0.8
+  - id: burst_multiod
+    business: 变化热点/突发（M-Lab OD 权重 + 预声明突发窗）
+    profile: CODE/leo_sim/profiles/mlab_multiod_burst_t0_queue_280x14_e25_10mbps.yaml
+    expectation: stress_transform
+    parameters:
+      scenario.duration_s: 120.0
+      time_alignment.enabled: true
+      execution.compute_delay_s: 0.001
+      execution.compute_servers_per_satellite: 2
+  deadline_rule: 每个业务场景一个 D：预声明业务截止，或独立开发基准合法候选交付样本 p95×2；该场景所有臂/模式共用
+  budgets:
+    cell_wall_s: 120
+    max_cells: 120
+    total_wall_s: 7200
+    note: 沿用现有上限；规模不适配时先缩小时窗并生成新身份，保留业务机制
+  calibration_plan:
+  - 固定包长 372/891/1500 B；有限池 N=1/2/4，无界 N=0 仅作负对照
+  - 按目标 rho 构造受控请求流并验证等待/积压与守恒
+  - 确定性评分器与真实文件模型分开计时，不共用同一个数
