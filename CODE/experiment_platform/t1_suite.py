@@ -323,16 +323,27 @@ def freeze_scenario_deadlines(contract_path, out_dir, root=None):
                                          "measurement window: the scenario "
                                          "does not activate the mechanism"}
                 continue
-            decision_id = int(eligible[0]["decision_id"])
-            document = t1_tasks.tac.compare(resolved, rows, geometry,
-                                            decision_id, None, source)
-            delays = [float(c["outcome"]["delay_s"])
-                      for c in (document.get("candidates") or {}).values()
-                      if c.get("valid")
-                      and (c.get("outcome") or {}).get("delay_s") is not None]
+            # D must come from the AGGREGATED development-baseline sample, not
+            # from one branch: with a single branch the p95 IS the maximum, so
+            # D = 2 x max and every candidate lands at loss 0.5 by construction
+            # (measured on the VM: all four arms read exactly 0.5000).
+            limit = int(spec.get("freeze_branches",
+                                 max(int(spec.get("max_branches", 3)) * 4, 12)))
+            delays, used = [], []
+            for item in eligible[:limit]:
+                decision_id = int(item["decision_id"])
+                document = t1_tasks.tac.compare(resolved, rows, geometry,
+                                                decision_id, None, source)
+                got = [float(c["outcome"]["delay_s"])
+                       for c in (document.get("candidates") or {}).values()
+                       if c.get("valid")
+                       and (c.get("outcome") or {}).get("delay_s") is not None]
+                if got:
+                    delays.extend(got)
+                    used.append(decision_id)
             if not delays:
                 frozen[sid] = {"status": "NO_DELIVERED_CANDIDATE",
-                               "decision_id": decision_id}
+                               "branches": len(used)}
                 continue
             report = t1_stats.default_deadline(delays)
             path = out_dir / f"deadline_{sid}.json"
@@ -341,7 +352,8 @@ def freeze_scenario_deadlines(contract_path, out_dir, root=None):
                            "deadline_s": report["deadline_s"],
                            "samples": len(delays),
                            "weak": bool(report.get("weak")),
-                           "decision_id": decision_id,
+                           "branches_used": len(used),
+                           "branch_ids": used,
                            "file": str(path),
                            "file_sha256": _sha256_file(path),
                            "rule": report.get("rule")}
