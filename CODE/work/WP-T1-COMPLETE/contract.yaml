@@ -1,36 +1,28 @@
-# WP-T1-COMPLETE 冻结实验语义合同
-#
-# 冻结计划书第 1/2 节。凡本文件写死的值都是工程选择或诊断假设，
-# 不是实测结论、不是星载标定值、不是文献结论。
-
 schema: wp-t1-complete-contract/v1
-frozen_at_sha: "0876b12dbb0e067a840743dcc57b804d4600e9b0"
+frozen_at_sha: 0876b12dbb0e067a840743dcc57b804d4600e9b0
 branch: t1/frozen-branch-and-async-design
-
-question: >-
-  在同样可收到的本地与邻居历史信息下，对齐候选资源的预计使用时刻，
-  能否改善选择；计入计算与更新成本后，这种改善能否保留？
-
+question: 在同样可收到的本地与邻居历史信息下，对齐候选资源的预计使用时刻， 能否改善选择；计入计算与更新成本后，这种改善能否保留？
 layers:
   experiment_1: 状态时间语义的价值（理想信息定界 + 可在线预测实现多少）
   experiment_2: 计算与生效方式（逐包 vs 后台更新/复用；另设预计算、按流复用对照）
-
-# ---- 1.2 异步首版定义 ----
 async_definition:
   object: path_next_hop_schedule
-  scope: [satellite_id, destination_cell, traffic_class]
-  default_traffic_class: "default"
+  scope:
+  - satellite_id
+  - destination_cell
+  - traffic_class
+  default_traffic_class: default
   cross_flow_reuse_allowed: true
   cross_flow_reuse_required_as_validity_gate: false
   does_not_change_input_traffic: true
   does_source_rate_control: false
   does_probabilistic_splitting: false
-  modes: [async_point, async_window]
+  modes:
+  - async_point
+  - async_window
   async_point_bins: 1
-  async_window_bins_default: 4        # 工程默认设计值，可做 1/4/8 开发期敏感性
+  async_window_bins_default: 4
   window_bins_is_literature_result: false
-
-# ---- 1.3 时间轴（不复用一个字段承载多个意义）----
 timeline_fields:
   state_measured_at: 每项广告状态在来源处实际测量的时刻
   received_at: 本星收到该条状态的时刻
@@ -45,12 +37,10 @@ compat:
   t_decision_start: 请求/冻结时刻（保持兼容）
   t_measure: 旧字段；保留时必须标明旧语义；邻居真实测量时刻取各条广告
 invariants:
-  - 预测不改变原始 state_measured_at
-  - 信息年龄不是包额外经历的一段时延，不得重复加进 E2E
-  - 在线策略统一在请求时冻结输入；计算排队期间不悄悄刷新
-  - 在线权限：策略函数只接收不可变 ObservationSnapshot
-
-# ---- 1.4 目标资源与候选 ----
+- 预测不改变原始 state_measured_at
+- 信息年龄不是包额外经历的一段时延，不得重复加进 E2E
+- 在线策略统一在请求时冻结输入；计算排队期间不悄悄刷新
+- 在线权限：策略函数只接收不可变 ObservationSnapshot
 resource:
   candidate: 本星合法下一跳方向
   prediction_object: 候选邻星的指定有向出口 (peer_sat, egress_direction)
@@ -58,24 +48,22 @@ resource:
   selection_rule: 可见拓扑最短剩余路径 + 稳定方向破同（不得事后挑最有利出口）
   missing_rule: 无可见下游路径时返回明确缺失原因
   mismatch_handling: 真正出口与预计出口不同 -> 保留 E2E/命运，记 resource_mismatch，不入同资源预测误差统计
-  downlink_separate: true   # 下游直接投递单列 downlink 资源，不混池
+  downlink_separate: true
   main_prediction_instant: 包在邻星完成必要处理/保持后进入该有向出口的时刻
   diagnostic_only_instant: peer_arrival
-
-# ---- 2.1 在线四组 ----
 arms:
-  - id: stale
-    input_time: 原样使用最后已收到的测量值
-    role: 基准
-  - id: now
-    input_time: 用同一历史信息推演到 t0
-    role: 真正的当前补偿
-  - id: common
-    input_time: 推演到所有候选共用的 t0+h
-    role: 共同未来对照
-  - id: candidate
-    input_time: 推演到各候选的预计资源使用时刻
-    role: 待检验方案
+- id: stale
+  input_time: 原样使用最后已收到的测量值
+  role: 基准
+- id: now
+  input_time: 用同一历史信息推演到 t0
+  role: 真正的当前补偿
+- id: common
+  input_time: 推演到所有候选共用的 t0+h
+  role: 共同未来对照
+- id: candidate
+  input_time: 推演到各候选的预计资源使用时刻
+  role: 待检验方案
 shared_across_arms:
   snapshot_at: t0
   received_history: same
@@ -87,63 +75,84 @@ shared_across_arms:
 refresh:
   is: 执行语义诊断
   may_be_renamed_now: false
-common_horizon_dev_candidates: [mean_eta_offset, median_eta_offset,
-                                p25_offset, p50_offset, p75_offset]
+common_horizon_dev_candidates:
+- mean_eta_offset
+- median_eta_offset
+- p25_offset
+- p50_offset
+- p75_offset
 common_selection: 开发集按主损失选定；破同优先中位数、再按配置顺序；冻结为 common_strong
-
-# ---- 2.2 隔离理想信息诊断 ----
 oracle:
-  scope: [oracle_now, oracle_common, oracle_candidate]
+  scope:
+  - oracle_now
+  - oracle_common
+  - oracle_candidate
   offline_only: true
   method: 相同分支起点分别强制每个候选并完整重演；各候选自己的分支提供真值
   forbid: 从一条基线轨迹复制所谓所有动作的未来真值
   zero_cost_diagnostic:
-    allows: [frozen, compute_delay_s=0]
+    allows:
+    - frozen
+    - compute_delay_s=0
     semantics: 同一仿真时刻冻结、选择、提交
     epsilon_substitute: forbidden
     fallback_to_refresh: forbidden
     same_instant_order: 固定顺序写入本文件（见 p2_same_instant_order）
   future_state_input_limit: 只含命名资源在查询时刻的状态
-  forbid_inputs: [该动作的最终 E2E, 交付命运, 其他候选最终结果]
+  forbid_inputs:
+  - 该动作的最终 E2E
+  - 交付命运
+  - 其他候选最终结果
   regret_computed_by: 独立评估器
   offline_reconstruction: 允许从完整分支事件轨迹重建时刻真值
   must_exclude: 目标包自身 + 它按 FIFO 排在后方的普通包
   control_priority_jump: 单独按事件处理
-
-# ---- 2.3 预测器与评分 ----
 predictors:
-  - id: hold_last
-  - id: bounded_linear
-    history_limit: 8
-    history_requirement: 已收到且源时间严格递增的同资源广告
-    slope: 相邻差分中位数
-    formula: "max(0, q_last + slope*(target - t_last))"
-    clamp: 可知队列容量
-    fallback: 只有一条有效记录时回退 hold_last
-online_forbidden: [邻星未广告的到达率, 实时队列, 真实未来链路]
+- id: hold_last
+- id: bounded_linear
+  history_limit: 8
+  history_requirement: 已收到且源时间严格递增的同资源广告
+  slope: 相邻差分中位数
+  formula: max(0, q_last + slope*(target - t_last))
+  clamp: 可知队列容量
+  fallback: 只有一条有效记录时回退 hold_last
+online_forbidden:
+- 邻星未广告的到达率
+- 实时队列
+- 真实未来链路
 ad_new_fields: 若新增广告字段，所有在线臂同时接收并计入增加的控制比特
-eta_terms: [已知计算排队, 配置服务时长, 本地等待估计, 发送, 传播, 可知的邻星处理时长]
+eta_terms:
+- 已知计算排队
+- 配置服务时长
+- 本地等待估计
+- 发送
+- 传播
+- 可知的邻星处理时长
 eta_unknown_holds: 不伪装成已知，给出 eta_method 与误差；每个加数对应不重叠区间
 scoring:
   units: seconds
-  terms: [本地预计等待/发送/传播/邻星处理, 目标有向出口预测工作量/可知服务率,
-          固定可见拓扑剩余传播代价]
+  terms:
+  - 本地预计等待/发送/传播/邻星处理
+  - 目标有向出口预测工作量/可知服务率
+  - 固定可见拓扑剩余传播代价
   is_e2e_equation: false
   arms_change_only: 预测查询时刻
 missing_policy: 队列缺失、速率不可知、无资源映射 -> missing（不当 0，不混为 +Inf）
 fallback: 对所有臂使用同一保守后备方向排序并计数，保留该样本
 scenario_validity: 主场景大部分请求都走后备 -> 判定场景未充分激活机制，不得据此宣称算法有效/无效
-
-# ---- 2.4 在线权限边界 ----
 types:
-  - ObservationSnapshot   # 不可变；本地可观测队列/计算池、已收到广告历史、当前合法方向、允许的几何/链路参数
-  - ResourcePrediction
-  - BranchOutcome
-forbidden_in_snapshot: [Kernel, truth/audit sink, 完整 trace, 其他星缓存引用]
-forbidden_online_inputs: [TruthSample, BranchOutcome]
+- ObservationSnapshot
+- ResourcePrediction
+- BranchOutcome
+forbidden_in_snapshot:
+- Kernel
+- truth/audit sink
+- 完整 trace
+- 其他星缓存引用
+forbidden_online_inputs:
+- TruthSample
+- BranchOutcome
 tests: trap 对象确保访问未来或邻星缓存时失败；来源清单 + 未来信息负测试
-
-# ---- 3.1 配置默认值（诊断假设，非星载参数）----
 config:
   time_alignment:
     enabled: false
@@ -154,7 +163,7 @@ config:
     common_horizon_s: null
     execution_mode: per_packet
     per_flow_ttl_s: 0.5
-    query_delay_s: 0.000001
+    query_delay_s: 1.0e-06
   async_routing:
     enabled: false
     update_interval_s: 0.5
@@ -168,22 +177,29 @@ config:
     compute_delay_s: 0.0001
     compute_servers_per_satellite: 2
 constraints:
-  - 间隔和窗口为正数；延迟有限且非负；bins 为正整数
-  - async_point 强制 1 段；async_window 使用配置值
-  - enabled 与 execution_mode 矛盾时拒绝，不默默回退
-  - 允许计算时间长于更新周期，采用触发合并
-  - query_delay_s 由全部执行模式的公共查询服务承担；首版每星单服务台，所有模式相同
-  - "query_delay_scan: [0, 基准值]；may_charge_only_one_arm: false"
+- 间隔和窗口为正数；延迟有限且非负；bins 为正整数
+- async_point 强制 1 段；async_window 使用配置值
+- enabled 与 execution_mode 矛盾时拒绝，不默默回退
+- 允许计算时间长于更新周期，采用触发合并
+- query_delay_s 由全部执行模式的公共查询服务承担；首版每星单服务台，所有模式相同
+- 'query_delay_scan: [0, 基准值]；may_charge_only_one_arm: false'
 dev_sweeps:
-  update_interval_s: [0.1, 0.5, 2.0]
+  update_interval_s:
+  - 0.1
+  - 0.5
+  - 2.0
   valid_window_s: 2 * update_interval_s
-  packet_bytes: [372, 891, 1500]
-  compute_pool: [1, 2, 4]
-  service_time: "诊断 0.1 ms 与已标定值分别成组"
+  packet_bytes:
+  - 372
+  - 891
+  - 1500
+  compute_pool:
+  - 1
+  - 2
+  - 4
+  service_time: 诊断 0.1 ms 与已标定值分别成组
   order: 按 P10 顺序逐项扫描，不做全笛卡尔积
   freeze_rule: 正式候选值只由开发集选择并冻结，不通过确认结果反选
-
-# ---- P2 同刻顺序与并发策略 ----
 p2_same_instant_order:
   compute_pool: 每星 FIFO 等待；同刻按任务序号
   completion_before_install: true
@@ -193,29 +209,38 @@ accounting:
   compute_service: compute_finished_at - compute_started_at
   install_delay: 单列
   node_process: 与上述阶段互不覆盖
-
-# ---- P9 预声明统计设计 ----
 statistics:
   unit: scenario x trace x seed（区组）；同组不同臂配对
   packet_is_independent_repeat: false
-  main_loss: "L=min(delay,D)/D；丢包或观察完整但 D 内未交付取 1"
+  main_loss: L=min(delay,D)/D；丢包或观察完整但 D 内未交付取 1
   deadline: 有业务截止时间时用原 D；否则 D=2*E2E p95（开发基准合法候选交付样本），冻结
   regret: 所选候选 L - 合法候选中最小 L
   primary_comparison: common_strong regret - candidate regret
   minimum_substantive_difference: 0.01
-  sensitivity: [0.005, 0.02]
+  sensitivity:
+  - 0.005
+  - 0.02
   bootstrap: 10000 次，固定随机种子，配对差按独立 run/trace/seed
-  dev_seeds: [7, 11, 23, 42]
-  confirm_seeds_start: 1001  # 连续取，不与开发共用 trace
-  sample_size_rule: "n=max(20, ceil((1.96*s/0.005)**2))，再用开发分布重采样核查"
+  dev_seeds:
+  - 7
+  - 11
+  - 23
+  - 42
+  confirm_seeds_start: 1001
+  sample_size_rule: n=max(20, ceil((1.96*s/0.005)**2))，再用开发分布重采样核查
   these_are_design_thresholds_not_measurements: true
-
-# ---- P10 预算 ----
 budgets:
   cell_wall_s: 120
   peak_memory: 机器可用内存 50%
   max_cells_per_matrix: 120
   total_diagnostic_s: 7200
   exceed_behavior: BUDGET_EXCEEDED，保存已完成单元，另编译新身份矩阵
-
-status_layers: [IMPLEMENTED, TESTED, DIAGNOSTIC_RUN, FORMAL_RUN]
+status_layers:
+- IMPLEMENTED
+- TESTED
+- DIAGNOSTIC_RUN
+- FORMAL_RUN
+formal_design:
+  horizon_candidates_file: CODE/work/WP-T1-COMPLETE/horizon_candidates.json
+  horizon_candidates_note: 由 VM 开发基准投影，见同目录 horizon_candidates.json；分位数来源 development_baseline_candidate_eta_offsets，样本
+    949
