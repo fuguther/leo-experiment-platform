@@ -110,27 +110,38 @@
 
 ---
 
-## F. T1-COMPLETE 新增能力（P1–P10）
+## F. T1-COMPLETE 新增能力（P1–P12，含两轮复审返工）
 
-基准身份：起始 `0876b12`（`t1/frozen-branch-and-async-design`）；本轮提交见 `CODE/work/WP-T1-COMPLETE/STATUS.md`。
-状态口径同 A–E；**没有 FORMAL_RUN**，没有 VM 实跑，没有研究比较完成。
+基准身份：起始 `0876b12`（`t1/frozen-branch-and-async-design`）；现行证据身份 `8a31496`。
+执行规则：**实验只在 VM 上跑**（`AGENTS.md` §1），本机只做代码/测试/只读复核。
+状态口径同 A–E；**没有 FORMAL_RUN**，没有研究比较完成。
 
-| 能力 | 实现存在 | 命令可达 | 本地实跑 | VM 实跑 | 研究比较完成 |
+> 第三轮独立只读验收正在进行（4 路：S1–S3 / S4–S5 / S6–S7 / S8+证据链）。
+> 结论回齐之前，下表的 ✅ 表示「实现方声明 + 已有可查证据」，**不代表已获独立确认**。
+
+| 能力 | 实现存在 | 命令可达 | 本机测试 | VM 实跑 | 研究比较完成 |
 |---|---|---|---|---|---|
-| 单位修正（occupied 秒 / 控制比特分离） | ✅ `control_reach_probe._control_overhead` + `UNITS` | ✅ 同名 CLI（schema v2） | ✅ 3 测试 | ❌ | ❌ |
-| 执行链身份（commit/dirty/diff + 逐文件哈希） | ✅ `artifact_identity.py` | ✅ 各驱动内嵌 `identity` | ✅ | ❌ | ❌ |
-| 每星 FIFO 计算池 + compute_request/start/finish | ✅ `kernel._deferred_enabled` / `decide_deferred` | ✅ 配置键 + timeline | ✅ 手算夹具 7 测试 | ❌ | ❌ |
-| 零成本 frozen 诊断 | ✅ `_deferred_enabled` | ✅ `decision_observation_mode=frozen` + `compute_delay_s=0` | ✅ | ❌ | ❌ |
-| 不可变快照 / 预测器 / ETA / 统一评分 / 计划表 | ✅ `time_alignment.py` | ✅ 经内核与 `time_alignment_compare` | ✅ 28 测试 | ❌ | ❌ |
-| 四组离线比较 + 每候选闭环代价 + oracle 隔离 | ✅ `time_alignment_compare.py` | ✅ `-m CODE.experiment_platform.time_alignment_compare` | ✅ 15 测试 + 实跑工件 | ❌ | ❌ |
-| 四组在线执行 + 可回放审计 | ✅ `kernel._time_aligned_order` | ✅ `time_alignment.enabled=true` | ✅ 8 测试 | ❌ | ❌ |
-| 异步更新器（scope 状态机 / 完成才安装 / 版本单调） | ✅ `async_routing.py` | ✅ `async_routing.enabled=true` + async 执行模式 | ✅ 16 + 7 测试 | ❌ | ❌ |
-| 五执行模式公平矩阵 | ✅ `execution_compare.py` | ✅ `-m CODE.experiment_platform.execution_compare` | ✅ 10 测试 | ❌ | ❌ |
-| 决策路径计时 + 有限池压力 | ✅ `benchmark_decision.py` | ✅ `-m CODE.experiment_platform.benchmark_decision` | ✅ 8 测试 | ❌ | ❌ |
-| 统一统计（配对/bootstrap/样本量/主对比） | ✅ `t1_stats.py` | ✅ 被驱动与报告引用 | ✅ 32 测试 | ❌ | ❌ |
-| 端到端流水线 compile/validate/run/resume/report | ✅ `t1_suite.py` | ✅ `-m CODE.experiment_platform.t1_suite` | ✅ acceptance 7/7 ok + 11 测试 | ❌ | ❌ |
-| DDQN 固定推理接口 | ⚠️ 仅可用性检查 `execution_compare.ddqn_status` | ✅ | ⚠️ 本机无有效检查点 → `EXTERNAL_BLOCKER` | ❌ | ❌ |
+| 单位修正（occupied 秒 / 控制比特分离） | ✅ `control_reach_probe._control_overhead` + `UNITS` | ✅ 同名 CLI（schema v2） | ✅ 3 测试 | ✅ | ❌ |
+| 执行链身份（commit/dirty/diff + 逐文件哈希） | ✅ `artifact_identity.py`（57 文件链） | ✅ 各驱动内嵌 `identity` | ✅ | ✅ 链 `e8537aed` 本机==VM 重算 | ❌ |
+| runner 清单身份（S8：暂存移出工作区，消除 dirty 假阳性） | ✅ `t1-vm.sh` + `CODE/tests/test_t1_vm_launch_manifest.py` | ✅ `t1-vm.sh sync\|experiment` | ✅ 3 测试 | ✅ `dirty=false`、拉回 52 文件逐字节一致 | ❌ |
+| 每星 FIFO 计算池 + compute_request/start/finish | ✅ `kernel._deferred_enabled` / `decide_deferred` | ✅ 配置键 + timeline | ✅ 手算夹具 | ✅ 有限池 N=1/2 排队实测 | ❌ |
+| 零成本 frozen 诊断 | ✅ `_deferred_enabled` | ✅ `decision_observation_mode=frozen` | ✅ | ✅ | ❌ |
+| 不可变快照 / 预测器 / ETA 分项 / 统一评分 | ✅ `time_alignment.py` | ✅ 经内核与 `time_alignment_compare` | ✅ | ✅ | ❌ |
+| 理想队列真值（S1：排队/在服务剩余/控制优先/目标自身/FIFO 后方） | ✅ `time_alignment_compare.resource_work_ahead` | ✅ 三组理想臂 + 2×2 | ✅ 2500 bit 反例 + 内核对齐 | ✅ | ❌ |
+| 包长与广告队列分离（S2：`advertised_bits`） | ✅ `kernel._build_ta_snapshot` | ✅ 经内核在线/离线构造 | ✅ 取值/顺序不变性 | ✅ | ❌ |
+| 四组离线比较 + 每候选闭环代价 + oracle 隔离 | ✅ `time_alignment_compare.py` | ✅ `-m …time_alignment_compare` | ✅ | ✅ 四臂 targets/ranking 全对齐 | ❌ |
+| 四组在线执行 + 可回放审计 | ✅ `kernel._time_aligned_order` | ✅ `time_alignment.enabled=true` | ✅ | ✅ | ❌ |
+| 共用决策入口（S5：在线/离线重放/计时同走 `plan_decision`） | ✅ `plan_decision` / `build_predictions` / `resolve_common_horizon` | ✅ 内核与基准共用 | ✅ 调用计数测试 | ✅ 真实在线路径 p50 526–529 µs | ❌ |
+| 异步更新器（scope 状态机 / 完成才安装 / 版本单调） | ✅ `async_routing.py` | ✅ `async_routing.enabled=true` | ✅ | ✅ 逐包 0 计算请求 + 32 次安装 | ❌ |
+| 查表模式不付逐包完整计算（S3：`_packet_compute_required`） | ✅ `kernel.decide_deferred` | ✅ precomputed / async_* 模式 | ✅ 正成本与零成本查询 | ✅ 逐包 0 次计算请求 | ❌ |
+| 五执行模式公平矩阵 | ✅ `execution_compare.py` | ✅ `-m …execution_compare` | ✅ | ✅ 缓存命中 7 次、有限 N>0 | ❌ |
+| 决策路径计时（分相 + 调用计数） | ✅ `benchmark_decision.py` | ✅ `-m …benchmark_decision` | ✅ | ✅ 观测构造 398–399 µs / 仅推理 12.07 µs | ❌ |
+| 统一统计（配对/bootstrap/样本量/主对比） | ✅ `t1_stats.py` | ✅ 被驱动与报告引用 | ✅ | ✅ `common_strong.frozen=false`（诚实标注） | ❌ |
+| 端到端流水线 compile/validate/run/resume/report | ✅ `t1_suite.py` | ✅ `-m …t1_suite` + `t1-vm.sh experiment` | ✅ 含整轮成败反例 | ✅ acceptance/dev 各 10/10 | ❌ |
+| 行为谓词驱动整轮成败（S4：非 ok 即整轮失败、CLI 退出码 3） | ✅ `t1_suite.py` | ✅ CLI 退出码 | ✅ run→report→resume 反例 | ✅ `predicate_failed=0`、`not_ok=0` | ❌ |
+| 正式包语义冻结与指纹（S7：阈值/种子/D/依赖文件入哈希） | ✅ `formal_package` / `formal_design` | ✅ compile / validate | ✅ 改阈值 999 被拒 | ✅ formal 可编译校验、拒绝未授权执行 | ❌ |
+| DDQN 固定推理接口（S6 + 检查点硬门槛） | ✅ `inference.py` + `kernel.inference_policy` + `counterfactual` 透传 | ✅ 冻结快照 / 分支重演 | ✅ 固定小模型接线、掩码/参数不变 | ⚠️ 无真实训练检查点 → 外部阻塞 | ❌ |
 
-**F 节能说**：机制本身本地实跑并可判定；关闭新功能时旧路径回归通过（1181 passed, 1 skipped）。
-**F 节不能说**：状态时间对齐的收益；异步的性能收益；任何确认性结论。当前单分支诊断在 contention 上显示四组 regret 全 0（场景未激活机制），在合成夹具中四组可改变排序。
+**F 节能说**：机制本身已在本机测试与 VM 有界诊断两级实跑并可判定；关闭新功能时旧路径回归通过（**1278 passed, 2 skipped**）；acceptance 与 dev 两层各 10/10，且逐格行为谓词与结果哈希核验通过。
+**F 节不能说**：状态时间对齐的收益；异步的性能收益；DDQN 策略性能；任何确认性结论。当前单分支诊断在 contention 上四组 regret 全 0（场景未激活机制），在合成夹具中四组可改变排序。
 
