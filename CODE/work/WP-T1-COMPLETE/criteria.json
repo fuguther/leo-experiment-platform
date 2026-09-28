@@ -390,18 +390,18 @@
         "t1-final-8a31496"
       ],
       "latest_identity": {
-        "run_id": "t1-final-8a31496",
-        "commit": "8a314966bf2cd0508f73225d9b4978bfe4f7e5be",
+        "run_id": "t1-final-bace1bb",
+        "commit": "bace1bbe11d81dfe1289bbcc09e51739390981ee",
         "dirty": false,
         "status_short": [],
-        "execution_chain_sha256": "e8537aedbcb46858848fe1c4d3234a56997a849fe0e113748b93a22281f0a4ce",
+        "execution_chain_sha256": "8694b7e80cda08b3451808926da5f8c9b35a35b2082d58ed452b4675dfb0f211",
         "chain_equality": "VM 链 == 本机重算（57 个执行链文件）",
         "pullback_integrity": "VM Results 的 52 个文件与 out/vm 拉回副本 sha256 逐一相等（逐字节一致）",
-        "bundle_fingerprint": "334dbbd20a70a236db886eee7c32892773db7f9eb58b0666891c5dfd6991f38e",
+        "bundle_fingerprint": "7c1519e1cc6112f9",
         "acceptance": {"ok": 10, "predicate_failed": 0, "not_ok": 0, "verified_ok": 10},
         "dev": {"ok": 10, "predicate_failed": 0, "not_ok": 0, "verified_ok": 10},
-        "online_path_p50_s": 0.0005259346216917038,
-        "note": "t1-final-c4dd85f 与 t1-final-a70d65c 的 identity.git.dirty=true 系 runner 假阳性（见 s8_fix），不作为身份依据"
+        "online_path_p50_s": 0.0005116835236549377,
+        "note": "t1-final-8a31496 因第三轮返工改变执行链而失效；t1-final-c4dd85f 与 t1-final-a70d65c 的 identity.git.dirty=true 系 runner 假阳性（见 s8_fix），均不作为身份依据"
       },
       "pulled_to": "out/vm/<run-id>/",
       "local_regression": "1275 passed, 2 skipped（pytest 属本机允许项）"
@@ -418,7 +418,35 @@
         ".gitignore 增加 .t1-launch.json 兜底（脚本中途退出时不留脏文件）",
         "新增 CODE/tests/test_t1_vm_launch_manifest.py：行为复现旧写法的假阳性与新写法的干净结果，并静态钉住暂存位置不变式"
       ],
-      "verification": "修复后 VM launch.json dirty=false；t1-final-8a31496 工件 identity.git.dirty=false 且 status_short=[]"
+      "verification": "修复后 VM launch.json dirty=false；t1-final-bace1bb 工件 identity.git.dirty=false 且 status_short=[]",
+      "third_round_followups": [
+        "t1-vm.sh 加 trap rm -rf EXIT：ssh 失败时暂存目录不再泄漏（S8-3a）",
+        "远端改 rm -f && tar && mv 并校验 head：陈旧清单不能被提升为本次清单（S8-i）"
+      ]
+    },
+    "third_round": {
+      "reviewers": ["S1-S3", "S4-S5", "S6-S7", "S8+evidence"],
+      "confirmed_fixed": ["S2", "S7", "S8(1)", "evidence_chain_a_e", "S4(a)(b)(c)(e)(f)", "S5 shared-entry/arm-alignment/full-path"],
+      "reworked": {
+        "S1": "截断服务窗回退内核 backlog_before（目标入队瞬间恒等）；未知分量不再折成数字（work_ahead_bits=None）",
+        "S4_d": "schema 为空即登记进 statistics.excluded（原被 schema 过滤静默丢弃）",
+        "S5_R2": "四臂 targets_match/ranking_match 纳入 benchmark 谓词门禁，错位即非 ok",
+        "S6": "assert_inference_only 改为声明+探针；policy.act 统一委托 adapter.act；verify_checkpoint 硬要求 metadata 路径与哈希；ta.enabled=false 时给策略报错",
+        "S8_3a_i": "trap 清理暂存目录；远端 && 链 + head 校验"
+      },
+      "still_open": [
+        "S1 反例 B/C：控制包时间线行缺失（ctrl 分量陈旧、控制包在服务不可见），需内核补行",
+        "S3：per_flow 在查询排队期间 TTL 过期时可发生未计费的完整评分",
+        "S5：工件/limits 缺非 DDQN 标记"
+      ],
+      "counterexample_files": [
+        "CODE/experiment_platform/tests/test_s1_review_counterexamples.py",
+        "CODE/experiment_platform/tests/test_s4_review_counterexamples.py",
+        "CODE/experiment_platform/tests/test_s5_review_counterexamples.py",
+        "CODE/leo_sim/tests/test_s6_review_counterexamples.py",
+        "CODE/tests/test_t1_vm_launch_manifest.py"
+      ],
+      "regression": "1295 passed, 2 skipped, 1 warning in 448.85s"
     },
     "historical": [
       "本机 34µs / 73.9µs 计时与 out/t1 旧产物：本机历史证据，已由 VM 真实在线路径计时取代",

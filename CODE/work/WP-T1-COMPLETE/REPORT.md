@@ -225,31 +225,31 @@ R1 反问例复核（复现脚本 tmp_r1_final.py，已删除）：
 
 ## VM 执行证据（实验只在 VM）
 
-> 最新一轮 = `t1-final-8a31496`（HEAD `8a31496`，`identity.git.dirty=false`）。
-> `t1-final-a70d65c` 与 `t1-final-c4dd85f` 两次工件的 `identity.git.dirty` 为 **true**，
-> 成因是本轮修掉的 runner 身份假阳性（见下「S8 身份假阳性修复」），
-> **不再作为身份声明依据**；`t1-s7-377ae9b` 及更早的 VM 工件为历史证据，其 507–517 µs 计时已被本轮数字取代。
+> 最新一轮 = `t1-final-bace1bb`（HEAD `bace1bb`，`identity.git.dirty=false`，链 `8694b7e8…`）。
+> 上一轮 `t1-final-8a31496` 因第三轮复审返工（S1/S4/S5/S6/S8 改了执行链）而失效，不再作为现行证据。
+> `t1-final-a70d65c` 与 `t1-final-c4dd85f` 两次工件的 `identity.git.dirty` 为 **true**，成因是已修掉的 runner 身份假阳性；
+> `t1-s7-377ae9b` 及更早的 VM 工件为历史证据，其 507–517 µs 计时已被取代。
 
 ```
 ssh vm -> cuda-liguang13   /data 471G 可用   conda: /data/liguang13/conda-envs/leo-i39
 隔离实验根: /data/论文/leo-t1-wt        # 你的正式部署 /data/论文/leo-direct-sim 从未被写入
 runner: CODE/scripts/remote/t1-vm.sh sync|run|pull|experiment
 
-run-id:   t1-final-8a31496        pulled -> out/vm/t1-final-8a31496/
-工件身份: identity.git.source=launch_manifest, commit=8a31496…, dirty=false, status_short=[]
-链一致性: VM 链 e8537aed… == 本机重算 e8537aed…（57 个执行链文件）
-拉回完整性: VM Results/t1-final-8a31496 的 52 个文件与 out/vm/t1-final-8a31496 逐字节一致（sha256 逐一相等）
+run-id:   t1-final-bace1bb        pulled -> out/vm/t1-final-bace1bb/
+工件身份: identity.git.source=launch_manifest, commit=bace1bb…, dirty=false, status_short=[]
+链一致性: VM 链 8694b7e8… == 本机重算 8694b7e8…（57 个执行链文件）
+拉回完整性: VM Results/t1-final-bace1bb 的 52 个文件与 out/vm/t1-final-bace1bb 逐字节一致（sha256 逐一相等）
 平台:     Linux-6.6.0-…aarch64   python 3.11.15 / simpy 4.0.1 / numpy 1.24.3
 
 t1_suite compile  -> 20 cells
-t1_suite validate -> valid true（bundle_fingerprint 334dbbd2…）
+t1_suite validate -> valid true（bundle_fingerprint 7c1519e1…）
 t1_suite run --tier acceptance -> {"ok":10,"error":0,"timeout":0,"predicate_failed":0,"not_ok":0}
 t1_suite run --tier dev        -> {"ok":10,"error":0,"timeout":0,"predicate_failed":0,"not_ok":0}
 report -> run_status ok；verified_ok 10/10；逐格 predicate_passed=true 且盘上 result_sha256 与报告内嵌哈希一一相等
 statistics.common_strong.frozen = False（开发块配对差恒为 0、无判别力——诚实标注，非工程缺口）
 四臂对齐（VM）: candidate/common/now/stale targets_match=True ranking_match=True
-真实在线路径（观测构造→预测→评分→排名→选动作）p50: 526–529 µs
-  分相 p50: 观测构造 398–399 µs | 仅推理 12.07 µs | 计时调用基线 46 ns
+真实在线路径（观测构造→预测→评分→排名→选动作）p50: 511.7 µs（分相见工件 `phases`；仅推理 12.04 µs 不得当完整成本）
+四臂对齐: 已纳入 benchmark 谓词门禁（S5-R2），错位即 cell 非 ok
   调用计数: end_to_end predict=2/次决策（= 每候选一次）；inference_only predict=0
 有限池: N=0 无界 56 请求 0 排队 | N=1 41 请求 23 排队 max_wait 0.312 s | N=2 47 请求 25 排队 max_wait 0.112 s
 五模式（acceptance）: per_packet 41 次计算请求 / per_flow 34 次请求 + 7 次缓存命中 /
@@ -276,4 +276,40 @@ statistics.common_strong.frozen = False（开发块配对差恒为 0、无判别
 2. **真实 DDQN 检查点**：本机与 VM 均无 tensorflow 训练产物与检查点；适配器接口与硬门槛已验证，**不得**作为策略性能结论。
 3. **REMOTE 正式部署**：未写入 `/data/论文/leo-direct-sim`，未做正式远端验收部署。
 4. 开发块配对差仍恒为 0 → `common_strong` 保持未冻结，样本量不可由此估计（已在报告中显式标注）。
+
+---
+
+# 第三轮独立复审返工（四路并行只读验收）
+
+四路验收（S1–S3 / S4–S5 / S6–S7 / S8+证据链）回齐后的裁决与本轮处置：
+
+| 项 | 复审裁决 | 本轮处置 |
+|---|---|---|
+| S2 包长与广告队列分离 | CONFIRMED_FIXED | 无 |
+| S7 正式包冻结与指纹（28/28 字段变异全拒） | CONFIRMED_FIXED | 无 |
+| S8(1) dirty 假阳性机制 | CONFIRMED_FIXED | 无 |
+| 证据链 (a)–(e)、拉回一致性 | 全部 CONFIRMED_FIXED，未发现"记录 ok 没跑" | 无 |
+| S1 队列真值 | PARTIAL：截断服务窗少报 86%；未知折成 0 | 已修 A/D；B/C 见下 |
+| S3 查表成本 | PARTIAL：表模式 0 计算请求为真；per_flow 有未计费完整推理 | **未修，见下** |
+| S4 整轮成败 | (a)(b)(c)(e)(f) 已修；(d) PARTIAL | (d) 已修 |
+| S5 计时真实性 | 主体已修；R2 对齐未入门禁；非 DDQN 标记缺失 | R2 已修；非 DDQN 标记**未修** |
+| S6 固定推理接线 | PARTIAL（4 处） | 4 处全修 |
+| S8(3a) 暂存目录泄漏 / S8-i 陈旧清单可被提升 | 两个低危新增 | 均已修 |
+
+每项都先补**能失败的反例**再改实现，并逐条验证"禁用修复即失败"：
+`test_s1_review_counterexamples.py`、`test_s4_review_counterexamples.py`、
+`test_s5_review_counterexamples.py`、`test_s6_review_counterexamples.py`、
+`test_t1_vm_launch_manifest.py`。
+
+## 第三轮仍未修（诚实列出，非"已完成"）
+
+1. **S1 反例 B/C**：控制包在上一次 data 入队之后到达时 ctrl 分量陈旧（`put_ctrl` 不发
+   时间线行）；控制包在服务时完全不可见（`ControlPacket` 无 `service_start/service_finish` 行）。
+   两者都需要内核补控制包时间线行，属跨模块改动。
+2. **S3 per_flow 未计费完整推理**：`decide_deferred` 用 `requested` 判命中，
+   而 `_decide` 在查询返回后用 `now` 重查；查询排队期间 TTL 过期时两次判定不一致，
+   该决策付 0 计算却跑了完整评分（ttl=0.2 / qd=0.1 时 2 次）。
+3. **S5 非 DDQN 标记**：工件与 `limits` 内没有"计时来自确定性评分器、非 DDQN"的标记。
+4. **S4 附加观察（未判缺陷）**：`servers=0` 时异步后台 job 只发 `compute_request/compute_finish`、不发 `compute_start`。
+
 

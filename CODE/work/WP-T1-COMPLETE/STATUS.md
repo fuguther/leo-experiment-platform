@@ -12,7 +12,8 @@
 | 分支 | `t1/frozen-branch-and-async-design` |
 | 起始 HEAD | `0876b12dbb0e067a840743dcc57b804d4600e9b0` |
 | 复审轮次 | 53aeb30（R1–R9，已修）→ 2330701（S1–S7，已修）→ 本轮 S8（runner 身份假阳性，已修） |
-| 最新证据 | run-id `t1-final-8a31496`；HEAD `8a31496`；`identity.git.dirty=false`；执行链 `e8537aed…` |
+| 最新证据 | run-id `t1-final-bace1bb`；HEAD `bace1bb`；`identity.git.dirty=false`；执行链 `8694b7e8…` |
+| 第三轮复审 | 四路只读验收回齐；S2/S7/S8(1)/证据链已确认；S1(A/D)、S4(d)、S5-R2、S6、S8(3a/i) 已返工；S1(B/C)、S3、S5 非 DDQN 标记仍未修（见 REPORT 末节） |
 | VM | `ssh vm` = cuda-liguang13；隔离实验根 `/data/论文/leo-t1-wt`；正式部署 `/data/论文/leo-direct-sim` **从未写入** |
 | VM runner | `CODE/scripts/remote/t1-vm.sh sync|run|pull|experiment` |
 | 链一致性 | VM 链 `e8537aed…` == 本机链 `e8537aed…`（执行链已排除 ._ 元数据并远端剪枝） |
@@ -37,19 +38,19 @@
 ```
 # 本机（允许：单元/回归测试）
 python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q
-1278 passed, 2 skipped, 1 warning in 454.63s
-  （1275 + 本轮新增 CODE/tests/test_t1_vm_launch_manifest.py 的 3 项）
+1295 passed, 2 skipped, 1 warning in 448.85s
+  （含三轮返工新增的反例文件：S1/S4/S5/S6 反例 + runner 清单反例）
 
 # VM（实验唯一位置），隔离根 /data/论文/leo-t1-wt
-run-id: t1-final-8a31496   pulled -> out/vm/t1-final-8a31496/
+run-id: t1-final-bace1bb   pulled -> out/vm/t1-final-bace1bb/
 t1_suite compile  -> 20 cells
 t1_suite validate -> valid true（bundle_fingerprint 334dbbd2…）
 t1_suite run --tier acceptance -> ok 10/10（谓词全过，not_ok=0，result_sha256 逐格核对）
 t1_suite run --tier dev        -> ok 10/10
 report -> run_status ok；common_strong.frozen = False（诚实：开发块配对差恒为 0）
-身份一致性: commit=8a31496…, dirty=false, status_short=[]；VM 链 == 本机重算（e8537aed…）；平台 Linux-…aarch64
+身份一致性: commit=bace1bb…, dirty=false, status_short=[]；VM 链 == 本机重算（8694b7e8…）；拉回 52 文件逐字节一致；平台 Linux-…aarch64
 四臂对齐: targets_match/ranking_match 全 True
-真实在线路径 p50 = 526–529 µs（分相：观测构造 398–399 µs｜仅推理 12.07 µs｜调用基线 46 ns）
+真实在线路径 p50 = 511.7 µs（仅推理 12.04 µs，不得当完整成本）
 有限池: N=1 41 请求 23 排队 | N=2 47 请求 25 排队 | N=0 无界 0 排队
 五模式: per_packet 41 计算请求；per_flow 34 请求 + 7 缓存命中；precomputed/async_point/async_window 各 0
 ```
