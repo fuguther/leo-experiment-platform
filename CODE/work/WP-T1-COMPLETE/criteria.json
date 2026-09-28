@@ -182,6 +182,100 @@
     ],
     "run": "t1-b3-7be10f1"
    },
+   "b4_period_x_changespeed": {
+    "boundary": "单场景单种子；无统计声明",
+    "findings": [
+     "两轴近似正交：交付/时延由 burst 时长决定（29/33/49-52 与 0.927/0.953/0.94-0.96），三档 period 下几乎一致；计算成本由 period 决定（507-515 / 111-115 / 30-33），档内几乎不变。",
+     "没有出现预期的「窗口跟不上变化速度」劣化：period=2.0 s（窗口 4 s）在 2 s 突发上与 period=0.1 s 的时延完全相同（0.9269 / 1.1924）。",
+     "根因与实验一相同且一致：本场景候选路径对称，排序不改变结局，所以窗口的跟踪能力不可观测；能观测到的只有纯粹的成本轴。",
+     "这给出一条明确的实验边界：要测「对齐质量」，必须先有让排序产生后果的场景——与 B2b 待决的是同一个前提。"
+    ],
+    "rows": [
+     {
+      "burst_s": 2.0,
+      "delivered": 29,
+      "e2e_mean_s": 0.9269,
+      "e2e_p95_s": 1.1924,
+      "fallbacks": 20,
+      "period_s": 0.1,
+      "total_jobs": 507
+     },
+     {
+      "burst_s": 8.0,
+      "delivered": 33,
+      "e2e_mean_s": 0.9528,
+      "e2e_p95_s": 1.3183,
+      "fallbacks": 25,
+      "period_s": 0.1,
+      "total_jobs": 509
+     },
+     {
+      "burst_s": 20.0,
+      "delivered": 51,
+      "e2e_mean_s": 0.9466,
+      "e2e_p95_s": 1.275,
+      "fallbacks": 44,
+      "period_s": 0.1,
+      "total_jobs": 515
+     },
+     {
+      "burst_s": 2.0,
+      "delivered": 29,
+      "e2e_mean_s": 0.9269,
+      "e2e_p95_s": 1.1924,
+      "fallbacks": 27,
+      "period_s": 0.5,
+      "total_jobs": 111
+     },
+     {
+      "burst_s": 8.0,
+      "delivered": 33,
+      "e2e_mean_s": 0.9528,
+      "e2e_p95_s": 1.3183,
+      "fallbacks": 30,
+      "period_s": 0.5,
+      "total_jobs": 112
+     },
+     {
+      "burst_s": 20.0,
+      "delivered": 49,
+      "e2e_mean_s": 0.9407,
+      "e2e_p95_s": 1.2016,
+      "fallbacks": 40,
+      "period_s": 0.5,
+      "total_jobs": 115
+     },
+     {
+      "burst_s": 2.0,
+      "delivered": 29,
+      "e2e_mean_s": 0.9269,
+      "e2e_p95_s": 1.1924,
+      "fallbacks": 12,
+      "period_s": 2.0,
+      "total_jobs": 30
+     },
+     {
+      "burst_s": 8.0,
+      "delivered": 33,
+      "e2e_mean_s": 0.9528,
+      "e2e_p95_s": 1.3183,
+      "fallbacks": 12,
+      "period_s": 2.0,
+      "total_jobs": 30
+     },
+     {
+      "burst_s": 20.0,
+      "delivered": 52,
+      "e2e_mean_s": 0.9576,
+      "e2e_p95_s": 1.2838,
+      "fallbacks": 19,
+      "period_s": 2.0,
+      "total_jobs": 33
+     }
+    ],
+    "run": "t1-b4c-5bda7a5",
+    "scenario": "burst_hotspot（突发窗时长 = 变化速度轴）"
+   },
    "b4_request_rate_x_N": {
     "load_axis_works": {
      "delivered": [
