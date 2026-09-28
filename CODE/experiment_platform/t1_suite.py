@@ -159,7 +159,12 @@ def _acceptance_cells(contract, bundle_dir):
                          "require": {"min_complete_rounds": 1,
                                      "pool_servers": [0, 1, 2],
                                      "min_pool_requests": True,
-                                     "require_queued_at": 1}}),
+                                     "require_queued_at": 1,
+                                     # review S5-R2: arm alignment with the online audit was only
+                                     # WRITTEN to the artifact, never gated, so a fully misaligned
+                                     # run still passed and its p50 was still quoted as the real
+                                     # online decision cost
+                                     "require_alignment": True}}),
     ]
     for size in (372, 891, 1500):
         cells.append(_cell(
@@ -883,6 +888,36 @@ def check_predicate(result, predicate):
                            row.get("queued", 0) > 0,
                            {"queued": row.get("queued"),
                             "max_wait_s": row.get("max_wait_s")}])
+        if require.get("require_alignment"):
+            # review S5-R2: without this the cell stayed ok even when every arm
+            # queried the wrong instant, and its p50 was still reported as the
+            # real online decision cost
+            arms = result.get("arms") or {}
+            names = ("candidate", "common", "now", "stale")
+            absent = [a for a in names if not isinstance(arms.get(a), dict)]
+            checks.append(["all four arms measured", not absent, absent or None])
+            for name in names:
+                arm = arms.get(name)
+                if not isinstance(arm, dict):
+                    continue
+                alignment = arm.get("alignment") or {}
+                for field in ("targets_match", "ranking_match"):
+                    value = alignment.get(field, arm.get(field))
+                    checks.append([f"arm {name} {field}", bool(value), value])
+            counts = result.get("phase_call_counts") or {}
+            if not counts:
+                # per-arm call counts live beside the alignment block
+                counts = (arms.get("candidate") or {}).get("call_counts") or {}
+            e2e = counts.get("end_to_end_predict_calls")
+            expected = counts.get("expected_predict_calls_per_full_decision")
+            checks.append([
+                "end_to_end predict calls == candidates",
+                e2e is not None and expected is not None and e2e == expected,
+                {"end_to_end": e2e, "expected": expected}])
+            checks.append([
+                "inference_only does not re-predict",
+                counts.get("inference_only_predict_calls") == 0,
+                counts.get("inference_only_predict_calls")])
     else:
         return {"passed": False, "checks": [],
                 "reason": f"unknown predicate kind {kind!r}", "kind": kind}
