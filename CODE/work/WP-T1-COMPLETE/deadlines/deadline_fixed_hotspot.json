@@ -1,19 +1,19 @@
 {
- "deadline_s": 1.6880543558850203,
- "frozen_at_sha": "cd2dfddf57b3bee8e847def7016e0fe80a0a1921",
+ "deadline_s": 2.5340170844170817,
+ "frozen_at_sha": "6c6852f6a1b9303c902e4bf8d335f059a7ca52ec",
  "identity": {
   "config_sha256": "c6c74c12003fb707f7aeae6cdcaa4f2ae3a6edb7c458b58e6ef9a8b6400ac304",
   "git": {
    "available": true,
    "branch": null,
-   "commit": "cd2dfddf57b3bee8e847def7016e0fe80a0a1921",
+   "commit": "6c6852f6a1b9303c902e4bf8d335f059a7ca52ec",
    "diff_sha256": null,
    "dirty": false,
    "manifest": {
     "dirty": false,
-    "head": "cd2dfddf57b3bee8e847def7016e0fe80a0a1921",
+    "head": "6c6852f6a1b9303c902e4bf8d335f059a7ca52ec",
     "schema": "t1-vm-launch/v1",
-    "synced_at": "2026-09-28T19:33:55Z"
+    "synced_at": "2026-09-28T19:39:21Z"
    },
    "manifest_path": "/data/论文/leo-t1-wt/launch.json",
    "source": "launch_manifest",
@@ -28,7 +28,7 @@
   },
   "schema": "t1-artifact-identity/v1",
   "sources": {
-   "combined_sha256": "e148ec618da26c82cd69ebc1b5ebc23983d80d01cb843663fbb461cbe7bcc4af",
+   "combined_sha256": "5172406545d5fa2dc7eff6f76d16d5b7f35e3c6ddece3d1dd76b745e1a0e7c25",
    "files": {
     "CODE/experiment_platform/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
     "CODE/experiment_platform/artifact_identity.py": "1856f09f461c15c05434d4e663ad02a7abc6dccf87b57c6303bc33e7c5318398",
@@ -52,7 +52,7 @@
     "CODE/experiment_platform/scripted_scenarios.py": "69502d95b8220176d0373a7015bdb148a54012cf3c8479bd083c8b9f0824f88e",
     "CODE/experiment_platform/t1_a6_check.py": "5fdde7f7b3e9437985454a967f65a76fc320e9cc99050111896d52bebce1773f",
     "CODE/experiment_platform/t1_stats.py": "261ea6fda25b48ffbf8df4dedcf6d23bb207772ed3ed584d0c63b7c0ecd3649c",
-    "CODE/experiment_platform/t1_suite.py": "05f12fc8556f5f7e76b9f6d28533df30d5f9d8a4949b2f73e76acdf559378e26",
+    "CODE/experiment_platform/t1_suite.py": "a61c58656d740e00221f585d8528494c900d3cdcfbc654c5ebe8c29f96507c13",
     "CODE/experiment_platform/t1_tasks.py": "44a996939c3b319501586f946e6484ec9037af3f209fc69632df7cbb615065af",
     "CODE/experiment_platform/time_alignment_compare.py": "6d77e5181735db72b8a1028ff42dd77ea765983232ab831c7fe26a7b0fffab6a",
     "CODE/experiment_platform/v2_analysis.py": "a63b2cdef6c77ea33e399f4d9d87c993b16edb4f71e2addfbff827089531eef2",
