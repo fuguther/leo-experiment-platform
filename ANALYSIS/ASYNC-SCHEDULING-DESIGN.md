@@ -9,6 +9,18 @@
 > 尚未裁定，见 **§0.4**。**在裁定之前，§1.4 的 D1--D5 与 §最小执行设计 一律不得实现**：
 > 它们只对"路径"那一种读法成立。
 
+> ---
+> **📌 状态更新（2026-09-28，实现方补记；不改写本文研究契约）**
+> - 第 4 行「**本平台当前没有任何异步流量调度的实现**」**已过时**。CODE/leo_sim/async_routing.py
+>   已实现 scope 状态机 UNINITIALIZED → COMPUTING → INSTALL_PENDING → ACTIVE、单 pending 合并、
+>   完成才安装、版本单调；内核（kernel.py:1116 起）在 async_point / async_window 两个执行模式下接线；
+>   安装以 schedule_installed milestone 记账（execution_compare.py:150）。VM 有界诊断实测
+>   out/vm/t1-final-8a31496/acceptance/cells/exec-five-modes/result.json：异步两模式各 32 次安装、逐包 0 次计算请求。
+> - 该实现来自 2026-09-27 计划书 docs/superpowers/plans/2026-09-27-t1-complete-implementation.md
+>   的 **P7 / P8** 明确要求，晚于并覆盖本文第 6–10 行的暂缓令。
+> - **§0.4 的调度对象裁定（路径 / 分流比例 / 发送速率）仍未裁定**：已实现的是"按 scope 计算并安装动作表、
+>   旧表继续服务"的**机制**，不主张它对应哪一种调度对象。本文 §1–§6 的契约条款除第 4 行外仍然有效。
+
 | 字段 | 值 |
 | --- | --- |
 | 仓库 | `leo-exp-main`（= `leo-experiment-platform` origin/main `1fad58f`，detached HEAD） |
