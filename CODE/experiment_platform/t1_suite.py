@@ -389,6 +389,13 @@ def _b_cells(contract, bundle_dir):
     cells = []
     for spec in plan:
         sid = str(spec["id"])
+        status = spec.get("status")
+        if status is not None and status != "READY":
+            # A scenario whose own validity pre-check failed must not be RUN: a
+            # known-invalid scenario would only produce NO_LEGAL_BRANCH cells
+            # and make a red tier look like a platform failure.  It stays in
+            # the contract, with its measured reason, until it is fixed.
+            continue
         profile = str(spec["profile"])
         params = dict(spec.get("parameters") or {})
         branches = int(spec.get("max_branches", 12))
@@ -917,8 +924,13 @@ def compile_bundle(contract_path, out_dir):
             "runtime": identity["runtime"],
         },
         "tiers": {
+            # A2: the acceptance tier is the MECHANISM fixture only.  Adding
+            # the b_round cells to the default selector made `run --tier
+            # acceptance` silently execute the heavy business scenarios as
+            # well (and broke resume, which re-ran a b_round cell as if it
+            # were a fixture).  Each tier names its own groups explicitly.
             "acceptance": [c["cell_id"] for c in cells
-                           if c["group"] != "dev_sweep"],
+                           if c["group"] not in ("dev_sweep", "b_round")],
             "dev": [c["cell_id"] for c in cells if c["group"] == "dev_sweep"],
             "b_dev": [c["cell_id"] for c in cells if c["group"] == "b_round"],
             "formal": [c["cell_id"] for c in confirm_cells],
