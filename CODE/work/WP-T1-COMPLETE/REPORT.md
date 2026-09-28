@@ -5,8 +5,10 @@
 > 结论分层：IMPLEMENTED / TESTED / DIAGNOSTIC_RUN / FORMAL_RUN。**本报告不含任何 FORMAL_RUN。**
 
 > ### ⚠️ 现状与历史分界（2026-09-28）
-> 本报告的**现行证据只有一处**：文末「VM 执行证据」节，run-id **`t1-final-8a31496`**
-> （HEAD `8a31496`，`identity.git.dirty=false`，执行链 `e8537aed…`，acceptance/dev 各 10/10）。
+> 本报告的**现行证据只有一处**：文末「VM 执行证据」节，run-id **`t1-final-b1f44af`**
+> （HEAD `b1f44af`，`identity.git.dirty=false`，执行链 `96b3fbaf…`，acceptance/dev 各 10/10）。
+> 计时 518.8 µs 只能按**确定性评分器的 VM 主机计时**引用：工件 `model_provenance` 已声明 
+> `trained_checkpoint_used=false` / `ddqn=false` / `on_board=false`，且被 benchmark 谓词强制。
 > **第 3–8 节是 VM 规则生效之前的本机口径**（工件 `out/t1/**`、acceptance 7 cells、决策计时 p50 34 µs）；
 > 按 `AGENTS.md` §1，这些本机产物自 2026-09-28 起**不得再作为实验证据来源**，其中 34 µs / 73.9 µs 计时已作废。
 > 第 9 节起为两轮独立复审的返工史（R1–R9 @53aeb30、S1–S7 @2330701）与本轮 S8 修复，保留完整历史。
@@ -81,7 +83,7 @@ validate 篡改拒绝：删除某 cell 的 driver 后 -> "bundle validation fail
 | 恒状态退化 | 四组动作一致 | 恒队列时预测外推退化一致 |
 | 计算池手算夹具 | 1 服务台 starts [0,0.1] / finishes [0.1,0.2]；2 服务台 finishes [0.1,0.1] | 与计划书手算一致 |
 | 异步跨版本时间例 | 请求 1 s、服务 2 s、安装 0.5 s → 1.5/3.2 s 查 v1，3.5 s 安装后查 v2 | 与计划书时间例一致 |
-| 决策路径计时（**已作废**） | ~~full p50 ≈ 34 µs、p99 ≈ 50 µs~~ | 旧值只计评分调用、且未按臂取真实时刻；已被 S5 修正后的真实在线路径 **526–529 µs** 取代 |
+| 决策路径计时（**已作废**） | ~~full p50 ≈ 34 µs、p99 ≈ 50 µs~~ | 旧值只计评分调用、且未按臂取真实时刻；已被 S5 修正后的真实在线路径 **518.8 µs** 取代（确定性评分器的 VM 主机计时，非 DDQN） |
 | 五执行模式复用 | per_flow 命中缓存后计算请求低于 per_packet；async 模式查询表、按窗口安装 | 机制计数与事件对齐 |
 
 ## 5. 能支持的判断
@@ -225,8 +227,8 @@ R1 反问例复核（复现脚本 tmp_r1_final.py，已删除）：
 
 ## VM 执行证据（实验只在 VM）
 
-> 最新一轮 = `t1-final-bace1bb`（HEAD `bace1bb`，`identity.git.dirty=false`，链 `8694b7e8…`）。
-> 上一轮 `t1-final-8a31496` 因第三轮复审返工（S1/S4/S5/S6/S8 改了执行链）而失效，不再作为现行证据。
+> 最新一轮 = `t1-final-b1f44af`（HEAD `b1f44af`，`identity.git.dirty=false`，链 `96b3fbaf…`）。
+> 更早的 `t1-final-bace1bb` / `t1-final-8a31496` 均因后续返工改变执行链而失效，不再作为现行证据。
 > `t1-final-a70d65c` 与 `t1-final-c4dd85f` 两次工件的 `identity.git.dirty` 为 **true**，成因是已修掉的 runner 身份假阳性；
 > `t1-s7-377ae9b` 及更早的 VM 工件为历史证据，其 507–517 µs 计时已被取代。
 
@@ -235,20 +237,21 @@ ssh vm -> cuda-liguang13   /data 471G 可用   conda: /data/liguang13/conda-envs
 隔离实验根: /data/论文/leo-t1-wt        # 你的正式部署 /data/论文/leo-direct-sim 从未被写入
 runner: CODE/scripts/remote/t1-vm.sh sync|run|pull|experiment
 
-run-id:   t1-final-bace1bb        pulled -> out/vm/t1-final-bace1bb/
-工件身份: identity.git.source=launch_manifest, commit=bace1bb…, dirty=false, status_short=[]
-链一致性: VM 链 8694b7e8… == 本机重算 8694b7e8…（57 个执行链文件）
-拉回完整性: VM Results/t1-final-bace1bb 的 52 个文件与 out/vm/t1-final-bace1bb 逐字节一致（sha256 逐一相等）
+run-id:   t1-final-b1f44af        pulled -> out/vm/t1-final-b1f44af/
+工件身份: identity.git.source=launch_manifest, commit=b1f44af…, dirty=false, status_short=[]
+链一致性: VM 链 96b3fbaf… == 本机重算 96b3fbaf…（57 个执行链文件）
+拉回完整性: VM Results/t1-final-b1f44af 的 52 个文件与 out/vm/t1-final-b1f44af 逐字节一致（sha256 逐一相等）
 平台:     Linux-6.6.0-…aarch64   python 3.11.15 / simpy 4.0.1 / numpy 1.24.3
 
 t1_suite compile  -> 20 cells
-t1_suite validate -> valid true（bundle_fingerprint 7c1519e1…）
+t1_suite validate -> valid true（bundle_fingerprint f197dc0e…）
 t1_suite run --tier acceptance -> {"ok":10,"error":0,"timeout":0,"predicate_failed":0,"not_ok":0}
 t1_suite run --tier dev        -> {"ok":10,"error":0,"timeout":0,"predicate_failed":0,"not_ok":0}
 report -> run_status ok；verified_ok 10/10；逐格 predicate_passed=true 且盘上 result_sha256 与报告内嵌哈希一一相等
 statistics.common_strong.frozen = False（开发块配对差恒为 0、无判别力——诚实标注，非工程缺口）
 四臂对齐（VM）: candidate/common/now/stale targets_match=True ranking_match=True
-真实在线路径（观测构造→预测→评分→排名→选动作）p50: 511.7 µs（分相见工件 `phases`；仅推理 12.04 µs 不得当完整成本）
+真实在线路径（观测构造→预测→评分→排名→选动作）p50: 518.8 µs
+  —— **确定性评分器的 VM 主机计时，非 DDQN、非星载**（工件 model_provenance；仅推理 12.04 µs 不得当完整成本）
 四臂对齐: 已纳入 benchmark 谓词门禁（S5-R2），错位即 cell 非 ok
   调用计数: end_to_end predict=2/次决策（= 每候选一次）；inference_only predict=0
 有限池: N=0 无界 56 请求 0 排队 | N=1 41 请求 23 排队 max_wait 0.312 s | N=2 47 请求 25 排队 max_wait 0.112 s
@@ -301,15 +304,24 @@ statistics.common_strong.frozen = False（开发块配对差恒为 0、无判别
 `test_s5_review_counterexamples.py`、`test_s6_review_counterexamples.py`、
 `test_t1_vm_launch_manifest.py`。
 
-## 第三轮仍未修（诚实列出，非"已完成"）
+## 第三轮三项返工（已修，附两项未判缺陷的记账）
 
-1. **S1 反例 B/C**：控制包在上一次 data 入队之后到达时 ctrl 分量陈旧（`put_ctrl` 不发
-   时间线行）；控制包在服务时完全不可见（`ControlPacket` 无 `service_start/service_finish` 行）。
-   两者都需要内核补控制包时间线行，属跨模块改动。
-2. **S3 per_flow 未计费完整推理**：`decide_deferred` 用 `requested` 判命中，
-   而 `_decide` 在查询返回后用 `now` 重查；查询排队期间 TTL 过期时两次判定不一致，
-   该决策付 0 计算却跑了完整评分（ttl=0.2 / qd=0.1 时 2 次）。
-3. **S5 非 DDQN 标记**：工件与 `limits` 内没有"计时来自确定性评分器、非 DDQN"的标记。
+按"诊断已跑通、工程验收剩三项"的裁决，**S3 → S1(B/C) → S5** 已逐项返工：每项先补**能失败的反例**
+再改实现，并逐条验证"禁用修复即失败"，最后在新身份 `t1-final-b1f44af` 上复跑通过。
+
+1. **S3** → 逐流缓存改为**请求时冻结**（计划书 P2 已定条款"请求时冻结；排队期间不刷新"）。
+   反例按**决策实例**判定"未付费的完整评分"（按 pid 统计会被后续重决策掩盖），
+   禁用冻结时实测 `unpaid scoring at [(16, 7.712001)]`。
+2. **S1 B/C** → 内核补控制包入队与服务事件（`_timeline_ctrl`，使用与数据相同的物理链路 id），
+   真值重建改由控制时间线测量 ctrl 分量；无控制行的历史轨迹仍回退旧估计器。反例用**真实内核轨迹**。
+3. **S5** → 工件声明 `model_provenance`（`trained_checkpoint_used=false` / `ddqn=false`），
+   并被 benchmark 谓词 `require_model_provenance` 强制；新身份工件谓词检查由 17 项增至 20 项且全过。
+
+仍未处置（**未判为缺陷**，仅记账）：
+
+- **S4 附加观察**：`servers=0` 时异步后台 job 只发 `compute_request/compute_finish`、不发 `compute_start`。
+- **研究设计侧未就绪**：开发块配对差恒为 0 → `common_strong` 未冻结、正式样本量无法估计，
+  formal 包标 `PENDING_DEV_SELECTION`。这是**研究设计尚未就绪**，不等于"只差正式授权"。
 4. **S4 附加观察（未判缺陷）**：`servers=0` 时异步后台 job 只发 `compute_request/compute_finish`、不发 `compute_start`。
 
 

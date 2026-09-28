@@ -313,7 +313,7 @@
       "isolated_root": "/data/论文/leo-t1-wt",
       "live_deployment_untouched": "/data/论文/leo-direct-sim",
       "runner": "CODE/scripts/remote/t1-vm.sh (sync/run/pull/experiment)",
-      "chain_equality_verified": "VM chain e8537aed == local chain e8537aed (after pruning 556 stray files)"
+      "chain_equality_verified": "VM chain 96b3fbaf == local chain 96b3fbaf (57 execution-chain files, after pruning stray metadata)"
     },
     "items": {
       "S1": {
@@ -322,7 +322,10 @@
         "what": "队列真值按内核事件语义重建",
         "evidence": [
           "time_alignment_compare.resource_work_ahead（事件序、前置快照不重复扣目标包、含在服务剩余、区分 FIFO 后方与控制优先）",
-          "复审 2500 bit 反例测试 + 真实内核 backlog_before 对齐测试"
+          "复审 2500 bit 反例测试 + 真实内核 backlog_before 对齐测试",
+          "第三轮复审（a124bba）判 PARTIAL：截断服务窗少报 86%、未知折成 0、控制包时间线缺失",
+          "第三轮返工：截断服务窗在目标入队瞬间回退 basis 内的在服务剩余量；未知分量时 work_ahead_bits=None；内核补 put_ctrl 入队行与控制包 service_start/finish 行；重建改用控制时间线测量 ctrl 分量",
+          "反例：test_s1_review_counterexamples.py（2）+ test_s1bc_review_counterexamples.py（3，真实内核轨迹），均验证过禁用修复即失败"
         ]
       },
       "S2": {
@@ -340,7 +343,10 @@
         "what": "查表模式不付逐包完整计算",
         "evidence": [
           "kernel._packet_compute_required + decide_deferred 分支；预计算构建成本单列",
-          "test_execution_cost.py: precomputed/async_* 逐包 compute_request == 0，后台任务仍付 0.05s"
+          "test_execution_cost.py: precomputed/async_* 逐包 compute_request == 0，后台任务仍付 0.05s",
+          "第三轮复审（a124bba）判 PARTIAL：per_flow 在查询排队期间 TTL 过期时，付 0 计算却跑了完整评分",
+          "第三轮返工：按计划书 P2 统一为请求时冻结——_time_aligned_order 接受 frozen_hit，decide_deferred 把请求时刻选定的条目下达；审计标记 frozen_at_request",
+          "反例：test_s3_review_counterexamples.py（4，按决策实例判定未付费评分），禁用冻结时实测 unpaid scoring at [(16, 7.712001)]"
         ]
       },
       "S4": {
@@ -358,7 +364,10 @@
         "what": "计时走真实在线入口并逐臂对齐",
         "evidence": [
           "time_alignment.plan_decision/build_predictions/resolve_common_horizon 共用入口；kernel 使用之",
-          "benchmark 截获在线决策输入并冻结 caches/池状态，四臂 targets_match/ranking_match 均为 True（VM 工件）"
+          "benchmark 截获在线决策输入并冻结 caches/池状态，四臂 targets_match/ranking_match 均为 True（VM 工件）",
+          "第三轮复审（a124bba）判 PARTIAL：对齐只写入工件、未入门禁；工件缺可机器读的模型来源标记",
+          "第三轮返工：benchmark 谓词新增 require_alignment 与 require_model_provenance；工件新增 model_provenance（trained_checkpoint_used=false / ddqn=false / on_board=false），limits 明写不是 DDQN 延迟",
+          "反例：test_s5_review_counterexamples.py（4）+ test_s5_provenance.py（5）；新身份工件 bench 谓词检查由 17 项增至 20 项且全过"
         ]
       },
       "S6": {
@@ -390,18 +399,18 @@
         "t1-final-8a31496"
       ],
       "latest_identity": {
-        "run_id": "t1-final-bace1bb",
-        "commit": "bace1bbe11d81dfe1289bbcc09e51739390981ee",
+        "run_id": "t1-final-b1f44af",
+        "commit": "b1f44af0900373604c2f0e29b55027b362d33a0d",
         "dirty": false,
         "status_short": [],
-        "execution_chain_sha256": "8694b7e80cda08b3451808926da5f8c9b35a35b2082d58ed452b4675dfb0f211",
+        "execution_chain_sha256": "96b3fbaf6cebae8e79152eb4f77b1b9605f3e1dce02195c02956091cc69eb8a2",
         "chain_equality": "VM 链 == 本机重算（57 个执行链文件）",
         "pullback_integrity": "VM Results 的 52 个文件与 out/vm 拉回副本 sha256 逐一相等（逐字节一致）",
-        "bundle_fingerprint": "7c1519e1cc6112f9",
+        "bundle_fingerprint": "f197dc0e9f73369d",
         "acceptance": {"ok": 10, "predicate_failed": 0, "not_ok": 0, "verified_ok": 10},
         "dev": {"ok": 10, "predicate_failed": 0, "not_ok": 0, "verified_ok": 10},
-        "online_path_p50_s": 0.0005116835236549377,
-        "note": "t1-final-8a31496 因第三轮返工改变执行链而失效；t1-final-c4dd85f 与 t1-final-a70d65c 的 identity.git.dirty=true 系 runner 假阳性（见 s8_fix），均不作为身份依据"
+        "online_path_p50_s": 0.000518824,
+        "note": "bace1bb 及更早的运行均因第三轮返工改变执行链而失效；t1-final-c4dd85f 与 t1-final-a70d65c 的 identity.git.dirty=true 系 runner 假阳性（见 s8_fix）。当前唯一有效身份是本条"
       },
       "pulled_to": "out/vm/<run-id>/",
       "local_regression": "1275 passed, 2 skipped（pytest 属本机允许项）"
@@ -434,11 +443,14 @@
         "S6": "assert_inference_only 改为声明+探针；policy.act 统一委托 adapter.act；verify_checkpoint 硬要求 metadata 路径与哈希；ta.enabled=false 时给策略报错",
         "S8_3a_i": "trap 清理暂存目录；远端 && 链 + head 校验"
       },
-      "still_open": [
-        "S1 反例 B/C：控制包时间线行缺失（ctrl 分量陈旧、控制包在服务不可见），需内核补行",
-        "S3：per_flow 在查询排队期间 TTL 过期时可发生未计费的完整评分",
-        "S5：工件/limits 缺非 DDQN 标记"
+      "still_open": [],
+      "resolved_in_round3": [
+        "S1 反例 B/C：内核补 put_ctrl 入队行与控制包 service_start/service_finish 行，重建改由控制时间线测量",
+        "S3：逐流缓存改为请求时冻结，未付费的完整评分不再可能",
+        "S5：工件声明 model_provenance，且被 benchmark 谓词强制"
       ],
+      "research_design_status": "NOT_READY：开发块配对差恒为 0，common_strong 未冻结、正式样本量无法估计，formal 包为 PENDING_DEV_SELECTION。属研究设计尚未就绪，不等于只差正式授权。",
+      "new_identity_pending_review": "本文件所记身份为 b1f44af / t1-final-b1f44af，自验通过；第三轮独立复核尚未覆盖该新身份。",
       "counterexample_files": [
         "CODE/experiment_platform/tests/test_s1_review_counterexamples.py",
         "CODE/experiment_platform/tests/test_s4_review_counterexamples.py",

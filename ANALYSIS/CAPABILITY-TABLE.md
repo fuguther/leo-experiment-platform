@@ -122,7 +122,7 @@
 | 能力 | 实现存在 | 命令可达 | 本机测试 | VM 实跑 | 研究比较完成 |
 |---|---|---|---|---|---|
 | 单位修正（occupied 秒 / 控制比特分离） | ✅ `control_reach_probe._control_overhead` + `UNITS` | ✅ 同名 CLI（schema v2） | ✅ 3 测试 | ✅ | ❌ |
-| 执行链身份（commit/dirty/diff + 逐文件哈希） | ✅ `artifact_identity.py`（57 文件链） | ✅ 各驱动内嵌 `identity` | ✅ | ✅ 链 `e8537aed` 本机==VM 重算 | ❌ |
+| 执行链身份（commit/dirty/diff + 逐文件哈希） | ✅ `artifact_identity.py`（57 文件链） | ✅ 各驱动内嵌 `identity` | ✅ | ✅ 链 `96b3fbaf` 本机==VM 重算 | ❌ |
 | runner 清单身份（S8：暂存移出工作区，消除 dirty 假阳性） | ✅ `t1-vm.sh` + `CODE/tests/test_t1_vm_launch_manifest.py` | ✅ `t1-vm.sh sync\|experiment` | ✅ 3 测试 | ✅ `dirty=false`、拉回 52 文件逐字节一致 | ❌ |
 | 每星 FIFO 计算池 + compute_request/start/finish | ✅ `kernel._deferred_enabled` / `decide_deferred` | ✅ 配置键 + timeline | ✅ 手算夹具 | ✅ 有限池 N=1/2 排队实测 | ❌ |
 | 零成本 frozen 诊断 | ✅ `_deferred_enabled` | ✅ `decision_observation_mode=frozen` | ✅ | ✅ | ❌ |
