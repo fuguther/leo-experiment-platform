@@ -182,6 +182,101 @@
     ],
     "run": "t1-b3-7be10f1"
    },
+   "b4_update_period_scan": {
+    "boundary": "单场景单种子；D 用该场景冻结值 2.534 s；无统计声明",
+    "commit": "31c7689 (scan) / cbada40 (auditability fix)",
+    "findings": [
+     "非单调最优：0.5 s 交付最多（69）；0.1 s 花掉 4.4 倍后台计算却只交付 66；2.0 s 最省（35 job）但少交 6 包，退回与 per_packet 相同的 63。",
+     "后台计算随 1/period 缩放：517 / 118 / 35，与周期比 20:4.75:1.4 接近反比。",
+     "async_point 与 async_window 在三个周期下**完全相同**：本场景（稳态热点）下 4 段窗口没有额外收益，需要「变化速度」扫描才能定位窗口何时有用。",
+     "复用的代价可量化：相比 per_packet（均延 0.9827、1710 job），0.5 s 异步用 1/14.5 的计算换来 +6 包交付、均延 +0.06 s。"
+    ],
+    "note": "任务书 B4 顺序扫描的第一项：更新周期；window = 2 x period，bins 默认 4",
+    "rows": [
+     {
+      "bg_jobs": 517,
+      "delivered": 66,
+      "e2e_mean_s": 1.0179,
+      "fallbacks": 43,
+      "installs": 517,
+      "mode": "async_window",
+      "period_s": 0.1,
+      "total_jobs": 517
+     },
+     {
+      "bg_jobs": 118,
+      "delivered": 69,
+      "e2e_mean_s": 1.0424,
+      "fallbacks": 48,
+      "installs": 116,
+      "mode": "async_point",
+      "period_s": 0.5,
+      "total_jobs": 118
+     },
+     {
+      "bg_jobs": 118,
+      "delivered": 69,
+      "e2e_mean_s": 1.0424,
+      "fallbacks": 48,
+      "installs": 116,
+      "mode": "async_window",
+      "period_s": 0.5,
+      "total_jobs": 118
+     },
+     {
+      "bg_jobs": 35,
+      "delivered": 63,
+      "e2e_mean_s": 1.0192,
+      "fallbacks": 27,
+      "installs": 35,
+      "mode": "async_point",
+      "period_s": 2.0,
+      "total_jobs": 35
+     },
+     {
+      "bg_jobs": 35,
+      "delivered": 63,
+      "e2e_mean_s": 1.0192,
+      "fallbacks": 27,
+      "installs": 35,
+      "mode": "async_window",
+      "period_s": 2.0,
+      "total_jobs": 35
+     },
+     {
+      "bg_jobs": 0,
+      "delivered": 63,
+      "e2e_mean_s": 0.9827,
+      "fallbacks": 0,
+      "installs": 0,
+      "mode": "per_packet",
+      "period_s": null,
+      "total_jobs": 1710
+     },
+     {
+      "bg_jobs": 0,
+      "delivered": 68,
+      "e2e_mean_s": 1.0318,
+      "fallbacks": 0,
+      "installs": 0,
+      "mode": "per_flow",
+      "period_s": null,
+      "total_jobs": 479
+     },
+     {
+      "bg_jobs": 0,
+      "delivered": 69,
+      "e2e_mean_s": 1.0424,
+      "fallbacks": 0,
+      "installs": 0,
+      "mode": "precomputed",
+      "period_s": null,
+      "total_jobs": 0
+     }
+    ],
+    "run": "t1-b4scan-31c7689",
+    "scenario": "fixed_hotspot（40 s，24 星，offered 2.0 / ISL 2.5）"
+   },
    "budgets": "每 cell 120 s / 最多 120 cell / 总 2 h；b_dev 展开 1060 次模拟调用",
    "burst_multiod_verdict": {
     "meaning": "该缩放在破坏 OD 可达性/合法性，属于任务书说的'场景未充分激活机制'，不得据此宣称算法有效或无效。",
