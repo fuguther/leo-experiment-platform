@@ -32,6 +32,7 @@ WHAT THIS MODULE REFUSES TO DO
 from __future__ import annotations
 
 import argparse
+import collections
 import copy
 import hashlib
 import json
@@ -53,6 +54,10 @@ TASK_TYPES = ("branch_alignment", "network_alignment", "execution_modes")
 #: Pre-declared sampling rule.  Changing it changes the matrix identity.
 BRANCH_SAMPLING_RULE = "even_stride_over_eligible_decision_ids/v1"
 DEFAULT_MAX_BRANCHES = 12
+#: How many per-decision action records one online arm keeps.  A cap that
+#: truncates is recorded as such; a cap that silently dropped records would
+#: make "the arm did nothing" and "the log was cut" look the same.
+DEFAULT_ACTION_LOG_LIMIT = 500
 #: The four online arms, in the frozen contract order.
 NETWORK_ARMS = ("stale", "now", "common", "candidate")
 #: The five execution modes, re-exported so the suite declares its cells from
@@ -243,6 +248,115 @@ def project_horizons(offsets):
     }
 
 
+def _arm_actions(arms):
+    """What each online arm actually DID at one branch, verbatim.
+
+    The four arms share one branch point and one candidate set, so the only
+    thing that can differ between them is the direction their own snapshot
+    ranked first.  Without this block a result document would say "the arms
+    lost the same" without saying whether they also CHOSE the same, and
+    those two facts have completely different explanations: a live mechanism
+    that cannot discriminate vs. an inert mechanism that never ran.
+    """
+    out = {}
+    for arm, block in sorted((arms or {}).items()):
+        block = block or {}
+        scores = block.get("scores") or {}
+        out[str(arm)] = {
+            "chosen": block.get("chosen"),
+            "ranking": list(block.get("ranking") or []),
+            "predicted_total_s": {str(d): (s or {}).get("total_s")
+                                  for d, s in scores.items()},
+            "fallback_directions": list(block.get("fallback_directions") or []),
+            "missing_directions": list(block.get("missing_directions") or []),
+            "missing_terms": sorted({str(term)
+                                     for s in scores.values()
+                                     for term in ((s or {}).get("missing") or [])}),
+        }
+    return out
+
+
+def _candidate_outcomes(candidates):
+    """The realised outcome of every forced direction, for the oracle check.
+
+    loss is None for a censored candidate on purpose: a packet whose
+    observation window is shorter than D never had the chance to show a loss,
+    and turning that into 1.0 would invent a timeout the run never had.
+    """
+    out = {}
+    for direction, item in sorted((candidates or {}).items()):
+        item = item or {}
+        out[str(direction)] = {
+            "valid": bool(item.get("valid")),
+            "reason": item.get("reason"),
+            "taken_in_baseline": item.get("taken_in_baseline"),
+            "loss": item.get("loss"),
+            "regret": item.get("regret"),
+            "censored": item.get("censored"),
+            "censor_reason": item.get("censor_reason"),
+            "resource_mismatch": item.get("resource_mismatch"),
+        }
+    return out
+
+
+def _arm_action_log(sink, *, limit=DEFAULT_ACTION_LOG_LIMIT):
+    """Per-forward-decision record of what ONE online arm did, from its audit.
+
+    This is the once-only evidence that separates "this arm changed nothing"
+    from "this arm was never consulted": every record keeps the instants the
+    decision actually queried, the order the arm applied, and the candidate
+    terms it could not resolve.
+    """
+    records = []
+    for row in sink:
+        if row.get("kind") != "forward":
+            continue
+        audit = (row.get("observation_at_start") or {}).get("time_alignment")
+        if not isinstance(audit, dict):
+            continue
+        ordered = [str(d) for d in (audit.get("applied_order") or [])]
+        scores = audit.get("scores") or {}
+        policy = audit.get("inference_policy") or {}
+        records.append({
+            "decision_id": row.get("decision_id"),
+            "t_decision_start": row.get("t_decision_start"),
+            "arm": audit.get("arm"),
+            "execution_mode": audit.get("execution_mode"),
+            "chosen": (ordered[0] if ordered else None),
+            "applied_order": ordered,
+            "scorer_ranking": [str(d) for d in (audit.get("ranking") or [])],
+            "reordered": bool(ordered) and ordered != sorted(ordered),
+            "query_targets": {str(k): v
+                              for k, v in (audit.get("query_targets") or {}).items()},
+            "fallback_directions": [str(d)
+                                    for d in (audit.get("fallback_directions") or [])],
+            "missing_directions": [str(d)
+                                   for d in (audit.get("missing_directions") or [])],
+            "missing_terms": sorted({str(term) for s in scores.values()
+                                     for term in ((s or {}).get("missing") or [])}),
+            "inference_policy_choice": policy.get("choice"),
+            "query": audit.get("query"),
+        })
+    return {"records": records[:limit], "count": len(records),
+            "limit": int(limit), "truncated": len(records) > limit,
+            "rule": "one record per forward decision, in decision order"}
+
+
+def _fallback_reason_counts(action_log):
+    """Count WHY decisions fell back, keyed by the candidate term missing.
+
+    A bare fallback count cannot tell a query that arrived too late from a
+    resource that never appears in the branch; the missing-term names can.
+    """
+    counts = collections.Counter()
+    for record in action_log.get("records") or []:
+        for term in record.get("missing_terms") or []:
+            counts["unknown_term:" + str(term)] += 1
+        counts["direction_marked_fallback"] += len(
+            record.get("fallback_directions") or [])
+        counts["direction_missing"] += len(record.get("missing_directions") or [])
+    return dict(sorted(counts.items()))
+
 def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
                            max_branches=DEFAULT_MAX_BRANCHES, window=None):
     """Several branches of ONE baseline trajectory, merged into one block.
@@ -282,6 +396,13 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
             "regret": {a: (arms.get(a) or {}).get("regret") for a in arms},
             "counts": dict(document.get("counts") or {}),
             "oracle": document.get("oracle"),
+            # FORENSICS: what each arm chose, and what each forced
+            # direction actually paid.  The two together are what makes
+            # "the four arms tie" a fact about the mechanism instead of a
+            # fact about the report.
+            "arm_actions": _arm_actions(arms),
+            "candidate_outcomes": _candidate_outcomes(
+                document.get("candidates") or {}),
             "trace_identity": (document.get("identity") or {}).get(
                 "sources"),
         })
@@ -506,6 +627,9 @@ def _arm_row(resolved, rows, geometry, arm):
         "missing": sum(1 for a in audits if a.get("missing_directions")),
         "execution_mode": local["config"]["time_alignment"]["execution_mode"],
     }
+    action_log = _arm_action_log(sink)
+    audit_block["decisions_in_action_log"] = action_log["count"]
+    audit_block["action_log_truncated"] = action_log["truncated"]
     return {
         "arm": arm,
         "config_sha256": local["sha256"],
@@ -541,6 +665,8 @@ def _arm_row(resolved, rows, geometry, arm):
             "events_processed": result["events_processed"],
         },
         "time_alignment_audit": audit_block,
+        "action_log": action_log,
+        "fallback_reason_counts": _fallback_reason_counts(action_log),
         "compute": _compute_cost(timeline, local),
         "control": {"bits": dict(result["control"]["bits"]),
                     "counters": dict(result["control"]["counters"])},
