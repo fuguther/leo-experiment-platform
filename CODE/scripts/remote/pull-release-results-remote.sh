@@ -48,8 +48,13 @@ for argument in "${remote_args[@]}"; do
     quote "$argument"
     remote_command+="${remote_command:+ }$REPLY"
 done
-for argument in "&&" "tar" "-czf" "-" "-C" "$run_dir" "."; do
-    if [[ "$argument" == "&&" ]]; then
+for argument in ">" "/dev/null" "&&" "tar" "-czf" "-" "-C" "$run_dir" "."; do
+    if [[ "$argument" == ">" ]]; then
+        remote_command+=" >"
+    elif [[ "$argument" == "/dev/null" ]]; then
+        quote "$argument"
+        remote_command+=" $REPLY"
+    elif [[ "$argument" == "&&" ]]; then
         remote_command+=" &&"
     else
         quote "$argument"
