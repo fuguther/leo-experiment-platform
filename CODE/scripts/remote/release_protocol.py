@@ -766,6 +766,8 @@ def verify_installed_release(release_dir: Path) -> dict[str, Any]:
     release_dir = _require_real_directory(release_dir, create=False)
     envelope = _load_hashed_json(release_dir / ENVELOPE_NAME, "envelope_sha256")
     manifest = _load_hashed_json(release_dir / MANIFEST_NAME, "manifest_sha256")
+    if release_dir.name != envelope.get("release_id"):
+        raise ValueError("installed release directory identity mismatch")
     if sha256_file(release_dir / ".deployment_commit") != next(
         item["sha256"] for item in manifest["deployed_files"] if item.get("path") == ".deployment_commit"
     ):
@@ -1249,6 +1251,8 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
         raise ValueError("a Python command is required")
     release_dir = Path(os.path.abspath(release_root / release_id))
     release = verify_installed_release(release_dir)
+    if release.get("release_id") != release_id:
+        raise ValueError("requested release identity mismatch")
     argv = _release_python_argv(argv, release_dir)
     if resource_group and not RESOURCE_RE.fullmatch(resource_group):
         raise ValueError("invalid resource group")

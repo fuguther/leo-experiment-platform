@@ -600,6 +600,29 @@ def _installed_fixture(tmp_path: Path) -> tuple[Path, Path, str]:
     return repo, releases_root, envelope["release_id"]
 
 
+def test_run_rejects_release_installed_under_a_different_release_id_directory(
+    tmp_path: Path,
+) -> None:
+    from CODE.scripts.remote.release_protocol import run_release
+
+    _repo_path, releases_root, release_id = _installed_fixture(tmp_path)
+    mismatched_id = "f" * 40 + "-" + "e" * 64
+    (releases_root / release_id).rename(releases_root / mismatched_id)
+    runs_root = tmp_path / "vm" / "runs"
+
+    with pytest.raises(ValueError, match="identity mismatch"):
+        run_release(
+            mismatched_id,
+            "mismatched-release-001",
+            release_root=releases_root,
+            runs_root=runs_root,
+            mode="diagnostic",
+            argv=["python3", "CODE/payload.py"],
+        )
+
+    assert not (runs_root / "mismatched-release-001").exists()
+
+
 def test_run_binds_release_inputs_runtime_and_unique_run_id(tmp_path: Path) -> None:
     from CODE.scripts.remote.release_protocol import run_release, verify_run_directory
 
