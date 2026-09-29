@@ -57,18 +57,19 @@ EXPERIMENTS/              # 契约与模板(不含实验实例)
 
 ## 与源仓库的关系
 
-`leo_sim/` 是**字节级复制**。证据链要求 `code_sha256` 可复现,因此:
+`leo_sim/` 最初从源仓库复制；T1 后续已扩展仿真内核及时间对齐、异步路由和固定模型推理。这些改动需要按 `CHARTER.md` 的平台边界审查，不能再把本分支描述为字节级副本。
 
-- 不在本仓库对复制来的源码做"顺手优化"
-- 需要改动时,按 `CHARTER.md` 的边界判断是否属于平台本体
+当前同步/维护状态见 [STATUS.md](STATUS.md)，研究工作包的实现与历史证据见 `CODE/work/WP-T1-COMPLETE/STATUS.md`。旧报告中的 SHA、差异行数与测试数仅代表其记录时的快照。
 
-> **📌 状态更新 (2026-09-28)**:上面两条是 `main` 的规则。在当前分支
-> `t1/frozen-branch-and-async-design` 上,`leo_sim/` **已不再是字节级复制**:
-> T1 工作新增 `time_alignment.py` / `async_routing.py` / `inference.py`,
-> 并扩展 `kernel.py`(+1218 行)、`control.py`、`counterfactual.py`;
-> 相对 `origin/main` 共 21 个文件、+5218/-61 行。这是本分支的**有意分叉**,
-> 交付身份与证据见 `CODE/work/WP-T1-COMPLETE/STATUS.md`(现行证据身份 `8a31496`)。
-> 回 `main` 时上述规则照旧成立。
+日常维护规则见 [AGENTS.md](AGENTS.md)，只读检查：
+
+```bash
+python3 -B CODE/scripts/maintenance_check.py --repo .
+# 已有本机外置证据时，进一步核验索引与回执
+python3 -B CODE/scripts/maintenance_check.py --repo . --verify-evidence
+```
+
+检查不会清理文件；它不替代来源、许可、独立备份和正式实验资格的核验。
 
 ---
 

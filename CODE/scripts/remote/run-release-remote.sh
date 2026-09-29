@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REMOTE_HOST="${T1_REMOTE_HOST:-vm}"
 REMOTE_ROOT="${T1_REMOTE_ROOT:-/data/论文/leo-t1-wt}"
 SSH_BIN="${SSH_BIN:-/usr/bin/ssh}"
-REMOTE_RUN_PYTHON="${T1_REMOTE_RUN_PYTHON:-/data/liguang13/conda-envs/leo-i39/bin/python}"
+REMOTE_RUN_PYTHON="${T1_REMOTE_RUN_PYTHON:-$REMOTE_ROOT/envs/t1-linux-aarch64-py311-pkgset-v1/bin/python}"
 
 die() { printf '[run-release] %s\n' "$*" >&2; exit 2; }
 usage() {

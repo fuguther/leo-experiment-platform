@@ -22,7 +22,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install dependencies (VM-aligned versions)
-        run: pip install pytest simpy==4.0.1 numpy==1.24.3 pyyaml pillow==12.0.0
+      - name: Install test and core dependencies (T1-pinned versions)
+        run: >-
+          python -m pip install
+          -r CODE/dependencies/t1-vm-linux-aarch64/requirements-direct.in
+          -r CODE/dependencies/t1-vm-linux-aarch64/requirements-test.in
+          pillow==10.4.0
+      - name: Check repository maintenance rules
+        run: python -B CODE/scripts/maintenance_check.py --repo .
       - name: Run test suite
-        run: python -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q
+        run: python -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests CODE/scripts/remote/tests -q

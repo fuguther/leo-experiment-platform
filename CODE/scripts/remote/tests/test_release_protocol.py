@@ -13,7 +13,26 @@ from pathlib import Path
 
 import pytest
 
-from CODE.scripts.remote.release_protocol import build_release
+from CODE.scripts.remote.release_protocol import _lock_identity, build_release
+
+
+def test_release_manifest_recognizes_platform_specific_explicit_conda_lock() -> None:
+    records = [
+        {"path": "CODE/dependencies/t1-vm-linux-aarch64/conda-linux-aarch64.explicit.lock",
+         "sha256": "a" * 64},
+        {"path": "CODE/dependencies/t1-vm-linux-aarch64/requirements.lock",
+         "sha256": "b" * 64},
+    ]
+
+    identity = _lock_identity(records)
+
+    assert identity == {
+        "status": "pinned",
+        "files": [
+            {"path": records[0]["path"], "sha256": "a" * 64},
+            {"path": records[1]["path"], "sha256": "b" * 64},
+        ],
+    }
 
 
 def _git(path: Path, *args: str) -> str:
@@ -258,6 +277,125 @@ def test_interrupted_release_partial_is_quarantined_before_retry(tmp_path: Path,
     assert next_attempt.is_dir()
 
 
+def test_bootstrap_only_interruption_can_be_quarantined_before_same_id_retry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    root = tmp_path / "T1"
+    root.mkdir()
+    releases = root / "releases"
+    bootstrap = releases / ".bootstrap" / ("a" * 40 + "-" + "b" * 64)
+    bootstrap.mkdir(parents=True)
+    (bootstrap / "release_protocol.py").write_text("partial bootstrap\n", encoding="utf-8")
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases)
+
+    result = protocol.quarantine_incoming(bootstrap.name, t1_root=root)
+
+    preserved = Path(result["path"])
+    assert (preserved / "release_protocol.py").read_text(encoding="utf-8") == "partial bootstrap\n"
+    assert not bootstrap.exists()
+    (releases / ".bootstrap" / bootstrap.name).mkdir(mode=0o700)
+    assert protocol.prepare_incoming(bootstrap.name, t1_root=root).is_dir()
+
+
+def test_quarantine_preserves_incoming_and_bootstrap_before_same_id_retry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    root = tmp_path / "T1"
+    root.mkdir()
+    release_id = "c" * 40 + "-" + "d" * 64
+    releases = root / "releases"
+    incoming = releases / "incoming" / f"{release_id}.partial"
+    incoming.mkdir(parents=True)
+    (incoming / "release.tar").write_bytes(b"partial archive")
+    bootstrap = releases / ".bootstrap" / release_id
+    bootstrap.mkdir(parents=True)
+    (bootstrap / "release_protocol.py").write_text("partial helper\n", encoding="utf-8")
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases)
+
+    result = protocol.quarantine_incoming(release_id, t1_root=root)
+
+    preserved_incoming = Path(result["path"])
+    preserved_bootstrap = Path(result["bootstrap_path"])
+    assert (preserved_incoming / "release.tar").read_bytes() == b"partial archive"
+    assert (preserved_bootstrap / "release_protocol.py").read_text(encoding="utf-8") == "partial helper\n"
+    assert not incoming.exists()
+    assert not bootstrap.exists()
+    (releases / ".bootstrap" / release_id).mkdir(mode=0o700)
+    assert protocol.prepare_incoming(release_id, t1_root=root).is_dir()
+
+
+def test_cleanup_interruption_with_installed_release_can_quarantine_leftover_bootstrap(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(repo, commit, bundle, remote_refs=[])
+    root = tmp_path / "T1"
+    root.mkdir()
+    releases = root / "releases"
+    protocol.install_release(bundle, releases)
+    bootstrap = releases / ".bootstrap" / envelope["release_id"]
+    bootstrap.mkdir(parents=True)
+    (bootstrap / "deployment_guard.py").write_text("left after cleanup interruption\n", encoding="utf-8")
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases)
+
+    result = protocol.quarantine_incoming(envelope["release_id"], t1_root=root)
+
+    preserved = Path(result["path"])
+    assert (preserved / "deployment_guard.py").read_text(encoding="utf-8") == "left after cleanup interruption\n"
+    assert not bootstrap.exists()
+    assert protocol.verify_installed_release(releases / envelope["release_id"])["release_id"] == envelope["release_id"]
+    (releases / ".bootstrap" / envelope["release_id"]).mkdir(mode=0o700)
+    assert protocol.prepare_incoming(envelope["release_id"], t1_root=root).is_dir()
+
+
+def test_quarantine_second_move_failure_keeps_both_sources_discoverable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    root = tmp_path / "T1"
+    root.mkdir()
+    release_id = "e" * 40 + "-" + "f" * 64
+    releases = root / "releases"
+    incoming = releases / "incoming" / f"{release_id}.partial"
+    incoming.mkdir(parents=True)
+    (incoming / "release.tar").write_bytes(b"partial archive")
+    bootstrap = releases / ".bootstrap" / release_id
+    bootstrap.mkdir(parents=True)
+    (bootstrap / "release_protocol.py").write_text("partial helper\n", encoding="utf-8")
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases)
+
+    real_replace = os.replace
+
+    def fail_bootstrap_move(source, destination):
+        if Path(source) == bootstrap:
+            raise OSError("injected bootstrap quarantine interruption")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(protocol.os, "replace", fail_bootstrap_move)
+    with pytest.raises(RuntimeError, match="incoming was preserved at"):
+        protocol.quarantine_incoming(release_id, t1_root=root)
+
+    assert not incoming.exists()
+    assert bootstrap.is_dir()
+    assert (bootstrap / "release_protocol.py").read_text(encoding="utf-8") == "partial helper\n"
+    quarantined_incoming = list((releases / ".quarantine").glob(f"{release_id}.*.partial"))
+    assert len(quarantined_incoming) == 1
+    assert (quarantined_incoming[0] / "release.tar").read_bytes() == b"partial archive"
+
+
 def test_safe_release_extractor_rejects_path_escape_and_links(tmp_path: Path) -> None:
     from CODE.scripts.remote.release_protocol import safe_extract_tar
 
@@ -439,6 +577,33 @@ def test_two_runs_share_read_only_release_without_sharing_outputs(tmp_path: Path
         assert receipt["status"] == "completed"
         assert (runs_root / run_id / "tmp" / "result.txt").is_file()
     assert verify_installed_release(releases_root / release_id)["release_id"] == release_id
+
+
+def test_concurrent_verified_index_appends_keep_both_complete_records(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    from CODE.scripts.remote.release_protocol import append_deployment_index, run_release
+
+    repo, releases_root, release_id = _installed_fixture(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+    receipts = [
+        run_release(release_id, run_id, release_root=releases_root, runs_root=runs_root,
+                    mode="diagnostic", argv=["python3", "CODE/payload.py"])
+        for run_id in ("index-parallel-a", "index-parallel-b")
+    ]
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(
+            lambda receipt: append_deployment_index(
+                repo, receipt, runs_root / receipt["run_id"]
+            ),
+            receipts,
+        ))
+
+    index = repo / "ANALYSIS" / "DEPLOYMENT-INDEX.jsonl"
+    rows = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines()]
+    assert {row["run_id"] for row in rows} == {"index-parallel-a", "index-parallel-b"}
+    assert all(row["pullback_status"] == "VERIFIED" for row in rows)
 
 
 def test_busy_resource_group_fails_without_consuming_run_id(tmp_path: Path) -> None:

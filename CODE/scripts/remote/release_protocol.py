@@ -379,7 +379,10 @@ def safe_extract_tar(archive: tarfile.TarFile, destination: Path) -> set[str]:
 
 
 def _lock_identity(records: list[dict[str, Any]]) -> dict[str, Any]:
-    lock_names = {"requirements.lock", "conda-lock.yml", "environment.lock.yml", "poetry.lock", "Pipfile.lock"}
+    lock_names = {
+        "requirements.lock", "conda-lock.yml", "environment.lock.yml",
+        "poetry.lock", "Pipfile.lock", "conda-linux-aarch64.explicit.lock",
+    }
     found = [record for record in records if PurePosixPath(record["path"]).name in lock_names]
     if found:
         return {
@@ -787,22 +790,54 @@ def cleanup_incoming(release_id: str, *, t1_root: Path = T1_ROOT) -> dict[str, s
 
 
 def quarantine_incoming(release_id: str, *, t1_root: Path = T1_ROOT) -> dict[str, str]:
-    """Preserve an abandoned partial before a deliberate same-ID retry."""
+    """Preserve abandoned incoming and bootstrap paths before a same-ID retry."""
     release_id = _safe_release_id(release_id)
     if Path(os.path.abspath(t1_root)) != T1_ROOT:
         raise ValueError("incoming quarantine is restricted to /data/论文/leo-t1-wt")
-    _require_real_directory(T1_ROOT, create=False)
-    incoming_root = _require_real_directory(RELEASE_ROOT / "incoming", create=False)
+    releases_root = _require_real_directory(RELEASE_ROOT, create=False)
+    incoming_root = releases_root / "incoming"
+    bootstrap_root = releases_root / ".bootstrap"
+    for root in (incoming_root, bootstrap_root):
+        if root.is_symlink():
+            raise ValueError(f"release recovery directory may not be symbolic: {root.name}")
+        if root.exists() and not root.is_dir():
+            raise ValueError(f"release recovery path is not a directory: {root.name}")
     attempt = incoming_root / f"{release_id}.partial"
-    if attempt.is_symlink() or not attempt.is_dir():
-        raise ValueError("release incoming attempt is missing or unsafe")
-    quarantine_root = _require_real_directory(RELEASE_ROOT / ".quarantine", create=True)
-    target = quarantine_root / (
-        f"{release_id}.{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
-        f".{uuid.uuid4().hex[:8]}.partial"
-    )
-    os.replace(attempt, target)
-    return {"status": "partial_preserved_in_quarantine", "path": str(target)}
+    bootstrap = bootstrap_root / release_id
+    for candidate, label in ((attempt, "incoming attempt"), (bootstrap, "bootstrap attempt")):
+        if candidate.is_symlink():
+            raise ValueError(f"{label} may not be symbolic")
+        if candidate.exists() and not candidate.is_dir():
+            raise ValueError(f"{label} is not a directory")
+    if not attempt.exists() and not bootstrap.exists():
+        raise ValueError("release incoming and bootstrap attempts are both missing")
+
+    quarantine_root = _require_real_directory(releases_root / ".quarantine", create=True)
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    nonce = uuid.uuid4().hex
+    result: dict[str, str] = {"status": "partial_preserved_in_quarantine"}
+    if attempt.exists():
+        incoming_target = quarantine_root / f"{release_id}.{stamp}.{nonce}.partial"
+        if incoming_target.exists() or incoming_target.is_symlink():
+            raise ValueError("incoming quarantine target already exists")
+        os.replace(attempt, incoming_target)
+        result["path"] = str(incoming_target)
+    if bootstrap.exists():
+        bootstrap_target = quarantine_root / f"{release_id}.{stamp}.{nonce}.bootstrap"
+        if bootstrap_target.exists() or bootstrap_target.is_symlink():
+            raise ValueError("bootstrap quarantine target already exists")
+        try:
+            os.replace(bootstrap, bootstrap_target)
+        except OSError as exc:
+            if "path" in result:
+                raise RuntimeError(
+                    "could not preserve bootstrap attempt; incoming was preserved at "
+                    f"{result['path']}; bootstrap remains at {bootstrap}"
+                ) from exc
+            raise
+        result["bootstrap_path"] = str(bootstrap_target)
+        result.setdefault("path", str(bootstrap_target))
+    return result
 
 
 def _safe_release_id(value: str) -> str:
