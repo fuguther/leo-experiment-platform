@@ -1,0 +1,96 @@
+{
+  "work_id": "three-end-sync-governance",
+  "frozen_at_sha": "b85fe4d8ebbb8a12e998182186bedf61b8d43e01",
+  "criteria": [
+    {
+      "id": "C1",
+      "statement": "The release builder publishes only a clean, exact, full Git commit and its output identity is deterministic.",
+      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_release_uses_exact_clean_git_commit_and_marks_dirty_checkout_rejected CODE/scripts/remote/tests/test_release_protocol.py::test_bundle_is_byte_stable_and_records_exact_remote_ref -q",
+      "touches": ["CODE/scripts/remote/release_protocol.py", "CODE/scripts/remote/publish-release-remote.sh", "CODE/scripts/remote/tests/test_release_protocol.py"]
+    },
+    {
+      "id": "C2",
+      "statement": "The T1 publisher and cleanup are constrained to the isolated releases root, refuse symlinked recovery parents, and never target the shared CODE tree or formal deployment root.",
+      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_cli_install_cannot_target_the_formal_workspace_or_an_arbitrary_release_root CODE/scripts/remote/tests/test_release_protocol.py::test_t1_exclusions_do_not_change_formal_deployment_policy CODE/scripts/remote/tests/test_release_protocol.py::test_cleanup_refuses_bootstrap_parent_symlink_before_deleting_anything -q; inspect publisher root guard and descriptor-based cleanup",
+      "touches": ["CODE/scripts/remote/release_protocol.py", "CODE/scripts/remote/publish-release-remote.sh", "CODE/scripts/remote/run-release-remote.sh", "CODE/scripts/remote/pull-release-results-remote.sh"]
+    },
+    {
+      "id": "C3",
+      "statement": "Publishing refuses tracked secret material and excludes ignored environment, model, and output assets from release contents.",
+      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_release_refuses_tracked_secret_paths_and_detected_secret_content CODE/scripts/remote/tests/test_release_protocol.py::test_untracked_changes_are_rejected_and_ignored_files_never_enter_release -q",
+      "touches": [".gitignore", "CODE/scripts/remote/release_protocol.py", "CODE/scripts/remote/tests/test_release_protocol.py"]
+    },
+    {
+      "id": "C4",
+      "statement": "Recovery quarantines incoming and bootstrap remnants, preserves both when a move fails, and leaves an installed release byte-identical.",
+      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_quarantine_preserves_incoming_and_bootstrap_before_same_id_retry CODE/scripts/remote/tests/test_release_protocol.py::test_quarantine_second_move_failure_keeps_both_sources_discoverable CODE/scripts/remote/tests/test_release_protocol.py::test_cleanup_interruption_with_installed_release_can_quarantine_leftover_bootstrap -q",
+      "touches": ["CODE/scripts/remote/release_protocol.py", "CODE/scripts/remote/tests/test_release_protocol.py", "CODE/scripts/remote/publish-release-remote.sh"]
+    },
+    {
+      "id": "C5",
+      "statement": "Same-release install retry is idempotent, conflicting release identity is rejected without overwrite, and old/new releases can coexist for rollback.",
+      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_install_is_idempotent_read_only_and_preserves_existing_release CODE/scripts/remote/tests/test_release_protocol.py::test_install_refuses_invalid_existing_id_without_overwriting_it CODE/scripts/remote/tests/test_release_protocol.py::test_new_release_coexists_with_old_release_for_rollback -q",
+      "touches": ["CODE/scripts/remote/release_protocol.py", "CODE/scripts/remote/tests/test_release_protocol.py"]
+    },
+    {
+      "id": "C6",
+      "statement": "A run rejects duplicate run IDs and FORMAL mode; declared data/model/config inputs are snapshotted and the child reads the same bytes whose hashes the receipt binds.",
+      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_run_binds_release_inputs_runtime_and_unique_run_id CODE/scripts/remote/tests/test_release_protocol.py::test_run_uses_an_immutable_input_snapshot_after_source_path_changes CODE/scripts/remote/tests/test_release_protocol.py::test_run_rejects_formal_mode_and_non_python_command_without_execution -q",
+      "touches": ["CODE/scripts/remote/release_protocol.py", "CODE/scripts/remote/run-release-remote.sh", "CODE/scripts/remote/tests/test_release_protocol.py"]
+    },
+    {
+      "id": "C7",
+      "statement": "Data/model, config, checkpoint metadata, runtime, and authorization identity mismatches fail closed in their applicable T1 or formal gates.",
+      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_verified_pullback_is_atomic_and_refuses_identity_or_content_mismatch CODE/leo_sim/tests/test_governance.py::test_eval_intent_seals_real_checkpoint_file CODE/leo_sim/tests/test_governance.py::test_eval_intent_verifies_metadata_pin_at_seal_time CODE/experiment_platform/tests/test_authorize_experiment.py::AuthorizeExperimentTests::test_authorization_is_recomputed_and_bound_to_exact_config CODE/experiment_platform/tests/test_v2_analysis.py::test_v2_analysis_rejects_authorized_cell_identity_mismatch CODE/leo_sim/tests/test_receipt.py::test_strict_receipt_verify_still_rejects_different_runtime_identity -q",
+      "touches": ["CODE/scripts/remote/release_protocol.py", "CODE/experiment_platform/tests/test_authorize_experiment.py", "CODE/leo_sim/tests/test_governance.py", "CODE/leo_sim/tests/test_receipt.py", "CODE/experiment_platform/tests/test_v2_analysis.py"]
+    },
+    {
+      "id": "C8",
+      "statement": "Concurrent runs using one immutable release have isolated outputs and distinct run identities.",
+      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_two_runs_share_read_only_release_without_sharing_outputs CODE/scripts/remote/tests/test_release_protocol.py::test_busy_resource_group_fails_without_consuming_run_id -q",
+      "touches": ["CODE/scripts/remote/release_protocol.py", "CODE/scripts/remote/tests/test_release_protocol.py"]
+    },
+    {
+      "id": "C9",
+      "statement": "Pullback verifies receipt identity and every file hash before atomic local placement; corrupt or interrupted payloads stay quarantined and can be retried cleanly.",
+      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_verified_pullback_is_atomic_and_refuses_identity_or_content_mismatch CODE/scripts/remote/tests/test_release_protocol.py::test_failed_pullback_is_quarantined_before_a_clean_retry -q",
+      "touches": ["CODE/scripts/remote/release_protocol.py", "CODE/scripts/remote/pull-release-results-remote.sh", "CODE/scripts/remote/tests/test_release_protocol.py"]
+    },
+    {
+      "id": "C10",
+      "statement": "Verified deployment-index appends are concurrency-safe and duplicate records are idempotent without accepting identity conflicts.",
+      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_concurrent_verified_index_appends_keep_both_complete_records CODE/scripts/remote/tests/test_release_protocol.py::test_verified_pullback_appends_one_small_idempotent_index_record -q",
+      "touches": ["CODE/scripts/remote/release_protocol.py", "CODE/scripts/remote/tests/test_release_protocol.py", "ANALYSIS/DEPLOYMENT-INDEX.jsonl"]
+    },
+    {
+      "id": "C11",
+      "statement": "The maintenance checker is local and read-only, reports malformed state without crashing, and never deletes or rewrites dirty evidence.",
+      "check": "pytest CODE/tests/test_maintenance_check.py -q; python -B CODE/scripts/maintenance_check.py --repo . --verify-evidence",
+      "touches": ["CODE/scripts/maintenance_check.py", "CODE/tests/test_maintenance_check.py"]
+    },
+    {
+      "id": "C12",
+      "statement": "CI runs the maintenance check and collects CODE/scripts/remote/tests alongside the existing suites.",
+      "check": "parse .github/workflows/test.yml and assert one run step invokes maintenance_check.py and the pytest command includes CODE/scripts/remote/tests; inspect exact-head GitHub pytest check before merge",
+      "touches": [".github/workflows/test.yml"]
+    },
+    {
+      "id": "C13",
+      "statement": "The environment files separately identify Linux aarch64 Conda artifacts, 88 exact PyPI versions, direct/test dependencies, and missing wheel hashes; they do not claim reproducibility before isolated reconstruction.",
+      "check": "validate lock syntax and unique package pins; compare CODE/dependencies/t1-vm-linux-aarch64/README.md with all three requirement files and the explicit Conda lock",
+      "touches": ["CODE/dependencies/t1-vm-linux-aarch64/README.md", "CODE/dependencies/t1-vm-linux-aarch64/conda-linux-aarch64.explicit.lock", "CODE/dependencies/t1-vm-linux-aarch64/requirements.lock", "CODE/dependencies/t1-vm-linux-aarch64/requirements-direct.in", "CODE/dependencies/t1-vm-linux-aarch64/requirements-test.in"]
+    },
+    {
+      "id": "C14",
+      "statement": "README, AGENTS, and STATUS agree on operational entry points, the external authority of workspace governance records, receipt snapshot fields, and the current release evidence boundary.",
+      "check": "inspect README.md, AGENTS.md, STATUS.md and confirm current release/run/receipt remain pending until exact PR integration and T1 verification; confirm the checker uses an explicit private evidence root",
+      "touches": ["README.md", "AGENTS.md", "STATUS.md", "ANALYSIS/DEPLOYMENT-INDEX.jsonl"]
+    },
+    {
+      "id": "C15",
+      "statement": "The public change contains only the scoped governance implementation and sanitized metadata; raw data, models, credentials, local private paths, and old formal deployment contents are absent.",
+      "check": "inspect changed-path list and added-line secret/path scan; confirm public docs/index contain no private workspace paths or local evidence paths and no tracked changes under Results/, out/, CODE/data/, old formal deployment, or private evidence directories",
+      "touches": [".gitignore", "AGENTS.md", "STATUS.md", "ANALYSIS/DEPLOYMENT-INDEX.jsonl", "CODE/dependencies/t1-vm-linux-aarch64/README.md", "CODE/scripts/remote/release_protocol.py"]
+    }
+  ]
+}

@@ -2,6 +2,8 @@
 
 LEO 路由研究的**受控实验环境**。
 
+当前同步与维护状态见 [STATUS.md](STATUS.md)，稳定工作规则见 [AGENTS.md](AGENTS.md)。
+
 来源:`leo-direct-sim` @ `241627856886934cbbf2a0820982bef2018e6249`(见 `SOURCE-COMMIT.txt`)
 
 含 PR #221 平台审计成果(F2 CLI 链路打通、独立重算的阶段分离、四份平台事实基线文档)。
@@ -12,6 +14,7 @@ LEO 路由研究的**受控实验环境**。
 
 | 文件 | 内容 | 何时改 |
 |---|---|---|
+| [STATUS.md](STATUS.md) | 当前仓库状态、同步/发布入口及未完成证据门 | 发布或维护状态变化时改 |
 | `CHARTER.md` | 平台本体与五条不变式 | 平台本体变了才改 |
 | `WORKING-MODEL.md` | 提交、复核、版本 | 工作方式变了才改 |
 | `lines/` | 研究主线(登记表 + 各线) | 线的增删改判死 |
@@ -122,3 +125,11 @@ python3 -m CODE.experiment_platform.replay_counterfactual \
 
 两者都**不修改引擎**,且都要求 `--out` 指向不存在的路径(拒绝静默覆盖)。
 反事实重放要求 `learning.algorithm = none`(确定性路由器)。
+
+### 日常维护与 T1 同步
+
+- 先读 [STATUS.md](STATUS.md) 看当前身份和待办；稳定操作约束见 [AGENTS.md](AGENTS.md)。
+- 每次改动前后执行 `python3 -B CODE/scripts/maintenance_check.py --repo .`。验收本机回传证据时，另加 `--verify-evidence --evidence-root /path/to/local-evidence` 并替换成实际证据根。
+- 只从已提交、干净且已推送的完整 commit 发布到隔离 T1 release。诊断/开发运行必须指定已核验的 release 和未使用过的 run-id；声明的数据/模型和配置会快照到该 run，receipt 绑定快照身份。
+- Release 只按版本化路径与后缀排除清单裁剪 Git 树；CSV/JSON 不会因扩展名自动排除，发布前必须对照本机资产登记核对数据文件及许可状态。
+- 回传只通过仓库脚本校验并落盘。公开 `ANALYSIS/DEPLOYMENT-INDEX.jsonl` 保存不含本机路径的 `evidence://t1/<run-id>`；证据根路径由维护者本地显式提供，不写入 Git。
