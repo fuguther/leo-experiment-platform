@@ -45,12 +45,15 @@ def _git(path: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
-def _repo(path: Path) -> tuple[Path, str]:
+def _repo(path: Path, *, include_docs: bool = True) -> tuple[Path, str]:
     path.mkdir()
     _git(path, "init", "-q")
     _git(path, "config", "user.name", "release test")
     _git(path, "config", "user.email", "release-test@example.invalid")
-    for name in ("ANALYSIS", "CODE", "EXPERIMENTS", "docs", "lines"):
+    directories = ["ANALYSIS", "CODE", "EXPERIMENTS", "lines"]
+    if include_docs:
+        directories.append("docs")
+    for name in directories:
         directory = path / name
         directory.mkdir()
         (directory / ".keep").write_text(f"{name}\n", encoding="utf-8")
@@ -73,6 +76,21 @@ def _repo(path: Path) -> tuple[Path, str]:
     _git(path, "add", ".")
     _git(path, "commit", "-q", "-m", "release base")
     return path, _git(path, "rev-parse", "HEAD")
+
+
+def test_release_build_accepts_repository_without_optional_docs_root(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import build_release, verify_release_bundle
+
+    repo, commit = _repo(tmp_path / "repo", include_docs=False)
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+
+    built = build_release(repo, commit, bundle, remote_refs=[])
+    verified = verify_release_bundle(bundle)
+
+    assert built["release_id"] == verified["release_id"]
+    with tarfile.open(bundle / "release.tar", "r:") as archive:
+        assert all(not member.name.startswith("docs/") for member in archive.getmembers())
 
 
 def test_release_uses_exact_clean_git_commit_and_marks_dirty_checkout_rejected(

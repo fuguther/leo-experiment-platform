@@ -25,7 +25,7 @@
 ## 文件与维护规则
 
 - 根 STATUS 是当前状态入口；README 负责导航；本文件存稳定规则；工作包和验收报告保留日期、代码身份与证据范围。不要重复建立第二套当前状态文档。
-- 源码、测试、配置模板进 Git。凭据、真实环境配置、模型、外部原始数据和运行输出不因同步方便而入库；Results/out/leo_sim_out 等保持隔离。需要的外置资产记录来源与 hash。
+- 源码、测试、配置模板进 Git。凭据、真实环境配置、模型、外部原始数据和运行输出不因同步方便而入库；Results/out/leo_sim_out 等保持隔离。T1 release 按精确 Git 树及路径/后缀清单打包，不通用地排除 CSV/JSON 或验证许可；发布前核对 manifest 中的数据文件与本机资产登记，未核实来源/许可的材料不得作为新内容推送至公开 GitHub。
 - 开始和收尾运行 `python3 -B CODE/scripts/maintenance_check.py --repo .`。回传后或验收前加 `--verify-evidence --evidence-root /path/to/local-evidence` 并替换为本机实际证据根；索引只保存不含本机路径的 `evidence://t1/<run-id>`，检查器按显式证据根读取对应子目录。此检查只读，不联网、不实验、不删除。
 - 检查错误必须修复或明确阻塞；警告逐项说明。dirty 是工作状态，不得自动清理；缺少外置证据的 checkout 不能冒称回传已核验。
 - 修改维护检查或发布协议时运行相应测试。CI 收集 `CODE/tests` 与 `CODE/scripts/remote/tests`；本机通过不等于远端当前 SHA 已通过。

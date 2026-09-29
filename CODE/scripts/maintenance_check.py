@@ -144,6 +144,9 @@ def _read_text(path: Path, label: str, errors: list[str]) -> str | None:
     except OSError as exc:
         errors.append(f"cannot read {label}: {exc}")
         return None
+    except UnicodeError as exc:
+        errors.append(f"{label} is not valid UTF-8: {exc}")
+        return None
 
 
 def _check_entry_docs(repo: Path, errors: list[str]) -> None:
@@ -172,6 +175,10 @@ def _validate_index(index_path: Path, errors: list[str], warnings: list[str],
         lines = index_path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
         errors.append(f"cannot read deployment index: {exc}")
+        checked["deployment_index_records"] = None
+        return []
+    except UnicodeError as exc:
+        errors.append(f"deployment index is not valid UTF-8: {exc}")
         checked["deployment_index_records"] = None
         return []
 

@@ -316,3 +316,15 @@ def test_nul_evidence_uri_is_reported_as_invalid_input_not_a_checker_crash(tmp_p
     assert result.returncode == 1
     report = _report(result)
     assert any("evidence_uri" in error for error in report["errors"])
+
+
+def test_invalid_utf8_deployment_index_is_reported_without_crashing(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    (repo / "ANALYSIS" / "DEPLOYMENT-INDEX.jsonl").write_bytes(b"\xff\n")
+
+    result = _run(repo)
+
+    assert result.returncode == 1
+    report = _report(result)
+    assert any("utf-8" in error.lower() for error in report["errors"])
+    assert "Traceback" not in result.stderr

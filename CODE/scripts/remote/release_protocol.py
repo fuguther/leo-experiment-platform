@@ -42,7 +42,9 @@ ENVELOPE_SCHEMA = "leo-immutable-release/v1"
 MANIFEST_SCHEMA = "leo-immutable-release-manifest/v1"
 RUN_SCHEMA = "leo-release-run/v1"
 RUN_RECEIPT_SCHEMA = "leo-release-run-receipt/v1"
-T1_DEPLOYED_DIRS = ("ANALYSIS", "CODE", "EXPERIMENTS", "docs", "lines")
+T1_REQUIRED_DIRS = ("ANALYSIS", "CODE", "EXPERIMENTS", "lines")
+T1_OPTIONAL_DIRS = ("docs",)
+T1_DEPLOYED_DIRS = (*T1_REQUIRED_DIRS, *T1_OPTIONAL_DIRS)
 T1_DEPLOYED_FILES = (
     ".deployment_commit", ".gitignore", "AGENTS.md", "BACKLOG.md", "CHARTER.md",
     "README.md", "SOURCE-COMMIT.txt", "STATUS.md", "WORKING-MODEL.md",
@@ -277,7 +279,11 @@ def t1_source_paths(root: Path) -> list[Path]:
             paths.append(candidate)
     for name in T1_DEPLOYED_DIRS:
         directory = root / name
-        if directory.is_symlink() or not directory.is_dir():
+        if directory.is_symlink():
+            raise ValueError(f"required T1 release directory missing or unsafe: {name}")
+        if not directory.exists() and name in T1_OPTIONAL_DIRS:
+            continue
+        if not directory.is_dir():
             raise ValueError(f"required T1 release directory missing or unsafe: {name}")
         for candidate in sorted(directory.rglob("*")):
             relative = PurePosixPath(candidate.relative_to(root).as_posix())
@@ -512,7 +518,11 @@ def build_release(repo: Path, commit: str, bundle_dir: Path, *,
             safe_extract_tar(archive, source)
         for name in T1_DEPLOYED_DIRS:
             directory = source / name
-            if directory.is_symlink() or not directory.is_dir():
+            if directory.is_symlink():
+                raise ValueError(f"required release root missing or unsafe: {name}")
+            if not directory.exists() and name in T1_OPTIONAL_DIRS:
+                continue
+            if not directory.is_dir():
                 raise ValueError(f"required release root missing or unsafe: {name}")
         commit_epoch = int(_git(repo, "show", "-s", "--format=%ct", commit).stdout.strip())
         source_paths = t1_source_paths(source)
