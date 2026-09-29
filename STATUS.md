@@ -1,36 +1,41 @@
 # T1 仓库当前状态
 
-本文是仓库级当前状态入口；工作包内的 STATUS 只记录各自范围。版本身份以本文件所在的完整 Git commit 为准。
+本文是仓库级当前状态入口；工作包内 STATUS 只记录各自范围。具体版本以完整 Git commit、release-id 和 run-id 为准。
+
+## 当前整合与运行状态
+
+- PR #7 已通过独立审查并合入 `main`，代码合并 SHA：`857a9de4fa5c4eb07a3b466788b3a9ccba69c847`。精确 PR head `e44f0d5369256e5445443a63df2acad043418976` 的 GitHub Actions `test` run `36619082541` 成功；维护检查和 remote 协议测试已进入 CI。
+- 该合并 SHA 已发布到隔离 T1 `/data/论文/leo-t1-wt/releases/<release-id>`。release-id：`857a9de4fa5c4eb07a3b466788b3a9ccba69c847-27161ebf8e8db22b6ab128d7458d038d69bd63031b361f3a8a36fcae7f925a38`。
+- 新诊断 `syncdiag-20260930-03` 在上述 release 上以 `diagnostic` 模式完成 smoke 配置校验；receipt SHA-256 `0929fe2ebe4b05cc9b54818bbfd7224630c4776b677ca2e214e16c8440cc6054`，run-manifest SHA-256 `52dbf45593c9cbfc71e38e517df03065a831971643e1d908c6b2a40848235320`。VM 再验及本机回传成功；JSONL 索引 URI 为 `evidence://t1/syncdiag-20260930-03`。
+- 在该 release 的隔离 Python 前缀上运行 `CODE/scripts/remote/tests` 和维护检查测试，带有 host、release、commit、解释器和命令身份的日志记录 `64 passed in 7.86 s`；本机相同测试选择 `64 passed`。这不是仿真、训练或科研结果。
+- PR #7 合并后另有 post-deployment index/status follow-up，用于将新 verified pullback 记录与当前状态版本化；它不改变已发布的运行代码和 release 身份。
 
 ## 日常同步与发布
 
-- 只用 `CODE/scripts/remote/publish-release-remote.sh` 从干净、已推送的完整 commit 构建不可变 T1 release；不再把共享 `CODE/` 覆盖同步到 VM。
-- 每个诊断或开发运行使用已核验的 release 和新 `run-id`。新入口拒绝 formal 模式；正式实验继续走独立编译、审阅、授权和回执流程。
-- 回传用 `CODE/scripts/remote/pull-release-results-remote.sh`：校验 run receipt、文件集合和逐文件哈希后原子落盘，再追加 `ANALYSIS/DEPLOYMENT-INDEX.jsonl`。失败 partial 保留在隔离目录，不改写成 `VERIFIED`。
-- 上传中断后先确认该 release 没有活动上传；同时检查 incoming 与 bootstrap。恢复会保留失败材料，不动已发布 release。
+1. 进入工作树先读本文件和 `AGENTS.md`，确认仓库、owner、branch、完整 HEAD、dirty/untracked/ignored 路径及其他活动任务；执行 `python3 -B CODE/scripts/maintenance_check.py --repo .`。
+2. 只从已提交、已推送、干净的完整 commit 运行 `CODE/scripts/remote/publish-release-remote.sh --commit <FULL_SHA>`。新发布写入不可变 T1 release，不再覆盖共享 `CODE/`；不得把旧 `t1-vm.sh sync` 当作新发布入口。
+3. 诊断/开发使用固定 release-id 和从未用过的 run-id，经 `CODE/scripts/remote/run-release-remote.sh` 执行。新 runner 禁止 formal 模式；formal 继续走原有编译、独立审阅、授权和 receipt 路径。
+4. 失败发布先确认没有同 release 活动上传，再检查 incoming/bootstrap。用已安装 release helper 的 quarantine 恢复器保留残留后重试；不得删失败回执、复用 run-id 或覆盖已发布 release。
+5. 回传只能用 `CODE/scripts/remote/pull-release-results-remote.sh`。它先验证 VM receipt、run/release 身份和文件清单，再原子落盘并追加 `ANALYSIS/DEPLOYMENT-INDEX.jsonl`。验收本机证据时运行 `python3 -B CODE/scripts/maintenance_check.py --repo . --verify-evidence --evidence-root <实际本机证据根>`。
 
-## 运行环境与数据边界
+## 依赖与平台边界
 
-- `CODE/dependencies/t1-vm-linux-aarch64/` 记录从 T1 Python 3.11.15 环境只读导出的 Conda 显式包 URL 和 88 个 PyPI 包的精确版本。核心直接依赖和测试依赖另列；CUDA 驱动、系统库与工具链条件单独记录。
-- 这些版本锁不含 PyPI wheel 哈希。需在独立前缀完成重建、`pip check`、导入和测试后，才能称环境可按记录重建；现有活动环境没有被修改。
-- runner 默认解释器路径对应新版本化的 T1 隔离环境；该路径在本次 PR 整合和环境重建前尚未生效。运行时仍写入 receipt，不能仅凭锁文件称复现已验证。
-- release 由精确 Git 树构建，只包含 `ANALYSIS/`、`CODE/`、`EXPERIMENTS/`、`lines/`、可选 `docs/` 和列明的根文件，并执行路径/后缀排除。该过滤器不通用地排除 CSV/JSON，也不验证数据许可；例如已跟踪的 M-Lab 派生 CSV、对应派生 JSON、测试 CSV 和手工 micro-trace 当前会进入 release。它们不是本次配置诊断的输入，M-Lab 来源许可仍须按本机资产登记状态核实；不得把未核实资产作为新内容推送到公开 GitHub。声明的运行数据/模型/配置会另行快照到 run 目录，子进程参数和 `T1_INPUT_<NAME>` 指向快照，receipt 绑定相对路径、长度和 SHA-256。
+- `CODE/dependencies/t1-vm-linux-aarch64/` 包含直接依赖说明、88 个固定版本 pip 解析结果和 27 个 Conda explicit URL；解释器、Linux/aarch64 与系统条件单独记录。
+- 新版本化 Conda 前缀已从上述锁在 T1 重建；88 个 pip 固定版本与 27 个 Conda URL 全部对账匹配，`pip check`、核心导入和 64 项目标测试通过。重建证据保存在本任务本机私有证据目录。
+- pip 锁没有 wheel SHA-256，所以结论是平台限定的版本集合可重建，不是制品字节级可复现。CUDA toolkit 未确认；本次诊断和维护/协议测试没有调用 GPU。
+- release 按精确 Git 树和路径/后缀规则打包；CSV/JSON 不会仅因扩展名自动排除，数据来源和许可仍须在 `资产登记.csv` 中逐集合核对。未核实材料不得新上传到公开 GitHub。
 
-## 已核验的历史记录与限制
+## P2 验收边界
 
-- 历史 release `b8d8263…` 与 `syncdiag-20260929-02` 在旧代码上完成了配置校验和回传；它不证明本次恢复修复、环境锁或新 release 已在 VM 生效。
-- 四个旧 formal 目录的清单外 JSON 已复核大小、哈希、格式和部分源码身份。其源码哈希能对应到已知代码快照，但没有精确 run-id/receipt 绑定；保留为历史来源未完全核实的问题，不改旧 formal 部署或回执。
-- 新 T1 release 和 runs 使用隔离目录；旧 formal 部署和历史结果保持只读。旧账问题与新 T1 流程缺陷分开记录。
+- 本地协议 fixtures 覆盖声明输入/配置快照、重复 run-id 拒绝、回传截断/篡改、索引并发和旧/新 release 并存；formal fixtures 覆盖配置/源码绑定与过期 authorization 拒绝。
+- T1 真实 SSH 故障注入覆盖 4 KiB 上传中断和 release 安装后的 cleanup 中断；两类残留都经 quarantine 保留，已安装 release 哈希不变；同 release 重试返回 `already_present`。失败材料与哈希见本机私有治理证据。
+- 完整身份错配矩阵仍未通过：T1 runner 对 runtime 和可选 authorization 记录身份/哈希，但不独立判断期望 runtime，也不执行 formal authorization 语义；模型错配没有单独负例。formal 的数据/模型/授权组合未完整逐项验收。
+- 两 run 并发隔离、并发索引追加及回滚旧 release 的证据来自本地 fixture；没有 T1 并发或实际回滚运行。不能把这些列为远端实链通过。
 
-## 规则、检查与备份
+## 文件、备份与历史限制
 
-- 仓库稳定规则见 `AGENTS.md`；工作区级规则和唯一治理主方案/资产登记表保存在本公共仓库以外的权威工作区文档目录，保留本机证据与路径，不复制整份到公共仓库。
-- `CODE/scripts/maintenance_check.py --repo .` 是只读检查；验证回执时使用 `--verify-evidence --evidence-root /path/to/local-evidence` 并替换成实际证据根。公开 JSONL 索引只保存 `evidence://t1/<run-id>`，不保存本机路径。检查器不扫描文件正文中的凭据，不检查资料许可，不创建备份，也不运行实验。
-- CI 会执行维护检查，并收集 `CODE/scripts/remote/tests`。本机结果不代替对 PR 精确 head SHA 的 GitHub CI。
-- 工作区主方案、资产登记和本机回传证据尚无已核验的设备外独立备份。公共 GitHub 内容和 T1 发布目录不算这些资料的备份。备份目标、容量和权限确认后，按资产清单复制、核验哈希并恢复样本。
-
-## 本次整合状态
-
-- 治理变更已从原任务分支拆为以最新 `main` 为基线的窄范围 PR 分支；本状态文件随 PR 一并审查。
-- 只有 PR 精确 head 的独立复核、必需 pytest CI 和最新 main 对账全部通过后才可合并。合并后再发布精确接受的 clean commit，用新的 run-id 做配置/工程诊断、回传并核验部署索引。
-- 在上述步骤完成前，new release/run-id、VM 回执及本机索引仍待生成；不得把历史成功记录写成新代码部署证据。
+- topic 根 `AGENTS.md` 管跨项目边界；topic 根主方案和 `资产登记.csv` 是三端治理的唯一权威工作区文档/清单；本文件只报告仓库状态，不复制全套本机资料。它们目前只有已确认的本机权威副本。
+- 尚无获准且已核实的设备外独立备份目标；GitHub 只保存本仓库已提交的公开文件，T1 release 也不代表本机资料已备份。需要目标容量、权限、用途确认后再复制、重算源/目标 SHA 并恢复样本。
+- `/data/论文/leo-direct-sim` 旧 formal 根保持只读。4 个清单外 JSON 的历史 source snapshot 可关联到已知代码快照，但没有精确 run-id/receipt 绑定；不删除、不重写 receipt、不重新盖章。该旧账与新的隔离 T1 release 流程分开记录。
+- 当前复核到 7 个 Git worktree。其他工作树 owner/活动进程无法全部确认；dirty、untracked 和 ignored 研究材料原样保留，没有批量归档或删除，也未声称其他工作树已统一升级。
+- 状态入口持续维护；每次规则或工作状态变化更新本文件。检查器只读，不联网、不做实验、不删文件；`0 errors` 仅表示通过其列明的维护范围。
