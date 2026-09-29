@@ -431,10 +431,10 @@ def test_quarantine_second_move_failure_keeps_both_sources_discoverable(
 
     real_replace = os.replace
 
-    def fail_bootstrap_move(source, destination):
-        if Path(source) == bootstrap:
+    def fail_bootstrap_move(source, destination, *args, **kwargs):
+        if source == release_id:
             raise OSError("injected bootstrap quarantine interruption")
-        return real_replace(source, destination)
+        return real_replace(source, destination, *args, **kwargs)
 
     monkeypatch.setattr(protocol.os, "replace", fail_bootstrap_move)
     with pytest.raises(RuntimeError, match="incoming was preserved at"):
@@ -446,6 +446,56 @@ def test_quarantine_second_move_failure_keeps_both_sources_discoverable(
     quarantined_incoming = list((releases / ".quarantine").glob(f"{release_id}.*.partial"))
     assert len(quarantined_incoming) == 1
     assert (quarantined_incoming[0] / "release.tar").read_bytes() == b"partial archive"
+
+
+def test_quarantine_parent_swap_cannot_redirect_bootstrap_into_external_tree(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    root = tmp_path / "T1"
+    root.mkdir()
+    release_id = "1" * 40 + "-" + "2" * 64
+    releases = root / "releases"
+    incoming_root = releases / "incoming"
+    bootstrap_root = releases / ".bootstrap"
+    attempt = incoming_root / f"{release_id}.partial"
+    attempt.mkdir(parents=True)
+    (attempt / "partial.txt").write_text("partial upload", encoding="utf-8")
+    bootstrap = bootstrap_root / release_id
+    bootstrap.mkdir(parents=True)
+    (bootstrap / "bootstrap.txt").write_text("owned bootstrap", encoding="utf-8")
+    outside = tmp_path / "outside"
+    external_attempt = outside / release_id
+    external_attempt.mkdir(parents=True)
+    victim = external_attempt / "victim.txt"
+    victim.write_text("external data", encoding="utf-8")
+
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases)
+    real_replace = os.replace
+    swapped = False
+
+    def replace_then_swap(source, destination, *args, **kwargs):
+        nonlocal swapped
+        result = real_replace(source, destination, *args, **kwargs)
+        source_name = Path(source).name
+        if source_name == attempt.name and not swapped:
+            swapped = True
+            os.rename(bootstrap_root, releases / ".bootstrap.original")
+            bootstrap_root.symlink_to(outside, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(protocol.os, "replace", replace_then_swap)
+    result = protocol.quarantine_incoming(release_id, t1_root=root)
+
+    assert swapped
+    assert victim.read_text(encoding="utf-8") == "external data"
+    assert external_attempt.is_dir()
+    preserved_bootstraps = list((releases / ".quarantine").glob(f"{release_id}.*.bootstrap"))
+    assert len(preserved_bootstraps) == 1
+    assert (preserved_bootstraps[0] / "bootstrap.txt").read_text(encoding="utf-8") == "owned bootstrap"
+    assert result["status"] == "partial_preserved_in_quarantine"
 
 
 def test_safe_release_extractor_rejects_path_escape_and_links(tmp_path: Path) -> None:

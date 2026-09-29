@@ -714,6 +714,32 @@ def _checked_directory_entry(parent_fd: int, name: str, label: str, *, missing_o
     return True
 
 
+def _open_child_directory_fd(parent_fd: int, name: str, *, create: bool = False,
+                              missing_ok: bool = False) -> int | None:
+    """Open one directory below an already anchored parent without following links."""
+    if not name or name in {".", ".."} or "/" in name or "\\" in name:
+        raise ValueError("directory child name is unsafe")
+    if create:
+        try:
+            os.mkdir(name, mode=0o700, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
+    try:
+        info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        if missing_ok:
+            return None
+        raise ValueError(f"directory child is missing: {name}")
+    if not stat.S_ISDIR(info.st_mode):
+        raise ValueError(f"directory child is not a real directory: {name}")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        return os.open(name, flags, dir_fd=parent_fd)
+    except OSError as exc:
+        raise ValueError(f"directory child changed or is unsafe: {name}") from exc
+
+
 def _remove_tree_at(parent_fd: int, name: str, label: str) -> None:
     _checked_directory_entry(parent_fd, name, label)
     # dir_fd keeps the parent anchored even if its pathname is concurrently
@@ -864,50 +890,69 @@ def quarantine_incoming(release_id: str, *, t1_root: Path = T1_ROOT) -> dict[str
     release_id = _safe_release_id(release_id)
     if Path(os.path.abspath(t1_root)) != T1_ROOT:
         raise ValueError("incoming quarantine is restricted to /data/论文/leo-t1-wt")
-    releases_root = _require_real_directory(RELEASE_ROOT, create=False)
-    incoming_root = releases_root / "incoming"
-    bootstrap_root = releases_root / ".bootstrap"
-    for root in (incoming_root, bootstrap_root):
-        if root.is_symlink():
-            raise ValueError(f"release recovery directory may not be symbolic: {root.name}")
-        if root.exists() and not root.is_dir():
-            raise ValueError(f"release recovery path is not a directory: {root.name}")
-    attempt = incoming_root / f"{release_id}.partial"
-    bootstrap = bootstrap_root / release_id
-    for candidate, label in ((attempt, "incoming attempt"), (bootstrap, "bootstrap attempt")):
-        if candidate.is_symlink():
-            raise ValueError(f"{label} may not be symbolic")
-        if candidate.exists() and not candidate.is_dir():
-            raise ValueError(f"{label} is not a directory")
-    if not attempt.exists() and not bootstrap.exists():
-        raise ValueError("release incoming and bootstrap attempts are both missing")
-
-    quarantine_root = _require_real_directory(releases_root / ".quarantine", create=True)
+    releases_fd = _open_real_directory_fd(RELEASE_ROOT)
+    incoming_fd: int | None = None
+    bootstrap_fd: int | None = None
+    quarantine_fd: int | None = None
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     nonce = uuid.uuid4().hex
+    incoming_root = RELEASE_ROOT / "incoming"
+    bootstrap_root = RELEASE_ROOT / ".bootstrap"
+    quarantine_root = RELEASE_ROOT / ".quarantine"
     result: dict[str, str] = {"status": "partial_preserved_in_quarantine"}
-    if attempt.exists():
-        incoming_target = quarantine_root / f"{release_id}.{stamp}.{nonce}.partial"
-        if incoming_target.exists() or incoming_target.is_symlink():
-            raise ValueError("incoming quarantine target already exists")
-        os.replace(attempt, incoming_target)
-        result["path"] = str(incoming_target)
-    if bootstrap.exists():
-        bootstrap_target = quarantine_root / f"{release_id}.{stamp}.{nonce}.bootstrap"
-        if bootstrap_target.exists() or bootstrap_target.is_symlink():
-            raise ValueError("bootstrap quarantine target already exists")
-        try:
-            os.replace(bootstrap, bootstrap_target)
-        except OSError as exc:
-            if "path" in result:
-                raise RuntimeError(
-                    "could not preserve bootstrap attempt; incoming was preserved at "
-                    f"{result['path']}; bootstrap remains at {bootstrap}"
-                ) from exc
-            raise
-        result["bootstrap_path"] = str(bootstrap_target)
-        result.setdefault("path", str(bootstrap_target))
-    return result
+    attempt_name = f"{release_id}.partial"
+    bootstrap_name = release_id
+    incoming_target_name = f"{release_id}.{stamp}.{nonce}.partial"
+    bootstrap_target_name = f"{release_id}.{stamp}.{nonce}.bootstrap"
+    attempt_exists = False
+    bootstrap_exists = False
+    try:
+        incoming_fd = _open_child_directory_fd(releases_fd, "incoming", missing_ok=True)
+        bootstrap_fd = _open_child_directory_fd(releases_fd, ".bootstrap", missing_ok=True)
+        attempt_exists = (
+            _checked_directory_entry(incoming_fd, attempt_name, "incoming attempt", missing_ok=True)
+            if incoming_fd is not None else False
+        )
+        bootstrap_exists = (
+            _checked_directory_entry(bootstrap_fd, bootstrap_name, "bootstrap attempt", missing_ok=True)
+            if bootstrap_fd is not None else False
+        )
+        if not attempt_exists and not bootstrap_exists:
+            raise ValueError("release incoming and bootstrap attempts are both missing")
+
+        quarantine_fd = _open_child_directory_fd(releases_fd, ".quarantine", create=True)
+        assert quarantine_fd is not None
+
+        if attempt_exists and incoming_fd is not None:
+            _checked_directory_entry(incoming_fd, attempt_name, "incoming attempt")
+            if _checked_directory_entry(quarantine_fd, incoming_target_name,
+                                        "incoming quarantine target", missing_ok=True):
+                raise ValueError("incoming quarantine target already exists")
+            os.replace(attempt_name, incoming_target_name,
+                       src_dir_fd=incoming_fd, dst_dir_fd=quarantine_fd)
+            result["path"] = str(quarantine_root / incoming_target_name)
+        if bootstrap_exists and bootstrap_fd is not None:
+            _checked_directory_entry(bootstrap_fd, bootstrap_name, "bootstrap attempt")
+            if _checked_directory_entry(quarantine_fd, bootstrap_target_name,
+                                        "bootstrap quarantine target", missing_ok=True):
+                raise ValueError("bootstrap quarantine target already exists")
+            try:
+                os.replace(bootstrap_name, bootstrap_target_name,
+                           src_dir_fd=bootstrap_fd, dst_dir_fd=quarantine_fd)
+            except OSError as exc:
+                if "path" in result:
+                    raise RuntimeError(
+                        "could not preserve bootstrap attempt; incoming was preserved at "
+                        f"{result['path']}; bootstrap remains at {bootstrap_root / bootstrap_name}"
+                    ) from exc
+                raise
+            result["bootstrap_path"] = str(quarantine_root / bootstrap_target_name)
+            result.setdefault("path", str(quarantine_root / bootstrap_target_name))
+        return result
+    finally:
+        for fd in (quarantine_fd, bootstrap_fd, incoming_fd, releases_fd):
+            if fd is not None:
+                os.close(fd)
 
 
 def _safe_release_id(value: str) -> str:
