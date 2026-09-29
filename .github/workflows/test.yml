@@ -24,5 +24,7 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies (VM-aligned versions)
         run: pip install pytest simpy==4.0.1 numpy==1.24.3 pyyaml pillow==12.0.0
+      - name: Run read-only repository maintenance check
+        run: python -B CODE/scripts/maintenance_check.py --repo .
       - name: Run test suite
-        run: python -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q
+        run: python -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests CODE/scripts/remote/tests ANALYSIS/tests -q
