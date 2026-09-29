@@ -359,6 +359,40 @@ def test_cleanup_interruption_with_installed_release_can_quarantine_leftover_boo
     assert protocol.prepare_incoming(envelope["release_id"], t1_root=root).is_dir()
 
 
+def test_cleanup_refuses_bootstrap_parent_symlink_before_deleting_anything(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(repo, commit, bundle, remote_refs=[])
+    root = tmp_path / "T1"
+    root.mkdir()
+    releases = root / "releases"
+    protocol.install_release(bundle, releases)
+    incoming = releases / "incoming" / f"{envelope['release_id']}.partial"
+    incoming.mkdir(parents=True)
+    (incoming / "release.tar").write_bytes(b"preserve incoming")
+    outside = tmp_path / "outside-bootstrap"
+    external_attempt = outside / envelope["release_id"]
+    external_attempt.mkdir(parents=True)
+    victim = external_attempt / "valuable-marker.txt"
+    victim.write_text("outside the release root\n", encoding="utf-8")
+    (releases / ".bootstrap").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases)
+    installed_hash = protocol.verify_installed_release(releases / envelope["release_id"])["artifact_sha256"]
+
+    with pytest.raises(ValueError, match="unsafe|symbolic"):
+        protocol.cleanup_incoming(envelope["release_id"], t1_root=root)
+
+    assert victim.read_text(encoding="utf-8") == "outside the release root\n"
+    assert (incoming / "release.tar").read_bytes() == b"preserve incoming"
+    assert protocol.verify_installed_release(releases / envelope["release_id"])["artifact_sha256"] == installed_hash
+
+
 def test_quarantine_second_move_failure_keeps_both_sources_discoverable(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -537,6 +571,60 @@ def test_run_binds_release_inputs_runtime_and_unique_run_id(tmp_path: Path) -> N
                     runs_root=runs_root, mode="diagnostic", argv=["python3", "CODE/payload.py"])
 
 
+def test_run_uses_an_immutable_input_snapshot_after_source_path_changes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, _commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    reader = repo / "CODE" / "consume_input.py"
+    reader.write_text(
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        "value = Path(sys.argv[1]).read_text(encoding='utf-8')\n"
+        "env_value = Path(os.environ['T1_INPUT_DATASET']).read_text(encoding='utf-8')\n"
+        "assert value == env_value\n"
+        "Path(os.environ['TMPDIR'], 'consumed.txt').write_text(value, encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "CODE/consume_input.py")
+    _git(repo, "commit", "-q", "-m", "add declared input reader")
+    commit = _git(repo, "rev-parse", "HEAD")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(repo, commit, bundle, remote_refs=[])
+    releases_root = tmp_path / "vm" / "releases"
+    protocol.install_release(bundle, releases_root, bootstrap=reader.parent / "scripts/remote/release_protocol.py")
+    source = tmp_path / "input.txt"
+    source.write_text("version A\n", encoding="utf-8")
+    real_drain = protocol._drain_child
+
+    def mutate_source_then_run(argv, cwd, run_dir, timeout_seconds, *args, **kwargs):
+        source.write_text("version B\n", encoding="utf-8")
+        return real_drain(argv, cwd, run_dir, timeout_seconds, *args, **kwargs)
+
+    monkeypatch.setattr(protocol, "_drain_child", mutate_source_then_run)
+    runs_root = tmp_path / "vm" / "runs"
+    receipt = protocol.run_release(
+        envelope["release_id"], "snapshot-001", release_root=releases_root,
+        runs_root=runs_root, config=str(source), inputs=[f"dataset={source}"], mode="diagnostic",
+        argv=["python3", "CODE/consume_input.py", str(source)],
+    )
+
+    run_dir = runs_root / "snapshot-001"
+    manifest = json.loads((run_dir / "run-manifest.json").read_text(encoding="utf-8"))
+    input_record = manifest["inputs"][0]
+    assert receipt["status"] == "completed"
+    assert (run_dir / "tmp" / "consumed.txt").read_text(encoding="utf-8") == "version A\n"
+    assert (run_dir / input_record["snapshot_path"]).read_bytes() == b"version A\n"
+    assert hashlib.sha256((run_dir / input_record["snapshot_path"]).read_bytes()).hexdigest() == input_record["sha256"]
+    config_record = manifest["config"]
+    assert (run_dir / config_record["snapshot_path"]).read_bytes() == b"version A\n"
+    assert protocol.verify_run_directory(
+        run_dir, expected_run_id="snapshot-001", expected_release_id=envelope["release_id"]
+    )["receipt_sha256"] == receipt["receipt_sha256"]
+
+
 def test_run_rejects_formal_mode_and_non_python_command_without_execution(tmp_path: Path) -> None:
     from CODE.scripts.remote.release_protocol import run_release
 
@@ -693,7 +781,7 @@ def test_verified_pullback_appends_one_small_idempotent_index_record(tmp_path: P
     assert record["release_id"] == release_id
     assert record["pullback_status"] == "VERIFIED"
     assert record["analysis_commit"] is None
-    assert record["evidence_uri"].startswith("../")
+    assert record["evidence_uri"] == "evidence://t1/index-001"
 
 
 def test_failed_pullback_is_quarantined_before_a_clean_retry(tmp_path: Path) -> None:

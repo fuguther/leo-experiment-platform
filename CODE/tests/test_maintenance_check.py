@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -69,7 +68,7 @@ def _index_row(run_id: str = "run-001", receipt_sha256: str | None = None) -> di
         "release_id": "a" * 40 + "-" + "b" * 64,
         "receipt_sha256": receipt_sha256 or "c" * 64,
         "pullback_status": "VERIFIED",
-        "evidence_uri": "../evidence/run-001",
+        "evidence_uri": f"evidence://t1/{run_id}",
     }
 
 
@@ -189,7 +188,6 @@ def test_verify_evidence_is_local_and_detects_index_receipt_tampering(tmp_path: 
     evidence = tmp_path / "evidence" / "run-001"
     receipt_sha256 = _write_verified_evidence(repo, evidence, "run-001")
     row = _index_row(receipt_sha256=receipt_sha256)
-    row["evidence_uri"] = os.path.relpath(evidence, repo)
     index = repo / "ANALYSIS" / "DEPLOYMENT-INDEX.jsonl"
     index.write_text(json.dumps(row) + "\n", encoding="utf-8")
 
@@ -199,7 +197,7 @@ def test_verify_evidence_is_local_and_detects_index_receipt_tampering(tmp_path: 
         for path in root.rglob("*")
         if path.is_file()
     }
-    verified = _run(repo, "--verify-evidence")
+    verified = _run(repo, "--verify-evidence", "--evidence-root", str(evidence.parent))
     assert verified.returncode == 0, verified.stderr
     assert not _report(verified)["errors"]
     after = {
@@ -212,7 +210,7 @@ def test_verify_evidence_is_local_and_detects_index_receipt_tampering(tmp_path: 
 
     row["receipt_sha256"] = "9" * 64
     index.write_text(json.dumps(row) + "\n", encoding="utf-8")
-    tampered = _run(repo, "--verify-evidence")
+    tampered = _run(repo, "--verify-evidence", "--evidence-root", str(evidence.parent))
     assert tampered.returncode == 1
     assert any("receipt" in error.lower() for error in _report(tampered)["errors"])
 
@@ -230,7 +228,8 @@ def test_missing_local_evidence_is_only_a_warning_and_read_only_check_changes_no
         if path.is_file()
     }
 
-    result = _run(repo)
+    evidence_root = tmp_path / "missing-evidence-root"
+    result = _run(repo, "--verify-evidence", "--evidence-root", str(evidence_root))
 
     assert result.returncode == 0
     report = _report(result)
@@ -243,6 +242,36 @@ def test_missing_local_evidence_is_only_a_warning_and_read_only_check_changes_no
         if path.is_file()
     }
     assert after == before
+
+
+def test_opaque_evidence_uri_requires_explicit_external_root_for_verification(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    index = repo / "ANALYSIS" / "DEPLOYMENT-INDEX.jsonl"
+    index.write_text(json.dumps(_index_row()) + "\n", encoding="utf-8")
+
+    unconfigured = _run(repo, "--verify-evidence")
+    assert unconfigured.returncode == 0, unconfigured.stderr
+    assert any("evidence root" in warning.lower()
+               for warning in _report(unconfigured)["warnings"])
+
+    evidence_root = tmp_path / "evidence"
+    evidence_root.mkdir()
+    missing = _run(repo, "--verify-evidence", "--evidence-root", str(evidence_root))
+    assert missing.returncode == 0, missing.stderr
+    assert any("missing" in warning.lower() for warning in _report(missing)["warnings"])
+
+
+def test_deployment_index_rejects_local_paths_in_evidence_uri(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    row = _index_row()
+    row["evidence_uri"] = "../private/evidence/run-001"
+    (repo / "ANALYSIS" / "DEPLOYMENT-INDEX.jsonl").write_text(
+        json.dumps(row) + "\n", encoding="utf-8"
+    )
+
+    result = _run(repo)
+    assert result.returncode == 1
+    assert any("evidence_uri" in error for error in _report(result)["errors"])
 
 
 @pytest.mark.parametrize("case", ["read-only", "history"])

@@ -670,6 +670,47 @@ def _require_real_directory(path: Path, *, create: bool = False) -> Path:
     return lexical
 
 
+def _open_real_directory_fd(path: Path) -> int:
+    """Open every path component without following symlinks for safe cleanup."""
+    if not getattr(shutil.rmtree, "avoids_symlink_attacks", False):
+        raise RuntimeError("this platform cannot safely remove a directory tree")
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory = getattr(os, "O_DIRECTORY", 0)
+    if not nofollow or not directory or os.open not in os.supports_dir_fd:
+        raise RuntimeError("this platform lacks no-follow directory-descriptor support")
+    lexical = Path(os.path.abspath(path))
+    flags = os.O_RDONLY | directory | getattr(os, "O_CLOEXEC", 0)
+    fd = os.open(lexical.anchor, flags)
+    try:
+        for part in lexical.parts[1:]:
+            child = os.open(part, flags | nofollow, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        return fd
+    except OSError as exc:
+        os.close(fd)
+        raise ValueError(f"directory path contains a missing or symbolic component: {lexical}") from exc
+
+
+def _checked_directory_entry(parent_fd: int, name: str, label: str, *, missing_ok: bool = False) -> bool:
+    try:
+        info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        if missing_ok:
+            return False
+        raise ValueError(f"{label} is missing")
+    if not stat.S_ISDIR(info.st_mode):
+        raise ValueError(f"{label} is not a real directory")
+    return True
+
+
+def _remove_tree_at(parent_fd: int, name: str, label: str) -> None:
+    _checked_directory_entry(parent_fd, name, label)
+    # dir_fd keeps the parent anchored even if its pathname is concurrently
+    # replaced. shutil's fd-based implementation also refuses a swapped link.
+    shutil.rmtree(name, dir_fd=parent_fd)
+
+
 def _readonly_tree(root: Path, *, keep_root_writable: bool = False) -> None:
     for candidate in sorted(root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
         if candidate.is_symlink():
@@ -775,17 +816,36 @@ def cleanup_incoming(release_id: str, *, t1_root: Path = T1_ROOT) -> dict[str, s
     if Path(os.path.abspath(t1_root)) != T1_ROOT:
         raise ValueError("incoming cleanup is restricted to /data/论文/leo-t1-wt")
     verify_installed_release(RELEASE_ROOT / release_id)
-    attempt = RELEASE_ROOT / "incoming" / f"{release_id}.partial"
-    if attempt.is_symlink() or not attempt.is_dir():
-        raise ValueError("incoming attempt is missing or unsafe")
-    if any(path.is_symlink() for path in attempt.rglob("*")):
-        raise ValueError("incoming attempt contains a symbolic path; preserve it for inspection")
-    shutil.rmtree(attempt)
-    bootstrap = RELEASE_ROOT / ".bootstrap" / release_id
-    if bootstrap.exists():
-        if bootstrap.is_symlink() or not bootstrap.is_dir() or any(path.is_symlink() for path in bootstrap.rglob("*")):
-            raise ValueError("bootstrap attempt is unsafe; preserve it for inspection")
-        shutil.rmtree(bootstrap)
+    incoming_path = RELEASE_ROOT / "incoming"
+    bootstrap_path = RELEASE_ROOT / ".bootstrap"
+    incoming_fd = _open_real_directory_fd(incoming_path)
+    bootstrap_fd: int | None = None
+    try:
+        # Validate both parent roots and both targets before deleting either.
+        # In particular, a symlinked .bootstrap parent must not redirect rmtree.
+        bootstrap_path_exists = bootstrap_path.exists() or bootstrap_path.is_symlink()
+        if bootstrap_path_exists:
+            bootstrap_fd = _open_real_directory_fd(bootstrap_path)
+        attempt_name = f"{release_id}.partial"
+        bootstrap_name = release_id
+        _checked_directory_entry(incoming_fd, attempt_name, "incoming attempt")
+        bootstrap_exists = (
+            _checked_directory_entry(bootstrap_fd, bootstrap_name, "bootstrap attempt", missing_ok=True)
+            if bootstrap_fd is not None else False
+        )
+        attempt = incoming_path / attempt_name
+        bootstrap = bootstrap_path / bootstrap_name
+        if any(path.is_symlink() for path in attempt.rglob("*")):
+            raise ValueError("incoming attempt contains a symbolic path; preserve it for inspection")
+        if bootstrap_exists and any(path.is_symlink() for path in bootstrap.rglob("*")):
+            raise ValueError("bootstrap attempt contains a symbolic path; preserve it for inspection")
+        _remove_tree_at(incoming_fd, attempt_name, "incoming attempt")
+        if bootstrap_exists and bootstrap_fd is not None:
+            _remove_tree_at(bootstrap_fd, bootstrap_name, "bootstrap attempt")
+    finally:
+        os.close(incoming_fd)
+        if bootstrap_fd is not None:
+            os.close(bootstrap_fd)
     return {"status": "cleaned_after_verified_publish", "release_id": release_id}
 
 
@@ -923,7 +983,7 @@ def _release_python_argv(argv: list[str], release_dir: Path) -> list[str]:
     return [sys.executable, *argv[1:]]
 
 
-def _hash_input(name: str, raw_path: str, release_dir: Path) -> dict[str, Any]:
+def _resolve_input_path(name: str, raw_path: str, release_dir: Path) -> Path:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name):
         raise ValueError("input identity must be a short safe name")
     path = Path(raw_path)
@@ -933,7 +993,66 @@ def _hash_input(name: str, raw_path: str, release_dir: Path) -> dict[str, Any]:
     path = Path(os.path.abspath(path))
     if path.is_symlink() or not path.is_file():
         raise ValueError(f"input {name} is missing, non-regular, or symbolic")
+    return path
+
+
+def _hash_input(name: str, raw_path: str, release_dir: Path) -> dict[str, Any]:
+    path = _resolve_input_path(name, raw_path, release_dir)
     return {"name": name, "size": path.stat().st_size, "sha256": sha256_file(path)}
+
+
+def _snapshot_input(name: str, raw_path: str, release_dir: Path,
+                    run_dir: Path) -> tuple[dict[str, Any], Path]:
+    source = _resolve_input_path(name, raw_path, release_dir)
+    input_root = run_dir / "inputs"
+    input_root.mkdir(mode=0o700, exist_ok=True)
+    relative = Path("inputs") / name
+    snapshot = run_dir / relative
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    source_fd = os.open(source, flags)
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        before = os.fstat(source_fd)
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError(f"input {name} is not a regular file")
+        with os.fdopen(os.dup(source_fd), "rb") as input_handle, snapshot.open("xb") as output_handle:
+            while chunk := input_handle.read(1024 * 1024):
+                output_handle.write(chunk)
+                digest.update(chunk)
+                size += len(chunk)
+            output_handle.flush()
+            os.fsync(output_handle.fileno())
+        after = os.fstat(source_fd)
+    finally:
+        os.close(source_fd)
+    stable_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if size != before.st_size or any(getattr(before, field) != getattr(after, field)
+                                     for field in stable_fields):
+        raise ValueError(f"input {name} changed while its run snapshot was being made")
+    os.chmod(snapshot, 0o400)
+    return {
+        "name": name,
+        "size": size,
+        "sha256": digest.hexdigest(),
+        "snapshot_path": relative.as_posix(),
+    }, snapshot
+
+
+def _input_env_name(name: str) -> str:
+    return "T1_INPUT_" + re.sub(r"[^A-Za-z0-9]", "_", name).upper()
+
+
+def _rewrite_input_argv(argv: list[str], replacements: dict[str, str]) -> list[str]:
+    rewritten: list[str] = []
+    for argument in argv:
+        replacement = replacements.get(argument)
+        if replacement is None and argument.startswith("-") and "=" in argument:
+            option, value = argument.split("=", 1)
+            if value in replacements:
+                replacement = f"{option}={replacements[value]}"
+        rewritten.append(replacement if replacement is not None else argument)
+    return rewritten
 
 
 def _hash_run_files(run_dir: Path, *, exclude: set[str]) -> list[dict[str, Any]]:
@@ -960,7 +1079,8 @@ def _append_log(path: Path, line: str) -> None:
 
 
 def _drain_child(argv: list[str], cwd: Path, run_dir: Path,
-                 timeout_seconds: int) -> tuple[int, dict[str, Any]]:
+                 timeout_seconds: int, *, extra_env: dict[str, str] | None = None
+                 ) -> tuple[int, dict[str, Any]]:
     if not argv or Path(argv[0]).name != Path(sys.executable).name:
         raise ValueError("release runner must use its recorded Python interpreter")
     timeout_seconds = max(1, min(int(timeout_seconds), 7200))
@@ -973,6 +1093,7 @@ def _drain_child(argv: list[str], cwd: Path, run_dir: Path,
         "XDG_CACHE_HOME": str(run_dir / ".cache"),
         "TMPDIR": str(run_dir / "tmp"),
     })
+    env.update(extra_env or {})
     for name in ("MPLCONFIGDIR", "XDG_CACHE_HOME", "TMPDIR"):
         Path(env[name]).mkdir(parents=True, exist_ok=True)
     env.pop("PYTHONHOME", None)
@@ -1095,20 +1216,45 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
                 fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as exc:
                 raise ValueError("resource group is already in use") from exc
-        config_record = _hash_input("config", config, release_dir) if config else None
         authorization_record = _hash_input("authorization", authorization, release_dir) if authorization else None
-        input_records = []
+        input_specs: list[tuple[str, str, Path, str]] = []
         for item in inputs or []:
             if "=" not in item:
                 raise ValueError("each --input must use name=path")
             name, input_path = item.split("=", 1)
-            input_records.append(_hash_input(name, input_path, release_dir))
-        if len({item["name"] for item in input_records}) != len(input_records):
+            if name in {"config", "authorization"}:
+                raise ValueError("input names 'config' and 'authorization' are reserved")
+            source_path = _resolve_input_path(name, input_path, release_dir)
+            env_name = _input_env_name(name)
+            input_specs.append((name, input_path, source_path, env_name))
+        if len({item[0] for item in input_specs}) != len(input_specs):
             raise ValueError("input identities must be unique")
+        if len({item[3] for item in input_specs}) != len(input_specs):
+            raise ValueError("input identities map to conflicting environment names")
+        if any(item[3] == _input_env_name("config") for item in input_specs):
+            raise ValueError("input identity conflicts with the reserved config environment name")
         try:
             run_dir.mkdir()
         except FileExistsError as exc:
             raise ValueError("run ID already exists; IDs are never reused") from exc
+        config_record: dict[str, Any] | None = None
+        input_records: list[dict[str, Any]] = []
+        input_env: dict[str, str] = {}
+        path_replacements: dict[str, str] = {}
+        if config:
+            config_record, config_snapshot = _snapshot_input("config", config, release_dir, run_dir)
+            input_env[_input_env_name("config")] = str(config_snapshot)
+            path_replacements[config] = str(config_snapshot)
+            path_replacements[str(_resolve_input_path("config", config, release_dir))] = str(config_snapshot)
+        for name, raw_path, source_path, env_name in input_specs:
+            record, snapshot = _snapshot_input(name, raw_path, release_dir, run_dir)
+            input_records.append(record)
+            input_env[env_name] = str(snapshot)
+            path_replacements[raw_path] = str(snapshot)
+            path_replacements[str(source_path)] = str(snapshot)
+        if (run_dir / "inputs").is_dir():
+            os.chmod(run_dir / "inputs", 0o500)
+        argv = _rewrite_input_argv(argv, path_replacements)
         started = datetime.now(timezone.utc).isoformat(timespec="seconds")
         run_manifest: dict[str, Any] = {
             "schema": RUN_SCHEMA,
@@ -1137,7 +1283,8 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
         _append_log(run_dir / "run.log", f"started_at={started}")
         _append_log(run_dir / "run.log", f"command={shlex.join(_redact_argv(argv))}")
         try:
-            rc, output = _drain_child(argv, release_dir, run_dir, timeout_seconds)
+            rc, output = _drain_child(argv, release_dir, run_dir, timeout_seconds,
+                                      extra_env=input_env)
         except Exception as exc:
             rc, output = 127, {"runner_error": type(exc).__name__}
             _append_log(run_dir / "run.log", f"runner_error={type(exc).__name__}")
@@ -1211,6 +1358,24 @@ def verify_run_directory(run_dir: Path, *, expected_run_id: str = "",
     records = _hash_run_files(run_dir, exclude={RUN_RECEIPT_NAME})
     if records != expected_files:
         raise ValueError("run output file set or hash mismatch")
+    files_by_path = {item["path"]: item for item in expected_files}
+    snapshot_records = ([manifest.get("config")] if manifest.get("config") else [])
+    snapshot_records.extend(manifest.get("inputs", []))
+    seen_snapshots: set[str] = set()
+    for item in snapshot_records:
+        if not isinstance(item, dict):
+            raise ValueError("run input record is invalid")
+        snapshot_path = item.get("snapshot_path")
+        if snapshot_path is None:  # Older run receipts predate local input snapshots.
+            continue
+        relative = _safe_relative(snapshot_path)
+        key = relative.as_posix()
+        file_record = files_by_path.get(key)
+        if (not relative.parts or relative.parts[0] != "inputs" or key in seen_snapshots
+                or file_record is None or file_record.get("size") != item.get("size")
+                or file_record.get("sha256") != item.get("sha256")):
+            raise ValueError("run input snapshot does not match its receipt identity")
+        seen_snapshots.add(key)
     return receipt
 
 
@@ -1308,7 +1473,7 @@ def append_deployment_index(repo_root: Path, receipt: dict[str, Any], evidence_p
         "pullback_status": "VERIFIED",
         "execution_class": run_manifest.get("execution_class"),
         "analysis_commit": None,
-        "evidence_uri": Path(os.path.relpath(evidence_path, repo_root)).as_posix(),
+        "evidence_uri": f"evidence://t1/{receipt['run_id']}",
     }
     encoded = canonical_json(record) + b"\n"
     index.parent.mkdir(parents=True, exist_ok=True)

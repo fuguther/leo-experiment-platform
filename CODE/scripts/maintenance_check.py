@@ -9,7 +9,7 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 # Optional receipt verification imports a project module. Never create bytecode
@@ -208,8 +208,11 @@ def _validate_index(index_path: Path, errors: list[str], warnings: list[str],
         if status != "VERIFIED":
             errors.append(f"deployment index line {line_number} pullback_status must be VERIFIED")
             valid = False
-        if not isinstance(evidence_uri, str) or not evidence_uri.strip():
-            errors.append(f"deployment index line {line_number} has no local evidence_uri")
+        if (not isinstance(evidence_uri, str) or not isinstance(run_id, str)
+                or evidence_uri != f"evidence://t1/{run_id}"):
+            errors.append(
+                f"deployment index line {line_number} evidence_uri must be the opaque T1 run identity"
+            )
             valid = False
         if not valid:
             continue
@@ -227,28 +230,40 @@ def _validate_index(index_path: Path, errors: list[str], warnings: list[str],
     return records
 
 
-def _local_evidence_path(repo: Path, uri: str, run_id: str,
+def _local_evidence_path(repo: Path, uri: str, run_id: str, evidence_root: Path | None,
                          errors: list[str]) -> Path | None:
-    if "\x00" in uri or "://" in uri or PureWindowsPath(uri).is_absolute() or Path(uri).is_absolute():
-        errors.append(f"run {run_id} evidence_uri must be a relative local path")
+    if uri != f"evidence://t1/{run_id}":
+        errors.append(f"run {run_id} evidence_uri does not match its opaque T1 identity")
         return None
     try:
-        candidate = (repo / Path(uri)).resolve(strict=False)
+        if evidence_root is None:
+            return None
+        root = Path(os.path.abspath(evidence_root))
+        if root.is_symlink():
+            errors.append(f"run {run_id} evidence root may not be symbolic")
+            return None
+        candidate_root = root.resolve(strict=False)
     except (OSError, RuntimeError, ValueError) as exc:
-        errors.append(f"run {run_id} evidence_uri is invalid: {type(exc).__name__}")
+        errors.append(f"run {run_id} evidence root is invalid: {type(exc).__name__}")
         return None
-    if candidate == repo or repo in candidate.parents:
-        errors.append(f"run {run_id} evidence_uri points inside the source repository")
+    if candidate_root == repo or repo in candidate_root.parents:
+        errors.append(f"run {run_id} evidence root points inside the source repository")
         return None
-    return candidate
+    return candidate_root / run_id
 
 
 def _check_evidence(repo: Path, records: list[dict[str, Any]], *, verify: bool,
+                    evidence_root: Path | None,
                     errors: list[str], warnings: list[str], checked: dict[str, Any]) -> None:
     verified_count = 0
+    if verify and evidence_root is None:
+        warnings.append("local evidence root is not configured; indexed receipts were not opened")
+        checked["local_receipts_verified"] = 0
+        return
     for record in records:
         run_id = record["run_id"]
-        evidence = _local_evidence_path(repo, record["evidence_uri"], run_id, errors)
+        evidence = _local_evidence_path(repo, record["evidence_uri"], run_id,
+                                         evidence_root, errors)
         if evidence is None:
             continue
         if not evidence.is_dir() or evidence.is_symlink():
@@ -280,7 +295,8 @@ def _check_evidence(repo: Path, records: list[dict[str, Any]], *, verify: bool,
     checked["local_receipts_verified"] = verified_count if verify else 0
 
 
-def run_check(repo: Path, *, verify_evidence: bool = False) -> dict[str, Any]:
+def run_check(repo: Path, *, verify_evidence: bool = False,
+              evidence_root: Path | None = None) -> dict[str, Any]:
     repo = repo.resolve()
     errors: list[str] = []
     warnings: list[str] = [
@@ -305,7 +321,7 @@ def run_check(repo: Path, *, verify_evidence: bool = False) -> dict[str, Any]:
                 repo / "ANALYSIS" / "DEPLOYMENT-INDEX.jsonl", errors, warnings, checked
             )
             _check_evidence(
-                repo, records, verify=verify_evidence, errors=errors,
+                repo, records, verify=verify_evidence, evidence_root=evidence_root, errors=errors,
                 warnings=warnings, checked=checked,
             )
 
@@ -336,9 +352,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", type=Path, default=default_repo,
                         help="repository root (default: this script's repository)")
     parser.add_argument("--verify-evidence", action="store_true",
-                        help="read-only verification of existing local receipts referenced by the index")
+                        help="read-only verification of indexed local receipts (requires --evidence-root)")
+    parser.add_argument("--evidence-root", type=Path,
+                        help="private local directory containing one subdirectory per indexed run ID")
     args = parser.parse_args(argv)
-    report = run_check(args.repo, verify_evidence=args.verify_evidence)
+    report = run_check(args.repo, verify_evidence=args.verify_evidence,
+                       evidence_root=args.evidence_root)
     print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
     return 1 if report["errors"] else 0
 
