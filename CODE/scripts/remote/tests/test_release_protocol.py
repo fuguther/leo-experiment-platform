@@ -314,7 +314,8 @@ def test_secret_scan_reports_location_without_disclosing_value() -> None:
 
     assert findings == [{"path": "CODE/settings.py", "line": 1, "rule": "github_token"}]
     assert secret not in repr(findings)
-    redacted = _redact_argv(["--api_key", "sensitive-value-123", "https://user:private-value@example.invalid"])
+    credential_url = "https://" + "user:" + "private-value" + "@example.invalid"
+    redacted = _redact_argv(["--api_key", "sensitive-value-123", credential_url])
     assert "sensitive-value-123" not in repr(redacted)
     assert "private-value" not in repr(redacted)
 
