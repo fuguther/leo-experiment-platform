@@ -15,7 +15,7 @@
 1. 确认工作树归属、分支、HEAD 和修改状态；保护别的任务的 dirty/untracked 文件。同一文件指定一个写入负责人。
 2. 按用户已授权任务修改必要文件并验证，更新既有状态入口。禁止删测试、放宽断言或静默回退制造通过。
 3. 发布必须来自干净工作树的完整 commit SHA，使用 `CODE/scripts/remote/publish-release-remote.sh`。GitHub 备份、合并 main 与发布是不同动作；未核实远端 ref 时保留 `remote_backup_pending`。
-4. 有界诊断/开发运行使用 `CODE/scripts/remote/run-release-remote.sh`，指定已核验 release 和新 run-id；记录实际输入、模型、配置及环境身份。失败运行保留回执，不复用 run-id 掩盖失败。
+4. 有界诊断/开发运行使用 `CODE/scripts/remote/run-release-remote.sh`，指定已核验 release 和新 run-id；记录实际输入、模型、配置及环境身份。`--config` 只登记并固化输入快照，不会自动补齐子命令的位置参数；例如 `config validate` 仍须在 `--` 后显式传入 release 相对路径，runner 会将其替换为 run 隔离快照。失败运行保留回执，不复用 run-id 掩盖失败。
 5. 回传使用 `CODE/scripts/remote/pull-release-results-remote.sh`：partial 暂存、校验、原子落盘、追加 `ANALYSIS/DEPLOYMENT-INDEX.jsonl`。不得手改 VERIFIED 或 receipt hash。
 6. 证据对照本次固定 release、配置和输入身份核验，不要求历史结果等于后来工作树的 HEAD。之后提交不会自动使旧证据失效，也不会使旧证据自动覆盖新代码。
 7. 发布中断时先确认该 release 没有活动上传，再检查 partial/bootstrap/staging；隔离残留并保留原因。不得盲目删目录或覆盖重试；已测试的恢复入口及限制见 STATUS。
