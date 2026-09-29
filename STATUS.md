@@ -30,3 +30,12 @@ bash CODE/scripts/remote/pull-release-results-remote.sh --help
 ```
 
 以上命令是接口说明。是否已成功部署或回传，以 `ANALYSIS/DEPLOYMENT-INDEX.jsonl` 中的 receipt hash 和外置证据目录为准；无索引记录时不得声称闭环已完成。
+
+## 2026-09-29 已核验闭环
+
+- Public GitHub 分支 `codex/20260929-three-end-sync` 当前代码提交 `b8d8263ebe6bc7f9a2e7e5e7b91e7a5afa984399`；未合并 main。
+- T1 已安装 release `b8d8263ebe6bc7f9a2e7e5e7b91e7a5afa984399-401d84ab28d6b89b1bc404be49335bcf7ea6711b1dbdaec2adcc9d79fee90470`，远端回报 `published`，incoming 已在验证后清理；GitHub ref 校验为 `verified`。
+- `syncdiag-20260929-02` 在该 release 上以 `diagnostic` 模式通过 smoke 配置校验（exit 0，配置 SHA-256 `ffe9cee60d6c34e8222747a2d0fdbd7a835d79779dd170ced9ac5656f12637c3`）；run receipt SHA-256 为 `1f9e5f72e6ff230d7cba8c9c0cafa2327176ce7b811bf23bfc6d15e1cb3da915`，回传状态 `VERIFIED`。这是配置验证，不是仿真或科研结果。
+- 首次 `syncdiag-20260929-01` 因误用系统 Python 3.12（缺 PyYAML）失败；receipt 与日志已独立拉回并保留，换用既有 `leo-i39` 环境后以新 run-id 重跑成功。回传调试留下的 partial 位于本机 evidence `.quarantine/`，没有升级成 verified run。
+- T1 新协议只写 `releases/`、`runs/`；不迁移或写旧 T1 `Results/`。旧 formal 根 `/data/论文/leo-direct-sim` 的部署源码 hash 前后均为 `581370c53e58293dabf4370df9d63ff79247f1ada92db265e8149f37a815a8a4`（1,014 文件）。旧 formal receipt 仍无法完整验证：现有 4 个额外 `ANALYSIS/DIAG-T1-FROZEN-BRANCH-20260926/*` 文件与 receipt 清单不符；本次未改它们。
+- 本机证据位于相对路径 `../三端文件与同步治理/evidence/t1/`，在此设备之外的备份尚未核实；依赖 lockfile 与原始研究材料的来源/许可登记仍未完成。
