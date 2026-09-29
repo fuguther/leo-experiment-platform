@@ -468,8 +468,7 @@ def test_verified_pullback_is_atomic_and_refuses_identity_or_content_mismatch(tm
     run_dir = runs_root / "pull-001"
     archive_path = tmp_path / "run.tar.gz"
     with tarfile.open(archive_path, "w:gz") as archive:
-        for path in sorted(run_dir.rglob("*")):
-            archive.add(path, arcname=path.relative_to(run_dir).as_posix(), recursive=False)
+        archive.add(run_dir, arcname=".", recursive=True)
     evidence_root = tmp_path / "evidence"
 
     result = pullback_run(archive_path.open("rb"), evidence_root,
@@ -541,8 +540,7 @@ def test_failed_pullback_is_quarantined_before_a_clean_retry(tmp_path: Path) -> 
     run_dir = runs_root / "retry-001"
     good_archive = tmp_path / "good.tar.gz"
     with tarfile.open(good_archive, "w:gz") as archive:
-        for path in sorted(run_dir.rglob("*")):
-            archive.add(path, arcname=path.relative_to(run_dir).as_posix(), recursive=False)
+        archive.add(run_dir, arcname=".", recursive=True)
     evidence_root = tmp_path / "evidence"
     with pytest.raises((tarfile.ReadError, EOFError, ValueError)):
         pullback_run(io.BytesIO(b"truncated transfer"), evidence_root,

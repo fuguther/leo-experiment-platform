@@ -1187,7 +1187,7 @@ def _safe_extract_run_stream(stream: BinaryIO, destination: Path) -> set[str]:
             raw = member.name
             while raw.startswith("./"):
                 raw = raw[2:]
-            if not raw.rstrip("/") and member.isdir():
+            if raw.rstrip("/") in {"", "."} and member.isdir():
                 continue
             relative = _safe_relative(raw.rstrip("/"))
             if not member.isfile() and not member.isdir():
