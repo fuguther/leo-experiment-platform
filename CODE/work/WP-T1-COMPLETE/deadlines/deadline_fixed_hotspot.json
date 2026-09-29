@@ -1,19 +1,34 @@
 {
+ "branch_ids": [
+  50,
+  51,
+  52,
+  54,
+  55,
+  64,
+  72,
+  75,
+  94,
+  103,
+  111,
+  117
+ ],
+ "branches_used": 12,
  "deadline_s": 2.5340170844170817,
- "frozen_at_sha": "6c6852f6a1b9303c902e4bf8d335f059a7ca52ec",
+ "frozen_at_sha": "ac0a159fcc441bcec474493cd544ef9a523f4299",
  "identity": {
   "config_sha256": "c6c74c12003fb707f7aeae6cdcaa4f2ae3a6edb7c458b58e6ef9a8b6400ac304",
   "git": {
    "available": true,
    "branch": null,
-   "commit": "6c6852f6a1b9303c902e4bf8d335f059a7ca52ec",
+   "commit": "ac0a159fcc441bcec474493cd544ef9a523f4299",
    "diff_sha256": null,
    "dirty": false,
    "manifest": {
     "dirty": false,
-    "head": "6c6852f6a1b9303c902e4bf8d335f059a7ca52ec",
+    "head": "ac0a159fcc441bcec474493cd544ef9a523f4299",
     "schema": "t1-vm-launch/v1",
-    "synced_at": "2026-09-28T19:39:21Z"
+    "synced_at": "2026-09-29T05:56:13Z"
    },
    "manifest_path": "/data/论文/leo-t1-wt/launch.json",
    "source": "launch_manifest",
@@ -28,11 +43,12 @@
   },
   "schema": "t1-artifact-identity/v1",
   "sources": {
-   "combined_sha256": "5172406545d5fa2dc7eff6f76d16d5b7f35e3c6ddece3d1dd76b745e1a0e7c25",
+   "combined_sha256": "2fa2f5453c290e88d4f934a3b94fc3b9fa107b229c1338109c437188102a00ef",
    "files": {
     "CODE/experiment_platform/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
     "CODE/experiment_platform/artifact_identity.py": "1856f09f461c15c05434d4e663ad02a7abc6dccf87b57c6303bc33e7c5318398",
     "CODE/experiment_platform/authorize_experiment.py": "14f6d5ebc8f913764045c112b0b10ba3c3871f8820b7e2d3c1fa47ac9a72aebb",
+    "CODE/experiment_platform/b5_results.py": "4ce5027990a79328de6d4cf2f5fa5cee169da365b82aa0af24fe8ef8184efce1",
     "CODE/experiment_platform/benchmark_decision.py": "5dfab92456b050b614894578a088c10a5141fb63fadd2c1a1cd06dbee87fc6ed",
     "CODE/experiment_platform/compile_experiment.py": "11407361b40ad8562a1c4093f1cece67db99531fc57f866326c6c090c3b9be73",
     "CODE/experiment_platform/compile_matrix_experiment.py": "99b1d28f48cb5abed739e3c1527c853de64be86946c527e3d66cee849e18b8a1",
@@ -52,7 +68,7 @@
     "CODE/experiment_platform/scripted_scenarios.py": "69502d95b8220176d0373a7015bdb148a54012cf3c8479bd083c8b9f0824f88e",
     "CODE/experiment_platform/t1_a6_check.py": "5fdde7f7b3e9437985454a967f65a76fc320e9cc99050111896d52bebce1773f",
     "CODE/experiment_platform/t1_stats.py": "261ea6fda25b48ffbf8df4dedcf6d23bb207772ed3ed584d0c63b7c0ecd3649c",
-    "CODE/experiment_platform/t1_suite.py": "a61c58656d740e00221f585d8528494c900d3cdcfbc654c5ebe8c29f96507c13",
+    "CODE/experiment_platform/t1_suite.py": "b9d765f2737edc24e04717826278a8ee451d79211de2cc516ae407b2e08a1358",
     "CODE/experiment_platform/t1_tasks.py": "44a996939c3b319501586f946e6484ec9037af3f209fc69632df7cbb615065af",
     "CODE/experiment_platform/time_alignment_compare.py": "6d77e5181735db72b8a1028ff42dd77ea765983232ab831c7fe26a7b0fffab6a",
     "CODE/experiment_platform/v2_analysis.py": "a63b2cdef6c77ea33e399f4d9d87c993b16edb4f71e2addfbff827089531eef2",
@@ -98,6 +114,8 @@
  "note": "frozen on development data only; a confirmation comparison loads this file and never re-derives D",
  "rule": "D = multiplier x E2E p95 over the development baseline legal candidate delivery samples",
  "run_kind": "dev",
+ "sample_rule": "legal-candidate delivery delays of the development baseline, aggregated over branches",
+ "samples": 12,
  "schema": "t1-frozen-deadline/v1",
  "source": "p95_times_multiplier",
  "weak": false
