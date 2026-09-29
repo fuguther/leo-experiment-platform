@@ -1,6 +1,6 @@
 {
   "work_id": "three-end-sync-governance",
-  "frozen_at_sha": "919c3087c9ab4d65d83288cd3ecf8c04fee641b1",
+  "frozen_at_sha": "b85fe4d8ebbb8a12e998182186bedf61b8d43e01",
   "criteria": [
     {
       "id": "C1",
@@ -10,8 +10,8 @@
     },
     {
       "id": "C2",
-      "statement": "The T1 publisher is constrained to the isolated releases root and never targets the shared CODE tree or formal deployment root.",
-      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_cli_install_cannot_target_the_formal_workspace_or_an_arbitrary_release_root CODE/scripts/remote/tests/test_release_protocol.py::test_t1_exclusions_do_not_change_formal_deployment_policy -q; inspect publisher root guard and rename/install paths",
+      "statement": "The T1 publisher and cleanup are constrained to the isolated releases root, refuse symlinked recovery parents, and never target the shared CODE tree or formal deployment root.",
+      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_cli_install_cannot_target_the_formal_workspace_or_an_arbitrary_release_root CODE/scripts/remote/tests/test_release_protocol.py::test_t1_exclusions_do_not_change_formal_deployment_policy CODE/scripts/remote/tests/test_release_protocol.py::test_cleanup_refuses_bootstrap_parent_symlink_before_deleting_anything -q; inspect publisher root guard and descriptor-based cleanup",
       "touches": ["CODE/scripts/remote/release_protocol.py", "CODE/scripts/remote/publish-release-remote.sh", "CODE/scripts/remote/run-release-remote.sh", "CODE/scripts/remote/pull-release-results-remote.sh"]
     },
     {
@@ -34,8 +34,8 @@
     },
     {
       "id": "C6",
-      "statement": "A run rejects duplicate run IDs and FORMAL mode, and its receipt binds release, configuration, input hashes, runtime inventory, and execution identity.",
-      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_run_binds_release_inputs_runtime_and_unique_run_id CODE/scripts/remote/tests/test_release_protocol.py::test_run_rejects_formal_mode_and_non_python_command_without_execution -q",
+      "statement": "A run rejects duplicate run IDs and FORMAL mode; declared data/model/config inputs are snapshotted and the child reads the same bytes whose hashes the receipt binds.",
+      "check": "pytest CODE/scripts/remote/tests/test_release_protocol.py::test_run_binds_release_inputs_runtime_and_unique_run_id CODE/scripts/remote/tests/test_release_protocol.py::test_run_uses_an_immutable_input_snapshot_after_source_path_changes CODE/scripts/remote/tests/test_release_protocol.py::test_run_rejects_formal_mode_and_non_python_command_without_execution -q",
       "touches": ["CODE/scripts/remote/release_protocol.py", "CODE/scripts/remote/run-release-remote.sh", "CODE/scripts/remote/tests/test_release_protocol.py"]
     },
     {
@@ -82,14 +82,14 @@
     },
     {
       "id": "C14",
-      "statement": "README, AGENTS, and STATUS agree on operational entry points, authority of local governance documents, and the boundary between historical evidence and new release evidence.",
-      "check": "inspect README.md, AGENTS.md, STATUS.md and confirm STATUS states new release/run/receipt remain pending until exact PR integration and T1 verification",
+      "statement": "README, AGENTS, and STATUS agree on operational entry points, the external authority of workspace governance records, receipt snapshot fields, and the current release evidence boundary.",
+      "check": "inspect README.md, AGENTS.md, STATUS.md and confirm current release/run/receipt remain pending until exact PR integration and T1 verification; confirm the checker uses an explicit private evidence root",
       "touches": ["README.md", "AGENTS.md", "STATUS.md", "ANALYSIS/DEPLOYMENT-INDEX.jsonl"]
     },
     {
       "id": "C15",
       "statement": "The public change contains only the scoped governance implementation and sanitized metadata; raw data, models, credentials, local private paths, and old formal deployment contents are absent.",
-      "check": "inspect changed-path list and added-line secret/path scan; confirm no tracked changes under Results/, out/, CODE/data/, old formal deployment, or private evidence directories",
+      "check": "inspect changed-path list and added-line secret/path scan; confirm public docs/index contain no private workspace paths or local evidence paths and no tracked changes under Results/, out/, CODE/data/, old formal deployment, or private evidence directories",
       "touches": [".gitignore", "AGENTS.md", "STATUS.md", "ANALYSIS/DEPLOYMENT-INDEX.jsonl", "CODE/dependencies/t1-vm-linux-aarch64/README.md", "CODE/scripts/remote/release_protocol.py"]
     }
   ]
