@@ -3,6 +3,10 @@
 These files capture the observed T1 runtime and are inputs to isolated reconstruction.
 They do not claim bit-for-bit wheel reconstruction: the PyPI lock pins versions but
 does not yet contain wheel hashes. Release receipts hash the lock files themselves.
+`runtime-identity.json` records the verified Python/platform/machine and installed
+Python distribution-set digest. Before a T1 diagnostic/development run, the release
+runner compares those values to the live interpreter and verifies the SHA-256 of both
+lock files against this contract. It does not attest to an unrecorded CUDA toolkit.
 
 ## Captured runtime
 

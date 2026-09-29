@@ -588,15 +588,64 @@ def test_release_refuses_tracked_secret_paths_and_detected_secret_content(tmp_pa
     assert secret not in str(error.value)
 
 
+def _add_runtime_contract(repo: Path, runtime_identity: dict) -> None:
+    lock_dir = repo / "CODE" / "dependencies" / "t1-vm-linux-aarch64"
+    lock_dir.mkdir(parents=True)
+    pip_lock = lock_dir / "requirements.lock"
+    conda_lock = lock_dir / "conda-linux-aarch64.explicit.lock"
+    pip_lock.write_text("fixture-package==1.2.3\n", encoding="utf-8")
+    conda_lock.write_text(
+        "@EXPLICIT\nhttps://conda.example.invalid/linux-aarch64/python-3.11.15-build.conda\n",
+        encoding="utf-8",
+    )
+    hash_file = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+    contract = {
+        "schema": "leo-t1-runtime-identity/v1",
+        "python": runtime_identity["python"],
+        "platform": runtime_identity["platform"],
+        "machine": runtime_identity["machine"],
+        "installed_packages_sha256": runtime_identity["installed_packages_sha256"],
+        "dependency_lock_sha256s": {
+            "CODE/dependencies/t1-vm-linux-aarch64/requirements.lock": hash_file(pip_lock),
+            "CODE/dependencies/t1-vm-linux-aarch64/conda-linux-aarch64.explicit.lock": hash_file(conda_lock),
+        },
+    }
+    contract_path = lock_dir / "runtime-identity.json"
+    contract_path.write_text(json.dumps(contract, sort_keys=True) + "\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "add T1 runtime identity contract")
+
+
 def _installed_fixture(tmp_path: Path) -> tuple[Path, Path, str]:
+    from CODE.scripts.remote import release_protocol as protocol
     from CODE.scripts.remote.release_protocol import build_release, install_release
 
-    repo, commit = _repo(tmp_path / "repo")
+    repo, _commit = _repo(tmp_path / "repo")
     _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    _add_runtime_contract(repo, protocol._runtime_identity())
+    commit = _git(repo, "rev-parse", "HEAD")
     bundle = tmp_path / "bundle"
     envelope = build_release(repo, commit, bundle, remote_refs=[])
     releases_root = tmp_path / "vm" / "releases"
     install_release(bundle, releases_root, bootstrap=repo / "CODE/scripts/remote/release_protocol.py")
+    return repo, releases_root, envelope["release_id"]
+
+
+def _installed_fixture_with_runtime_contract(tmp_path: Path):
+    from CODE.scripts.remote.release_protocol import build_release, install_release
+
+    repo, _commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    _add_runtime_contract(repo, {
+        "python": "3.11.15", "platform": "linux", "machine": "aarch64",
+        "installed_packages_sha256": "a" * 64,
+    })
+    commit = _git(repo, "rev-parse", "HEAD")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(repo, commit, bundle, remote_refs=[])
+    releases_root = tmp_path / "vm" / "releases"
+    install_release(bundle, releases_root,
+                   bootstrap=repo / "CODE/scripts/remote/release_protocol.py")
     return repo, releases_root, envelope["release_id"]
 
 
@@ -621,6 +670,125 @@ def test_run_rejects_release_installed_under_a_different_release_id_directory(
         )
 
     assert not (runs_root / "mismatched-release-001").exists()
+
+
+def test_run_rejects_runtime_identity_mismatch_before_creating_run_directory(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _installed_fixture_with_runtime_contract(tmp_path)
+    monkeypatch.setattr(protocol, "_runtime_identity", lambda: {
+        "python": "3.11.15", "platform": "linux", "machine": "x86_64",
+        "installed_packages_sha256": "a" * 64,
+    })
+    runs_root = tmp_path / "vm" / "runs"
+    with pytest.raises(ValueError, match="runtime identity mismatch"):
+        protocol.run_release(
+            release_id,
+            "wrong-runtime-001",
+            release_root=releases_root,
+            runs_root=runs_root,
+            mode="diagnostic",
+            argv=["python3", "CODE/payload.py"],
+        )
+
+    assert not (runs_root / "wrong-runtime-001").exists()
+
+
+def test_run_enforces_runtime_contract_when_called_directly(tmp_path: Path) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _installed_fixture_with_runtime_contract(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+
+    with pytest.raises(ValueError, match="runtime identity mismatch"):
+        protocol.run_release(
+            release_id,
+            "direct-runtime-mismatch-001",
+            release_root=releases_root,
+            runs_root=runs_root,
+            mode="diagnostic",
+            argv=["python3", "CODE/payload.py"],
+        )
+
+    assert not (runs_root / "direct-runtime-mismatch-001").exists()
+
+
+def test_run_accepts_matching_runtime_contract_and_binds_its_hash(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _installed_fixture_with_runtime_contract(tmp_path)
+    release_dir = releases_root / release_id
+    runtime = {
+        "python": "3.11.15", "platform": "linux", "machine": "aarch64",
+        "installed_packages_sha256": "a" * 64,
+    }
+    monkeypatch.setattr(protocol, "_runtime_identity", lambda: runtime)
+    runs_root = tmp_path / "vm" / "runs"
+
+    result = protocol.run_release(
+        release_id,
+        "matching-runtime-001",
+        release_root=releases_root,
+        runs_root=runs_root,
+        mode="diagnostic",
+        argv=["python3", "CODE/payload.py"],
+    )
+
+    contract_path = release_dir / "CODE/dependencies/t1-vm-linux-aarch64/runtime-identity.json"
+    manifest = json.loads(
+        (runs_root / "matching-runtime-001" / "run-manifest.json").read_text(
+            encoding="utf-8"))
+    assert result["status"] == "completed"
+    assert manifest["environment"]["machine"] == "aarch64"
+    assert manifest["runtime_contract"] == {
+        "path": "CODE/dependencies/t1-vm-linux-aarch64/runtime-identity.json",
+        "sha256": hashlib.sha256(contract_path.read_bytes()).hexdigest(),
+    }
+
+
+def test_runtime_contract_rejects_dependency_lock_hash_mismatch(tmp_path: Path) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _installed_fixture_with_runtime_contract(tmp_path)
+    release_dir = releases_root / release_id
+    lock_path = release_dir / "CODE/dependencies/t1-vm-linux-aarch64/requirements.lock"
+    lock_path.chmod(0o644)
+    lock_path.write_text("fixture-package==9.9.9\n", encoding="utf-8")
+    runtime = {
+        "python": "3.11.15", "platform": "linux", "machine": "aarch64",
+        "installed_packages_sha256": "a" * 64,
+    }
+
+    with pytest.raises(ValueError, match="runtime dependency lock mismatch"):
+        protocol._verify_runtime_contract(
+            release_dir,
+            "CODE/dependencies/t1-vm-linux-aarch64/runtime-identity.json",
+            runtime,
+        )
+
+
+def test_run_cli_rejects_runtime_mismatch_before_creating_run_directory(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _installed_fixture_with_runtime_contract(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases_root)
+    monkeypatch.setattr(protocol, "RUN_ROOT", runs_root)
+    result = protocol.main([
+        "run", "--release-id", release_id,
+        "--run-id", "runtime-contract-cli-001", "--mode", "diagnostic",
+        "--", "python3", "CODE/payload.py",
+    ])
+
+    assert result == 2
+    assert "runtime identity mismatch" in capsys.readouterr().err
+    assert not (runs_root / "runtime-contract-cli-001").exists()
 
 
 def test_run_binds_release_inputs_runtime_and_unique_run_id(tmp_path: Path) -> None:
@@ -681,6 +849,7 @@ def test_run_uses_an_immutable_input_snapshot_after_source_path_changes(
     )
     _git(repo, "add", "CODE/consume_input.py")
     _git(repo, "commit", "-q", "-m", "add declared input reader")
+    _add_runtime_contract(repo, protocol._runtime_identity())
     commit = _git(repo, "rev-parse", "HEAD")
     bundle = tmp_path / "bundle"
     envelope = build_release(repo, commit, bundle, remote_refs=[])

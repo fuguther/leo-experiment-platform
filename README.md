@@ -130,6 +130,6 @@ python3 -m CODE.experiment_platform.replay_counterfactual \
 
 - 先读 [STATUS.md](STATUS.md) 看当前身份和待办；稳定操作约束见 [AGENTS.md](AGENTS.md)。
 - 每次改动前后执行 `python3 -B CODE/scripts/maintenance_check.py --repo .`。验收本机回传证据时，另加 `--verify-evidence --evidence-root /path/to/local-evidence` 并替换成实际证据根。
-- 只从已提交、干净且已推送的完整 commit 发布到隔离 T1 release。诊断/开发运行必须指定已核验的 release 和未使用过的 run-id；声明的数据/模型和配置会快照到该 run，receipt 绑定快照身份。
+- 只从已提交、干净且已推送的完整 commit 发布到隔离 T1 release。诊断/开发运行必须指定已核验的 release 和未使用过的 run-id；声明的数据/模型和配置会快照到该 run，receipt 绑定快照身份。runner 开始建 run 目录前会按 release 内的 `CODE/dependencies/t1-vm-linux-aarch64/runtime-identity.json` 核对 Python、Linux 平台、机器架构、已安装 Python 包清单摘要及两份依赖锁；不匹配即拒绝。run manifest 绑定该契约哈希，receipt 绑定 manifest 哈希。
 - Release 只按版本化路径与后缀排除清单裁剪 Git 树；CSV/JSON 不会因扩展名自动排除，发布前必须对照本机资产登记核对数据文件及许可状态。
 - 回传只通过仓库脚本校验并落盘。公开 `ANALYSIS/DEPLOYMENT-INDEX.jsonl` 保存不含本机路径的 `evidence://t1/<run-id>`；证据根路径由维护者本地显式提供，不写入 Git。
