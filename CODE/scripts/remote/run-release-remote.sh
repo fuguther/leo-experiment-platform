@@ -62,7 +62,8 @@ if [[ -n "$config" ]]; then
     [[ "$config" != /* && "/$config/" != *"/../"* && "$config" != .. && "$config" != ../* ]] \
         || die "config must be a safe path relative to the immutable release"
 fi
-for input in "${inputs[@]}"; do
+for input in "${inputs[@]-}"; do
+    [[ -n "$input" ]] || continue
     [[ "$input" == *=* ]] || die "each input must use NAME=VM_PATH"
 done
 
@@ -73,6 +74,9 @@ remote_argv=("$REMOTE_PYTHON" "$REMOTE_ROOT/releases/$release_id/CODE/scripts/re
 [[ -z "$config" ]] || remote_argv+=(--config "$config")
 [[ -z "$seed" ]] || remote_argv+=(--seed "$seed")
 [[ -z "$resource_group" ]] || remote_argv+=(--resource-group "$resource_group")
-for input in "${inputs[@]}"; do remote_argv+=(--input "$input"); done
+for input in "${inputs[@]-}"; do
+    [[ -n "$input" ]] || continue
+    remote_argv+=(--input "$input")
+done
 remote_argv+=(-- "${argv[@]}")
 remote "${remote_argv[@]}" || die "T1 diagnostic/development run failed; inspect its isolated run receipt and logs"
