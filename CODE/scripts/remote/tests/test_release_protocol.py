@@ -528,6 +528,7 @@ def test_verified_pullback_appends_one_small_idempotent_index_record(tmp_path: P
     assert record["release_id"] == release_id
     assert record["pullback_status"] == "VERIFIED"
     assert record["analysis_commit"] is None
+    assert record["evidence_uri"].startswith("../")
 
 
 def test_failed_pullback_is_quarantined_before_a_clean_retry(tmp_path: Path) -> None:

@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REMOTE_HOST="${T1_REMOTE_HOST:-vm}"
 REMOTE_ROOT="${T1_REMOTE_ROOT:-/data/论文/leo-t1-wt}"
 SSH_BIN="${SSH_BIN:-/usr/bin/ssh}"
-REMOTE_PYTHON="${T1_REMOTE_PYTHON:-python3}"
+REMOTE_RUN_PYTHON="${T1_REMOTE_RUN_PYTHON:-/data/liguang13/conda-envs/leo-i39/bin/python}"
 
 die() { printf '[run-release] %s\n' "$*" >&2; exit 2; }
 usage() {
@@ -17,7 +17,8 @@ Usage:
 
 The runner accepts an entrypoint committed under CODE/ in the selected release.
 Formal execution remains on the existing authorized runner; this entrypoint
-cannot select formal mode.
+cannot select formal mode. T1_REMOTE_RUN_PYTHON can override the established
+T1 conda interpreter when the VM environment changes.
 EOF
 }
 quote() { printf -v REPLY '%q' "$1"; }
@@ -67,7 +68,7 @@ for input in "${inputs[@]-}"; do
     [[ "$input" == *=* ]] || die "each input must use NAME=VM_PATH"
 done
 
-remote_argv=("$REMOTE_PYTHON" "$REMOTE_ROOT/releases/$release_id/CODE/scripts/remote/release_protocol.py"
+remote_argv=("$REMOTE_RUN_PYTHON" "$REMOTE_ROOT/releases/$release_id/CODE/scripts/remote/release_protocol.py"
     run --release-id "$release_id" --run-id "$run_id"
     --release-root "$REMOTE_ROOT/releases" --runs-root "$REMOTE_ROOT/runs" --mode "$mode"
     --timeout-seconds "$timeout_seconds")

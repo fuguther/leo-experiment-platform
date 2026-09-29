@@ -1273,7 +1273,7 @@ def append_deployment_index(repo_root: Path, receipt: dict[str, Any], evidence_p
         "pullback_status": "VERIFIED",
         "execution_class": run_manifest.get("execution_class"),
         "analysis_commit": None,
-        "evidence_uri": str(evidence_path),
+        "evidence_uri": Path(os.path.relpath(evidence_path, repo_root)).as_posix(),
     }
     encoded = canonical_json(record) + b"\n"
     index.parent.mkdir(parents=True, exist_ok=True)

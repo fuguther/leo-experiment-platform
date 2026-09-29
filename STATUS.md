@@ -16,6 +16,7 @@
 - release 使用 T1 专属数据/凭据排除规则，不改变旧 formal deploy 的 `deployment_guard.excluded()` 策略。
 - 原始 PDF、Office 文档、图像、归档、地理栅格、训练数据和 checkpoint 不进入 T1 source release。需要这些输入的运行须由运行人从获准来源单独提供，并把实际 VM 路径及 hash 纳入 run receipt。
 - 当前源码 commit 没有识别到可用的依赖 lockfile；release 标记 `not_pinned`，run receipt 记录 VM Python、平台及已安装包清单 hash。该信息便于追查，不等于依赖可精确重建。
+- T1 VM 已只读核验的现有运行环境为 `/data/liguang13/conda-envs/leo-i39/bin/python`（Python 3.11.15、PyYAML 6.0.2）；新 runner 默认使用它，可用 `T1_REMOTE_RUN_PYTHON` 显式覆盖。该环境没有 lockfile，仍不构成精确依赖冻结。
 - 原始文献/数据的来源、许可、唯一权威路径及独立设备备份仍须在项目资料盘点中核验。主机上的另一目录不能作为设备级备份证明。
 - 本仓库的本机测试和诊断只验证同步/回执机制，不证明路由机制、实验结果或论文 claim。
 
