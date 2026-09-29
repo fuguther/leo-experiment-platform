@@ -25,7 +25,7 @@
 ## 规则、检查与备份
 
 - 仓库稳定规则见 `AGENTS.md`；工作区级规则和唯一治理主方案/资产登记表保存在本公共仓库以外的权威工作区文档目录，保留本机证据与路径，不复制整份到公共仓库。
-- `CODE/scripts/maintenance_check.py --repo .` 是只读检查；验证回执时使用 `--verify-evidence --evidence-root <local-evidence-root>`。公开 JSONL 索引只保存 `evidence://t1/<run-id>`，不保存本机路径。检查器不扫描文件正文中的凭据，不检查资料许可，不创建备份，也不运行实验。
+- `CODE/scripts/maintenance_check.py --repo .` 是只读检查；验证回执时使用 `--verify-evidence --evidence-root /path/to/local-evidence` 并替换成实际证据根。公开 JSONL 索引只保存 `evidence://t1/<run-id>`，不保存本机路径。检查器不扫描文件正文中的凭据，不检查资料许可，不创建备份，也不运行实验。
 - CI 会执行维护检查，并收集 `CODE/scripts/remote/tests`。本机结果不代替对 PR 精确 head SHA 的 GitHub CI。
 - 工作区主方案、资产登记和本机回传证据尚无已核验的设备外独立备份。公共 GitHub 内容和 T1 发布目录不算这些资料的备份。备份目标、容量和权限确认后，按资产清单复制、核验哈希并恢复样本。
 
