@@ -126,6 +126,21 @@ python3 -m CODE.experiment_platform.replay_counterfactual \
 两者都**不修改引擎**,且都要求 `--out` 指向不存在的路径(拒绝静默覆盖)。
 反事实重放要求 `learning.algorithm = none`(确定性路由器)。
 
+### 逐包最小机制比较(T1-FROZEN-BRANCH)
+
+`frozen` 观测与 `forced_actions` 此前在内核里**互斥**，会令反事实落在另一个分支时刻。本实现以冻结观测时刻 `obs["t_observe"]` 为分支点，要求强制动作属于当时合法集合，并用决策指纹和分支前 timeline 行验证共同前缀；两条分支之后独立演化。
+
+```sh
+python3 -m CODE.experiment_platform.minimal_branch_compare \
+  --config CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml \
+  --decision-id 2 --forced-action S --out out/branch-compare.json
+python3 -m CODE.experiment_platform.cost_pressure_probe \
+  --config CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml \
+  --out out/cost-pressure.json
+```
+
+每星计算池由 `execution.compute_servers_per_satellite` 控制（0 表示无界历史路径）；正值须配合正的 `compute_delay_s`，等待与服务分开记入 timeline。设计细节见 `ANALYSIS/CAPABILITY-TABLE.md`、`ANALYSIS/VERSION-EVIDENCE-RECONCILIATION.md`、`ANALYSIS/TIME-SEMANTICS-QUARTET.md` 和 `ANALYSIS/ASYNC-SCHEDULING-DESIGN.md`。
+
 ### 日常维护与 T1 同步
 
 - 先读 [STATUS.md](STATUS.md) 看当前身份和待办；稳定操作约束见 [AGENTS.md](AGENTS.md)。

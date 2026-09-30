@@ -255,7 +255,16 @@ def test_hold_milestones_do_not_enter_the_decision_sink():
     kern.run()
     assert {r["kind"] for r in sink} <= {"forward", "deliver"}
     assert all("milestone" not in r for r in sink)
-    assert all(m["pid"] == 1 for m in timeline)
+    # S1-B/C: control traffic now has its own timeline rows on the same named
+    # resource.  A ControlPacket is not a routing decision, so it carries no
+    # pid; the "everything here belongs to the injected packet" check is
+    # therefore scoped to data rows, and the control rows are pinned as a
+    # separate, pid-less category instead of being ignored.
+    assert all(m["pid"] == 1 for m in timeline
+               if m.get("packet_kind") != "control")
+    ctrl = [m for m in timeline if m.get("packet_kind") == "control"]
+    assert ctrl, "the control plane is enabled, so control rows must exist"
+    assert all(m["pid"] is None for m in ctrl)
 
 
 def test_default_off_allocates_nothing_even_when_holds_would_occur():

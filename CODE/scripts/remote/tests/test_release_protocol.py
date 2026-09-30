@@ -538,6 +538,20 @@ def test_t1_exclusions_do_not_change_formal_deployment_policy() -> None:
 
 
 @pytest.mark.parametrize("name", [
+    "CODE/data/traffic/mlab_2026-05-27.csv",
+    "CODE/data/traffic/mlab_sample.csv",
+    "CODE/data/traffic/t1_step5_micro_ab.csv",
+    "CODE/data/traffic/diurnal_mlab_2026-05-27.json",
+    "CODE/data/geoip/sites.json",
+])
+def test_t1_release_excludes_locally_registered_unverified_mlab_assets(
+        name: str) -> None:
+    from CODE.scripts.remote.release_protocol import t1_excluded
+
+    assert t1_excluded(PurePosixPath(name))
+
+
+@pytest.mark.parametrize("name", [
     "remote.env.template", ".env.template", ".env.example", "CODE/scripts/remote/deployment_guard.py",
 ])
 def test_deployment_exclusions_keep_templates_and_source_code(name: str) -> None:

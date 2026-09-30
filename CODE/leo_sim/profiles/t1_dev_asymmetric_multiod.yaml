@@ -1,0 +1,45 @@
+config_version: leo-sim-config/v1
+# Synthetic, manually declared three-site OD experiment.  Weights deliberately
+# make source emission asymmetric; this is a mechanism stress test, not a
+# measurement of subscriber demand.
+scenario:
+  name: t1-dev-asymmetric-multiod-fixed-hotspot
+  duration_s: 70.0
+  time_step_s: 0.1
+  num_satellites: 24
+  num_planes: 3
+  seed: 7
+endpoints:
+  sites:
+    - {name: equator, lat: 0.1, lon: 0.1, demand_weight: 3.0}
+    - {name: north, lat: 52.6, lon: 90.4, demand_weight: 1.0}
+    - {name: west, lat: 0.1, lon: -80.1, demand_weight: 1.0}
+demand:
+  mode: uniform
+  offered_mbps: 12.0
+  packet_bits: 1000000
+access:
+  unavailable_policy: queue
+  uplink_rate_mbps: 1000.0
+  downlink_rate_mbps: 1000.0
+  association: bbm
+links:
+  rate_model: constant
+  isl_rate_mbps: 5.0
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 2.0
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  max_events: 5000000
+  max_entities: 20000
+  max_packets: 20000
+  available_capacity_interval_s: 1.0
+outputs:
+  out_dir: leo_sim_out/t1_dev_asymmetric_multiod
+  plotting: false

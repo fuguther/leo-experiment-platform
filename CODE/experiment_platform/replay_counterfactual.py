@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Any
 
 from CODE.leo_sim import config as config_mod
-from CODE.leo_sim import counterfactual, trace as trace_mod
+from CODE.leo_sim import counterfactual, kernel, trace as trace_mod
 
 SCHEMA = "counterfactual-replay/v1"
 
@@ -90,6 +90,14 @@ def replay(config_path: Path, decision_id: int, forced_action: str,
             forced_action=forced_action)
     except counterfactual.CounterfactualError as exc:
         raise ReplayDriverError(f"replay refused: {exc}") from exc
+    except kernel.KernelError as exc:
+        # An override the engine refuses (a direction that is not legal at the
+        # branch point, a decision whose branch point was not a forward choice)
+        # is a counterfactual this platform declines to compute -- not a crash.
+        # Before this handler existed the refusal escaped as a raw traceback
+        # with exit code 1, so a caller could not tell "refused by design" from
+        # "the driver broke".
+        raise ReplayDriverError(f"engine refused the replay: {exc}") from exc
     finally:
         for leftover in sorted(work.glob("*"), reverse=True):
             try:
