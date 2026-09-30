@@ -284,6 +284,27 @@ def test_changing_the_offered_load_changes_the_config_and_the_trace():
     assert left[3]["rows"] != right[3]["rows"] or True
 
 
+def test_trace_build_uses_writable_temp_storage_outside_readonly_release(
+        monkeypatch, tmp_path):
+    release_root = tmp_path / "immutable-release"
+    release_root.mkdir()
+    release_root.chmod(0o555)
+    real_mkdtemp = t1_tasks.tempfile.mkdtemp
+
+    def reject_release_local_temp(*, prefix, dir=None):
+        assert dir is None, "temporary trace work must not target the release"
+        return real_mkdtemp(prefix=prefix, dir=str(tmp_path))
+
+    monkeypatch.setattr(t1_tasks.tempfile, "mkdtemp", reject_release_local_temp)
+    resolved, rows, _geometry, source = t1_tasks.design(
+        config_path=PROFILE, root=release_root)
+
+    assert resolved["sha256"]
+    assert rows
+    assert source["trace_sha256"]
+    assert list(release_root.iterdir()) == []
+
+
 # ------------------------------------------------------------- dispatcher
 @pytest.mark.parametrize("task", t1_tasks.TASK_TYPES)
 def test_one_driver_serves_all_three_task_types(task):

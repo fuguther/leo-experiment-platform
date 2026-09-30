@@ -69,3 +69,11 @@ report -> run_status ok；common_strong.frozen = False（诚实：开发块配�
 4. **研究设计尚未就绪（不只是"缺授权"）**：开发块配对差恒为 0 → `common_strong` 保持未冻结，
    正式样本量无法估计，formal 包因此标 `PENDING_DEV_SELECTION`。需先补有判别力的开发场景，
    才谈得上确认性运行；把它概括成"只差正式授权"是不准确的。
+
+
+## 工作包 A 当前状态（2026-09-30）
+
+- 整合提交 `156b422796c8ddb78fb04c85228b77cd969bf076` 已推送到任务分支并发布不可变隔离 release；release 身份与远端备份已验证。
+- 新 run `wp-a-dev-20260930-01` 保留为失败记录。13 格矩阵只进入负对照首格，suite 在任何 trace 编译和模拟调用前因尝试向只读 release 写临时目录而退出；实际模拟调用 0，receipt 拉回核验通过，其他 12 格未执行。
+- 本机修复 `t1_tasks.design()` 和 `benchmark_decision._design()` 都使用 runner 指定的隔离 `TMPDIR`，避免在只读 release 下创建临时 trace 目录；新增两条只读 release 回归测试。修复后定向测试 44 passed / 12.84 s，release 协议测试 62 passed。一次较宽的合并运行在 516.78 s 时已有 77 项通过，因剩余本机 dev-tier 集成测试耗时而主动中断；不记为全套通过。完整回归 1,494 passed / 8 skipped / 1 warning 早于两处修复。
+- 独立按已编译的 `b_dev` cell IDs 重算仍为 13 格、78 次上界调用，预算 80；合同与场景、种子和调用数未调整。当前尚未对修复后的代码提交/发布，也没有新的有效 VM 模拟结果。下一步审查改动与发布清单后提交、推送、发布新 release，再用新 run-id 重跑同一合同；不得复用 `...-01`。

@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from CODE.experiment_platform import benchmark_decision as bd
 from CODE.leo_sim import config as config_mod
@@ -36,6 +37,33 @@ def test_the_benchmark_artifact_is_complete(tmp_path):
     assert "seconds per call" in doc["units"]["stats"]
     for key in ("full_decision", "inference_only", "empty_call_baseline"):
         assert key in doc
+
+
+def test_config_trace_build_uses_temp_storage_outside_readonly_release(
+        monkeypatch, tmp_path):
+    release_root = tmp_path / "immutable-release"
+    release_root.mkdir()
+    release_root.chmod(0o555)
+    config = config_mod.load_config_file(
+        str(ROOT / "CODE/leo_sim/profiles/t1_dev_asymmetric_multiod.yaml"))
+    config["config"]["time_alignment"]["enabled"] = True
+    config_path = tmp_path / "enabled-config.yaml"
+    config_path.write_text(yaml.safe_dump(config["config"], sort_keys=False))
+    real_mkdtemp = bd.tempfile.mkdtemp
+
+    def reject_release_local_temp(*, prefix, dir=None):
+        assert dir is None, "temporary trace work must not target the release"
+        return real_mkdtemp(prefix=prefix, dir=str(tmp_path))
+
+    monkeypatch.setattr(bd.tempfile, "mkdtemp", reject_release_local_temp)
+    resolved, rows, geometry, source = bd._design(
+        config_path, None, release_root)
+
+    assert resolved["sha256"]
+    assert rows
+    assert geometry is None
+    assert source["trace_sha256"]
+    assert list(release_root.iterdir()) == []
 
 
 def test_percentiles_are_ordered_and_sampling_is_declared(tmp_path):

@@ -1529,7 +1529,50 @@
    "report_all_failed_timed_out_censored_and_incomplete_cells": true,
    "retain_precomputed_baseline_even_if_best": true,
    "host_wall_time_is_not_energy_or_onboard_latency": true
-  }
+  },
+  "execution_observations": [
+   {
+    "run_id": "wp-a-dev-20260930-01",
+    "release_id": "156b422796c8ddb78fb04c85228b77cd969bf076-446f7f646b6e0ae86235843191849b157403fdbeeade95962517f0809ddeb68a",
+    "source_git_commit": "156b422796c8ddb78fb04c85228b77cd969bf076",
+    "run_status": "failed",
+    "suite_status": "SMOKE_FAILED",
+    "suite_cells_planned": 13,
+    "suite_cells_started": 1,
+    "suite_cells_ok": 0,
+    "suite_cells_unstarted": 12,
+    "simulator_calls_started": 0,
+    "failure_cell": "b-steady_uniform_negative_control-network-seed-7",
+    "failure_class": "PermissionError before trace compilation and simulator entry",
+    "failure_sha256": "8bf76a150949df7a5eff2762f2fbafc7a11d3e890a6ad22122c981ecb34e3944",
+    "pullback": "VERIFIED",
+    "evidence_uri": "evidence://t1/wp-a-dev-20260930-01",
+    "interpretation": "infrastructure failure only; no experimental outcomes were produced"
+   }
+  ],
+  "pre_run_technical_fixes": [
+   {
+    "source_commit_under_test": "156b422796c8ddb78fb04c85228b77cd969bf076",
+    "run_triggered": false,
+    "paths": [
+     "CODE/experiment_platform/t1_tasks.py::design",
+     "CODE/experiment_platform/benchmark_decision.py::_design"
+    ],
+    "defect": "both trace builders targeted the immutable release checkout for temporary files instead of runner TMPDIR",
+    "fix": "use tempfile.mkdtemp defaults so the runner-provided TMPDIR controls scratch location",
+    "regression_tests": [
+     "CODE/experiment_platform/tests/test_t1_tasks.py::test_trace_build_uses_writable_temp_storage_outside_readonly_release",
+     "CODE/experiment_platform/tests/test_benchmark_decision.py::test_config_trace_build_uses_temp_storage_outside_readonly_release"
+    ],
+    "verification": "focused benchmark/tasks/A0 tests: 44 passed in 12.84 s; a broader combined run was interrupted after 77 passed during a long dev-tier integration test",
+    "b_dev_static_cost_recheck": {
+     "suite_cells": 13,
+     "simulator_call_upper_bound": 78,
+     "budget": 80,
+     "confirmed_unchanged": true
+    }
+   }
+  ]
  },
  "work_id": "WP-T1-COMPLETE"
 }

@@ -879,7 +879,6 @@ def design(config_path=None, scenario=None, root=None, overrides=None):
     from CODE.experiment_platform import scripted_scenarios
     from CODE.leo_sim import trace as trace_mod
 
-    root = Path(root or Path.cwd())
     if scenario:
         try:
             resolved, rows, geometry, meta = scripted_scenarios.build(scenario)
@@ -898,7 +897,11 @@ def design(config_path=None, scenario=None, root=None, overrides=None):
         raise TaskError(f"config invalid: {exc}") from exc
     if overrides:
         resolved = _apply_overrides(resolved, overrides)
-    work = Path(tempfile.mkdtemp(prefix="t1task-", dir=str(root)))
+    # ``root`` remains accepted for CLI/API compatibility, but it may point at
+    # the immutable release checkout. The runner points TMPDIR at the isolated
+    # run directory, so temporary trace material stays writable and does not
+    # mutate the code.
+    work = Path(tempfile.mkdtemp(prefix="t1task-"))
     try:
         manifest = trace_mod.compile_trace(resolved, str(work))
         rows = trace_mod.load_trace(

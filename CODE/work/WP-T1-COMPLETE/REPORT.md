@@ -637,3 +637,30 @@ N=1/2/4 为 1.91/1.78/1.77 s），而异步窗口对 N 几乎不敏感（三个 
   receipt 或回传证据。FORMAL_RUN 与训练均未执行。
 - 续跑：审查待提交对象与 release 文件清单，固定 clean commit 并推送；发布精确身份到隔离 release，先运行
   同一合同首格 smoke 再继续已冻结矩阵，拉回回执和工件并独立重算。
+
+
+### A0 首次开发 run：保留的启动失败与修复
+
+- 精确提交 `156b422796c8ddb78fb04c85228b77cd969bf076` 已推送并发布；release-id
+  `156b422796c8ddb78fb04c85228b77cd969bf076-446f7f646b6e0ae86235843191849b157403fdbeeade95962517f0809ddeb68a`，
+  发布回执为 `published`，远端备份身份 `verified`，incoming 清理成功。此包排除了未核实再分发许可的 M-Lab 数据资产。
+- 新 run `wp-a-dev-20260930-01` 以 `development` 模式启动，输入合同快照 SHA-256
+  `791d28375d2459e5d5c19bbdde87a4642545bbc07e6c901084d148ea0429f5c9`。run receipt SHA-256
+  `8bf76a150949df7a5eff2762f2fbafc7a11d3e890a6ad22122c981ecb34e3944`，run-manifest SHA-256
+  `ec1fb1d2d8e10a70f312bd43665cb7ac9ed9c2d98853758b6bab79165ddaad02`，回传索引 `evidence://t1/wp-a-dev-20260930-01`
+  为 `VERIFIED`；本机维护检查核验了 12 个索引 receipt、0 errors。
+- **执行结果为失败，不是实验结论。** wrapper/receipt exit code 3；suite `SMOKE_FAILED`，13 个预声明 cell 中仅首格启动、
+  1 error、0 ok，其余 12 格未执行。首格任务 exit code 1，2.648 s；远端 run 总时长约 8 s。回执 stderr 指向
+  `t1_tasks.design()` 在不可变 release 目录下创建 `t1task-*` 临时目录时收到 `PermissionError`。
+  失败发生在 `trace.compile_trace` 与任何模拟调用之前：本 run 实际 simulator calls 为 0，没有 offered、forward、delivery
+  或算法臂结果，也没有可用于 H1/H2/A2 的数据。smoke gate 正确停止整轮，不能对该 run resume。
+- 根因是 trace 暂存错误地把 release checkout 当写目录；runner 已将 `TMPDIR` 指向本次 run 的隔离临时目录。
+  首格路径的 `t1_tasks.design()` 已改为从 runner 的 `TMPDIR` 创建临时 trace 工作区。对 b_dev 剩余路径作静态审查时，
+  又发现 benchmark cell 的 `benchmark_decision._design()` 有同类问题；它也已改为使用 `TMPDIR`，并保留 `--root`
+  参数兼容性。两个只读 release 回归测试都先在旧实现上复现“不得向 release 建暂存目录”的失败，再在修复后通过。
+- 修复后聚焦验证：`test_benchmark_decision.py`、`test_t1_tasks.py` 与 suite 的两个 A0 smoke/成本测试共 44 passed，
+  12.84 s；`test_release_protocol.py` 62 passed。另一次合并运行在 516.78 s 时已有 77 项通过，因剩余 dev-tier
+  集成测试耗时而主动中断；它不作为完整测试通过记录。先前 1,494 passed / 8 skipped / 1 warning 的全仓库回归
+  早于这两处修复，不把它写成修复后的全量结果。
+- 续跑只重试同一冻结合同/同一种子/同一首格逻辑，使用含两处修复的新提交、新 release 和全新 run-id；保留 run
+  `...-01` 为失败记录。

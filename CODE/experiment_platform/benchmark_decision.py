@@ -524,7 +524,10 @@ def _design(config_path, scenario, root):
     except (config_mod.ConfigError, FileNotFoundError) as exc:
         raise BenchmarkError(f"config invalid: {exc}") from exc
     _require_enabled(resolved)
-    work = Path(tempfile.mkdtemp(prefix="bench-", dir=str(root)))
+    # ``root`` remains accepted for CLI/API compatibility, but the runner
+    # supplies TMPDIR inside the isolated run directory. Keep trace scratch
+    # there instead of under --root: a published release is read-only.
+    work = Path(tempfile.mkdtemp(prefix="bench-"))
     try:
         manifest = trace_mod.compile_trace(resolved, str(work))
         rows = trace_mod.load_trace(
