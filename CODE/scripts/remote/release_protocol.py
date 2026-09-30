@@ -13,6 +13,7 @@ import fcntl
 import hashlib
 import json
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -56,6 +57,8 @@ MANIFEST_NAME = ".release-manifest.json"
 ENVELOPE_NAME = ".release-envelope.json"
 RUN_MANIFEST_NAME = "run-manifest.json"
 RUN_RECEIPT_NAME = "run-receipt.json"
+T1_RUNTIME_IDENTITY_RELATIVE = (
+    "CODE/dependencies/t1-vm-linux-aarch64/runtime-identity.json")
 _SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("private_key_block", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")),
     ("github_token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b")),
@@ -1011,10 +1014,54 @@ def _runtime_identity() -> dict[str, Any]:
         "python": sys.version.split()[0],
         "python_executable": sys.executable,
         "platform": sys.platform,
+        "machine": platform.machine().lower(),
         "hostname": socket.gethostname(),
         "cpu_count": os.cpu_count(),
         "installed_packages_sha256": sha256_bytes(encoded),
         "installed_packages": packages,
+    }
+
+
+def _verify_runtime_contract(
+    release_dir: Path,
+    contract_relative: str,
+    runtime_identity: dict[str, Any],
+) -> dict[str, str]:
+    """Fail closed when a T1 run uses an environment outside the committed lock."""
+    if contract_relative != T1_RUNTIME_IDENTITY_RELATIVE:
+        raise ValueError("runtime identity contract path is not the canonical T1 lock")
+    contract_path = release_dir / T1_RUNTIME_IDENTITY_RELATIVE
+    if contract_path.is_symlink() or not contract_path.is_file():
+        raise ValueError("runtime identity contract is missing or symbolic")
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    required_keys = {
+        "schema", "python", "platform", "machine",
+        "installed_packages_sha256", "dependency_lock_sha256s",
+    }
+    if not isinstance(contract, dict) or set(contract) != required_keys \
+            or contract.get("schema") != "leo-t1-runtime-identity/v1":
+        raise ValueError("unsupported T1 runtime identity contract")
+    lock_paths = {
+        "CODE/dependencies/t1-vm-linux-aarch64/requirements.lock",
+        "CODE/dependencies/t1-vm-linux-aarch64/conda-linux-aarch64.explicit.lock",
+    }
+    recorded_locks = contract.get("dependency_lock_sha256s")
+    if not isinstance(recorded_locks, dict) or set(recorded_locks) != lock_paths:
+        raise ValueError("T1 runtime identity contract has incomplete dependency locks")
+    for raw in sorted(lock_paths):
+        digest = recorded_locks[raw]
+        lock_path = release_dir / raw
+        if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest) \
+                or lock_path.is_symlink() or not lock_path.is_file() \
+                or sha256_file(lock_path) != digest:
+            raise ValueError(f"runtime dependency lock mismatch: {raw}")
+    for key in ("python", "platform", "machine", "installed_packages_sha256"):
+        expected = contract.get(key)
+        if not isinstance(expected, str) or runtime_identity.get(key) != expected:
+            raise ValueError(f"runtime identity mismatch: {key}")
+    return {
+        "path": T1_RUNTIME_IDENTITY_RELATIVE,
+        "sha256": sha256_file(contract_path),
     }
 
 
@@ -1254,6 +1301,9 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
     if release.get("release_id") != release_id:
         raise ValueError("requested release identity mismatch")
     argv = _release_python_argv(argv, release_dir)
+    runtime_identity = _runtime_identity()
+    runtime_contract_record = _verify_runtime_contract(
+        release_dir, T1_RUNTIME_IDENTITY_RELATIVE, runtime_identity)
     if resource_group and not RESOURCE_RE.fullmatch(resource_group):
         raise ValueError("invalid resource group")
     runs_root = _require_real_directory(runs_root, create=True)
@@ -1329,7 +1379,8 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
             "config": config_record,
             "authorization_receipt_sha256": authorization_record["sha256"] if authorization_record else None,
             "inputs": input_records,
-            "environment": _runtime_identity(),
+            "environment": runtime_identity,
+            "runtime_contract": runtime_contract_record,
             "argv": _redact_argv(argv),
             "random_seed": seed,
             "resources": {"cpu_count": os.cpu_count(), "resource_group": resource_group or None},
