@@ -74,8 +74,13 @@ def branch_fingerprint(decision_rows, target_decision_id: int) -> str:
 
 def replay_with_forced_action(resolved: dict, rows: list, *,
                               target_decision_id: int, forced_action: str,
-                              geometry=None) -> dict:
+                              geometry=None, inference_policy=None) -> dict:
     """Replay one run twice and force exactly one action at one decision.
+
+    inference_policy, when given, is an INFERENCE-ONLY policy applied to both
+    runs (see leo_sim.inference.assert_inference_only): the branch tooling may
+    replay a fixed model, and the pairing proof still requires both runs to
+    reach the same branch point.
 
     Returns a dict with:
       verification: the pairing proof (fingerprints, equality, chosen actions)
@@ -94,13 +99,15 @@ def replay_with_forced_action(resolved: dict, rows: list, *,
     base_timeline: list = []
     baseline = kernel.run_simulation(resolved, rows, geometry=geometry,
                                      decision_sink=base_sink,
-                                     timeline_sink=base_timeline)
+                                     timeline_sink=base_timeline,
+                                     inference_policy=inference_policy)
     cf_sink: list = []
     cf_timeline: list = []
     forced_run = kernel.run_simulation(
         resolved, rows, geometry=geometry,
         decision_sink=cf_sink, timeline_sink=cf_timeline,
-        forced_actions={target_decision_id: forced_action})
+        forced_actions={target_decision_id: forced_action},
+        inference_policy=inference_policy)
 
     base_fp = branch_fingerprint(base_sink, target_decision_id)
     cf_fp = branch_fingerprint(cf_sink, target_decision_id)

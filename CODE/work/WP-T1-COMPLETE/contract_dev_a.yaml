@@ -1,0 +1,135 @@
+schema: wp-t1-complete-development-contract/v1
+question: 在同一可用信息与合法候选下，按候选资源预计使用时刻取状态是否带来增量价值；计入逐包、按流、预计算及异步复用成本后，结果是否仍成立？
+purpose: bounded_development_only
+not_formal: true
+not_training: true
+development_seed_pool: [7, 11, 23, 42]
+selected_development_seeds: [7, 11]
+confirm_seed_start: 1001
+admission_measurement_window_s: [5.0, 40.0]
+admission_thresholds:
+  min_offered: 1
+  min_forward_decisions: 20
+  min_comparable_branch_points: 10
+  min_competing_branch_points: 5
+  min_effective_query_coverage: 0.90
+  effective_query_definition: finite candidate score, finite query target, named target resource from the at-decision-time candidate map (directed ISL egress or downlink), no missing term, no fallback; admission independently re-derives the count from per-candidate evidence
+  competing_branch_definition: at least one sampled candidate egress has a queue_enter event with backlog_before > 0 bits
+  outcome_fields_forbidden: [loss, regret, delivery_advantage, arm_ranking, candidate_winner]
+a0_smoke:
+  scenario_id: steady_uniform_negative_control
+  network_seed: 7
+  cell_rule: first_b_dev_cell
+  gate: each of stale, now, common, candidate has positive offered packets, forward decisions, and delivered packets; offered count equals trace length
+  on_failure: stop_before_any_remaining_b_dev_cell; preserve_result; do_not_resume_run
+  call_accounting: this is the already-budgeted negative-control network cell, not an additional simulation call
+simulator_call_budget: 80
+budgets:
+  cell_wall_s: 120
+  max_cells: 80
+  total_wall_s: 7200
+dev_parameters:
+  time_alignment.enabled: true
+  time_alignment.arm: candidate
+  time_alignment.predictor: bounded_linear
+  time_alignment.common_rule: median_eta
+  time_alignment.execution_mode: per_packet
+  time_alignment.per_flow_ttl_s: 0.5
+  time_alignment.query_delay_s: 0.000001
+  async_routing.update_interval_s: 0.5
+  async_routing.window_bins: 4
+  execution.compute_servers_per_satellite: 1
+  execution.compute_delay_s: 0.001
+  execution.decision_observation_mode: frozen
+  demand.offered_mbps: 0.5
+  demand.packet_bits: 1000000
+statistics:
+  unit: scenario x trace x seed; arms and modes paired within a unit
+  packet_is_independent_repeat: false
+  main_loss: L=min(delay,D)/D; lost or fully observed beyond D takes 1; administrative censoring remains separate
+  deadline:
+    type: declared_development_diagnostic
+    value_s: 30.0
+    source: same frozen value across all development arms and modes
+    formal_use: forbidden
+  primary_comparison: common regret minus candidate regret on same frozen branch
+  minimum_substantive_difference: 0.01
+  sensitivity: [0.005, 0.02]
+  bootstrap: 10000 paired resamples of independent scenario x trace x seed blocks; report as unstable when blocks are too few
+  dev_seeds: [7, 11]
+  confirm_seeds_start: 1001
+  sample_size_rule: n=max(20, ceil((1.96*s/0.005)^2)); no sample size derived from a best observed effect
+  these_are_design_thresholds_not_measurements: true
+formal_design:
+  ready: false
+  reason: this package is development-only; a confirmatory contract, sample-size review, independent approval, and exact formal authorization are still required
+  horizon_candidates_file: CODE/work/WP-T1-COMPLETE/horizon_candidates.json
+b_round:
+  note: all scenarios and matrices below are frozen before this run; cells are development diagnostics only
+  budgets:
+    simulator_call_budget: 80
+    max_cell_wall_s: 120
+    total_vm_wall_s: 7200
+  scenarios:
+    - id: steady_uniform_negative_control
+      business: low-load steady two-site negative control
+      expectation: negative_control
+      profile: CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml
+      parameters:
+        scenario.duration_s: 70.0
+        demand.offered_mbps: 0.5
+        demand.packet_bits: 1000000
+        execution.compute_delay_s: 0.001
+        execution.compute_servers_per_satellite: 1
+        time_alignment.enabled: true
+      seeds: [7]
+      tasks: [network_alignment, execution_modes]
+      task_seeds:
+        network_alignment: [7]
+        execution_modes: [7]
+    - id: asymmetric_multiod_fixed_hotspot
+      business: synthetic three-site asymmetric multi-OD fixed hotspot
+      expectation: competitive_multi_od
+      profile: CODE/leo_sim/profiles/t1_dev_asymmetric_multiod.yaml
+      parameters:
+        scenario.duration_s: 70.0
+        demand.offered_mbps: 12.0
+        demand.packet_bits: 1000000
+        links.isl_rate_mbps: 5.0
+        execution.available_capacity_interval_s: 1.0
+        execution.compute_delay_s: 0.001
+        execution.compute_servers_per_satellite: 1
+        time_alignment.enabled: true
+      declared_load:
+        source_weights: [3.0, 1.0, 1.0]
+        total_offered_mbps: 12.0
+        most_loaded_source_mbps: 3.6
+        isl_rate_mbps: 5.0
+        one_source_to_one_destination_ratio: 0.72
+        interpretation: analytic synthetic allocation only; not an end-to-end bottleneck measurement
+      seeds: [7, 11]
+      admission_seed: 7
+      tasks: [branch_alignment, network_alignment, execution_modes, benchmark]
+      task_seeds:
+        branch_alignment: [7]
+        network_alignment: [7, 11]
+        execution_modes: [7, 11]
+        benchmark: [7]
+      max_branches: 5
+      min_sampled_branches: 5
+      benchmark_pool_servers: [1]
+      benchmark_args: [--warmup, "2", --rounds, "2", --iterations, "20", --round-cap-s, "10", --pool-sweep, "1", --service-s, "0.25"]
+      execution_matrix:
+        - {id: n1-s001-p05, seed: 7, compute_servers: 1, service_s: 0.001, update_interval_s: 0.5}
+        - {id: n2-s001-p05, seed: 7, compute_servers: 2, service_s: 0.001, update_interval_s: 0.5}
+        - {id: n1-s025-p05, seed: 7, compute_servers: 1, service_s: 0.25, update_interval_s: 0.5}
+        - {id: n2-s025-p05, seed: 7, compute_servers: 2, service_s: 0.25, update_interval_s: 0.5}
+        - {id: n1-s025-p20, seed: 7, compute_servers: 1, service_s: 0.25, update_interval_s: 2.0}
+      pressure_service_interpretation:
+        0.001: approx VM decision-scorer timing order of magnitude; a configured diagnostic service interval, not onboard compute measurement
+        0.25: explicitly synthetic high-pressure service interval, not a DDQN measurement
+      update_periods_s: [0.5, 2.0]
+excluded_from_this_matrix:
+  - M-Lab-derived and other locally registered traffic tables with unverified redistribution rights
+  - any trained-model claim or training run
+  - all confirmation seeds and formal execution

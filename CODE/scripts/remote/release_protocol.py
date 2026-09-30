@@ -80,6 +80,17 @@ _T1_SOURCE_ONLY_SUFFIXES = (
     ".npz", ".parquet", ".ckpt", ".pt", ".pth", ".safetensors", ".pkl",
     ".pickle", ".h5", ".hdf5",
 )
+# These M-Lab assets are locally registered as having unverified provenance
+# and redistribution rights. Development releases must not copy them into the
+# VM release store. The synthetic hand-declared profiles used by the T1 work
+# package do not depend on these files.
+_UNVERIFIED_MLAB_ASSETS = {
+    "CODE/data/traffic/mlab_2026-05-27.csv",
+    "CODE/data/traffic/mlab_sample.csv",
+    "CODE/data/traffic/t1_step5_micro_ab.csv",
+    "CODE/data/traffic/diurnal_mlab_2026-05-27.json",
+    "CODE/data/geoip/sites.json",
+}
 
 
 def t1_excluded(relative: PurePosixPath) -> bool:
@@ -92,7 +103,9 @@ def t1_excluded(relative: PurePosixPath) -> bool:
         or lower_name.endswith(_SENSITIVE_PATH_SUFFIXES)
         or bool(lower_parts & _SENSITIVE_PATH_DIRS)
     )
-    return guard.excluded(relative) or sensitive_name or lower_name.endswith(_T1_SOURCE_ONLY_SUFFIXES)
+    return (relative.as_posix() in _UNVERIFIED_MLAB_ASSETS
+            or guard.excluded(relative) or sensitive_name
+            or lower_name.endswith(_T1_SOURCE_ONLY_SUFFIXES))
 
 
 def canonical_json(payload: dict[str, Any]) -> bytes:

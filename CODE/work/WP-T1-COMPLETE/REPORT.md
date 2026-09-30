@@ -1,0 +1,639 @@
+# WP-T1-COMPLETE 最终交付报告
+
+> 计划书：`docs/superpowers/plans/2026-09-27-t1-complete-implementation.md`
+> 账本：`CODE/work/WP-T1-COMPLETE/STATUS.md`、`criteria.json`、`contract.yaml`
+> 结论分层：IMPLEMENTED / TESTED / DIAGNOSTIC_RUN / FORMAL_RUN。**本报告不含任何 FORMAL_RUN。**
+
+> ### ⚠️ 现状与历史分界（2026-09-28）
+> 本报告的**现行证据只有一处**：文末「VM 执行证据」节，run-id **`t1-final-06572b6`**
+> （HEAD `06572b6`，`identity.git.dirty=false`，执行链 `b7641418…`，acceptance/dev 各 10/10）。
+> 计时 509.8 µs 只能按**确定性评分器的 VM 主机计时**引用：工件 `model_provenance` 已声明
+> `trained_checkpoint_used=false` / `ddqn=false` / `on_board=false`，且被 benchmark 谓词强制。
+> **第 3–8 节是 VM 规则生效之前的本机口径**（工件 `out/t1/**`、acceptance 7 cells、决策计时 p50 34 µs）；
+> 按 `AGENTS.md` §1，这些本机产物自 2026-09-28 起**不得再作为实验证据来源**，其中 34 µs / 73.9 µs 计时已作废。
+> 第 9 节起为两轮独立复审的返工史（R1–R9 @53aeb30、S1–S7 @2330701）与本轮 S8 修复，保留完整历史。
+
+## 1. 用户问题
+
+在同样可收到的本地与邻居历史信息下，把候选资源的预计使用时刻对齐，能否改善选择；
+计入计算与生效方式成本后，改善能否保留？
+
+两个层次：
+1. **状态时间语义的价值**：先用隔离的理想信息估计价值空间，再用可在线实现的预测检验能实现多少；
+2. **计算与生效方式**：固定信息权限、预测器、评分器与动作空间，比较逐包计算与后台更新/结果复用。
+
+## 2. 实现（IMPLEMENTED）
+
+| 计划书文件 | 状态 | 说明 |
+|---|---|---|
+| `CODE/leo_sim/time_alignment.py` | 新增 | 不可变快照、ResourceKey/StateSample/ResourcePrediction/TruthSample、hold_last/bounded_linear、ETA 分项、统一评分、schedule 表与只查表 lookup。纯函数，不读内核真值 |
+| `CODE/leo_sim/async_routing.py` | 新增 | scope 状态机 UNINITIALIZED→COMPUTING→INSTALL_PENDING→ACTIVE、单 pending 合并、完成才安装、版本单调、窗口从实际安装起算 |
+| `CODE/leo_sim/kernel.py` | 扩展 | 每星 FIFO 计算池 + `compute_request/start/finish`（稳定 `compute_job_id`）、零成本 frozen、观察记录新增 `candidate_resources` 与 `time_alignment` 审计、五执行模式在线接线、周期异步更新器 |
+| `CODE/leo_sim/control.py` | 扩展 | LocalCache 保留有界「实际到达」广告历史（仅输出用，供 bounded_linear） |
+| `CODE/leo_sim/config.py` | 扩展 | `time_alignment` / `async_routing` 命名空间、白名单、默认值、矛盾即拒绝；接受 JSON 指数浮点（编译配置 JSON 写 YAML 读回） |
+| `CODE/experiment_platform/time_alignment_compare.py` | 新增 | 每个合法候选独立闭环重放、四组离线评分、每候选命运/损失/regret、resource_mismatch、只读 oracle 轨迹、oracle 仅评估器 |
+| `CODE/experiment_platform/execution_compare.py` | 新增 | 五执行模式同一 trace/seed/臂/预测器/计算预算、调用与查询成本分开、DDQN 可用性/阻塞 |
+| `CODE/experiment_platform/benchmark_decision.py` | 新增 | 完整决策路径计时 + 空调用基线 + 有限池 N=0/1/2/4 压力 |
+| `CODE/experiment_platform/t1_suite.py` | 新增 | compile/validate/run/resume/report、预算、身份校验、旧证据不覆盖 |
+| `CODE/experiment_platform/t1_stats.py` | 新增 | 归一化损失、配对差、固定种子 bootstrap、样本量规划、精度核查、主对比 |
+| `CODE/experiment_platform/artifact_identity.py` | 新增 | Git commit/dirty/diff + 源文件哈希链 + runtime |
+
+## 3. 验证（TESTED）
+
+实际命令与输出（均为本机实跑原文末尾）：
+
+```
+python3 -m pytest CODE/leo_sim/tests/test_time_alignment.py -q                 -> 28 passed
+python3 -m pytest CODE/leo_sim/tests/test_async_routing.py -q                 -> 16 passed
+python3 -m pytest CODE/leo_sim/tests/test_compute_pool_fifo.py -q             -> 7 passed
+python3 -m pytest CODE/leo_sim/tests/test_time_alignment_online.py -q         -> 8 passed
+python3 -m pytest CODE/leo_sim/tests/test_async_kernel.py -q                  -> 7 passed
+python3 -m pytest CODE/experiment_platform/tests/test_time_alignment_compare.py -q -> 15 passed
+python3 -m pytest CODE/experiment_platform/tests/test_execution_compare.py -q -> 10 passed
+python3 -m pytest CODE/experiment_platform/tests/test_benchmark_decision.py -q -> 8 passed
+python3 -m pytest CODE/experiment_platform/tests/test_t1_stats.py -q          -> 32 passed
+python3 -m pytest CODE/experiment_platform/tests/test_t1_suite.py -q          -> 11 passed
+python3 -m pytest CODE/experiment_platform/tests/test_control_reach_units.py -q -> 3 passed
+```
+
+端到端流水线实跑（acceptance 层）：
+```
+t1_suite compile  -> 7 cells, contract_sha256 b5cdeb41...   # 历史口径
+                                                              # 现行：编译产 20 cells，acceptance/dev 各 10 格全过
+t1_suite validate -> valid true, 7 cells
+t1_suite run --tier acceptance -> {"ok": 7, "error": 0, "timeout": 0}
+t1_suite report   -> run_status ok, 7/7 cells, REPORT.md 生成
+resume 实跑：只重试失败 cell；bundle 身份变更后旧输出标 invalidated 并重跑；旧 result 被改名保留
+validate 篡改拒绝：删除某 cell 的 driver 后 -> "bundle validation failed: ... missing driver"
+```
+
+全平台回归见 `STATUS.md` 第 2 节（含一次真实回归失败的根因与修复）。
+
+## 4. 有界诊断结果（DIAGNOSTIC_RUN）
+
+> ⚠️ **本节为历史（本机口径）**：曾由 `out/t1/` 复现，该路径按 `AGENTS.md` §1 已不得再作为证据来源。
+> 现行证据见文末「VM 执行证据」节。**均为单分支/单 trace 诊断，不构成统计结论。**
+
+| 诊断 | 结果 | 解释 |
+|---|---|---|
+| 等长空队列（reachability，decision 3） | 两候选损失各 0.5，regret 全 0 | 机制在无差别场景退化，符合预期 |
+| 确定性竞争（contention，decision 4） | baseline 选 E 损失 0.5105；W 损失 0.3013；oracle 选 W | 每候选闭环重放产生真实代价差 0.209 |
+| 四组在线评分（同一 contention 分支） | 四组均选 W，regret 0 | **负结果**：本分支中状态时间对齐没有增量价值，因为简单评分器已从广告中读到目标出口积压 |
+| 四组改变排序（合成夹具 `test_the_query_instant_is_the_only_arm_difference`） | stale 选 W；now/common/candidate 选 E | 机制本身可判别，只是当前场景不激活 |
+| 恒状态退化 | 四组动作一致 | 恒队列时预测外推退化一致 |
+| 计算池手算夹具 | 1 服务台 starts [0,0.1] / finishes [0.1,0.2]；2 服务台 finishes [0.1,0.1] | 与计划书手算一致 |
+| 异步跨版本时间例 | 请求 1 s、服务 2 s、安装 0.5 s → 1.5/3.2 s 查 v1，3.5 s 安装后查 v2 | 与计划书时间例一致 |
+| 决策路径计时（**已作废**） | ~~full p50 ≈ 34 µs、p99 ≈ 50 µs~~ | 旧值只计评分调用、且未按臂取真实时刻；已被 S5 修正后的真实在线路径 **518.8 µs** 取代（确定性评分器的 VM 主机计时，非 DDQN） |
+| 五执行模式复用 | per_flow 命中缓存后计算请求低于 per_packet；async 模式查询表、按窗口安装 | 机制计数与事件对齐 |
+
+## 5. 能支持的判断
+
+- 平台现在能从一个明确命令复现：四组状态时间比较、每候选闭环代价、有限算力压力、异步复用诊断，输出完整命运/成本/证据。
+- 时间语义、信息权限、候选资源映射、统一评分、异步安装时序、五执行模式公平性均有可判定测试；关闭新功能时旧路径逐位不变（回归实证）。
+- 主对比的统计设计（独立区组、配对、bootstrap、样本量规划、预声明阈值 0.01/0.005/0.02）已冻结在 `contract.yaml`，可在确认运行中直接使用。
+
+## 6. 不能支持的判断
+
+- **没有 FORMAL_RUN**：确认性种子 1001+ 的大规模矩阵未执行；本报告任何数字都不能当作确认性结果。
+- **没有 DDQN 结果，且真实检查点读取器未实现**：`ddqn_status` 返回 `EXTERNAL_BLOCKER`；即便补齐检查点与 TensorFlow，`load_fixed_adapter_from_checkpoint` 也会在元数据闸门后无条件抛 `no trained-model reader is implemented`。不把确定性评分器结果当 DDQN 结果。
+- **没有星载实测**：计时全部是主机/VM；配置服务时长是诊断情景输入，不是标定值。
+- **没有远端覆盖部署**：标 `REMOTE_NOT_EXECUTED`；未触碰用户正在使用的 VM。
+- 不声称状态时间对齐有收益或没有收益——当前单分支诊断在 contention 上显示零增量，但这是「场景未激活机制」，不是算法结论。
+
+## 7. 复现 / 恢复命令
+
+```sh
+cd /path/to/leo-experiment-platform
+
+# 四组离线比较（单分支）
+python3 -m CODE.experiment_platform.time_alignment_compare \
+  --scenario contention --decision-id 4 --out out/t1/ta-contention.json
+python3 -m CODE.experiment_platform.time_alignment_compare \
+  --config CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml \
+  --decision-id first_forward --out out/t1/ta-smoke.json
+
+# 五执行模式
+python3 -m CODE.experiment_platform.execution_compare \
+  --scenario contention --out out/t1/exec-contention.json
+
+# 决策计时与有限池
+python3 -m CODE.experiment_platform.benchmark_decision \
+  --scenario reachability --iterations 200 --rounds 2 --warmup 20 \
+  --pool-sweep 0,1,2,4 --out out/t1/bench-reach.json
+
+# 端到端流水线（新身份；目标目录必须不存在）
+mkdir -p out/t1/suite
+python3 -m CODE.experiment_platform.t1_suite compile \
+  --contract CODE/work/WP-T1-COMPLETE/contract.yaml --out out/t1/suite/compiled
+python3 -m CODE.experiment_platform.t1_suite validate --bundle out/t1/suite/compiled
+python3 -m CODE.experiment_platform.t1_suite run \
+  --bundle out/t1/suite/compiled --tier acceptance --out out/t1/suite/acceptance
+python3 -m CODE.experiment_platform.t1_suite resume --run-dir out/t1/suite/acceptance
+python3 -m CODE.experiment_platform.t1_suite report --run-dir out/t1/suite/acceptance
+```
+
+## 8. 证据链
+
+- 源码与测试：本仓库提交（见 `STATUS.md` 身份表；`git log`）。
+- 运行工件（历史）：`out/t1/`（gitignored，未提交）。**现行运行工件是 `out/vm/<run-id>/`**，由 `t1-vm.sh experiment` 在 VM 上产生并拉回，本机不产出实验数值。
+- 身份：每个新工件内嵌 `identity`（Git commit/dirty/diff_sha256 + 逐文件哈希 + runtime）。
+- 旧证据：`out/` 既有文件未改写；新运行拒绝覆盖旧目录。
+
+
+---
+
+# 返工（独立验收 R1–R9，审查身份 53aeb30）
+
+裁决 REQUEST_CHANGES 已接受。以下逐条给出反例、修复与复现证据；**P4/P6/P8/P9/P10/P11/P12 的"完成"标记已按复审结论纠正**（见 §R 表）。
+
+## R 表：逐条状态
+
+| 项 | 复审问题 | 状态 | 行为反例（先补） | 修复 |
+|---|---|---|---|---|
+| R1 | validate/resume 只做旧身份自洽检查；链缺 time_alignment/async_routing/驱动/统计 | FIXED | `test_any_post_compile_bundle_edit_is_refused_not_reused`、`test_a_cell_parameter_change_is_refused`、`test_a_config_file_edit_is_refused`、`test_a_dependency_source_change_is_refused`、`test_a_missing_result_invalidates_the_cell_and_is_rerun`、`test_a_tampered_result_is_detected_by_its_hash` | 执行链改为整包发现（56 文件）；bundle 内容指纹 + 逐 cell 输入绑定 + 结果哈希；validate/run/resume 均重算当前源码与磁盘结果；报告不得把丢失/篡改结果的 cell 记为 ok；新身份必须重新编译 |
+| R7 | 预计算表不按目的节点选方向 | FIXED | `test_two_targets_in_opposite_directions_get_opposite_next_hops`（3 节点反例期望 `{1:E,2:W}`） | 对每个目标做有向最短距离，再在本星出口中选能到达该目标的最小距离方向；不可达不填假路线；查询用预计算距离不再每次 BFS |
+| R8 | ETA 漏本地出口排队；在线计算等待写死 0 | FIXED | `test_the_local_egress_queue_moves_the_query_instant_later`（8000 bit @ 8000 bit/s → +1.0 s）、`test_a_bounded_pool_wait_enters_the_prediction_span` | ETA 拆成 compute_wait / compute_service / local_egress_wait / tx / prop / peer_process；评分复用 ETA 项（不再二次计队列）；内核提供**请求时刻可知**的池等待估计（`compute_state.wait_estimate_s`），离线驱动改读该状态，实际等待只作诊断 |
+| R9 | 查询成本只有字段 | FIXED | `test_a_positive_query_delay_is_charged_and_serialised`、`test_every_execution_mode_pays_the_same_query_service`、`test_the_query_server_never_serves_two_queries_at_once` | 每星单服务台公共查询服务；五种执行模式（含缓存命中/预计算/异步查表）同口径计费；`query_delay_s=0` 保持历史瞬时路径；报告 query 等待与服务 |
+| R2 | 只有在线评分 + min(final_loss) 评估器，缺三组理想对照 | FIXED | `test_the_common_and_candidate_instants_can_pick_different_actions`、`test_the_zero_gain_control_makes_every_ideal_arm_agree` | `truth_at_instant` 从**各候选自身分支**重建命名资源时刻真值（扣除已服务比特、剔除目标包自身；空队列=0，资源不出现=缺失）；`oracle_now/common/candidate` 三组走同一评分器；新增 ETA×队列真值/估计 2×2 分解；最终命运只用于事后评分 |
+| R3 | 7/7 流水线未触发有效查询/缓存命中/N=0；cell 只看 returncode；缺包长/请求率/开发扫描/正式包 | FIXED | `test_a_cell_whose_predicate_fails_is_not_reported_ok`、`test_the_dev_tier_runs_with_behaviour_predicates`、`test_the_formal_package_is_compiled_and_validated_not_run` | 新增 `same_flow` 夹具（8 包同流）；五模式加 `--compute-servers/--service-s/--packet-bits/--query-delay-s/--update-interval-s` 覆盖并记录；报告 bin/version 分布、每星请求率、查询服务计数；cell 先声明行为谓词，未过则 `predicate_failed`；新增 372/891/1500 B 单元；新增 dev 扫描 tier 与 formal 待执行包（编译+校验+拒绝运行） |
+| R4 | 34 µs 不是完整决策路径；full/inference 都只调 scoring | FIXED | `test_the_full_path_is_the_sum_of_its_declared_phases`、`test_call_counting_proves_inference_only_does_not_repredict` | 按真实在线接口拆四段计时（观测构造 42.3 µs / 预测 24.3 µs / 评分 4.5 µs / 选动作 0.08 µs / 端到端 73.9 µs）；调用计数证明 end_to_end 预测次数 = 候选数、inference_only = 0 |
+| R5 | 默认 D 从当前分支现算；无观察窗口规则；统计只在单测里 | FIXED | `test_a_compare_run_may_not_derive_its_own_deadline`、`test_two_different_branches_share_the_same_frozen_deadline`、`test_a_short_observation_window_is_censored_not_counted_as_failure`、`test_report_carries_the_frozen_statistics` | `--deadline-from` 加载开发冻结 D（含文件哈希与身份）、`--freeze-deadline-to` 仅 dev 可写；`run_kind=compare/confirm` 禁止自行推导 D；观察窗口 < D 标行政删失（不计失败、不编造损失）；bootstrap/样本量/配对差接入真实 run 报告，std=0 时显式标退化 |
+| R6 | DDQN 只有路径存在检查 | FIXED（真实检查点仍为外部阻塞） | `test_the_adapter_is_inference_only`、`test_epsilon_is_zero_and_no_update_happens`、`test_a_checkpoint_needs_hashes_not_just_existence`、`test_the_kernel_still_refuses_frozen_with_a_learner` | 新增 `leo_sim/inference.py`：固定参数小模型适配器（epsilon=0、无更新路径、冻结归一化、掩码强制、确定性破同）；`verify_checkpoint` 校验路径+sha256+元数据+loader，**存在不等于 AVAILABLE**；内核 frozen+learner 边界保持拒绝 |
+
+## 返工后的实测证据
+
+```
+python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q
+1241 passed, 1 skipped in 436.14s
+
+t1_suite compile  -> 20 cells（acceptance 10 / dev 10 / formal 待执行）
+t1_suite validate -> valid true
+t1_suite run --tier acceptance -> {"ok": 10, "error": 0, "timeout": 0}   # 每个 cell 的行为谓词全部通过
+t1_suite run --tier dev        -> {"ok": 10, "error": 0, "timeout": 0}
+t1_suite run --tier formal     -> 拒绝（PENDING PACKAGE，需授权）
+report -> 通过（含 statistics：blocks / bootstrap / 样本量规划 / 退化警告）
+
+五执行模式（same_flow，N=1，服务 0.05 s，查询 0.001 s）：
+  per_packet   compute=41 queued=23 cache_hits=0  queries=0  installs=0  qsvc=41
+  per_flow     compute=34 queued=16 cache_hits=7  queries=0  installs=0  qsvc=41
+  precomputed  compute=41 queued=23 cache_hits=0  queries=0  installs=0  qsvc=41
+  async_point  compute=41 queued=23 queries=16 installs=32 bins=1 版本被查询数=6
+  async_window compute=41 queued=23 queries=16 installs=32 bins=4 实际查询到 bin {0,1,2,3}
+  每星转发请求率 0.1333 /s
+
+决策路径分段计时（主机）：观测 42.3 µs / 预测 24.3 µs / 评分 4.5 µs / 选动作 0.08 µs
+  端到端 73.9 µs；inference_only 4.4 µs；预测调用次数 2(=候选数) vs 0
+有限池：N=0 无等待；N=1 queued=23 max_wait=0.312 s；N=2 queued=25 max_wait=0.112 s
+
+R1 反问例复核（复现脚本 tmp_r1_final.py，已删除）：
+  A 结构保留改参数+改合同哈希 -> 拒绝（三条独立理由）
+  B 删除 result 但记录仍 ok -> report FAILED_CELLS / invalidated=1 / verified_ok 9/10；resume 只重跑该 cell 并恢复 10/10
+  C 篡改 result 内容 -> report FAILED_CELLS / invalidated=1
+```
+
+## 仍未做（未做范围，非工程缺口）
+
+1. **FORMAL_RUN**：确认性种子 1001+ 的矩阵未执行；formal 包已编译并校验，运行被显式拒绝（需授权）。
+2. **真实 DDQN 检查点**：本机无 tensorflow、无检查点；适配器与哈希校验已实现并用固定参数小模型验证，**不得**作为策略性能结论。
+3. **REMOTE_NOT_EXECUTED**：未做远端覆盖部署。
+4. 开发集配对差在本次 acceptance/dev 夹具上恒为 0，样本量规划因此标 `degenerate`：它只说明这些夹具不具判别力，不能用于估计确认样本量。
+
+
+
+---
+
+# 第二轮复审返工（S1–S7，审查身份 2330701）
+
+裁决仍为 REQUEST_CHANGES，已按 **S1 → S7** 顺序逐项返工。**执行位置规则同时变更：所有实验只在 VM 上跑**（见 `AGENTS.md`），本报告此后的数值一律来自 VM。
+
+## ⚠️ 历史声明（旧数据不再作为依据）
+
+- 本报告更早章节里的 **"34 µs / 73.9 µs"** 计时、以及 `out/t1/**` 下的**全部本机产物**，均属**本机历史证据**：
+  其中 34 µs 的版本只计了评分调用，既非完整决策路径也非真实在线时刻，**已被取代且不得引用**。
+- 首轮 P4/P6/P8/P9/P10/P11/P12 的"完成"标记，已先后被 53aeb30、2330701 两轮复审纠正；
+  以本节的 S 表与 `criteria.json` 的 `s_rework` 块为准。
+
+## S 表：逐条状态与证据
+
+| 项 | 复审问题 | 状态 | 修复与证据 |
+|---|---|---|---|
+| **S1** | 理想队列真值算错：`backlog_before` 已排除目标包却再次扣它，且忽略在服务剩余量 | FIXED | 新 `resource_work_ahead`：按事件序重建，区分**排队数据 / 在服务剩余 / 控制优先 / 目标自身 / FIFO 后方**，未知项保持未知；在目标入队瞬间**恒等于内核自己的 `queued_bits_before + in_service_remaining_bits_before`**（真实内核对齐测试）。复审的 2000+500 → **2500 bit** 反例已作为测试固化 |
+| **S2** | 广告队列值覆盖包长（`bits` 同名局部变量） | FIXED | `_build_ta_snapshot` 先解包长再遍历广告，局部名改为 `advertised_bits`；测试：喂 999999 bit 广告后 `pkt_bits` 仍为 8000，且对广告取值/顺序不变 |
+| **S3** | 查表模式仍逐包付完整计算（预计算/异步均 41 次 compute_request） | FIXED | `_packet_compute_required`：precomputed / async_point / async_window **逐包 0 次计算请求**，只付公共查询成本；后台异步任务仍付真实计算（0.05 s）；预计算构建成本单列（`build_wall_s` + 说明"不是逐包推理收费"） |
+| **S4** | 谓词失败仍整轮报成功、统计仍计入该区组 | FIXED | 计数穷尽（`predicate_failed/not_ok`）；非 ok 即 `FAILED_CELLS`；统计只纳入**完整性+行为谓词均通过**的区组并列出排除原因；CLI 非成功**退出码 3**。反例：不可能谓词的 run→report→resume 全流程 |
+| **S5** | 计时不是真实在线路径（各臂都查 `snapshot_at`） | FIXED | 抽出共用入口 `plan_decision/build_predictions/resolve_common_horizon`，内核也改用它；计时截获**在线决策的真实输入**并冻结当时的 caches/池状态，四臂逐一比对在线审计：`targets_match`/`ranking_match` **全部 True**（VM 工件） |
+| **S6** | 固定推理模块未接入任何分支/执行路径 | FIXED（真实检查点：**读取器未实现**，非仅缺依赖） | `inference` 新增推理专用接口与硬门槛；`kernel.inference_policy`（拒绝与训练 learner 组合）+ `counterfactual` 透传；**真实分支跑通**，掩码强制、参数不变、两次运行前缀动作一致 |
+| **S7** | 正式包未真正冻结；改阈值不改哈希；common_strong 未选择 | FIXED | `formal_package`/`formal_design` 纳入 bundle 指纹（复审的"阈值改 999 仍 valid"现被拒绝）；cell 输入绑定纳入 deadline 依赖文件哈希；`formal_design.ready` 时生成**真实 confirm cell**（种子+冻结 D+身份），未就绪时诚实标 `PENDING_DEV_SELECTION`；`statistics.common_strong` 未冻结时给出原因，主比较标签不再冒称 common_strong |
+
+## VM 执行证据（实验只在 VM）
+
+> 最新一轮 = `t1-final-06572b6`（HEAD `06572b6`，`identity.git.dirty=false`，链 `b7641418…`）。
+> 更早的 `t1-final-b1f44af` / `t1-final-bace1bb` / `t1-final-8a31496` 均因后续返工改变执行链而失效。
+> `t1-final-a70d65c` 与 `t1-final-c4dd85f` 两次工件的 `identity.git.dirty` 为 **true**，成因是已修掉的 runner 身份假阳性；
+> `t1-s7-377ae9b` 及更早的 VM 工件为历史证据，其 507–517 µs 计时已被取代。
+
+```
+ssh vm -> cuda-liguang13   /data 471G 可用   conda: leo-i39 Conda 环境路径
+隔离实验根: T1 隔离工作根        # 你的正式部署 旧正式部署根 从未被写入
+runner: CODE/scripts/remote/t1-vm.sh sync|run|pull|experiment
+
+run-id:   t1-final-06572b6        pulled -> out/vm/t1-final-06572b6/
+工件身份: identity.git.source=launch_manifest, commit=06572b6…, dirty=false, status_short=[]
+链一致性: VM 链 b7641418… == 本机重算 b7641418…（57 个执行链文件）
+拉回完整性: VM Results/t1-final-06572b6 的 52 个文件与 out/vm/t1-final-06572b6 逐字节一致（sha256 逐一相等）
+平台:     Linux-6.6.0-…aarch64   python 3.11.15 / simpy 4.0.1 / numpy 1.24.3
+
+t1_suite compile  -> 20 cells
+t1_suite validate -> valid true（bundle_fingerprint 67fb0523…）
+t1_suite run --tier acceptance -> {"ok":10,"error":0,"timeout":0,"predicate_failed":0,"not_ok":0}
+t1_suite run --tier dev        -> {"ok":10,"error":0,"timeout":0,"predicate_failed":0,"not_ok":0}
+report -> run_status ok；verified_ok 10/10；逐格 predicate_passed=true 且盘上 result_sha256 与报告内嵌哈希一一相等
+statistics.common_strong.frozen = False（开发块配对差恒为 0、无判别力——诚实标注，非工程缺口）
+四臂对齐（VM）: candidate/common/now/stale targets_match=True ranking_match=True
+真实在线路径（观测构造→预测→评分→排名→选动作）p50: 509.8 µs
+  —— **确定性评分器的 VM 主机计时，非 DDQN、非星载**（工件 model_provenance；仅推理 12.04 µs 不得当完整成本）
+四臂对齐: 已纳入 benchmark 谓词门禁（S5-R2），错位即 cell 非 ok
+  调用计数: end_to_end predict=2/次决策（= 每候选一次）；inference_only predict=0
+有限池: N=0 无界 56 请求 0 排队 | N=1 41 请求 23 排队 max_wait 0.312 s | N=2 47 请求 25 排队 max_wait 0.112 s
+五模式（acceptance）: per_packet 41 次计算请求 / per_flow 34 次请求 + 7 次缓存命中 /
+  precomputed 0 / async_point 0 / async_window 0（异步各自 32 次安装，后台计算另计）
+```
+
+## S8 身份假阳性修复（本轮新增）
+
+`t1-vm.sh` 用 shell 重定向把 `.t1-launch.json` 写进本机工作区，而重定向目标在命令执行前
+就被创建；紧随其后的 `git status --short` 因此总能看见这个未跟踪文件——干净提交上 `dirty`
+也恒为 true。该假阳性已进入 `c4dd85f`、`a70d65c` 两次拉回工件的身份声明。
+
+- 清单改为写入 `mktemp -d` 暂存目录后再上送：runner 不再向本机工作区写入**任何会被 git 看见的文件**
+  （`CODE/**/__pycache__/` 仍会生成，但在 `.gitignore` 内且不参与执行链身份——第三轮验收把这一条判为 PARTIAL 并纠正了原措辞）
+- `.gitignore` 增加 `.t1-launch.json` 兜底（脚本中途退出时不留脏文件）
+- 新增 `CODE/tests/test_t1_vm_launch_manifest.py`：行为复现旧写法的假阳性、新写法的干净结果，并静态钉住暂存位置不变式
+- 第三轮验收的两条低危修复：`trap "rm -rf $staging" EXIT`（ssh 失败时暂存目录不再泄漏）；
+  远端改为 `rm -f … && tar … && mv …` 并在上传后校验 `head`（原先的 `;` 会让 `mv` 把**上一次**的清单提升为本次清单还报成功）
+- 修复后实测：VM `launch.json` `dirty=false`；`t1-final-8a31496` 工件 `identity.git.dirty=false` 且 `status_short=[]`
+
+## 仍未做（未做范围）
+
+1. **FORMAL_RUN**：确认性矩阵未执行；formal 包已能生成/校验，运行需授权（显式拒绝）。
+2. **真实 DDQN 检查点（能力边界，不只缺依赖）**：本机与 VM 均无 tensorflow 训练产物与检查点，
+   **而且 `inference.load_fixed_adapter_from_checkpoint` 在所有元数据闸门之后仍无条件抛**
+   `"no trained-model reader is implemented"`——即**真实检查点的模型读取器本身没有实现**。
+   因此这不是"只差检查点文件/TensorFlow"：固定小模型的接口接线可单独验收，
+   真实检查点加载必须继续标**内部未实现**。本任务不启动训练或性能实验。
+3. **REMOTE 正式部署**：未写入 `旧正式部署根`，未做正式远端验收部署。
+4. 开发块配对差仍恒为 0 → `common_strong` 保持未冻结，样本量不可由此估计（已在报告中显式标注）。
+
+---
+
+# 第三轮独立复审返工（四路并行只读验收）
+
+四路验收（S1–S3 / S4–S5 / S6–S7 / S8+证据链）回齐后的裁决与本轮处置：
+
+| 项 | 复审裁决 | 本轮处置 |
+|---|---|---|
+| S2 包长与广告队列分离 | CONFIRMED_FIXED | 无 |
+| S7 正式包冻结与指纹（28/28 字段变异全拒） | CONFIRMED_FIXED | 无 |
+| S8(1) dirty 假阳性机制 | CONFIRMED_FIXED | 无 |
+| 证据链 (a)–(e)、拉回一致性 | 全部 CONFIRMED_FIXED，未发现"记录 ok 没跑" | 无 |
+| S1 队列真值 | PARTIAL：截断服务窗少报 86%；未知折成 0 | 已修 A/D；B/C 见下 |
+| S3 查表成本 | PARTIAL：表模式 0 计算请求为真；per_flow 有未计费完整推理 | **未修，见下** |
+| S4 整轮成败 | (a)(b)(c)(e)(f) 已修；(d) PARTIAL | (d) 已修 |
+| S5 计时真实性 | 主体已修；R2 对齐未入门禁；非 DDQN 标记缺失 | R2 已修；非 DDQN 标记**未修** |
+| S6 固定推理接线 | PARTIAL（4 处） | 4 处全修 |
+| S8(3a) 暂存目录泄漏 / S8-i 陈旧清单可被提升 | 两个低危新增 | 均已修 |
+
+每项都先补**能失败的反例**再改实现，并逐条验证"禁用修复即失败"：
+`test_s1_review_counterexamples.py`、`test_s4_review_counterexamples.py`、
+`test_s5_review_counterexamples.py`、`test_s6_review_counterexamples.py`、
+`test_t1_vm_launch_manifest.py`。
+
+## 第三轮三项返工（已修，附两项未判缺陷的记账）
+
+按"诊断已跑通、工程验收剩三项"的裁决，**S3 → S1(B/C) → S5** 已逐项返工：每项先补**能失败的反例**
+再改实现，并逐条验证"禁用修复即失败"，最后在新身份 `t1-final-b1f44af` 上复跑通过。
+
+1. **S3** → 逐流缓存改为**请求时冻结**（计划书 P2 已定条款"请求时冻结；排队期间不刷新"）。
+   反例按**决策实例**判定"未付费的完整评分"（按 pid 统计会被后续重决策掩盖），
+   禁用冻结时实测 `unpaid scoring at [(16, 7.712001)]`。
+2. **S1 B/C** → 内核补控制包入队与服务事件（`_timeline_ctrl`，使用与数据相同的物理链路 id），
+   真值重建改由控制时间线测量 ctrl 分量；无控制行的历史轨迹仍回退旧估计器。反例用**真实内核轨迹**。
+3. **S5** → 工件声明 `model_provenance`（`trained_checkpoint_used=false` / `ddqn=false`），
+   并被 benchmark 谓词 `require_model_provenance` 强制；新身份工件谓词检查由 17 项增至 20 项且全过。
+
+## 第四/五轮：S1 B1/B2 回修与关闭
+
+第四轮复核判 S1 仍 PARTIAL（B1 控制包过期未从重建账本扣除；B2 `exclude_pid=None` 误认控制行为目标）。
+两项已回修（内核发 `ctrl_drop` 不伪造 `service_finish`；控制账本按稳定身份出队一次；目标身份比较要求非 None，数据 FIFO 跳过控制行），
+审查方外置反例在 `b1f44af` 上 3 failed、回修后 3 passed，并**原样纳入**项目测试。
+
+**第五轮独立复核（`06572b6` / `f9f6c5c`）：B1/B2 CONFIRMED_FIXED，S1_OPEN 关闭。**
+本轮同时确认：不授予 FORMAL_RUN、不证明状态时间对齐有收益；真实 DDQN 模型读取器仍是内部缺口；P9 继续 PARTIAL。
+若今后改变控制重传/重入队、身份或资源窗口语义，必须新增对应守恒验收，不得复用本次绿状态。
+
+仍未处置（**未判为缺陷**，仅记账）：
+
+- **S4 附加观察**：`servers=0` 时异步后台 job 只发 `compute_request/compute_finish`、不发 `compute_start`。
+- **研究设计侧未就绪**：开发块配对差恒为 0 → `common_strong` 未冻结、正式样本量无法估计，
+  formal 包标 `PENDING_DEV_SELECTION`。这是**研究设计尚未就绪**，不等于"只差正式授权"。
+4. **S4 附加观察（未判缺陷）**：`servers=0` 时异步后台 job 只发 `compute_request/compute_finish`、不发 `compute_start`。
+
+
+
+---
+
+## 第一轮 A0–A6：把平台补成"能跑完整实验"
+
+> 任务书：`平台与实验计划审计-20260927/两轮完成平台并启动实验.md`。
+> 状态分层：代码可用 / 接口实跑 / 开发已跑 / 确认已跑 —— 一个 DONE 不覆盖全部层次。
+> 逐项状态与证据见 `criteria.json#a_round`。
+
+### A1 真实检查点读取与推理接线
+
+之前 `inference.load_fixed_adapter_from_checkpoint` 在全部元数据闸门之后**无条件抛**
+`no trained-model reader is implemented`，所以"模型决定动作"根本无法测。现在：
+
+- `KerasFixedModelAdapter` 真读 `.keras`，并把**观察契约**变成有名字、可重算的对象：
+  契约名、维度、特征顺序、归一化、动作顺序，以及由这些字段重算的
+  `observation_contract_id`。元数据自相矛盾、重贴契约标签、顺序不符一律拒绝。
+- `verify_checkpoint` 收紧：哈希通过只到 `LOAD_PENDING`；`AVAILABLE` 只能由真正读入
+  并通过形状校验 + 确定性有限前向探针之后给出。
+- 接线不只是"能加载"：`kernel` 新增 `_fixed_policy_action`，**冻结观测半程也问模型**。
+  此前冻结半程用自己的 `legal[0]` 规则，等于把检查点读进来、计数、然后忽略掉。
+- 训练接口混入被堵死：`remember` 进入 `TRAINING_ENTRY_POINTS`。`TensorflowDDQN` 只有
+  `remember`、没有 `train_step/observe/update`，在此之前能通过"推理专用"探针。
+
+反例测试 27 项（`CODE/leo_sim/tests/test_checkpoint_inference.py`）。VM 侧由
+`CODE/experiment_platform/t1_a6_check.py` 导出真实格式的 `test_weights` 检查点，
+走完 导出→读取→决策→计时，并跑两个正式 tier 拒绝负例。
+
+### A2 三类实验任务，一个驱动层
+
+`branch_alignment` / `network_alignment` / `execution_modes` 共用
+`experiment_platform/t1_tasks.py`，因此预算、身份、恢复、失败记账对三者完全一致：
+
+- 支路抽样**只看 t0**：前向决策且观测时刻至少两个合法方向；抽样是按决策序号的等距
+  步长，只依赖合格支路**数量**。候选不足保留逐条原因；失败支路记账并降级区组，
+  不静默删除。一个区组内多支路先汇成区组值，再做配对统计（12 支路 ≠ 12 次独立运行）。
+- 四臂各自从同一 trace 全程跑网，队列随各自策略演化；每臂带 `time_alignment_audit`
+  （本臂名、有查询时刻的决策数、真实查询时刻集合），所以"臂其实没生效"和
+  "臂生效了但结果相同"可以被区分。
+- 参数只有一个入口 `apply_parameters()`：共同未来 horizon、预测器、负载、包长、N、
+  周期、窗口、查询/服务成本都进解析配置。历史上硬编码的 2 Mbps 与 `first_forward`
+  被移进显式命名的 `_seed_config_legacy_smoke` 与 acceptance 夹具。
+
+### A3 共同未来：真的比较，再冻结
+
+- `project-horizons` 从**开发基准**的候选 ETA 偏移投影五个预声明候选（mean/median 规则 +
+  p25/p50/p75 固定 h），分位数来源写在产物里。
+- 五个候选各有自己的 dev cell，因此损失表是**逐候选一列**：每个候选只用自己的区组。
+  之前"所有候选共用一份区组集"会让五列完全相同，然后报一个精确并列 ——
+  那是一次没有发生过的比较。
+- 修掉一个真 bug：没有投影文件时曾用两个规则候选报 `SELECTED`。现在先判 `READY`，
+  否则 `PENDING_HORIZON_CANDIDATES` 并点名缺哪三个候选。
+
+### A4 全指标与全部计算成本
+
+`outcome_metrics` 把终止丢包分类、到期未交付、停止时仍在系统（行政删失，不是丢包）、
+两种分母的吞吐、逐星请求率分布与热点最大值、交付子集 E2E 分位、队列峰值与面积、
+命中/后备率、版本年龄、安装延迟、ETA 误差、同资源预测误差，连同
+**含后台更新的总计算成本**，一起挂到每个模式行上。拿不到的原始字段报
+`NOT_COMPUTABLE` 并点名缺哪个字段，绝不填 0。
+
+### A5 正式执行入口：边界是证据，不是永久拒绝
+
+原先 `run_bundle(tier=formal)` 无条件拒绝——那不是授权边界，是缺接线。现在
+`formal_execution_plan` 对**每一个**正式 cell 用既有
+`verify_authorization_for_leo_sim_v2_config` 复核：包被改过、授权指向别的包、缺授权，
+全部拒绝；本函数只复核，不签发任何授权。`estimate_bundle_cost` 把矩阵展开成真实
+模拟调用数，不以外层 cell 数掩盖成本。
+
+### 仍未完成
+
+- VM 上 `t1_a6_check` 与 `project-horizons` 尚未跑；本轮 VM 只跑了
+  `experiment`（compile+validate+acceptance+dev+report+pull，run-id `t1-a6-5e8ab7c`）。
+- A0 的四层状态里，**没有任何一项达到"确认已跑"**；第一轮完成判定要看 VM 拉回结果。
+- 本机跑出的"p25/p50 的 h=0 导致 12/12 支路 `NO_LEGAL_BRANCH`"只是待查线索，
+  必须在 VM 上复现才算数。
+
+---
+
+## VM 证据（第一轮 A6）
+
+| run-id | commit | 内容 | 结果 |
+|---|---|---|---|
+| `t1-a6-5e8ab7c` | `5e8ab7c` | compile+validate+acceptance+dev+report+pull | 37 cell 编译通过；acceptance 10/10；dev 27/27；`launch.json` dirty=false |
+| `t1-a6-5e8ab7c` | `5e8ab7c` | `t1_a6_check`（真实检查点导出→读取→决策→计时） | 读取 `AVAILABLE`、形状与有限探针通过；81 次模型调用驱动 57 次前向决策，交付 24；参数不变、training=False、updates=0；前向中位 **1452.42 µs**（VM CPU）；正式 tier 两个拒绝负例均成立 |
+| `t1-a6-5e8ab7c` | `5e8ab7c` | `project-horizons` | 949 个开发基准候选 ETA 偏移；p25=p50=**0.0 s**，p75=**0.518769 s**，mean=0.148688 s；文件 sha256 `483019d5…` |
+| `t1-five-49c370e` | `49c370e` | 五候选 dev | 12 格失败：**12/12 支路全部被拒**（`fixed_horizon requires a finite common_horizon_s`） |
+| `t1-five2-52d551f` | `52d551f` | 修复后五候选 dev | 49 cell；acceptance 10/10；**dev 39/39 ok**；选择状态 `SELECTED` |
+
+### 修复：固定 h 候选的探针快照必须带配置 horizon
+
+`time_alignment_compare.build_snapshot` 用**配置里的** `common_rule` 造探针快照，
+却在 `common_rule=fixed_horizon` 时把 `common_horizon_s` 传成 `None`，
+于是 `make_snapshot` 直接拒绝——三个固定 h 候选在 VM 上 12 条支路全灭。
+修好后 39/39 通过。这是任务书说的"发现与目标直接相关的错误就修掉并继续"。
+
+### B3 的开发结果（VM 实测，不是平台故障）
+
+- 五个候选的主损失**完全相同**：mean 0.05327343，方差 6.0176e-06，各 4 个区组。
+  选择器按预声明破同规则选了 `median_eta_offset`，并如实报出
+  `tie=true`、`insufficient_scenario_coverage=true`、
+  `insufficient_statistical_evidence=true`（4 区组 < 20）。
+- 四臂**同值**：以 `dev-common-p75_offset-seed-7`（12 支路）为例，
+  `stale/now/common/candidate` 的平均主损失都是 0.052048，后悔值全部为 0；
+  配对计数为 2 个候选全部有效、0 后备、0 失配、0 删失。
+- 结论边界：机制**确实触发**（候选进了配对、没有走后备），但在该开发 profile 上
+  **没有产生任何可测的差异**。这是"已触发但无额外收益 / 场景不可辨"，
+  既不是收益证据，也不是软件故障。要主张或否证收益，必须先由 B0/B1 定义并
+  校准真正受压的场景。
+- 另一条硬约束：开发基准的候选 ETA 偏移**中位数为 0**，因此
+  `median_eta_offset`、`p25_offset`、`p50_offset` 三个候选塌到 h=0，
+  `common` 与 `now` 同义。五个预声明候选中三个退化——按任务书不得换 profile
+  直到出现正结果。
+
+---
+
+## 第二轮 B5：开发结果长表、图与结论
+
+机器可读长表：`out/b5/results.json`（47 行，每行带 run / cell / config_sha256）；
+长表 CSV：`out/b5/results_long.csv`；四张图：`fig1_branch_loss.png`、
+`fig2_network_outcome.png`、`fig3_pressure_cost.png`、`fig4_modes_cost.png`。
+生成器：`CODE/experiment_platform/b5_results.py`（只读 VM 产物，不重跑仿真）。
+
+### 实验一：四臂主损失（D 为该场景冻结值）
+
+| scenario | arm | branches | deadline_s | mean_loss | mean_regret |
+|---|---|---|---|---|---|
+| steady_uniform | candidate | 3 | 3.1230483399113353 | 0.4999646111324017 | 0.0 |
+| steady_uniform | common | 3 | 3.1230483399113353 | 0.4999646111324017 | 0.0 |
+| steady_uniform | now | 3 | 3.1230483399113353 | 0.4999646111324017 | 0.0 |
+| steady_uniform | stale | 3 | 3.1230483399113353 | 0.4999646111324017 | 0.0 |
+| fixed_hotspot | candidate | 3 | 2.5340170844170817 | 0.33309045132412124 | 0.0 |
+| fixed_hotspot | common | 3 | 2.5340170844170817 | 0.33309045132412124 | 0.0 |
+| fixed_hotspot | now | 3 | 2.5340170844170817 | 0.33309045132412124 | 0.0 |
+| fixed_hotspot | stale | 3 | 2.5340170844170817 | 0.33309045132412124 | 0.0 |
+| burst_hotspot | candidate | 3 | 2.3783724859167377 | 0.3548875387820131 | 0.0 |
+| burst_hotspot | common | 3 | 2.3783724859167377 | 0.3548875387820131 | 0.0 |
+| burst_hotspot | now | 3 | 2.3783724859167377 | 0.3548875387820131 | 0.0 |
+| burst_hotspot | stale | 3 | 2.3783724859167377 | 0.3548875387820131 | 0.0 |
+
+**结论：阴性。** 三个场景、四个臂、两个 D（声明 30 s 与冻结值）下，主损失与后悔值逐项相同
+（后悔恒 0）。机制确实触发（臂重排了候选、候选全部进入配对、零后备/零失配/零删失），
+但候选路径对称使排序无法改变结局。按任务书这是**待解释的零差异**：不是软件故障，也不是收益证据。
+
+### 实验二：五执行模式净性能—总成本
+
+| scenario | arm | delivered | e2e_mean_s | e2e_p95_s | total_jobs | queries | installs | fallbacks |
+|---|---|---|---|---|---|---|---|---|
+| fixed_hotspot | per_packet | 63 | 0.9827156439502946 | 1.2154439930750691 | 1710 | 0 | 0 | 0 |
+| fixed_hotspot | per_flow | 68 | 1.0318424070307113 | 1.5990802434039662 | 479 | 0 | 0 | 0 |
+| fixed_hotspot | precomputed | 69 | 1.0423779087697311 | 1.5926685764603299 | 0 | 0 | 0 | 0 |
+| fixed_hotspot | async_point | 69 | 1.0423779087697311 | 1.5926685764603299 | 118 | 139 | 116 | 48 |
+| fixed_hotspot | async_window | 69 | 1.0423779087697311 | 1.5926685764603299 | 118 | 139 | 116 | 48 |
+
+### 实验二：更新周期扫描（window = 2 x period）
+
+| period_s | arm | delivered | e2e_mean_s | e2e_p95_s | total_jobs | background_jobs | installs | fallbacks |
+|---|---|---|---|---|---|---|---|---|
+| 0.1 | per_packet | 63 | 0.9827 | 1.2154 | 1710 | 0 | 0 | 0 |
+| 0.1 | per_flow | 68 | 1.0318 | 1.5991 | 479 | 0 | 0 | 0 |
+| 0.1 | precomputed | 69 | 1.0424 | 1.5927 | 0 | 0 | 0 | 0 |
+| 0.1 | async_point | 66 | 1.0179 | 1.6029 | 517 | 517 | 517 | 43 |
+| 0.1 | async_window | 66 | 1.0179 | 1.6029 | 517 | 517 | 517 | 43 |
+| 0.5 | per_packet | 63 | 0.9827 | 1.2154 | 1710 | 0 | 0 | 0 |
+| 0.5 | per_flow | 68 | 1.0318 | 1.5991 | 479 | 0 | 0 | 0 |
+| 0.5 | precomputed | 69 | 1.0424 | 1.5927 | 0 | 0 | 0 | 0 |
+| 0.5 | async_point | 69 | 1.0424 | 1.5927 | 118 | 118 | 116 | 48 |
+| 0.5 | async_window | 69 | 1.0424 | 1.5927 | 118 | 118 | 116 | 48 |
+| 2.0 | per_packet | 63 | 0.9827 | 1.2154 | 1710 | 0 | 0 | 0 |
+| 2.0 | per_flow | 68 | 1.0318 | 1.5991 | 479 | 0 | 0 | 0 |
+| 2.0 | precomputed | 69 | 1.0424 | 1.5927 | 0 | 0 | 0 | 0 |
+| 2.0 | async_point | 63 | 1.0192 | 1.539 | 35 | 35 | 35 | 27 |
+| 2.0 | async_window | 63 | 1.0192 | 1.539 | 35 | 35 | 35 | 27 |
+
+**结论：阳性且可辨。** 非单调最优在 0.5 s；后台计算随 1/period 缩放；async_point 与 async_window 在稳态热点下完全相同。
+
+### 实验二（补充）：请求率 x N 与计算服务标定
+
+在诊断服务时长（0.001 s）下计算池利用率约 0.3%，**N 完全没有影响**
+（N=1/2/4 的交付/时延/job 数逐项相同，只有 N=1 时 2-11 ms 的微小排队）；
+请求率轴则正常起作用（1/2/4 Mbps → 交付 36/69/118，均延 0.9926/1.0424/1.1519）。
+另有一条结构性事实：**后台 job 数由更新周期而非流量决定**（109/118/121，跨 4 倍负载基本不变）。
+
+把服务时长标定到池会饱和的量级后（任务书 B1 的 rho 要求），N 才成为有意义的轴：
+
+| service_s | N | 模式 | 交付 | 均延(s) | 总 job | 累计排队(s) |
+|---|---|---|---|---|---|---|
+| 0.25 | 1 | per_packet | 64 | **1.9139** | 397 | **60.68** |
+| 0.25 | 1 | async_window | 68 | **1.038** | 104 | **5.23** |
+| 0.25 | 2 | per_packet | 66 | 1.778 | 406 | 0.65 |
+| 0.25 | 2 | async_window | 68 | 1.038 | 104 | 0.00 |
+| 0.25 | 4 | per_packet | 64 | 1.7672 | 494 | 0.00 |
+| 0.25 | 4 | async_window | 68 | 1.038 | 104 | 0.00 |
+
+**这是实验二的完整结论**：计算受压时逐包严格劣化（N=1 累计排队 60.68 s，均延 0.98 → 1.91 s；
+N=1/2/4 为 1.91/1.78/1.77 s），而异步窗口对 N 几乎不敏感（三个 N 都是 1.038 s）。
+**在受压工作点上异步复用同时买到计算 -74% 与时延 -46%**；在诊断服务时长下池不饱和，
+差异才只剩 job 数——这也解释了早期扫描为何看起来只有成本差异。
+### B5 交付判定：暂不做收益确认（有界负结果）
+
+- **实验一**：五个预声明候选在开发集上**精确并列**，且只有 4 个区组（选择器报 `insufficient_statistical_evidence`、`insufficient_scenario_coverage`），另有三个候选因开发基准 ETA 偏移中位数为 0 而塌到 h=0。因此**不为收益确认规划样本量**，也不伪造 n。
+- **建议的边界研究设计**（供下一研究决策，不替换当前主假设）：先声明一个**非对称多 OD** 场景，并用「前向决策数 >= N 且每决策合法方向数 >= 2」的有效性预检作为准入条件（本轮两次 M-Lab 预检均 0 前向决策，已否决）；通过后再谈 D、候选与样本量。
+- **实验二**已可交付：复用把总计算降一个数量级、交付数上升，代价是平均时延；并可给出周期—成本曲线与推荐工作点 0.5 s。
+- **平台状态**：可做开发实验（三种任务类型、全指标、后台成本、授权边界均已 VM 验证）。
+- **未获授权**：正式确认性运行仍未申请，也不应由执行方申请。
+
+## 工作包 A：2026-09-30 执行检查点（实验前）
+
+- 隔离工作树 `codex/20260930-t1-experiment-a` 基于治理提交
+  `f04fa00c04f2a1b76752a60aa132799b48de1919`；研究实现已在该工作树整合，
+  但尚未形成 clean commit。原 `leo-exp-main` 保持只读，未改写其 dirty 文件。
+- 当前已修复不可变 release 身份回读、T1 新 release 排除未核实流量资产、开发矩阵展开/成本上界，
+  并加入 outcome-blind 场景准入和开发入口；事前合同列出 13 个 suite cell，
+  静态展开估计 78 次仿真调用，上限 80，预留 2 次。合同固定 dev seeds 7/11；未触碰确认种子。
+- 本机完整选择测试曾有 98 passed、2 failed。失败分别是覆盖率夹具 0.89 受整数粒度舍入、
+  以及矩阵成本断言将 49 错算为 50；已修正对应断言。之后准入/身份测试 6 passed，
+  矩阵/编译选择 9 passed，发布排除选择 5 passed。完整集合尚未重跑，不能记作全绿。
+- 已从已有本机拉回工件只读重算历史证据：`t1-forensics-b093c54` 的 30 个分支行与
+  9 个 `reprw` 行合计 39 行，四臂均同向、38 行所选方向为 oracle；按场景、配置、决策 ID、
+  决策时刻去重后为 36 个唯一键，其中 35 个同向且 oracle 最优。3 组重复行来自宽采样与
+  `reprw` 复现重叠，故 39/39 不是 39 个独立分支点。最优解释应限定为“所观测臂同向”，
+  不能据此说没有可改进余量；唯一非 oracle 点本身有正 regret。原始证据身份为 commit
+  `b093c5420b9a33651de769c91e6e69b189277d53`，相关复核输出在本工作树的
+  `out/historical-verification/`，不作为新 VM 结果。
+- 用现有拉回的 `t1-b6-f55c6fe` 与四份 B4 扫描输入只读重建 B5 长表，退出码 0，
+  92 行（77 数据行、15 溯源行）。原始模式结果显示 `precomputed` 交付最高（69/70），
+  `compute.decision_requests=0`；同时记录表建 1 次、552 个目标、24 次 BFS、139 次表查询，
+  并有 `build_wall_s=0.000609`。但内核计时器在完成全部 BFS 后才启动，因此该值只计后续路由表物化，
+  不是完整预计算耗时；全流程生命周期成本仍未量化。
+- 截至本检查点，VM 仅确认 `ssh vm` 为 `cuda-liguang13`、T1 根存在且有空间；
+  未发布 release，未运行任何新仿真、压力测试、模型或正式实验。旧正式部署未触碰。
+- 续跑顺序：补完历史模式成本/分母复核与测试；完成 diff/维护检查、固定 clean commit；
+  用新 release 运行真实负对照 smoke 和预声明开发矩阵；拉回并复核回执及原始结果，
+  再更新本报告、`criteria.json`、工作包 `STATUS.md`。
+
+### A1 原始四臂证据复核（只读历史工件）
+
+历史分支诊断取自已拉回的 `t1-forensics-b093c54` 数据；旧五模式结果取自
+`t1-b6-f55c6fe` 的 `b-fixed_hotspot-execution-modes`。以下均是历史开发证据，
+不计作本工作包的新 VM 运行，也不作为确认性结果。
+分支审计使用研究提交 `b093c5420b9a33651de769c91e6e69b189277d53`；五模式原始单元的
+`result.json` SHA-256 为 `14057a74124d2bab8b5459316de60e9078eef985c141633831fb7893781d0850`。
+只读汇总文件在本机 `out/historical-verification/`：分支 `forensics.json` 为
+`c5e6eaef…dc2b878`，含 9 个 reprw 行版本为 `f3dc733e…be22f0e`；五模式长表
+`results_long.csv` 为 `eef96335…ccd0025`，其 `provenance.json` 为 `b7ccd5c5…e7dafbe`。
+
+| 场景 | 分支行 | 四臂同选 | 被选方向为离线 oracle 最优 | 强制方向的平均最优—最差损失差 |
+|---|---:|---:|---:|---:|
+| steady_uniform | 6 | 6/6 | 6/6 | 0.433936 |
+| fixed_hotspot | 12 | 12/12 | 12/12 | 0.613426 |
+| burst_hotspot | 12 | 12/12 | 11/12 | 0.589059 |
+
+在 burst_hotspot 的唯一非 oracle 点，四臂同选的方向仍有 0.0362349 regret。
+因此原先“路径对称使零差异”说得过头：可复核的事实是**四臂在这些观测分支点同向，且多数分支近 oracle**；这些点的候选强制结果并非普遍相同，零差异不能归因于没有改进余量。
+另有 9 行 `reprw` 分支复现；按场景、配置哈希、决策 ID、决策时刻去重后，39 行中有 3 行重叠，剩 36 个唯一观测键，35 个 oracle 最优。相邻分支仍属于同一场景—轨迹—种子块，不能当作 36 次独立重复。
+
+| 场景 | 每臂 forward 决策 | 每臂排序发生重排 | 任意两臂最终动作不同 | stale / now / common / candidate 查询时刻数 |
+|---|---:|---:|---:|---:|
+| steady_uniform | 62 | 45 | 0/62 | 81 / 62 / 93 / 93 |
+| fixed_hotspot | 133 | 101 | 0/133 | 148 / 130 / 199 / 207 |
+| burst_hotspot | 103 | 78 | 0/103 | 121 / 103 / 156 / 161 |
+
+网络运行显示四臂确实记录了不同查询时刻，也会重排候选，但被应用的下一跳没有分歧；历史审计同时记录了未收到历史和资源映射缺失回退，故“机制入口执行过”不等于有效资源预测覆盖充分。
+
+历史五模式单个 fixed_hotspot 配对单元中，每模式 offered/admitted 均为 70，事件分区均守恒：
+
+| 模式 | delivered / in-system-at-stop | 成功包均延 / p95 (s) | 计算 jobs / service (s) / pool wait (s) | 后台 jobs / service (s) | 查询服务 requests / service (s) / wait (s) |
+|---|---:|---:|---:|---:|---:|
+| per_packet | 63 / 7 | 0.9827 / 1.2154 | 1710 / 1.710 / 0.372 | 0 / 0 / 0 | 1710 / 0.001710 / 2.082612 |
+| per_flow | 68 / 2 | 1.0318 / 1.5991 | 479 / 0.479 / 0 | 0 / 0 / 0 | 527 / 0.000527 / 0.479009 |
+| precomputed | 69 / 1 | 1.0424 / 1.5927 | 0 / 0 / 0 | 0 / 0 / 0 | 241 / 0.000241 / 0.000011 |
+| async_point | 69 / 1 | 1.0424 / 1.5927 | 0 / 0 / 0 | 118 / 0.118 / 0 | 241 / 0.000241 / 0.000011 |
+| async_window | 69 / 1 | 1.0424 / 1.5927 | 0 / 0 / 0 | 118 / 0.118 / 0 | 241 / 0.000241 / 0.000011 |
+
+预计算是这一个历史单元里交付最高的基线，且**逐包计算池 jobs 为零**；其路由表仍查询 139 次。工件报告一次构表、24 次 BFS、552 个表项，并给出 0.000609 s，但计时器在 BFS 之后才启动，所以该数只覆盖后续表物化，完整预计算成本仍未测完。`async_point` 与 `async_window` 在这条轨迹上的 delivered、时延和总 job 相同，但 query-bin 覆盖不同：point 为 `{0:91, None:48}`，window 为 `{0:23, 1:22, 2:13, 3:33, None:48}`；相同结果不能解释为机制相同。
+
+这里的 `service`、`pool wait` 和 `query service` 是离散事件账本中的仿真秒，阶段各自独立，不相加成 E2E 或能耗。原 benchmark 对确定性共享评分器的 VM 主机计时为 5,000 次完整决策中位数约 0.554 ms（p95 约 0.562 ms）；纯推理中位数约 0.0169 ms。它不是 DDQN、星载时延或能耗测量。模式单元自身 VM 墙钟约 7.686 s，是五模式合并单元的总墙钟，不可分摊成单模式时延。
+
+
+### 工作包 A 续跑状态（2026-09-30，首次新 VM 运行前）
+
+- 当前独立工作树分支 `codex/20260930-t1-experiment-a` 基于治理提交
+  `f04fa00c04f2a1b76752a60aa132799b48de1919`；尚未提交或发布。研究工作树仍只读。
+- 事前合同 `contract_dev_a.yaml` 本机静态编译和校验通过：`b_dev` 共 13 个 suite cell，真实分支展开估计
+  78 次模拟调用，预算 80；首格是 `steady_uniform_negative_control` 的 seed 7 四臂网络负对照 smoke。
+  该 smoke 已计入 78 次，不是额外调用。每格 120 秒上限，合同累计 VM 时限 7,200 秒。以上是编译/成本核算，
+  **没有启动模拟**。
+- 本机完整回归 `pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q`
+  通过：1,494 passed、8 skipped、1 warning，用时 1,189.81 s。它在最后一项 M-Lab 发布排除收紧前已启动，
+  因而不用于声称新排除已被这次全量回归覆盖。由于 `CODE/data/geoip/sites.json` 的 M-Lab 元数据来源/再分发许可在本仓库未核实，且本矩阵使用人工合成场景不依赖它，T1 release 新增排除该既有源文件（Git 内容保留）。这项变更后，
+  `pytest CODE/scripts/remote/tests/test_release_protocol.py -q` 另通过 62 项；准入、release 身份、A0 smoke
+  相关定向测试也已通过（分别 68、核心 suite/tasks 64、smoke 2 项）。
+- `t1_development` 和 `t1_suite` 的实际 CLI `--help` 已核对。维护检查为 0 errors、1 条范围 warning；
+  该检查不扫描 secret 内容或 VM。
+- VM 仅做过只读连通/隔离根存在性核验；本工作包尚未创建 release 或 run，尚无新的 VM 模拟、计时、压力数据、
+  receipt 或回传证据。FORMAL_RUN 与训练均未执行。
+- 续跑：审查待提交对象与 release 文件清单，固定 clean commit 并推送；发布精确身份到隔离 release，先运行
+  同一合同首格 smoke 再继续已冻结矩阵，拉回回执和工件并独立重算。

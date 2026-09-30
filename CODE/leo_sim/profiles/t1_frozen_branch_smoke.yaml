@@ -1,0 +1,66 @@
+# T1-FROZEN-BRANCH: the no-learning small scenario the frozen x single-action
+# intervention comparison runs on.
+#
+# Why a separate profile instead of the shared smoke.yaml
+# ------------------------------------------------------
+# "frozen" requires execution.compute_delay_s > 0 (config.py:914-921), and no
+# existing profile sets either key, so the observation semantics under test
+# cannot be selected by a command-line flag (the CLI has no such override).
+# This file is the smallest scenario that can carry them.  The geometry is
+# smoke.yaml's, so a result here stays comparable with the existing fixture.
+#
+#   * learning.algorithm = none -- mandatory for BOTH frozen (the v1 learning
+#     restriction) and the counterfactual harness.  It is not a convenience: a
+#     learning arm would make the two branch runs diverge BEFORE the branch
+#     point, and the pairing proof would then refuse the comparison.
+#   * compute_delay_s = 1.0 -- a real interval during which the observation can
+#     go stale, which is the whole point of the mode.
+#   * node_process_delay_s = 0.5 -- F2 node processing is a SEPARATE stage from
+#     the computation (disjoint intervals by construction), so the two costs
+#     stay independently attributable.  A non-zero F2 requires a timeline sink;
+#     the comparison driver always attaches one, and the plain "run" entry point
+#     requires --timeline-log.
+#   * control_plane advertises every 2 s with vis_k = 2 -- enough for a decision
+#     to have more than one legal ISL direction, which is what makes a
+#     single-action intervention a real branch rather than a relabelling.
+config_version: leo-sim-config/v1
+scenario:
+  name: t1_frozen_branch_smoke
+  # 70 s, not smoke's 60 s: the decision under test is deferred by the
+  # computation and the timeline must still contain the arrival and the peer's
+  # own decision, or the peer-side fields of the comparison are MISSING for a
+  # reason that has nothing to do with the mechanism being measured.
+  duration_s: 70.0
+  num_satellites: 24
+  num_planes: 3
+  seed: 7
+endpoints:
+  sites:
+    - {name: equator, lat: 0.1, lon: 0.1, demand_weight: 1.0}
+    - {name: north, lat: 52.6, lon: 90.4, demand_weight: 1.0}
+demand:
+  mode: uniform
+  offered_mbps: 0.5
+  packet_bits: 8000000
+access:
+  association: bbm
+links:
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 2.0
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  compute_delay_s: 1.0
+  node_process_delay_s: 0.5
+  decision_observation_mode: frozen
+  max_events: 200000
+  max_entities: 1000
+  max_packets: 20000
+outputs:
+  out_dir: leo_sim_out/t1_frozen_branch_smoke
+  plotting: false
