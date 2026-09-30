@@ -687,8 +687,12 @@ def _arm_row(resolved, rows, geometry, arm):
     counts = sorted(per_sat.values())
     delivered_bits = sum(int(d.get("bits") or 0)
                          for d in result["deliveries"].values())
-    admitted = sum(1 for ev in result["packet_events"]
-                   if ev.get("kind") == "packet_admitted")
+    congestion_metrics = result["congestion_metrics"]
+    # The kernel records the admission boundary as satellite_ingress and
+    # publishes its canonical count in congestion_metrics; there is no
+    # packet_admitted event kind.
+    admitted = int(congestion_metrics[
+        "admitted_at_satellite_ingress_packets"])
     # Evidence that THIS arm actually ran the state-time path: an inert arm
     # (feature disabled, or a config that silently ignored the arm) would
     # produce a run indistinguishable from the deterministic baseline, and
@@ -759,7 +763,7 @@ def _arm_row(resolved, rows, geometry, arm):
         "control": {"bits": dict(result["control"]["bits"]),
                     "counters": dict(result["control"]["counters"])},
         "query_service": result["execution_mode"]["query_service"],
-        "congestion_metrics": result["congestion_metrics"],
+        "congestion_metrics": congestion_metrics,
         "mechanisms": result["mechanisms"],
         "natural_end": result["natural_end"],
     }

@@ -664,3 +664,118 @@ N=1/2/4 为 1.91/1.78/1.77 s），而异步窗口对 N 几乎不敏感（三个 
   早于这两处修复，不把它写成修复后的全量结果。
 - 续跑只重试同一冻结合同/同一种子/同一首格逻辑，使用含两处修复的新提交、新 release 和全新 run-id；保留 run
   `...-01` 为失败记录。
+
+## 工作包 A：2026-09-30 实际开发运行与停止结论
+
+### 固定身份和执行记录
+
+- 运行树是独立工作树 `codex/20260930-t1-experiment-a`；研究工作树 `leo-exp-main` 未修改。运行时使用的 clean commit 为
+  `2107e405fd2026789b33e9faa91a485458e47417`，隔离 release 为
+  `2107e405fd2026789b33e9faa91a485458e47417-9ac0c26cf64d894f4f9212da460cc390d6276c4ebc64aaf0d193fc4e2b1c0f06`。
+  release artifact SHA-256 为 `0b8cddc6eba8c8befa0f72e2fe8e6131d8384b879747ce881c2ebca82e23e2c0`；源码树 SHA-256
+  `9ac0c26cf64d894f4f9212da460cc390d6276c4ebc64aaf0d193fc4e2b1c0f06`；运行时锁身份 SHA-256
+  `b3b548fdba7f364d5f48ed0bcc5c77ca667f6bd4ad2c463844eca8a18923e5d0`。VM 报告 Python 3.11.15、Linux/aarch64，
+  运行在版本化 T1 环境；release 身份和源树干净状态均由 run identity 记录。
+- `wp-a-dev-20260930-01` 保留原失败 receipt，不复用。该 run 在 trace 编译和模拟器调用之前因 release 只读写入失败，实际模拟调用 0。
+- 唯一新的模拟 run 为 `wp-a-dev-20260930-02`，绑定输入合同 SHA-256
+  `791d28375d2459e5d5c19bbdde87a4642545bbc07e6c901084d148ea0429f5c9`，execution chain
+  `b87cc4f73ad6292edc708fc0b842ae6d2b64cc100cecbc9c618866f566fdee42`，bundle fingerprint
+  `79f6aeb11796d53096021f7b2b8da1ad3ea489b44b43166aa2d5b9f856933145`。UTC 开始/结束为
+  `2026-09-30T11:52:40Z` / `2026-09-30T12:10:21Z`，VM 总墙钟 1,061 s。回执状态 `failed` / exit 3；suite
+  `FAILED_CELLS`。13 个预声明 cell 全部进入执行序列：5 个 `ok`、8 个超时、0 个错误、0 个谓词失败。
+  8 个超时 cell 均保留在 `criteria.json`；其中 3 个有哈希匹配的任务结果文件，但外层 cell 状态仍是 timeout，
+  分析表把它们标为 timeout，不将其升级成成功格。
+- 静态展开的调用上界仍为 78/80，单格上限 120 s、总 VM 上限 7,200 s。run 文件没有逐个内部模拟调用的实测计数，
+  所以 78 是预算估计，不宣称为实际调用数。依照超时停止规则，不 resume、不增加场景、不再运行 VM。
+- 回执 canonical SHA-256 `d21e12e3dc304e72e2a7c7f9e35e17f6461251dc296ce28f2cd2d0e68e82c8d4`；receipt 文件字节 SHA-256
+  `569082aa525ecfe7773d7924ed5e4ed96d6fd97ae305302717a641d319a1f6d5`；run-manifest SHA-256
+  `58b2ff50cf99fbcb180df23407ff0af87d0ab75d087aa48412d872ab6713e0c9`；归档 SHA-256
+  `0650799be4d6e7df1bdcff0a41e9b4fabb26250b40a85cbb04c37282acd04ecb`。pullback 和本机 receipt 核验通过，索引 URI
+  `evidence://t1/wp-a-dev-20260930-02` 为 `VERIFIED`。没有写入旧正式部署根；FORMAL_RUN、确认种子和训练均未执行。
+
+实际使用的新协议入口和 run 的 VM 子命令如下；真实 run stdout 记录了其中最后的 Python argv，release/run/pull 身份另由回执与索引绑定：
+
+```bash
+CODE/scripts/remote/publish-release-remote.sh --commit 2107e405fd2026789b33e9faa91a485458e47417
+
+CODE/scripts/remote/run-release-remote.sh \
+  --release-id 2107e405fd2026789b33e9faa91a485458e47417-9ac0c26cf64d894f4f9212da460cc390d6276c4ebc64aaf0d193fc4e2b1c0f06 \
+  --run-id wp-a-dev-20260930-02 --mode development \
+  --input dev_contract=CODE/work/WP-T1-COMPLETE/contract_dev_a.yaml \
+  --resource-group wp-a-experiment-a --timeout-seconds 7200 -- \
+  python3 -m CODE.experiment_platform.t1_development \
+  --contract /data/论文/leo-t1-wt/runs/wp-a-dev-20260930-02/inputs/dev_contract \
+  --out /data/论文/leo-t1-wt/runs/wp-a-dev-20260930-02/development
+
+CODE/scripts/remote/pull-release-results-remote.sh \
+  --run-id wp-a-dev-20260930-02 \
+  --release-id 2107e405fd2026789b33e9faa91a485458e47417-9ac0c26cf64d894f4f9212da460cc390d6276c4ebc64aaf0d193fc4e2b1c0f06 \
+  --evidence-root <本机私有 T1 证据根>
+```
+
+### 阴性对照和准入
+
+- A0 首格阴性对照通过 smoke gate。四臂均有 31 个 offered、31 个到达 satellite ingress、28 个 delivered、62 次 forward
+  decision，3 颗卫星产生决策；每臂 45/62 次候选排序被重排，但四臂交付和 fate partition 一样：28 delivered、3 `IN_SYSTEM_AT_STOP`。
+  这验证四臂在低负载合成轨迹中有真实流量与路由路径，不是 H1 收益证据。
+- 五模式负对照也完成：五种模式各为 28/31 delivered、0 terminal loss、3 administratively censored。逐包/按流的
+  E2E 成功包均值约 1.609/1.608 s；预计算和两个异步模式约 1.606 s。它没有形成模式交付差异。
+- 四臂原始 `congestion_metrics` 显示 31 admitted；本次代码 `2107...` 的派生 `outcome.admitted` 错记为 0，因为代码查了
+  不存在的 `packet_admitted` event kind。仿真内核和 fate 数据未受影响，A0 gate 也未检查该派生计数。运行后已修复
+  `_arm_row`，改读规范字段 `admitted_at_satellite_ingress_packets`，并增加断言；运行身份未变，也未声称该修复版在 VM 重跑。
+- 非对称多 OD 场景使用人工合成需求，不是实测流量。其 branch seed 7 和四臂 network seed 7 结果格超时；seed 11 network 也超时。
+  因此最小分支比较、全网 H1 四臂比较和 outcome-blind 结构准入为 `NOT_COMPUTABLE`。五模式输出中 30 个已写出结果的分区检查为 exact，
+  但事件守恒不能替代 10 个可比较分支、竞争分支和查询覆盖门槛。不得称该场景通过准入。
+
+### 已完成的五模式压力格
+
+下表只列 outer cell status 为 `ok` 的 3 个竞争场景压力设置，每格 seed 7、offered=784、admitted=625；损失和删失列按全部 offered 人口
+报告。E2E 均值/P95 只在 delivered 子集计算。服务秒是离散事件配置下的累计仿真 service，不是 VM 墙钟、能耗或星载计算时间；查询等待单列，不与服务相加。
+
+| N / 配置服务 / 更新间隔(s) | 模式 | delivered | terminal loss / 在系统删失 | delivered E2E 均值 / P95(s) | 前台 jobs / service(s) | 后台 jobs / service(s) | query wait(s) |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 1 / 0.25 / 0.5 | per_packet | 76 | 95 / 613 | 28.427 / 48.310 | 1,252 / 313.00 | 0 / 0 | 8,665.189 |
+| 1 / 0.25 / 0.5 | per_flow | 128 | 95 / 561 | 17.979 / 39.351 | 1,511 / 377.75 | 0 / 0 | 9,194.552 |
+| 1 / 0.25 / 0.5 | precomputed | 319 | 272 / 193 | 0.572 / 1.052 | 0 / 0 | 0 / 0 | 1.636 |
+| 1 / 0.25 / 0.5 | async_point | 309 | 272 / 203 | 0.559 / 0.975 | 0 / 0 | 190 / 47.50 | 1.642 |
+| 1 / 0.25 / 0.5 | async_window | 309 | 272 / 203 | 0.559 / 0.975 | 0 / 0 | 190 / 47.50 | 1.642 |
+| 2 / 0.25 / 0.5 | per_packet | 145 | 95 / 544 | 18.605 / 33.907 | 2,147 / 536.75 | 0 / 0 | 10,808.938 |
+| 2 / 0.25 / 0.5 | per_flow | 182 | 95 / 507 | 11.223 / 28.504 | 2,297 / 574.25 | 0 / 0 | 10,949.144 |
+| 2 / 0.25 / 0.5 | precomputed | 319 | 272 / 193 | 0.572 / 1.052 | 0 / 0 | 0 / 0 | 1.636 |
+| 2 / 0.25 / 0.5 | async_point | 309 | 272 / 203 | 0.559 / 0.975 | 0 / 0 | 190 / 47.50 | 1.642 |
+| 2 / 0.25 / 0.5 | async_window | 309 | 272 / 203 | 0.559 / 0.975 | 0 / 0 | 190 / 47.50 | 1.642 |
+| 1 / 0.25 / 2.0 | per_packet | 76 | 95 / 613 | 28.427 / 48.310 | 1,252 / 313.00 | 0 / 0 | 8,665.189 |
+| 1 / 0.25 / 2.0 | per_flow | 128 | 95 / 561 | 17.979 / 39.351 | 1,511 / 377.75 | 0 / 0 | 9,194.552 |
+| 1 / 0.25 / 2.0 | precomputed | 319 | 272 / 193 | 0.572 / 1.052 | 0 / 0 | 0 / 0 | 1.636 |
+| 1 / 0.25 / 2.0 | async_point | 303 | 272 / 209 | 0.558 / 0.988 | 0 / 0 | 172 / 43.00 | 1.658 |
+| 1 / 0.25 / 2.0 | async_window | 303 | 272 / 209 | 0.558 / 0.988 | 0 / 0 | 172 / 43.00 | 1.658 |
+
+这三格的完整人口分区均守恒。单 seed、一个合成拓扑且其余主格超时，所以只作开发诊断：本次观测中预计算交付数最高；async_point/window
+在这些格逐项一致，更新间隔从 0.5 s 到 2.0 s 时交付由 309 降至 303；N=2 改善了逐包/按流交付，但仍低于预计算和异步结果。
+不得把这些方向推广到其他流量、种子或硬件。
+
+预计算每格有 1 次建表、24 次 BFS、552 个目标，前台逐包 job 为 0；输出的 `build_wall_s` 约 0.000594–0.000614 s，计时器在 BFS 完成后才启动，
+不代表完整建表生命周期成本。async 的 190 jobs / 47.5 service s（或 172 / 43.0 s）远低于 per_packet 的 1,252 / 313.0 s，
+但这是离散事件配置成本且 async 交付少于 precomputed；查询等待也必须单列。没有能耗模型，不称节能。
+
+合同预声明 D=30 s，但 execution_modes 的紧凑结果只保存 delivered E2E 汇总与 fate 数，不含逐包 E2E 向量，也没有逐模式的 D=30 主损失分区。
+因此期限主损失无法从这些输出重算；`DATA_DEADLINE_EXPIRED=0` 不能解读为所有包均在 D 内成功。行政删失和终局丢弃继续分别报告，不能把成功包条件均值当总体损失。
+
+### 可复算产物、验证与仍未完成事项
+
+- 新增只读重算脚本 `CODE/work/WP-T1-COMPLETE/analyze_wp_a_run.py`。命令：
+  `python3 -B CODE/work/WP-T1-COMPLETE/analyze_wp_a_run.py <verified-run-dir> --out-dir <separate-derived-dir>`。
+  脚本校验 receipt 声明的 run-manifest hash、每个结果对照 run.json 与 receipt 的 cell hash 后写出 35 行 `mode-summary.csv`（含 timeout 状态）和
+  `negative-control-arms.csv`，并生成 `pressure-tradeoff.svg` 与 provenance。原始 pullback 不被改写。派生工件 SHA-256：
+  `mode-summary.csv` `8ba19b4c657b2d496d7b3c6f61dabce0110618400f5fbd01b1221478834e3ae1`；
+  `negative-control-arms.csv` `c3cbdb093490e3cecb1c90d59243c66cc391746f0c957e750b9895f21bd1c14d`；
+  `pressure-tradeoff.svg` `d1f09f0622327d6abc4beb9876301ebfa3f545055b4e8ac4973295f7241c031c`；
+  `provenance.json` `5f47061335148e32afd0518f4b7943cc2d81fb529a409d19783afb10b2007b4d`。
+- 最终本机聚焦验证：`test_benchmark_decision.py` + `test_t1_tasks.py` 42 passed；两个 A0 smoke/调用预算测试 2 passed。
+  另一次较宽运行在 439.93 s 时经 Ctrl-C 中止，76 项已通过；它覆盖了慢的 dev-tier 集成项，不能记为完整通过。
+  全仓库 1,494 passed / 8 skipped 的旧回归早于本工作包两处 TMPDIR 修复。
+- A0 的修复源码于 run 前提交 `2107...` 并发布；本轮运行后修正了 `outcome.admitted` 派生字段并加入上述重算/表图。该后置修正只改善报告计数，
+  不改变已运行模拟；预算和超时停止规则下不再发布/重跑。当前新源码提交与 run 身份在 `criteria.json` 和 STATUS 分开记录。
+- H1：不可计算。A2 非对称场景准入：不可计算。H2：只保留 3 个完整 pressure cell 的单 seed 诊断及超时格已有的带状态原始输出；期限主损失不可计算。
+  没有 confirm seed、正式运行、真实 DDQN 模型、星载计时或能耗结论。
+- 后续若要继续，先由主控集中审查本报告、receipt、超时表、代码 diff 和内部只读审查。当前 A 包不再消耗 VM 额度；若新授权另开实验包，需先修复逐包 deadline 结果输出、重新核定可行 cell 成本并预留配对 seed，不得 resume 本 run 或重用 run-id。

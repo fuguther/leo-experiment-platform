@@ -200,6 +200,11 @@ def test_all_four_arms_really_run_the_network():
         assert row["resolved_arm"] == row["arm"]
         assert row["scope"]["forward_decisions"] > 0
         assert row["scope"]["satellites_that_decided"] > 0
+        metrics = row["congestion_metrics"]
+        assert row["outcome"]["offered"] == metrics["offered_packets"]
+        assert row["outcome"]["admitted"] == metrics[
+            "admitted_at_satellite_ingress_packets"]
+        assert row["outcome"]["delivered"] == metrics["delivered_packets"]
 
 
 def test_the_arm_is_switched_on_even_when_the_base_config_had_it_off():

@@ -73,7 +73,11 @@ report -> run_status ok；common_strong.frozen = False（诚实：开发块配�
 
 ## 工作包 A 当前状态（2026-09-30）
 
-- 整合提交 `156b422796c8ddb78fb04c85228b77cd969bf076` 已推送到任务分支并发布不可变隔离 release；release 身份与远端备份已验证。
-- 新 run `wp-a-dev-20260930-01` 保留为失败记录。13 格矩阵只进入负对照首格，suite 在任何 trace 编译和模拟调用前因尝试向只读 release 写临时目录而退出；实际模拟调用 0，receipt 拉回核验通过，其他 12 格未执行。
-- 本机修复 `t1_tasks.design()` 和 `benchmark_decision._design()` 都使用 runner 指定的隔离 `TMPDIR`，避免在只读 release 下创建临时 trace 目录；新增两条只读 release 回归测试。修复后定向测试 44 passed / 12.84 s，release 协议测试 62 passed。一次较宽的合并运行在 516.78 s 时已有 77 项通过，因剩余本机 dev-tier 集成测试耗时而主动中断；不记为全套通过。完整回归 1,494 passed / 8 skipped / 1 warning 早于两处修复。
-- 独立按已编译的 `b_dev` cell IDs 重算仍为 13 格、78 次上界调用，预算 80；合同与场景、种子和调用数未调整。当前尚未对修复后的代码提交/发布，也没有新的有效 VM 模拟结果。下一步审查改动与发布清单后提交、推送、发布新 release，再用新 run-id 重跑同一合同；不得复用 `...-01`。
+- 整合提交 `156b422796c8ddb78fb04c85228b77cd969bf076` 和 scratch 修复提交
+  `2107e405fd2026789b33e9faa91a485458e47417` 均推送到任务分支；后一提交已发布为不可变隔离 release，release 身份、源树、运行时锁和 pullback 回执均已核验。
+- `wp-a-dev-20260930-01` 是实际模拟调用 0 的启动失败。`wp-a-dev-20260930-02` 是唯一新的仿真 run：13 格，5 `ok`、8 timeout，exit 3；运行耗时 1,061 s。静态调用上界 78/80，内部实际调用数未被单独记录。run receipt canonical SHA `d21e12e3…e82c8d4`，manifest SHA `58b2ff50…6713e0c9`，evidence URI `evidence://t1/wp-a-dev-20260930-02` 为 `VERIFIED`。不 resume、不重试超时格、不再扩展本包 VM 运行。
+- 阴性对照 A0 smoke 通过：四臂各 31 offered / 31 satellite ingress / 28 delivered，62 次 forward decision；五模式负对照均 28/31 delivered、3 个 administratively censored。低负载结果不支持收益结论。
+- 人工合成非对称多 OD 场景的 branch、network、benchmark 和部分模式格超时，结构准入与 H1 为 `NOT_COMPUTABLE`。五模式中只有 3 个 pressure cell 的外层状态为 `ok`，均 seed 7；预计算交付最高，异步 point/window 在所测格逐项相同。期限 D=30 主损失无法由精简结果输出重算；行政删失分别报告，不能用成功包时延替代总体主损失。
+- 运行后发现四臂派生表将 admitted 记成 0；规范 `congestion_metrics` 对应值为 31。源代码已改为读取规范 satellite-ingress 计数并增加反例断言；该报告字段缺陷没有改变内核轨迹或 run02，修复代码未在 VM 重跑。新增只读重算脚本可校验 run/receipt/result 哈希并生成 35 行结果表、四臂校验表和 SVG；细节及边界见 `REPORT.md` 的本轮章节。
+- 修复后的本机定向测试：`test_benchmark_decision.py` + `test_t1_tasks.py` 42 passed；两个 A0 smoke/预算测试 2 passed。一次较宽测试在 439.93 s 时中止，已有 76 passed，不是全量通过。更早 1,494 passed / 8 skipped / 1 warning 全仓库结果早于 TMPDIR 修复。
+- `criteria.json`、本报告和派生证据保留超时、哈希、分母、删失与成本数据。confirm seeds、FORMAL_RUN 和训练均未执行；不声称科研确认、星载时延、能耗或预计算完整生命周期成本。若另开 B 包，须先由主控集中验收，并另行冻结期限指标可计算的设计和预算；本包不继续消耗 VM 额度。

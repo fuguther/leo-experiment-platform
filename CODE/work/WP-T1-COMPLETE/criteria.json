@@ -1548,6 +1548,80 @@
     "pullback": "VERIFIED",
     "evidence_uri": "evidence://t1/wp-a-dev-20260930-01",
     "interpretation": "infrastructure failure only; no experimental outcomes were produced"
+   },
+   {
+    "run_id": "wp-a-dev-20260930-02",
+    "release_id": "2107e405fd2026789b33e9faa91a485458e47417-9ac0c26cf64d894f4f9212da460cc390d6276c4ebc64aaf0d193fc4e2b1c0f06",
+    "release_artifact_sha256": "0b8cddc6eba8c8befa0f72e2fe8e6131d8384b879747ce881c2ebca82e23e2c0",
+    "source_git_commit": "2107e405fd2026789b33e9faa91a485458e47417",
+    "source_tree_sha256": "9ac0c26cf64d894f4f9212da460cc390d6276c4ebc64aaf0d193fc4e2b1c0f06",
+    "runtime_contract_sha256": "b3b548fdba7f364d5f48ed0bcc5c77ca667f6bd4ad2c463844eca8a18923e5d0",
+    "contract_sha256": "791d28375d2459e5d5c19bbdde87a4642545bbc07e6c901084d148ea0429f5c9",
+    "execution_chain_sha256": "b87cc4f73ad6292edc708fc0b842ae6d2b64cc100cecbc9c618866f566fdee42",
+    "bundle_fingerprint": "79f6aeb11796d53096021f7b2b8da1ad3ea489b44b43166aa2d5b9f856933145",
+    "run_status": "failed",
+    "suite_status": "FAILED_CELLS",
+    "suite_cells_planned": 13,
+    "suite_cells_executed": 13,
+    "suite_cells_ok": 5,
+    "suite_cells_timed_out": 8,
+    "suite_cells_error": 0,
+    "suite_cells_predicate_failed": 0,
+    "started_at": "2026-09-30T11:52:40+00:00",
+    "finished_at": "2026-09-30T12:10:21+00:00",
+    "vm_wall_seconds": 1061,
+    "simulator_call_upper_bound": 78,
+    "simulator_call_budget": 80,
+    "actual_inner_simulator_calls": "not separately instrumented; do not report the estimate as an observed count",
+    "cell_wall_budget_seconds": 120,
+    "timeout_cells": [
+     "b-asymmetric_multiod_fixed_hotspot-branch-seed-7",
+     "b-asymmetric_multiod_fixed_hotspot-network-seed-7",
+     "b-asymmetric_multiod_fixed_hotspot-benchmark-seed-7",
+     "b-asymmetric_multiod_fixed_hotspot-execution-modes-seed-7",
+     "b-asymmetric_multiod_fixed_hotspot-modes-n1-s001-p05-seed-7",
+     "b-asymmetric_multiod_fixed_hotspot-modes-n2-s001-p05-seed-7",
+     "b-asymmetric_multiod_fixed_hotspot-network-seed-11",
+     "b-asymmetric_multiod_fixed_hotspot-execution-modes-seed-11"
+    ],
+    "timeout_cells_with_result_artifacts": [
+     "b-asymmetric_multiod_fixed_hotspot-execution-modes-seed-7",
+     "b-asymmetric_multiod_fixed_hotspot-modes-n1-s001-p05-seed-7",
+     "b-asymmetric_multiod_fixed_hotspot-modes-n2-s001-p05-seed-7"
+    ],
+    "negative_control": {
+     "a0_smoke_gate": "PASSED",
+     "arms": ["stale", "now", "common", "candidate"],
+     "per_arm_offered_admitted_delivered": [31, 31, 28],
+     "per_arm_forward_decisions": 62,
+     "per_arm_satellites_that_decided": 3,
+     "per_arm_reordered_decisions": 45,
+     "per_arm_in_system_at_stop": 3,
+     "same_fate_partition_all_arms": true
+    },
+    "competitive_scenario_admission": "NOT_COMPUTABLE",
+    "h1_time_alignment": "NOT_COMPUTABLE; branch-alignment and multi-OD four-arm network cells timed out without result artifacts",
+    "h2_execution_modes": "partial development diagnostics; three of five pressure cells have outer cell status ok, with one seed",
+    "mode_rows_rederived": 35,
+    "timed_out_mode_result_policy": "retained as partial rows with outer_cell_status=timeout; not promoted to successful cells",
+    "deadline_primary_loss": "NOT_COMPUTABLE from current reduced run outputs; do not treat DATA_DEADLINE_EXPIRED=0 as a D=30 result",
+    "mode_fate_partitions_exact": true,
+    "confirm_seeds_run": false,
+    "formal_run": false,
+    "training_run": false,
+    "canonical_receipt_sha256": "d21e12e3dc304e72e2a7c7f9e35e17f6461251dc296ce28f2cd2d0e68e82c8d4",
+    "receipt_file_sha256": "569082aa525ecfe7773d7924ed5e4ed96d6fd97ae305302717a641d319a1f6d5",
+    "run_manifest_sha256": "58b2ff50cf99fbcb180df23407ff0af87d0ab75d087aa48412d872ab6713e0c9",
+    "archive_sha256": "0650799be4d6e7df1bdcff0a41e9b4fabb26250b40a85cbb04c37282acd04ecb",
+    "pullback": "VERIFIED",
+    "evidence_uri": "evidence://t1/wp-a-dev-20260930-02",
+    "derived_artifacts": {
+     "mode-summary.csv": "8ba19b4c657b2d496d7b3c6f61dabce0110618400f5fbd01b1221478834e3ae1",
+     "negative-control-arms.csv": "c3cbdb093490e3cecb1c90d59243c66cc391746f0c957e750b9895f21bd1c14d",
+     "pressure-tradeoff.svg": "d1f09f0622327d6abc4beb9876301ebfa3f545055b4e8ac4973295f7241c031c",
+     "provenance.json": "5f47061335148e32afd0518f4b7943cc2d81fb529a409d19783afb10b2007b4d"
+    },
+    "interpretation": "A0 smoke and five-mode negative control passed. The competitive workload is not admissible from available branch/network results; pressure outcomes are exploratory and incomplete, not a confirmatory effect."
    }
   ],
   "pre_run_technical_fixes": [
@@ -1571,6 +1645,18 @@
      "budget": 80,
      "confirmed_unchanged": true
     }
+   }
+  ],
+  "post_run_technical_fixes": [
+   {
+    "source_commit_under_test": "2107e405fd2026789b33e9faa91a485458e47417",
+    "path": "CODE/experiment_platform/t1_tasks.py::_arm_row",
+    "defect": "the derived outcome admission count searched for packet_events.kind == packet_admitted, while the kernel defines admission at satellite_ingress and exposes admitted_at_satellite_ingress_packets",
+    "observed_raw_run_effect": "the negative-control four-arm outcome.admitted field is 0 although each arm's canonical congestion metric reports 31 admitted packets; network behavior, fate ledger, and A0 gate were unchanged",
+    "fix": "read the canonical congestion_metrics.admitted_at_satellite_ingress_packets count",
+    "regression_test": "CODE/experiment_platform/tests/test_t1_tasks.py::test_all_four_arms_really_run_the_network",
+    "verification": "test_benchmark_decision.py + test_t1_tasks.py: 42 passed; two A0 smoke/cost tests: 2 passed; no VM rerun due stop-on-timeout/budget policy",
+    "effect_on_run_02": "post-hoc raw result extraction uses the canonical count; release/run identity remains 2107e405... and is not represented as rerun under the fix"
    }
   ]
  },
