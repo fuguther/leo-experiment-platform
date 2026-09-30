@@ -1660,5 +1660,34 @@
    }
   ]
  },
- "work_id": "WP-T1-COMPLETE"
+ "internal_review": {
+    "date": "2026-09-30",
+    "reviewer_count": 1,
+    "reviewer_scope": "read-only implementation/evidence and research/statistics review",
+    "frozen_source_commit": "d489f1b804cc9346131999a79ccc21969feff43e",
+    "vm_source_commit": "2107e405fd2026789b33e9faa91a485458e47417",
+    "run_id": "wp-a-dev-20260930-02",
+    "release_id": "2107e405fd2026789b33e9faa91a485458e47417-9ac0c26cf64d894f4f9212da460cc390d6276c4ebc64aaf0d193fc4e2b1c0f06",
+    "receipt_file_count_verified": 61,
+    "receipt_file_hashes_and_sizes_match": true,
+    "manifest_and_derived_hashes_match": true,
+    "independent_arithmetic": {
+      "precomputed_delivered_partition": "319 + 272 + 193 = 784",
+      "precomputed_delivery_fraction": 0.406887755,
+      "query_service_total_s": 0.062467
+    },
+    "findings": [
+      "No mismatch found among receipt, manifest, raw result and derived artifact identities.",
+      "The four-arm admission derivation defect is present in the run-source identity and correctly described as fixed after the run; no VM rerun is claimed.",
+      "Timeout cells with partial result files remain outer timeout in the report and derived table.",
+      "H1/A2 are not computable; H2 remains descriptive for three completed single-seed pressure cells; D=30 primary loss is not computable."
+    ],
+    "review_note": "Reviewer questioned operational clarity of hypothesis decision rules. criteria.json does predeclare H1/H2 claims and falsifiers, primary comparisons, and contract_dev_a.yaml freezes the main loss, minimum substantive difference, sensitivity thresholds, and paired-block rule. Support/refute/inconclusive wording could be made more explicit in a future contract; this does not alter this run's NOT_COMPUTABLE/descriptive classifications.",
+    "initial_navigation_note": "Reviewer briefly read only the main topic checkout's read-only status information, then stopped after correction. All subsequent review used the specified d489 worktree and evidence paths; no files were modified, no tests or VM actions were performed.",
+    "limitations": [
+      "Single reviewer only; not a two-person independent review.",
+      "Full precomputed lifecycle cost, control bytes, and per-mode VM wall time are unavailable in this run; no total-cost ranking is claimed."
+    ]
+  },
+  "work_id": "WP-T1-COMPLETE"
 }

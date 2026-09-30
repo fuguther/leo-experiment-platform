@@ -81,3 +81,4 @@ report -> run_status ok；common_strong.frozen = False（诚实：开发块配�
 - 运行后发现四臂派生表将 admitted 记成 0；规范 `congestion_metrics` 对应值为 31。源代码已改为读取规范 satellite-ingress 计数并增加反例断言；该报告字段缺陷没有改变内核轨迹或 run02，修复代码未在 VM 重跑。新增只读重算脚本可校验 run/receipt/result 哈希并生成 35 行结果表、四臂校验表和 SVG；细节及边界见 `REPORT.md` 的本轮章节。
 - 修复后的本机定向测试：`test_benchmark_decision.py` + `test_t1_tasks.py` 42 passed；两个 A0 smoke/预算测试 2 passed。一次较宽测试在 439.93 s 时中止，已有 76 passed，不是全量通过。更早 1,494 passed / 8 skipped / 1 warning 全仓库结果早于 TMPDIR 修复。
 - `criteria.json`、本报告和派生证据保留超时、哈希、分母、删失与成本数据。confirm seeds、FORMAL_RUN 和训练均未执行；不声称科研确认、星载时延、能耗或预计算完整生命周期成本。若另开 B 包，须先由主控集中验收，并另行冻结期限指标可计算的设计和预算；本包不继续消耗 VM 额度。
+- 独立只读审查以 d489 源码提交和 run02 精确身份核对了 61 个回执文件及派生结果，未发现哈希/算术不一致；单人审查兼顾实现证据与研究统计，非双人复核。判定规则有轻度措辞可操作性改进项，详见 `REPORT.md`。
