@@ -108,6 +108,42 @@ def test_action_log_effective_query_requires_finite_time_and_named_resource():
         "resource_valid"] is False
 
 
+def test_routing_audit_log_keeps_four_way_decisions_and_attempts():
+    direction_audit = {
+        "schema": "leo-sim-four-direction-mask/v1",
+        "direction_order": ["N", "E", "S", "W"],
+        "final_legal_mask": {d: d == "E" for d in ("N", "E", "S", "W")},
+    }
+    row = {
+        "t": 1.3, "t_decision_start": 1.0, "decision_id": 4,
+        "pid": 9, "sat": 2, "kind": "forward", "candidates": ["E"],
+        "chosen": "E", "four_direction_audit": direction_audit,
+        "observation_at_start": {
+            "mode": "frozen", "source": "frozen_snapshot_before_compute",
+            "t_observed": 1.0, "candidate_resources": {"E": {"peer": 3}},
+            "time_alignment": {"query_targets": {"E": 1.5}},
+        },
+        "estimate_at_start": {"truth_used": False},
+    }
+    attempt = {
+        "milestone": "decision_attempt", "at": 2.0, "pid": 10,
+        "decision_id": 5, "action": "hold",
+        "four_direction_audit": {**direction_audit,
+                                  "decision_kind": "hold"},
+        "reason": "temporarily_unavailable",
+    }
+
+    log = t1_tasks._routing_audit_log([row], [attempt])
+
+    assert log["decision_record_count"] == 1
+    assert log["decision_records"][0]["four_direction_audit"][
+        "direction_order"] == ["N", "E", "S", "W"]
+    assert log["decision_records"][0]["observation_at_start"][
+        "time_alignment"] == {"query_targets": {"E": 1.5}}
+    assert log["attempt_record_count"] == 1
+    assert log["attempt_records"][0]["reason"] == "temporarily_unavailable"
+
+
 # ---------------------------------------------------------- the sampler
 def test_the_sampler_takes_an_even_stride_over_eligible_ids():
     eligible = [{"decision_id": i} for i in range(10, 34)]
@@ -205,6 +241,31 @@ def test_all_four_arms_really_run_the_network():
         assert row["outcome"]["admitted"] == metrics[
             "admitted_at_satellite_ingress_packets"]
         assert row["outcome"]["delivered"] == metrics["delivered_packets"]
+        per_packet = row["network_outcome"]["packet_outcomes"]
+        assert len(per_packet) == len(rows)
+        assert row["network_outcome"]["packet_outcomes_sha256"]
+        assert row["outcome"]["delivered_bits"] == sum(
+            item["bits"] for item in per_packet
+            if item["fate"] == "DELIVERED")
+        assert row["outcome"]["delivered_bits"] > 0
+        assert row["network_outcome"]["payload"]["status"] == "COMPUTED"
+
+
+def test_four_arm_deadline_metric_keeps_each_packet_fate_and_censor_bounds():
+    resolved, rows, geometry, source = _scenario("contention")
+    document = t1_tasks.network_alignment(
+        resolved, rows, geometry, source, deadline_s=30.0,
+        window=(0.0, 30.0))
+    assert document["deadline"]["deadline_s"] == 30.0
+    for arm in document["arms"]:
+        outcome = arm["network_outcome"]
+        packets = outcome["packet_outcomes"]
+        assert [row["pid"] for row in packets] == sorted(
+            row["packet_id"] for row in rows)
+        assert all(row["trace_sha256"] for row in packets)
+        assert all("delivery_time_s" in row and "fate" in row
+                   and "observation_end_s" in row for row in packets)
+        assert "lower_mean" in outcome["deadline_primary_loss"]
 
 
 def test_the_arm_is_switched_on_even_when_the_base_config_had_it_off():
@@ -314,7 +375,8 @@ def test_trace_build_uses_writable_temp_storage_outside_readonly_release(
 @pytest.mark.parametrize("task", t1_tasks.TASK_TYPES)
 def test_one_driver_serves_all_three_task_types(task):
     resolved, rows, geometry, source = _scenario()
-    kwargs = {"deadline_s": 20.0} if task == "branch_alignment" else {}
+    kwargs = ({"deadline_s": 20.0, "window": (5.0, 20.0)}
+              if task == "branch_alignment" else {})
     document = t1_tasks.run_task(task, resolved, rows, geometry, source,
                                  **kwargs)
     assert document["task"] == task
@@ -323,6 +385,9 @@ def test_one_driver_serves_all_three_task_types(task):
     assert document["identity"]
     assert document["driver_schema"]
     assert document["limits"]
+    if task == "branch_alignment":
+        assert document["document"]["measurement_window"]["start_s"] == 5.0
+        assert document["document"]["measurement_window"]["end_s"] == 20.0
 
 
 def test_a_failed_sub_run_is_recorded_and_not_wrapped_as_success(monkeypatch):

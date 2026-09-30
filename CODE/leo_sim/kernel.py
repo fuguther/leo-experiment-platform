@@ -43,6 +43,8 @@ from __future__ import annotations
 
 import math
 import hashlib
+import json
+import os
 import time
 from collections import deque
 from pathlib import Path
@@ -851,6 +853,7 @@ class ISLLink:
         self.k._metric_queue_enter(pkt, "isl", f"isl:{self.sat}:{self.peer}",
                                    decision_id=pkt.decision_id,
                                    backlog_before=backlog)
+        self.k._record_isl_queue_state(self, "enqueue_data", pid=pkt.pid)
         self.k._poke(self.wake)
 
     def put_ctrl(self, pkt: ControlPacket) -> None:
@@ -879,6 +882,8 @@ class ISLLink:
         self.ctrl_q.append(pkt)
         self.ctrl_bits += pkt.bits
         self.ctrl_area.add(pkt.bits, self.k.env.now)
+        self.k._record_isl_queue_state(self, "enqueue_control",
+                                       control_iid=pkt.iid)
         self.k._poke(self.wake)
 
     def _is_drained(self) -> bool:
@@ -1021,6 +1026,10 @@ class ISLLink:
             self._svc = (k.env.now, occ)
             self._svc_phase = "waiting_for_link"
             self._tx_started_at = None
+            k._record_isl_queue_state(
+                self, "dequeue_for_service",
+                pid=(None if is_ctrl else pkt.pid),
+                control_iid=(pkt.iid if is_ctrl else None))
             outcome = yield k.env.process(
                 k._transmit(dur, pkt, ("isl", self.sat, self.peer, self.ge),
                             occ, owner=self, rate_fn=rate_fn,
@@ -1029,6 +1038,11 @@ class ISLLink:
             self._svc_phase = None
             self._tx_started_at = None
             self.current = None
+            k._record_isl_queue_state(
+                self, "service_exit",
+                pid=(None if is_ctrl else pkt.pid),
+                control_iid=(pkt.iid if is_ctrl else None),
+                outcome=outcome)
             if outcome == "stalled":
                 if is_ctrl:
                     self.ctrl_q.appendleft(pkt)
@@ -1040,6 +1054,8 @@ class ISLLink:
                     self.data_area.add(pkt.bits, k.env.now)
                     self.k._metric_queue_enter(
                         pkt, "isl", f"isl:{self.sat}:{self.peer}")
+                    self.k._record_isl_queue_state(
+                        self, "requeue_stalled_data", pid=pkt.pid)
                 if k.env.now >= k.horizon:
                     break
                 yield self.wake
@@ -1082,6 +1098,8 @@ class ISLLink:
                         reason="CONTROL_EXPIRED", left_queue="expired")
                 self.ctrl_bits -= pkt.bits
                 self.ctrl_area.remove(pkt.bits, now)
+                self.k._record_isl_queue_state(
+                    self, "drop_expired_control", control_iid=pkt.iid)
                 self.k._fail(pkt, "CONTROL_EXPIRED")
             else:
                 kept_ctrl.append(pkt)
@@ -1091,6 +1109,8 @@ class ISLLink:
             if pkt.deadline is not None and now >= pkt.deadline:
                 self.data_bits -= pkt.bits
                 self.data_area.remove(pkt.bits, now)
+                self.k._record_isl_queue_state(
+                    self, "drop_expired_data", pid=pkt.pid)
                 self.k._fail(pkt, "DATA_DEADLINE_EXPIRED")
             else:
                 kept_data.append(pkt)
@@ -1405,6 +1425,8 @@ class Kernel:
         self.topo = routing.build_topology(
             self.geometry, self.num_sats, self.cfg_links["isl_dirs"],
             t=0.0 if self.cfg_topo["recompute_interval_s"] is not None else None)
+        self.topology_trace = []
+        self._record_topology_snapshot("initial")
         self._build_routing_structures()
 
         # per-satellite state
@@ -1596,6 +1618,62 @@ class Kernel:
     def _poke(self, event):
         if not event.triggered:
             event.succeed()
+
+    def _record_topology_snapshot(self, reason: str) -> None:
+        """Record the actual directed peer map at a topology transition."""
+        if self.decision_sink is None and self.timeline_sink is None:
+            return
+        self.topology_trace.append({
+            "at": float(self.env.now),
+            "reason": reason,
+            "num_satellites": self.num_sats,
+            "direction_order": ["N", "E", "S", "W"],
+            "peer_by_satellite": {
+                str(sat): {direction: peer
+                          for direction, peer in sorted(
+                              self.topo.get(sat, {}).items())}
+                for sat in range(self.num_sats)},
+        })
+
+    def _record_isl_queue_state(self, link: ISLLink, event: str, *,
+                                pid=None, control_iid=None, outcome=None):
+        """Exact post-transition queue/in-service state for offline replay."""
+        if self.timeline_sink is None:
+            return
+        current = link.current
+        current_is_control = isinstance(current, ControlPacket)
+        row = {
+            "milestone": "queue_state",
+            "at": float(self.env.now),
+            "event": str(event),
+            "pid": None,
+            "trigger_pid": pid,
+            "control_iid": control_iid,
+            "resource_id": f"isl:{link.sat}:{link.peer}",
+            "resource_kind": "isl_egress",
+            "sat": int(link.sat),
+            "direction": str(link.dir),
+            "peer": int(link.peer),
+            "generation": int(link.gen),
+            "retired": bool(link.retired),
+            "queued_data_bits": int(link.data_bits),
+            "queued_control_bits": int(link.ctrl_bits),
+            "queued_bits": int(link.data_bits + link.ctrl_bits),
+            "queued_data_packets": len(link.data_q),
+            "queued_control_packets": len(link.ctrl_q),
+            "in_service": current is not None,
+            "in_service_kind": ("control" if current_is_control else
+                                "data" if current is not None else None),
+            "in_service_pid": (None if current is None or current_is_control
+                                else int(current.pid)),
+            "in_service_control_iid": (int(current.iid)
+                                        if current_is_control else None),
+            "in_service_bits": (int(current.bits)
+                                if current is not None else 0),
+            "in_service_phase": link._svc_phase,
+            "outcome": outcome,
+        }
+        self.timeline_sink.append(row)
 
     def _link_rate(self, kind: str, t: float, sat: int,
                    peer: int | None = None, ep=None) -> float:
@@ -1891,6 +1969,9 @@ class Kernel:
             "kind": "delivered", "pid": pkt.pid,
             "at": float(self.env.now),
         })
+        if self.timeline_sink is not None:
+            self._timeline("packet_fate", pkt, pkt.decision_id,
+                           fate="DELIVERED")
 
     def _build_routing_structures(self):
         self._routing_reverse_adj = routing._reverse_adj(self.topo)
@@ -2197,6 +2278,8 @@ class Kernel:
                         pkt.learning_reward = None
                         self.mech["learning_discarded_at_rematch"] += 1
                     self._hold_packet(s, pkt)
+                    self._record_isl_queue_state(
+                        link, "rematch_to_holding", pid=pkt.pid)
                 link.retired = True
                 # wake a sleeping server so a fully drained link releases
                 # its direction slot immediately instead of dozing forever
@@ -2214,6 +2297,7 @@ class Kernel:
                     self._isl_dyn_created += 1
             self.isls[s] = new_links
         self.topo = new_topo
+        self._record_topology_snapshot("recompute")
         self._build_routing_structures()
         self._state_version += 1
         self.mech["topo_recomputes"] += 1
@@ -2811,6 +2895,12 @@ class Kernel:
                 owner._tx_started_at = t0
                 if rate_fn is not None:
                     owner._service_rate_bps = rate
+                if link_ref[0] == "isl":
+                    self._record_isl_queue_state(
+                        owner, "transmission_start",
+                        pid=(pkt.pid if isinstance(pkt, DataPacket) else None),
+                        control_iid=(pkt.iid
+                                     if isinstance(pkt, ControlPacket) else None))
             if rate_fn is not None:
                 self.mech["mcs_rate_samples"] += 1
                 rate_bps = int(round(rate))
@@ -4536,7 +4626,8 @@ class Kernel:
                          decision_id: int | None = None,
                          decision_started_at: float | None = None,
                          observation: dict | None = None,
-                         ta_audit: dict | None = None) -> None:
+                         ta_audit: dict | None = None,
+                         direction_audit: dict | None = None) -> None:
         """Append one per-hop decision snapshot to the optional decision sink.
 
         Output only: never influences routing, learning, timing, or fates.
@@ -4601,6 +4692,15 @@ class Kernel:
         if estimate_reason is not None:
             observation_record = dict(observation_record)
             observation_record["estimate_unavailable_reason"] = estimate_reason
+        if direction_audit is None:
+            direction_audit = observation_record.get("four_direction_audit")
+        if direction_audit is None:
+            direction_audit = self._four_direction_audit(
+                pkt, sat, committed_at, route_candidates=considered,
+                loop_free_candidates=considered, legal=candidates,
+                kind=kind, ta_audit=ta_audit)
+        observation_record = dict(observation_record)
+        observation_record["four_direction_audit"] = direction_audit
         truth_at_commit = {
             "schema": "leo-sim-truth-at-commit/v1",
             "t_observed": committed_at,
@@ -4638,6 +4738,7 @@ class Kernel:
             # simulation reads none of them.
             "obs_mode": obs_mode,
             "observation_at_start": observation_record,
+            "four_direction_audit": direction_audit,
             "estimate_at_start": estimate,
             "truth_at_commit": truth_at_commit,
         })
@@ -5162,6 +5263,143 @@ class Kernel:
                 legal.append(d)
         return legal
 
+    def _four_direction_audit(self, pkt: DataPacket, sat: int, now: float, *,
+                              route_candidates=(), loop_free_candidates=(),
+                              legal=(), route_status=None, kind="forward",
+                              ta_audit=None) -> dict:
+        """Describe N/E/S/W masks using the same gates as the live router.
+
+        This is output-only. It records physical feasibility separately from
+        route-policy, loop, queue-room and final candidate masks; it never
+        changes or chooses a route. GE state is not an admission filter in the
+        platform and is checked by the real link-service path instead.
+        """
+        directions = ("N", "E", "S", "W")
+        route = set(route_candidates or ())
+        loop_free = set(loop_free_candidates or ())
+        legal_set = set(legal or ())
+        peers = self.topo.get(int(sat), {})
+        details = {}
+        for direction in directions:
+            peer = peers.get(direction)
+            link = self.isls[int(sat)].get(direction)
+            connected = peer is not None and link is not None
+            geometry_up = False
+            rate_bps = None
+            rate_ok = False
+            queue_room = False
+            if connected:
+                geometry_up = (
+                    not self.cfg_links["geometry_loss"]
+                    or self.geometry.isl_available(int(sat), int(peer), now))
+                rate_bps = self._link_rate(
+                    "isl", now, int(sat), peer=int(peer))
+                rate_ok = bool(rate_bps > 0)
+                queue_room = bool(link.room(pkt.bits))
+            physical = bool(connected and geometry_up and rate_ok)
+            routing_attempt = kind in ("forward", "hold", "fail")
+            final = bool(routing_attempt and route_status in (None, "ok")
+                         and direction in route
+                         and direction in loop_free and physical and queue_room)
+            reasons = []
+            if not routing_attempt:
+                reasons.append("not_a_forward_decision")
+            elif not connected:
+                reasons.append("no_current_neighbor")
+            else:
+                if route_status not in (None, "ok"):
+                    reasons.append("router_status:" + str(route_status))
+                if direction not in route:
+                    reasons.append("routing_policy_excluded")
+                if direction in route and direction not in loop_free:
+                    reasons.append("loop_to_visited_satellite")
+                if not geometry_up:
+                    reasons.append("geometry_unavailable")
+                if not rate_ok:
+                    reasons.append("zero_or_unavailable_rate")
+                if not queue_room:
+                    reasons.append("insufficient_queue_room")
+            details[direction] = {
+                "peer": (None if peer is None else int(peer)),
+                "connected": bool(connected),
+                "resource_id": (None if not connected
+                                else f"isl:{int(sat)}:{int(peer)}"),
+                "generation": (None if link is None else int(link.gen)),
+                "route_candidate": direction in route,
+                "loop_free_candidate": direction in loop_free,
+                "geometry_up": geometry_up,
+                "rate_bps": float(rate_bps) if rate_bps is not None else None,
+                "rate_legal": rate_ok,
+                "physical_legal": physical,
+                "queue_room": queue_room,
+                "queue_bits_before": (None if link is None
+                                      else int(link.data_bits + link.ctrl_bits)),
+                "queue_capacity_bits": int(self.cfg_links["isl_queue_bits"]),
+                "final_legal": final,
+                "filter_reasons": reasons,
+                "candidate_score": ((ta_audit or {}).get("scores") or {}).get(
+                    direction),
+            }
+        final_mask = {direction: details[direction]["final_legal"]
+                      for direction in directions}
+        return {
+            "schema": "leo-sim-four-direction-mask/v1",
+            "t_observed": float(now),
+            "sat": int(sat),
+            "route_status": route_status,
+            "decision_kind": kind,
+            "direction_order": list(directions),
+            "four_direction_peer_map": {
+                direction: (None if peers.get(direction) is None
+                            else int(peers[direction]))
+                for direction in directions},
+            "route_candidates": [d for d in directions if d in route],
+            "loop_free_candidates": [d for d in directions if d in loop_free],
+            "committed_legal_directions": list(legal or ()),
+            "route_candidate_mask": {
+                direction: direction in route for direction in directions},
+            "loop_free_mask": {
+                direction: direction in loop_free for direction in directions},
+            "physical_legal_mask": {
+                direction: details[direction]["physical_legal"]
+                for direction in directions},
+            "queue_room_mask": {
+                direction: details[direction]["queue_room"]
+                for direction in directions},
+            "final_legal_mask": final_mask,
+            "final_mask_matches_committed_set": (
+                kind not in ("forward", "hold", "fail")
+                or {d for d, value in final_mask.items() if value} == legal_set),
+            "filter_reason_by_direction": {
+                direction: list(details[direction]["filter_reasons"])
+                for direction in directions},
+            "candidate_details": details,
+            "availability_semantics": {
+                "geometry_loss": bool(self.cfg_links["geometry_loss"]),
+                "rate_model": str(self.rate_model),
+                "queue_room_in_final_mask": True,
+                "ge_is_checked_at_link_service_not_candidate_admission": True,
+            },
+        }
+
+    def _timeline_decision_attempt(self, pkt, sat, decision_id, action,
+                                   route_status, four_direction_audit,
+                                   reason=None):
+        if self.timeline_sink is None:
+            return
+        self.timeline_sink.append({
+            "milestone": "decision_attempt",
+            "at": float(self.env.now),
+            "pid": int(pkt.pid),
+            "decision_id": decision_id,
+            "sat": int(sat),
+            "dst": str(pkt.dst),
+            "action": action,
+            "route_status": route_status,
+            "reason": reason,
+            "four_direction_audit": four_direction_audit,
+        })
+
     def _observe_preferred_action(self, pkt: DataPacket, sat: int) -> dict:
         """Observation + inference half of the frozen mode: decide what to do
         from the state visible NOW, committing nothing.
@@ -5178,6 +5416,7 @@ class Kernel:
         if self._deliver_legal_now(pkt, sat, now):
             kind, action = "deliver", "deliver"
             legal, cands, status = ["deliver"], ["deliver"], "ok"
+            route_candidates, loop_free_candidates = [], []
             ta_audit = None
             chosen = self._fixed_policy_action(pkt, sat, legal)
             if chosen is not None:
@@ -5198,7 +5437,9 @@ class Kernel:
                         prop_s * model.C_KM_S, self.rf_isl, self.mcs_table))
                     if self.rate_model == "mcs" else None),
                 cache_hops=None)
+            route_candidates = list(cands)
             cands = [d for d in cands if self.topo[sat][d] not in pkt.path]
+            loop_free_candidates = list(cands)
             cands, ta_audit = self._time_aligned_order(pkt, sat, now, cands,
                                                        own_q)
             legal = self._forward_legal_now(pkt, sat, now, cands)
@@ -5218,6 +5459,10 @@ class Kernel:
             source="frozen_snapshot_before_compute",
             own_queue_bits=own_q, considered=cands, legal=legal,
             status=status, kind=kind, action=action, ta_audit=ta_audit)
+        observation["four_direction_audit"] = self._four_direction_audit(
+            pkt, sat, now, route_candidates=route_candidates,
+            loop_free_candidates=loop_free_candidates, legal=legal,
+            route_status=status, kind=kind, ta_audit=ta_audit)
         estimate, estimate_reason = self._estimate_at_start(
             pkt, sat, now, action, kind)
         return {"t_observe": now, "kind": kind, "action": action,
@@ -5345,9 +5590,19 @@ class Kernel:
                            prev_decision_id=pkt.decision_id, sat=int(sat),
                            obs_mode=self.obs_mode)
         if pkt.deadline is not None and now >= pkt.deadline:
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, "fail", "DATA_DEADLINE_EXPIRED",
+                self._four_direction_audit(
+                    pkt, sat, now, route_status="deadline_expired", kind="fail"),
+                "deadline_expired_before_routing")
             self._fail(pkt, "DATA_DEADLINE_EXPIRED", decision_id=decision_id)
             return
         if len(pkt.path) > self.cfg_rt["max_hops"]:
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, "fail", "MAX_HOPS",
+                self._four_direction_audit(
+                    pkt, sat, now, route_status="max_hops", kind="fail"),
+                "maximum_hops_exceeded")
             self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             return
         ep = self._ensure_endpoint(pkt.dst)
@@ -5383,6 +5638,12 @@ class Kernel:
                         self._schedule_pending_wake(sat, nxt_up)
                 if pkt.deadline is not None:
                     self._schedule_pending_wake(sat, pkt.deadline)
+                self._timeline_decision_attempt(
+                    pkt, sat, decision_id, "hold", "deliver_mcs_unavailable",
+                    self._four_direction_audit(
+                        pkt, sat, now,
+                        route_status="deliver_mcs_unavailable", kind="deliver"),
+                    "downlink_zero_mcs_rate")
                 self._hold_packet(sat, pkt, decision_id=decision_id)
                 return
             dl = self.downlinks[sat]
@@ -5405,6 +5666,11 @@ class Kernel:
                                       decision_started_at=decision_started_at)
                 dl.put(pkt)
             else:
+                self._timeline_decision_attempt(
+                    pkt, sat, decision_id, "fail", "ACCESS_QUEUE_OVERFLOW",
+                    self._four_direction_audit(
+                        pkt, sat, now, route_status="deliver_queue_full",
+                        kind="deliver"), "downlink_queue_overflow")
                 self._fail(pkt, "ACCESS_QUEUE_OVERFLOW",
                            decision_id=decision_id)
             return
@@ -5437,10 +5703,30 @@ class Kernel:
                 if self.rate_model == "mcs" else None),
             cache_hops=cache_hops)
         if status == "unreachable":
+            direction_audit = self._four_direction_audit(
+                pkt, sat, now, route_candidates=cands,
+                loop_free_candidates=cands, legal=[], route_status=status,
+                kind="fail")
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, "fail", status, direction_audit,
+                "no_policy_route")
             self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             return
         if status == "no_info":
             if not self.cfg_cp["enabled"] and self.cfg_rt["policy"] != "oracle":
+                no_info_action, no_info_kind = "fail", "fail"
+                no_info_reason = "control_plane_disabled"
+            else:
+                no_info_action, no_info_kind = "hold", "hold"
+                no_info_reason = "no_current_routing_information"
+            direction_audit = self._four_direction_audit(
+                pkt, sat, now, route_candidates=cands,
+                loop_free_candidates=cands, legal=[], route_status=status,
+                kind=no_info_kind)
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, no_info_action, status,
+                direction_audit, no_info_reason)
+            if no_info_kind == "fail":
                 self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             else:
                 if pkt.deadline is not None:
@@ -5449,7 +5735,9 @@ class Kernel:
                                   decision_id=decision_id)  # wait
             return
         # loop avoidance: never forward back onto a satellite already visited
+        route_candidates = list(cands)
         cands = [d for d in cands if self.topo[sat][d] not in pkt.path]
+        loop_free_candidates = list(cands)
         # T1-P5: reorder by the enabled state-time arm; the legality/looping
         # filters below and the commit rules are unchanged, so the four arms
         # differ ONLY in the ordering they feed the same pipeline.
@@ -5490,6 +5778,10 @@ class Kernel:
             if link.room(pkt.bits):
                 legal.append(d)
         if legal:
+            direction_audit = self._four_direction_audit(
+                pkt, sat, now, route_candidates=route_candidates,
+                loop_free_candidates=loop_free_candidates, legal=legal,
+                route_status=status, kind="forward", ta_audit=ta_audit)
             if self.learner is not None or self.fixed_policy is not None:
                 mask = {a: a in legal for a in _learning.ACTIONS}
                 action = self._learning_action(pkt, sat, mask)
@@ -5510,10 +5802,18 @@ class Kernel:
                                   audit_candidates=cands,
                                   decision_id=decision_id,
                                   decision_started_at=decision_started_at,
-                                  ta_audit=ta_audit)
+                                  ta_audit=ta_audit,
+                                  direction_audit=direction_audit)
             self.isls[sat][action].put_data(pkt)
             return
         if unavailable:
+            direction_audit = self._four_direction_audit(
+                pkt, sat, now, route_candidates=route_candidates,
+                loop_free_candidates=loop_free_candidates, legal=[],
+                route_status=status, kind="hold", ta_audit=ta_audit)
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, "hold", status, direction_audit,
+                "current_candidate_temporarily_unavailable")
             if rate_blocked:
                 self.mech["mcs_zero_rate_holds"] += 1
             if pkt.deadline is not None:
@@ -5524,8 +5824,22 @@ class Kernel:
                               decision_id=decision_id)  # unavailable: wait
             return
         if cands:
+            direction_audit = self._four_direction_audit(
+                pkt, sat, now, route_candidates=route_candidates,
+                loop_free_candidates=loop_free_candidates, legal=[],
+                route_status=status, kind="fail", ta_audit=ta_audit)
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, "fail", status, direction_audit,
+                "all_routed_candidates_have_no_queue_room")
             self._fail(pkt, "ISL_QUEUE_OVERFLOW", decision_id=decision_id)
         else:
+            direction_audit = self._four_direction_audit(
+                pkt, sat, now, route_candidates=route_candidates,
+                loop_free_candidates=loop_free_candidates, legal=[],
+                route_status=status, kind="fail", ta_audit=ta_audit)
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, "fail", status, direction_audit,
+                "all_policy_candidates_return_to_visited_satellites")
             self._fail(pkt, "NO_ROUTE",
                        decision_id=decision_id)  # every candidate loops
 
@@ -5656,6 +5970,11 @@ class Kernel:
     # ----------------------------------------------------------------- fates
     def _fail(self, pkt, fate: str, decision_id: int | None = None,
               observation: dict | None = None):
+        if (self.timeline_sink is not None
+                and isinstance(pkt, DataPacket)):
+            # Exact terminal timing for packet-population replay, including
+            # access rejection/overflow before a routing decision exists.
+            self._timeline("packet_fate", pkt, decision_id, fate=fate)
         if self.timeline_sink is not None and decision_id is not None:
             # R8-A7: a failed attempt is still a decision; without this row
             # its decision_id would be consumed and vanish.  The observation
@@ -5887,6 +6206,7 @@ class Kernel:
             "packet_events": list(self.packet_events),
             "link_service_windows": list(self.link_service_windows),
             "link_available_windows": list(self.link_available_windows),
+            "topology_trace": list(self.topology_trace),
             "congestion_metrics": congestion_metrics,
             "handover": {"events": self.handover_events},
             "control": {
@@ -5932,13 +6252,83 @@ class Kernel:
         return result
 
 
-def run_simulation(resolved: dict, rows: list[dict], geometry=None,
-                   learning_out_dir=None, decision_sink=None,
-                   timeline_sink=None, forced_actions=None,
-                   control_audit=False, inference_policy=None) -> dict:
+def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
+                         learning_out_dir=None, decision_sink=None,
+                         timeline_sink=None, forced_actions=None,
+                         control_audit=False, inference_policy=None) -> dict:
     kern = Kernel(resolved, rows, geometry=geometry,
                   learning_out_dir=learning_out_dir,
                   decision_sink=decision_sink, timeline_sink=timeline_sink,
                   forced_actions=forced_actions, control_audit=control_audit,
                   inference_policy=inference_policy)
     return kern.run()
+
+
+_SIMULATION_CALL_SEQUENCE = 0
+
+
+def _write_simulation_call_event(path, event):
+    """Append one flushed event to the optional development run ledger."""
+    payload = (json.dumps(event, sort_keys=True, separators=(",", ":"))
+               + "\n").encode("utf-8")
+    descriptor = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+    try:
+        os.write(descriptor, payload)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def run_simulation(resolved: dict, rows: list[dict], geometry=None,
+                   learning_out_dir=None, decision_sink=None,
+                   timeline_sink=None, forced_actions=None,
+                   control_audit=False, inference_policy=None) -> dict:
+    """Run the kernel and, inside a metered T1 cell, record real call edges.
+
+    The ledger is opt-in so ordinary library use stays unchanged.  A configured
+    ledger is fail-closed: the run does not start if its begin event cannot be
+    persisted, and an end/fail event is flushed before returning to the driver.
+    The outer suite reconciles an unmatched begin as a timeout or interruption.
+    """
+    global _SIMULATION_CALL_SEQUENCE
+    ledger_path = os.environ.get("T1_SIM_CALL_LEDGER")
+    if not ledger_path:
+        return _run_simulation_impl(
+            resolved, rows, geometry=geometry,
+            learning_out_dir=learning_out_dir,
+            decision_sink=decision_sink, timeline_sink=timeline_sink,
+            forced_actions=forced_actions, control_audit=control_audit,
+            inference_policy=inference_policy)
+
+    _SIMULATION_CALL_SEQUENCE += 1
+    sequence = _SIMULATION_CALL_SEQUENCE
+    context = os.environ.get("T1_SIM_CALL_CONTEXT", "unknown")
+    call_id = f"{context}:{sequence:04d}"
+    started_ns = time.perf_counter_ns()
+    common = {"schema": "t1-simulator-call/v1", "call_id": call_id,
+              "sequence": sequence, "context": context}
+    _write_simulation_call_event(
+        ledger_path, dict(common, event="begin", wall_time_ns=time.time_ns(),
+                          monotonic_ns=started_ns, packet_count=len(rows)))
+    try:
+        result = _run_simulation_impl(
+            resolved, rows, geometry=geometry,
+            learning_out_dir=learning_out_dir,
+            decision_sink=decision_sink, timeline_sink=timeline_sink,
+            forced_actions=forced_actions, control_audit=control_audit,
+            inference_policy=inference_policy)
+    except BaseException as exc:
+        ended_ns = time.perf_counter_ns()
+        _write_simulation_call_event(
+            ledger_path, dict(common, event="fail", wall_time_ns=time.time_ns(),
+                              monotonic_ns=ended_ns,
+                              duration_s=(ended_ns - started_ns) / 1e9,
+                              error_type=type(exc).__name__,
+                              error=str(exc)[:1000]))
+        raise
+    ended_ns = time.perf_counter_ns()
+    _write_simulation_call_event(
+        ledger_path, dict(common, event="end", wall_time_ns=time.time_ns(),
+                          monotonic_ns=ended_ns,
+                          duration_s=(ended_ns - started_ns) / 1e9))
+    return result

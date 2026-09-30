@@ -4,14 +4,9 @@
 > 账本：`CODE/work/WP-T1-COMPLETE/STATUS.md`、`criteria.json`、`contract.yaml`
 > 结论分层：IMPLEMENTED / TESTED / DIAGNOSTIC_RUN / FORMAL_RUN。**本报告不含任何 FORMAL_RUN。**
 
-> ### ⚠️ 现状与历史分界（2026-09-28）
-> 本报告的**现行证据只有一处**：文末「VM 执行证据」节，run-id **`t1-final-06572b6`**
-> （HEAD `06572b6`，`identity.git.dirty=false`，执行链 `b7641418…`，acceptance/dev 各 10/10）。
-> 计时 509.8 µs 只能按**确定性评分器的 VM 主机计时**引用：工件 `model_provenance` 已声明
-> `trained_checkpoint_used=false` / `ddqn=false` / `on_board=false`，且被 benchmark 谓词强制。
-> **第 3–8 节是 VM 规则生效之前的本机口径**（工件 `out/t1/**`、acceptance 7 cells、决策计时 p50 34 µs）；
-> 按 `AGENTS.md` §1，这些本机产物自 2026-09-28 起**不得再作为实验证据来源**，其中 34 µs / 73.9 µs 计时已作废。
-> 第 9 节起为两轮独立复审的返工史（R1–R9 @53aeb30、S1–S7 @2330701）与本轮 S8 修复，保留完整历史。
+> ### 现状与历史边界（2026-10-01）
+> WP-A 的最新真实运行仍是历史 run `wp-a-dev-20260930-02`（5 格通过、8 格超时）；主控已裁为 REWORK。B 已完成当前实现回归及合同 compile/validate，正在冻结发布身份，尚无 B 的 VM 模拟结果。本节以后追加 B 的执行身份和结果；既有 run 身份、历史分析与更早的本机口径不倒改。
+> `t1-final-06572b6`、其 509.8 µs 确定性评分器 VM 主机计时以及更早的本机报告仍保留原证据边界；它们不是 B 的运行身份，也不支持 DDQN/星载结论。**第 3–8 节是 VM 规则生效之前的本机口径**，不得再作为新实验来源；第 9 节起的 R/S 审查史保留为历史。
 
 ## 1. 用户问题
 
@@ -788,3 +783,28 @@ CODE/scripts/remote/pull-release-results-remote.sh \
 - 审查确认原始四臂派生字段的 admission 缺陷及其事后修复边界，也确认超时格仍保留 outer timeout。研究结论应维持现有界限：A2/H1 不可计算，H2 只作三格单 seed 描述，期限主损失不可计算；预计算完整生命周期成本、控制字节和逐模式 VM 墙钟不足以判定完整总成本。
 - 审查者提出假设判定规则的可追溯性轻度疑问。复核本账本后，`criteria.json` 已在运行前列出 H1/H2、主比较与各自 falsifier；`contract_dev_a.yaml` 还冻结了 D=30、最小实质差异 0.01、敏感性阈值和配对区组规则。因此“未命名/未冻结”不成立。可改进处是将支持/否定/信息不足的操作性决策句写得更直接；本 run 的 H1 `NOT_COMPUTABLE` 和 H2 描述性分类不受影响。
 - 本次内部审查只有一名审查者，覆盖实现/证据与研究/统计两个方面；不宣称双人独立复核。
+
+## 工作包 B（2026-10-01；当前冻结合同与发布前状态）
+
+### 设计与执行身份
+
+WP-A 的集中验收为 **REWORK**。B 是一份独立开发合同，拥有新场景、D=30 s、OD trace、配对区组和新 release/run 身份，不与 A 的输出拼接或挑选场景。
+
+- **平台关系。** profile `CODE/leo_sim/profiles/t1_dev_regional_multiod.yaml` 使用现有 LEO 仿真内核，24 星、3 轨道面、550 km、53°，保留平台的 N/E/S/W 四邻居动作空间与每步实际合法性 mask；常量 5 Mbps ISL 配置、5 s 拓扑重算、完整控制面和逐跳路由过程继续运行。区域范围只定义三个业务站点（equator、north、west）及其六条有向 OD，路径可穿过区域外卫星，不人为削成 A/B 两条路，也不裁切全网拓扑。
+- **外生业务。** 所有六 OD 由 seed 固定生成并在阶段内共同活跃。阴性对照在 0–20 s 六 OD 各 0.5 pps（1 Mbit/包，总名义 3 Mbps），其余时间观察至 50 s。竞争情景先为六 OD 各 0.5 pps；4–12 s 提升 equator↔north 两条 OD 到 3 pps、其余四条到 1 pps（合计 10 Mbps）；12–16 s 热点转至 north↔west；16–20 s 全部降为 0.5 pps，20 s 停止发流。多个 OD、多个包同时生成、在途、排队，争用真实 ISL 和各星计算池；需求是合成开发流量，不冒充实测数据。
+- **两个研究组。** 四种时间信息臂 stale/now/common/candidate 共享历史快照、逐包真实运行和候选空间；在线只用当时收到的历史，未来真值只用于事后诊断。四臂从同一完整初始全网克隆分别独立演化。第二组对相同 trace/seed 保留 per_packet、per_flow、precomputed、async_point、async_window；成本分开报告前台、查询、后台 job/实际 service/等待及占用范围。
+- **准入规则。** 窗口 [5,20] s。全网四臂各自从完整 `decision_records` 检查 ≥10 个有至少两个合法方向的可比较决策、≥5 个结构定义的非零出口 backlog 竞争点；有效查询覆盖 ≥90%，并核对六个 OD 和实际并发人口。不得按损失、动作赢家或臂排名准入。四个抽样完整快照仅作因果解释，`max_branches=4` 是重演的决策点数，不替代准入计数；有向 N/E/S/W 分支保留平台 mask 与实际轨迹。
+- **期限与统计单位。** 全矩阵 D=30 s，目标人口生成窗 [5,20] s、观测至 50 s。每包期限损失是 `min(delay,D)/D`，终止失败或已观察满 D 未交付记 1；未覆盖 D 的包保留行政删失与界限。全部 offered 为总人口分母，入网另报；源逐包记录必须可重算 delivered、terminal loss、censor 与 fate partition。区组单位为 scenario × trace × seed，包和分支不当独立样本；seed 11/23/42 三区组只支持开发描述，不做显著性结论。阴性对照 seed 7 保留。
+- **预算。** 最终静态编译打包 42 个容器 cell（包括本轮不运行的既有 acceptance/dev-sweep 包）；容器 compile 上限 60。B 实际 tier 只有 9 格、57 个静态内核调用上界：阴性全网 4 + 五模式 5；竞争 seed 11 的四方向分支上界 21 + 全网四臂 4 + 五模式 5；seed 23/42 各 4 + 5。pilot 按合同顺序为 5 格 / 39 次，余下 4 格 / 18 次只在 pilot 结构、人口/期限、调用及成本门通过后于**相同 bundle 与 run 目录** append；pilot 不重跑。失败/pilot 实际调用计入 60 次；B 限 40 格、60 次调用、3600 s 模拟墙钟、120 s/格、单并发。
+- **A+B 墙钟账本。** A run02 的 VM 外层 elapsed 为 1061 s，旧 run 没有内部调用实计器；保守把全部 1061 s 计作 A 已耗墙钟，B 仍硬限 3600 s，保守合计 4661 s ≤ 原累计 7200 s。A 原 78 次静态上界使用最多三个未选出口；完整四方向的事后结构上界修正为 83。它不是 A 实际调用数，也不能由它推出实际超出或低于调用预算。A receipt、运行代码身份和五格/八超时结果均不改写、不重跑。
+
+### 发布前核验（尚无 VM 模拟）
+
+- 本机针对 B 的最新关键回归：回放、结构准入、pilot gate、报告、OD 合成、真实调用账本及四方向审计共 **25 passed in 0.18 s**；修改 Python 文件 `py_compile` 通过。更早完整核心套件 **102 passed in 966.45 s**，早于最后一轮 B gate 与回放改动，不取代上项最新定向测试。
+- 最终静态合同 SHA-256 `dbe2d2636066e394bacecbc1c55e1b50f2b79e078544ebc0595765b8296af9b2`；编译容器 42 格。独立 `t1_suite validate` 输出 `valid=true`，bundle fingerprint `8c27cec33af8dc0b2e90c869d89f931e956af598ac8a5bc1d7989e89b765d337`；B tier 9 格/57 次上界，pilot 5 格/39 次，余下 4 格/18 次。上述皆为本机软件与静态成本证据。
+- 预留新 run-id `wp-b-dev-20261001-01`，部署索引未发现同名使用。当前还没有 B 发布身份/release、VM run、实际模拟调用或 B 模拟墙钟。FORMAL_RUN、确认种子和训练没有启动。
+- **回放交付边界。** `replay.html` 从验证哈希的运行日志生成，整体先展示全区 OD/24 星网络、各臂并发与队列，再可下钻到指定包/卫星四候选 mask、过滤原因、评分与决策时间；共享时钟联动 measurement-received、decision、query target、predicted-use、actual service、propagation 及交付/损失/成本。未来真实资源轨迹显式为事后离线诊断；缺失字段显示缺失，不伪造轨迹。仍未完成/未验证的是 VM 日志生成的最终离线 HTML 与对实际 run 的典型包展示。
+
+### 运行顺序与停止规则
+
+源码提交到本任务分支并推送后，只经 `CODE/scripts/remote/publish-release-remote.sh` 发布精确 clean commit；再经 `run-release-remote.sh` 运行固定 release 与唯一 run-id，`--config` 绑定合同快照。pilot 和余下矩阵复用一个 run，pilot 失败就保留其完整证据并停止，不改合同后重复跑到通过。运行后通过 `pull-release-results-remote.sh` 精确拉回，验证 receipt、manifest、文件集与部署索引；再从原始工件复算 admission、D=30 fate/主损失、执行成本及回放。出现单格失败/超时按合同停止门处理，所有已花调用和模拟秒保留；不把测试通过表述为研究收益，也不启动 confirmation/formal/训练。

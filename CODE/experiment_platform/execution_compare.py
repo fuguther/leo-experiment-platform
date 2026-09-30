@@ -137,7 +137,8 @@ def _mode_config(resolved, mode, overrides=None):
     return config_mod.resolve_config(cfg)
 
 
-def _row_for_mode(base_resolved, rows, geometry, mode, overrides=None):
+def _row_for_mode(base_resolved, rows, geometry, mode, overrides=None, *,
+                  deadline_s=None, window=None, source=None):
     resolved = _mode_config(base_resolved, mode, overrides)
     sink, timeline = [], []
     result = kernel.run_simulation(resolved, rows, geometry=geometry,
@@ -175,14 +176,19 @@ def _row_for_mode(base_resolved, rows, geometry, mode, overrides=None):
     # window is derived from the trace rows (not from the configured duration)
     # once per mode and carried on the row, because every window-scoped number
     # below is uninterpretable without it.
-    measurement_window = outcome_metrics.build_measurement_window(rows)
+    measurement_window = (window if window is not None
+                          else outcome_metrics.build_measurement_window(rows))
     outcome = outcome_metrics.compare_outcome(
         result, timeline, sink, rows, window=measurement_window,
+        deadline_s=deadline_s,
         cost={"service_s": resolved["config"]["execution"]["compute_delay_s"],
               "servers": resolved["config"]["execution"][
                   "compute_servers_per_satellite"]},
         context={"cell": mode, "run_id": mode, "mode": mode,
-                 "config_sha256": resolved["sha256"]})
+                 "config_sha256": resolved["sha256"],
+                 "trace_sha256": ((source or {}).get("trace_sha256")
+                                  or (source or {}).get("rows_digest")
+                                  or _rows_digest(rows))})
     return {
         "mode": mode,
         "config_sha256": resolved["sha256"],
@@ -274,14 +280,17 @@ def _config_diff(left, right):
     return diffs
 
 
-def compare(resolved, rows, geometry, source, modes=MODES, overrides=None):
+def compare(resolved, rows, geometry, source, modes=MODES, overrides=None, *,
+            deadline_s=None, window=None):
     rows_digest = _rows_digest(rows)
     mode_rows = []
     configs = {}
     for mode in modes:
         if mode not in MODES:
             raise ExecutionCompareError(f"unknown execution mode {mode!r}")
-        row = _row_for_mode(resolved, rows, geometry, mode, overrides)
+        row = _row_for_mode(
+            resolved, rows, geometry, mode, overrides,
+            deadline_s=deadline_s, window=window, source=source)
         mode_rows.append(row)
         configs[mode] = _mode_config(resolved, mode, overrides)["config"]
     base_mode = modes[0]
@@ -300,6 +309,12 @@ def compare(resolved, rows, geometry, source, modes=MODES, overrides=None):
                        base_config_sha256=resolved["sha256"],
                        declared_overrides=dict(overrides or {})),
         "fairness": fairness,
+        "deadline": {"deadline_s": (None if deadline_s is None
+                                      else float(deadline_s)),
+                     "population_window_s": (list(window)
+                                             if isinstance(window, tuple)
+                                             else window),
+                     "rule": "one frozen D and population window shared by all five modes"},
         "ddqn": ddqn_status(resolved),
         "modes": mode_rows,
         "units": {"e2e": "seconds", "compute_wait": "seconds",

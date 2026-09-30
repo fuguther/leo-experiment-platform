@@ -541,7 +541,7 @@ def test_the_queue_population_ratio_is_never_the_admitted_packet_ratio():
     result["packet_events"] = [
         e for e in result["packet_events"]
         if not (e["pid"] == 2 and e["kind"] == "satellite_ingress")]
-    result["fates"][2] = "ACCESS_REJECTED"
+    result["congestion_metrics"]["admitted_at_satellite_ingress_packets"] = 5
     doc = om.compare_outcome(result, _timeline(), _sink(), _rows(),
                              window=dict(WINDOW), cost=_cost(), context={})
     net = doc["network_outcome"]
@@ -559,6 +559,96 @@ def test_payload_goodput_uses_the_fixed_window_and_the_delivered_bits():
     assert payload["fixed_window_s"] == 13.5
     assert payload["goodput_bps"] == pytest.approx(1000 / 13.5)
     assert payload["basis"] == "bits_delivered_inside_the_window"
+
+
+def test_packet_rows_bind_trace_delivery_censoring_and_deadline_loss_bounds():
+    rows = [_emitted_row(1, 0.0, 100), _emitted_row(2, 2.0, 200),
+            _emitted_row(3, 4.0, 300), _emitted_row(4, 9.0, 400)]
+    result = dict(_result())
+    result.update({
+        "stop_time_s": 10.0,
+        "packet_events": None,
+        "congestion_metrics": {},
+        "fates": {1: "DELIVERED", 2: "NO_ROUTE", 3: "DELIVERED",
+                  4: "IN_SYSTEM_AT_STOP"},
+        "fate_counts": {"DELIVERED": 2, "NO_ROUTE": 1,
+                        "IN_SYSTEM_AT_STOP": 1},
+        "deliveries": {1: {"delivered_at": 1.0},
+                       3: {"delivered_at": 8.0}},
+    })
+    document = om.compare_outcome(
+        result, [], [], rows, window=(0.0, 9.0), deadline_s=3.0,
+        cost=_cost(), context={"trace_sha256": "trace-sha"})
+    net = document["network_outcome"]
+    packets = {row["pid"]: row for row in net["packet_outcomes"]}
+
+    assert packets[1]["trace_sha256"] == "trace-sha"
+    assert (packets[1]["emit_time_s"], packets[1]["bits"],
+            packets[1]["observation_end_s"], packets[1]["fate"],
+            packets[1]["delivery_time_s"]) == (0.0, 100, 10.0,
+                                                  "DELIVERED", 1.0)
+    loss = packets[1]["deadline_loss"]
+    assert loss["status"] == "COMPUTED"
+    assert loss["value"] == pytest.approx(1 / 3)
+    assert loss["lower_bound"] == pytest.approx(1 / 3)
+    assert loss["upper_bound"] == pytest.approx(1 / 3)
+    assert loss["observed_delay_s"] == 1.0
+    assert loss["missing_field"] is None
+    assert packets[2]["terminal_reason"] == "NO_ROUTE"
+    assert packets[2]["deadline_loss"]["value"] == 1.0
+    assert packets[3]["deadline_loss"]["value"] == 1.0
+    assert packets[4]["delivery_time_s"] is None
+    assert packets[4]["censor_reason"] == "administrative_censoring_at_stop"
+    assert packets[4]["deadline_loss"]["status"] == "INTERVAL_CENSORED"
+    assert packets[4]["deadline_loss"]["lower_bound"] == pytest.approx(1 / 3)
+    assert packets[4]["deadline_loss"]["upper_bound"] == 1.0
+    assert net["counts"]["delivered_bits"] == 400
+    assert net["payload"]["goodput_bps"] == pytest.approx(
+        400 / 9.0)
+    primary = net["deadline_primary_loss"]
+    assert primary["status"] == "PARTIAL_BOUNDS"
+    assert primary["packets"] == 4 and primary["interval_censored"] == 1
+    assert primary["lower_mean"] == pytest.approx(2 / 3)
+    assert primary["upper_mean"] == pytest.approx(5 / 6)
+
+
+def test_packet_result_rejects_duplicate_trace_pids_and_missing_fate_rows():
+    rows = [_emitted_row(1, 0.0, 100), _emitted_row(2, 1.0, 200)]
+    result = dict(_result())
+    with pytest.raises(om.OutcomeMetricsError, match="duplicate packet_id 1"):
+        om.compare_outcome(result, [], [], [rows[0], dict(rows[0])],
+                           deadline_s=3.0)
+
+    result["fates"] = {1: "DELIVERED"}
+    result["deliveries"] = {1: {"delivered_at": 0.5}}
+    result["packet_events"] = None
+    with pytest.raises(om.OutcomeMetricsError, match="missing fate records.*2"):
+        om.compare_outcome(result, [], [], rows, deadline_s=3.0)
+
+
+def test_unfinished_compute_service_is_not_billed_as_completed_service():
+    result = dict(_result())
+    result["stop_time_s"] = 1.05
+    result["packet_events"] = None
+    result["fates"] = {}
+    result["deliveries"] = {}
+    timeline = [
+        {"milestone": "compute_request", "at": 1.0,
+         "compute_job_id": 9, "pid": 1, "sat": 0, "service_s": 0.5},
+        {"milestone": "compute_start", "at": 1.0,
+         "compute_job_id": 9, "pid": 1, "sat": 0},
+    ]
+    cost = om.compare_outcome(result, timeline, [], [],
+                              window=dict(WINDOW), cost=_cost())["total_cost"]
+    job = cost["packet_decisions"]
+
+    assert job["jobs"] == 1 and job["finish_events"] == 0
+    assert job["service_s"] == 0.0
+    assert job["service_s_configured_requested"] == pytest.approx(0.5)
+    assert job["service_s_observed_partial"] == pytest.approx(0.05)
+    assert cost["total"]["service_s"] == 0.0
+    assert cost["pool_occupied_seconds_union_by_satellite"]["0"] == \
+        pytest.approx(0.05)
 
 
 def test_e2e_percentiles_are_linear_interpolation_over_delivered_packets():
@@ -784,7 +874,11 @@ def test_a_missing_field_never_becomes_zero():
 
 
 def test_an_absent_window_is_not_computable_rather_than_assumed():
-    doc = om.compare_outcome(_result(), _timeline(), _sink(), [], window=None,
+    result = dict(_result())
+    result["packet_events"] = None
+    result["fates"] = {}
+    result["deliveries"] = {}
+    doc = om.compare_outcome(result, _timeline(), _sink(), [], window=None,
                              cost=_cost(), context={})
     assert doc["network_outcome"]["window"]["status"] == "NOT_COMPUTABLE"
     assert doc["network_outcome"]["window"]["missing_field"] == "trace_rows"

@@ -101,6 +101,117 @@ def _complete_query_evidence(action):
     return True
 
 
+def _full_network_branch_counts(arm_row, window):
+    """Count multi-legal and queued-alternative decisions from full arm logs."""
+    audit = arm_row.get("routing_audit_log") or {}
+    records = audit.get("decision_records")
+    reported = audit.get("decision_record_count")
+    if (not isinstance(records, list) or not isinstance(reported, int)
+            or reported != len(records)):
+        return None, "full routing audit is missing, truncated, or inconsistent"
+    comparable, competing, sampled_ids = 0, 0, []
+    for record in records:
+        at = record.get("t_decision_start")
+        if not _valid_number(at) or not window[0] <= float(at) <= window[1]:
+            continue
+        mask = record.get("four_direction_audit") or {}
+        if mask.get("decision_kind") != "forward":
+            continue
+        details = mask.get("candidate_details")
+        legal = mask.get("committed_legal_directions")
+        final_mask = mask.get("final_legal_mask")
+        if (not isinstance(details, dict) or not isinstance(legal, list)
+                or not isinstance(final_mask, dict)
+                or set(final_mask) != {"N", "E", "S", "W"}
+                or mask.get("final_mask_matches_committed_set") is not True):
+            return None, "a forward decision lacks a complete, self-consistent N/E/S/W mask"
+        legal = [direction for direction in legal
+                 if direction in {"N", "E", "S", "W"}
+                 and final_mask.get(direction) is True]
+        if len(legal) < 2:
+            continue
+        comparable += 1
+        sampled_ids.append(record.get("decision_id"))
+        has_queued_candidate = False
+        for direction in legal:
+            detail = details.get(direction)
+            if not isinstance(detail, dict):
+                return None, "a legal candidate lacks its exact queue snapshot"
+            bits = detail.get("queue_bits_before")
+            if not _valid_number(bits) or float(bits) < 0:
+                return None, "a legal candidate queue snapshot is missing or invalid"
+            if float(bits) > 0:
+                has_queued_candidate = True
+        if has_queued_candidate:
+            competing += 1
+    return {"comparable": comparable, "competing": competing,
+            "decision_ids": sampled_ids}, None
+
+
+def _network_concurrency(arm_row, workload_summary):
+    """Rebuild simultaneous packet/OD presence from the captured full trace."""
+    replay = arm_row.get("replay") or {}
+    if replay.get("captured") is not True:
+        return None, "full-network replay is not captured"
+    manifest = workload_summary.get("packet_manifest") or []
+    flows = workload_summary.get("flows") or []
+    flow_ids = {str(flow.get("id")) for flow in flows
+                if isinstance(flow, dict) and flow.get("id") is not None}
+    if len(flow_ids) != 6 or not manifest:
+        return None, "the frozen six-directed-OD packet manifest is missing"
+    fates = replay.get("fates") or {}
+    if not isinstance(fates, dict):
+        return None, "packet fate ledger is missing"
+    fate_at = {}
+    for row in replay.get("timeline_rows") or []:
+        if (row.get("milestone") == "packet_fate"
+                and row.get("pid") is not None
+                and _valid_number(row.get("at"))):
+            fate_at[int(row["pid"])] = float(row["at"])
+    stop = replay.get("stop_time_s")
+    if not _valid_number(stop):
+        return None, "exact replay stop time is missing"
+    events = {}
+    observed_flows = set()
+    for packet in manifest:
+        try:
+            pid, od_id = int(packet["pid"]), str(packet["od_id"])
+            emitted = float(packet["emit_time_s"])
+        except (KeyError, TypeError, ValueError):
+            return None, "packet manifest has an invalid identity or emission time"
+        if od_id not in flow_ids or not _valid_number(emitted):
+            return None, "packet manifest does not map to a declared directed OD"
+        fate = fates.get(str(pid), fates.get(pid))
+        if fate is None:
+            return None, "packet manifest and fate ledger do not match"
+        ended = fate_at.get(pid, float(stop))
+        delivery = (replay.get("deliveries") or {}).get(str(pid))
+        if isinstance(delivery, dict) and _valid_number(
+                delivery.get("delivered_at")):
+            ended = float(delivery["delivered_at"])
+        if ended < emitted:
+            return None, "packet fate precedes its emission"
+        observed_flows.add(od_id)
+        events.setdefault(emitted, {"start": [], "end": []})["start"].append(od_id)
+        events.setdefault(ended, {"start": [], "end": []})["end"].append(od_id)
+    active_by_od, max_packets, max_ods = {}, 0, 0
+    for at in sorted(events):
+        group = events[at]
+        for od_id in group["end"]:
+            active_by_od[od_id] = active_by_od.get(od_id, 0) - 1
+            if active_by_od[od_id] <= 0:
+                active_by_od.pop(od_id, None)
+        for od_id in group["start"]:
+            active_by_od[od_id] = active_by_od.get(od_id, 0) + 1
+        max_packets = max(max_packets, sum(active_by_od.values()))
+        max_ods = max(max_ods, sum(value > 0
+                                   for value in active_by_od.values()))
+    return {"generated_ods": len(observed_flows),
+            "declared_ods": len(flow_ids),
+            "max_simultaneous_packets": max_packets,
+            "max_simultaneous_ods": max_ods}, None
+
+
 def _admit_multiod(run_dir, spec, cell_by_id, record_by_id, thresholds,
                    window):
     scenario = str(spec["id"])
@@ -122,6 +233,9 @@ def _admit_multiod(run_dir, spec, cell_by_id, record_by_id, thresholds,
         checks["offered_packets"] = NOT_COMPUTABLE
         checks["forward_decisions_per_arm"] = NOT_COMPUTABLE
         checks["effective_query_coverage_per_arm"] = NOT_COMPUTABLE
+        checks["comparable_branch_points"] = NOT_COMPUTABLE
+        checks["resource_competition_branch_points"] = NOT_COMPUTABLE
+        checks["concurrent_multi_od_coverage_per_arm"] = NOT_COMPUTABLE
         reasons.append("four-arm network cell is missing or failed")
     else:
         expected_arms = ["stale", "now", "common", "candidate"]
@@ -229,36 +343,107 @@ def _admit_multiod(run_dir, spec, cell_by_id, record_by_id, thresholds,
         if len(all_query_targets) <= 1:
             reasons.append("time-alignment targets are degenerate")
 
+        workload_summary = (((network_doc.get("source") or {}).get(
+            "synthetic_workload") or {}).get("summary") or {})
+        comparable_by_arm, competing_by_arm = {}, {}
+        concurrency_by_arm = {}
+        for name in expected_arms:
+            row = arms.get(name)
+            if row is None:
+                comparable_by_arm[name] = NOT_COMPUTABLE
+                competing_by_arm[name] = NOT_COMPUTABLE
+                concurrency_by_arm[name] = NOT_COMPUTABLE
+                continue
+            counts, issue = _full_network_branch_counts(row, window)
+            if issue:
+                comparable_by_arm[name] = NOT_COMPUTABLE
+                competing_by_arm[name] = NOT_COMPUTABLE
+                reasons.append(f"{name} full-network branch evidence: {issue}")
+            else:
+                comparable_by_arm[name] = {
+                    "passed": counts["comparable"] >= thresholds[
+                        "min_comparable_branch_points"],
+                    "value": counts["comparable"],
+                    "minimum": thresholds["min_comparable_branch_points"],
+                    "decision_ids": counts["decision_ids"],
+                }
+                competing_by_arm[name] = {
+                    "passed": counts["competing"] >= thresholds[
+                        "min_competing_branch_points"],
+                    "value": counts["competing"],
+                    "minimum": thresholds["min_competing_branch_points"],
+                    "definition": "full-window forward decision with at least two legal N/E/S/W directions and a positive exact queue snapshot on at least one legal outgoing resource",
+                }
+                if not comparable_by_arm[name]["passed"]:
+                    reasons.append(
+                        f"{name} full-network comparable branch points are below threshold")
+                if not competing_by_arm[name]["passed"]:
+                    reasons.append(
+                        f"{name} full-network queue-competition points are below threshold")
+            concurrency, issue = _network_concurrency(row, workload_summary)
+            if issue:
+                concurrency_by_arm[name] = NOT_COMPUTABLE
+                reasons.append(f"{name} full-network concurrent OD evidence: {issue}")
+            else:
+                passed = (concurrency["generated_ods"] >= thresholds.get(
+                    "min_generated_ods", 6)
+                    and concurrency["max_simultaneous_packets"] >= thresholds.get(
+                        "min_simultaneous_packets", 5)
+                    and concurrency["max_simultaneous_ods"] >= thresholds.get(
+                        "min_simultaneous_ods", 2))
+                concurrency_by_arm[name] = {
+                    **concurrency, "passed": passed,
+                    "minimum_simultaneous_packets": thresholds.get(
+                        "min_simultaneous_packets", 5),
+                    "minimum_simultaneous_ods": thresholds.get(
+                        "min_simultaneous_ods", 2),
+                    "required_generated_ods": thresholds.get(
+                        "min_generated_ods", 6),
+                }
+                if not passed:
+                    reasons.append(
+                        f"{name} did not show six generated ODs with simultaneous multi-OD in-flight traffic")
+        comparable_values = [value for value in comparable_by_arm.values()
+                             if isinstance(value, dict)]
+        competing_values = [value for value in competing_by_arm.values()
+                            if isinstance(value, dict)]
+        checks["comparable_branch_points"] = (
+            {"passed": (len(comparable_values) == 4 and all(
+                value["passed"] for value in comparable_values)),
+             "value": min((value["value"] for value in comparable_values),
+                          default=0),
+             "minimum": thresholds["min_comparable_branch_points"],
+             "per_arm": comparable_by_arm,
+             "source": "complete routing_audit_log from each full-network arm"}
+            if len(comparable_values) == 4 else NOT_COMPUTABLE)
+        checks["resource_competition_branch_points"] = (
+            {"passed": (len(competing_values) == 4 and all(
+                value["passed"] for value in competing_values)),
+             "value": min((value["value"] for value in competing_values),
+                          default=0),
+             "minimum": thresholds["min_competing_branch_points"],
+             "per_arm": competing_by_arm,
+             "source": "full-window N/E/S/W queue snapshots in routing_audit_log; explanation branch samples are not used for this threshold"}
+            if len(competing_values) == 4 else NOT_COMPUTABLE)
+        checks["concurrent_multi_od_coverage_per_arm"] = concurrency_by_arm
+
     if branch_status != "ok":
-        checks["comparable_branch_points"] = NOT_COMPUTABLE
-        checks["resource_competition_branch_points"] = NOT_COMPUTABLE
-        reasons.append("branch-alignment cell is missing or failed")
+        checks["explanation_sample_block"] = NOT_COMPUTABLE
+        reasons.append("branch-alignment explanation sample cell is missing or failed")
     else:
-        eligibility = branch_doc.get("eligibility") or {}
-        eligible = eligibility.get("eligible")
-        if not isinstance(eligible, int):
-            checks["comparable_branch_points"] = NOT_COMPUTABLE
-        else:
-            checks["comparable_branch_points"] = {
-                "passed": eligible >= thresholds["min_comparable_branch_points"],
-                "value": eligible,
-                "minimum": thresholds["min_comparable_branch_points"],
-                "definition": "baseline forward decisions with at least two legal directions",
-            }
-            if not checks["comparable_branch_points"]["passed"]:
-                reasons.append("comparable legal branch points are below threshold")
         branch_rows = branch_doc.get("branches") or []
-        pressure_rows = [row for row in branch_rows
-                         if row.get("resource_pressure_observed") is True]
-        checks["resource_competition_branch_points"] = {
-            "passed": len(pressure_rows) >= thresholds["min_competing_branch_points"],
-            "value": len(pressure_rows),
-            "minimum": thresholds["min_competing_branch_points"],
-            "sampled_branch_ids": [row.get("decision_id") for row in branch_rows],
-            "definition": "sampled branch has a named candidate egress queue_enter with positive pre-arrival backlog",
+        minimum_samples = int(spec.get("min_sampled_branches", 1))
+        explanation = branch_doc.get("explanation_replay") or {}
+        checks["explanation_sample_block"] = {
+            "passed": (len(branch_rows) >= minimum_samples
+                       and explanation.get("captured") is True),
+            "sampled_decisions": len(branch_rows),
+            "minimum_sampled_decisions": minimum_samples,
+            "captured": explanation.get("captured") is True,
+            "used_for_comparable_or_competition_thresholds": False,
         }
-        if not checks["resource_competition_branch_points"]["passed"]:
-            reasons.append("sampled nonzero resource-competition branches are below threshold")
+        if not checks["explanation_sample_block"]["passed"]:
+            reasons.append("the predeclared explanation sample block is incomplete")
 
     mode_ids = [cell_id for cell_id, cell in cell_by_id.items()
                 if cell_id.startswith(f"b-{scenario}-execution-modes-seed-")
@@ -287,7 +472,9 @@ def _admit_multiod(run_dir, spec, cell_by_id, record_by_id, thresholds,
     for name, value in checks.items():
         if value == NOT_COMPUTABLE:
             flat_passes.append(None)
-        elif name in ("forward_decisions_per_arm", "effective_query_coverage_per_arm"):
+        elif name in ("forward_decisions_per_arm",
+                      "effective_query_coverage_per_arm",
+                      "concurrent_multi_od_coverage_per_arm"):
             flat_passes.extend(
                 None if item == NOT_COMPUTABLE else item.get("passed")
                 for item in value.values())
@@ -325,6 +512,9 @@ def evaluate_run(run_dir, bundle, contract):
         "min_comparable_branch_points": 10,
         "min_competing_branch_points": 5,
         "min_effective_query_coverage": 0.90,
+        "min_generated_ods": 6,
+        "min_simultaneous_packets": 5,
+        "min_simultaneous_ods": 2,
     }
     thresholds.update(contract.get("admission_thresholds") or {})
     window = [float(value) for value in

@@ -1591,8 +1591,17 @@
     ],
     "negative_control": {
      "a0_smoke_gate": "PASSED",
-     "arms": ["stale", "now", "common", "candidate"],
-     "per_arm_offered_admitted_delivered": [31, 31, 28],
+     "arms": [
+      "stale",
+      "now",
+      "common",
+      "candidate"
+     ],
+     "per_arm_offered_admitted_delivered": [
+      31,
+      31,
+      28
+     ],
      "per_arm_forward_decisions": 62,
      "per_arm_satellites_that_decided": 3,
      "per_arm_reordered_decisions": 45,
@@ -1661,33 +1670,145 @@
   ]
  },
  "internal_review": {
-    "date": "2026-09-30",
-    "reviewer_count": 1,
-    "reviewer_scope": "read-only implementation/evidence and research/statistics review",
-    "frozen_source_commit": "d489f1b804cc9346131999a79ccc21969feff43e",
-    "vm_source_commit": "2107e405fd2026789b33e9faa91a485458e47417",
-    "run_id": "wp-a-dev-20260930-02",
-    "release_id": "2107e405fd2026789b33e9faa91a485458e47417-9ac0c26cf64d894f4f9212da460cc390d6276c4ebc64aaf0d193fc4e2b1c0f06",
-    "receipt_file_count_verified": 61,
-    "receipt_file_hashes_and_sizes_match": true,
-    "manifest_and_derived_hashes_match": true,
-    "independent_arithmetic": {
-      "precomputed_delivered_partition": "319 + 272 + 193 = 784",
-      "precomputed_delivery_fraction": 0.406887755,
-      "query_service_total_s": 0.062467
-    },
-    "findings": [
-      "No mismatch found among receipt, manifest, raw result and derived artifact identities.",
-      "The four-arm admission derivation defect is present in the run-source identity and correctly described as fixed after the run; no VM rerun is claimed.",
-      "Timeout cells with partial result files remain outer timeout in the report and derived table.",
-      "H1/A2 are not computable; H2 remains descriptive for three completed single-seed pressure cells; D=30 primary loss is not computable."
-    ],
-    "review_note": "Reviewer questioned operational clarity of hypothesis decision rules. criteria.json does predeclare H1/H2 claims and falsifiers, primary comparisons, and contract_dev_a.yaml freezes the main loss, minimum substantive difference, sensitivity thresholds, and paired-block rule. Support/refute/inconclusive wording could be made more explicit in a future contract; this does not alter this run's NOT_COMPUTABLE/descriptive classifications.",
-    "initial_navigation_note": "Reviewer briefly read only the main topic checkout's read-only status information, then stopped after correction. All subsequent review used the specified d489 worktree and evidence paths; no files were modified, no tests or VM actions were performed.",
-    "limitations": [
-      "Single reviewer only; not a two-person independent review.",
-      "Full precomputed lifecycle cost, control bytes, and per-mode VM wall time are unavailable in this run; no total-cost ranking is claimed."
-    ]
+  "date": "2026-09-30",
+  "reviewer_count": 1,
+  "reviewer_scope": "read-only implementation/evidence and research/statistics review",
+  "frozen_source_commit": "d489f1b804cc9346131999a79ccc21969feff43e",
+  "vm_source_commit": "2107e405fd2026789b33e9faa91a485458e47417",
+  "run_id": "wp-a-dev-20260930-02",
+  "release_id": "2107e405fd2026789b33e9faa91a485458e47417-9ac0c26cf64d894f4f9212da460cc390d6276c4ebc64aaf0d193fc4e2b1c0f06",
+  "receipt_file_count_verified": 61,
+  "receipt_file_hashes_and_sizes_match": true,
+  "manifest_and_derived_hashes_match": true,
+  "independent_arithmetic": {
+   "precomputed_delivered_partition": "319 + 272 + 193 = 784",
+   "precomputed_delivery_fraction": 0.406887755,
+   "query_service_total_s": 0.062467
   },
-  "work_id": "WP-T1-COMPLETE"
+  "findings": [
+   "No mismatch found among receipt, manifest, raw result and derived artifact identities.",
+   "The four-arm admission derivation defect is present in the run-source identity and correctly described as fixed after the run; no VM rerun is claimed.",
+   "Timeout cells with partial result files remain outer timeout in the report and derived table.",
+   "H1/A2 are not computable; H2 remains descriptive for three completed single-seed pressure cells; D=30 primary loss is not computable."
+  ],
+  "review_note": "Reviewer questioned operational clarity of hypothesis decision rules. criteria.json does predeclare H1/H2 claims and falsifiers, primary comparisons, and contract_dev_a.yaml freezes the main loss, minimum substantive difference, sensitivity thresholds, and paired-block rule. Support/refute/inconclusive wording could be made more explicit in a future contract; this does not alter this run's NOT_COMPUTABLE/descriptive classifications.",
+  "initial_navigation_note": "Reviewer briefly read only the main topic checkout's read-only status information, then stopped after correction. All subsequent review used the specified d489 worktree and evidence paths; no files were modified, no tests or VM actions were performed.",
+  "limitations": [
+   "Single reviewer only; not a two-person independent review.",
+   "Full precomputed lifecycle cost, control bytes, and per-mode VM wall time are unavailable in this run; no total-cost ranking is claimed."
+  ]
+ },
+ "work_id": "WP-T1-COMPLETE",
+ "b_round": {
+  "status": "PRE_RELEASE_VERIFIED; B VM simulation not started",
+  "contract": "CODE/work/WP-T1-COMPLETE/contract_dev_b.yaml",
+  "contract_sha256": "dbe2d2636066e394bacecbc1c55e1b50f2b79e078544ebc0595765b8296af9b2",
+  "planned_run_id": "wp-b-dev-20261001-01",
+  "release_id": null,
+  "platform_profile": {
+   "path": "CODE/leo_sim/profiles/t1_dev_regional_multiod.yaml",
+   "base": "existing leo_sim full network; 24 satellites, 3 planes, 550 km, 53 deg inclination",
+   "retained": [
+    "N",
+    "E",
+    "S",
+    "W",
+    "dynamic topology/visibility",
+    "control plane",
+    "end-to-end forwarding and queue/compute contention"
+   ],
+   "region_scope": "business endpoints only; six directed ODs over three sites; paths may traverse satellites outside the business region",
+   "synthetic_not_measured_traffic": true
+  },
+  "scenario_ids": [
+   "steady_multi_od_negative_control_b",
+   "temporal_multi_od_transfer_b"
+  ],
+  "deadline_s": 30.0,
+  "population_window_s": [
+   5.0,
+   20.0
+  ],
+  "scenario_end_s": 50.0,
+  "competitive_dev_seeds": [
+   11,
+   23,
+   42
+  ],
+  "negative_control_seed": 7,
+  "independent_unit": "scenario x generated OD trace x seed; packets and sampled branches are not independent repeats",
+  "primary_comparison": {
+   "estimand": "common regret minus candidate regret",
+   "scope": "one frozen-snapshot branch block, seed 11; four structurally selected interventions are averaged within this block",
+   "sampled_branch_count": 4,
+   "max_branches_semantics": "maximum sampled branch intervention points, not the number of eligible points",
+   "eligible_and_competing_admission": "rederive >=10 comparable decision points and >=5 competing points per captured whole-network arm from all in-window decision records; four branch explanations do not satisfy these counts",
+   "outcome_independent_admission": true
+  },
+  "secondary": {
+   "network": "four-arm full-network D=30 packet outcomes for seeds 11/23/42; descriptive paired development blocks",
+   "execution_modes": [
+    "per_packet",
+    "per_flow",
+    "precomputed",
+    "async_point",
+    "async_window"
+   ],
+   "mode_seeds": [
+    11,
+    23,
+    42
+   ],
+   "claim_scope": "development only; report all offered packets, loss/censoring, delivered latency and separated compute/query/background costs; no significance claim"
+  },
+  "matrix": {
+   "compiled_container_cells": 42,
+   "container_compile_max_cells": 60,
+   "b_dev_cells": 9,
+   "static_simulator_calls": 57,
+   "pilot_cells": 5,
+   "pilot_static_calls": 39,
+   "post_pilot_cells": 4,
+   "post_pilot_static_calls": 18,
+   "pilot_and_remainder_reuse": "same frozen bundle, run id and output directory; append remaining cells only after pilot gate passes; no independent pilot rerun"
+  },
+  "budget": {
+   "max_simulator_calls": 60,
+   "max_b_dev_cells": 40,
+   "max_simulator_wall_s": 3600,
+   "max_cell_wall_s": 120,
+   "concurrency": 1,
+   "actual_simulator_calls_started": 0,
+   "actual_simulator_wall_s": 0,
+   "cumulative_a_b_wall_cap_s": 7200,
+   "a_run02_conservatively_charged_outer_elapsed_s": 1061,
+   "b_plus_a_conservative_upper_s": 4661
+  },
+  "static_validation": {
+   "bundle_fingerprint": "8c27cec33af8dc0b2e90c869d89f931e956af598ac8a5bc1d7989e89b765d337",
+   "compile_status": "compiled",
+   "validate_status": "valid=true",
+   "structural_branch_fanout_assumption": 4
+  },
+  "local_verification": {
+   "latest_targeted_tests": "25 passed in 0.18 s",
+   "py_compile": "passed for modified Python modules",
+   "maintenance_check_errors": 0,
+   "maintenance_check_scope_warning": "external backup media and dependency lock were not checked"
+  },
+  "a_static_cost_reconciliation": {
+   "original_frozen_estimate_calls": 78,
+   "original_a_budget_calls": 80,
+   "corrected_four_neighbor_structural_upper_bound": 83,
+   "correction_reason": "historical branch fanout assumed three unselected exits; full N/E/S/W upper bound is four",
+   "actual_a_inner_simulator_calls": "not instrumented; unknown; do not report any static estimate as an observed count",
+   "a_run_not_repeated": true
+  },
+  "excluded": [
+   "confirmation seeds",
+   "FORMAL_RUN",
+   "training",
+   "pressure/benchmark/period scans"
+  ]
+ }
 }

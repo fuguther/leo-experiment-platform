@@ -133,7 +133,7 @@ def test_development_matrix_expands_branches_benchmarks_and_task_seeds(tmp_path)
     cost = t1_suite.estimate_bundle_cost({
         "cells": [cell for cell in bundle["cells"]
                   if cell["cell_id"] in ids]})
-    assert cost["simulator_calls"] == 49
+    assert cost["simulator_calls"] == 54
 
 
 def test_simulator_cost_bound_covers_four_way_branch_fanout_and_benchmark():
@@ -147,9 +147,9 @@ def test_simulator_cost_bound_covers_four_way_branch_fanout_and_benchmark():
 
     cost = t1_suite.estimate_bundle_cost({"cells": cells})
 
-    assert cost["per_cell"][0]["simulator_calls"] == 21
+    assert cost["per_cell"][0]["simulator_calls"] == 26
     assert cost["per_cell"][1]["simulator_calls"] == 6
-    assert cost["simulator_calls"] == 27
+    assert cost["simulator_calls"] == 32
 
 
 def test_validate_accepts_a_fresh_bundle_and_rejects_tampering(tmp_path):
@@ -397,13 +397,78 @@ def test_a_failed_smoke_gate_stops_the_remaining_tier_and_is_terminal(
         t1_suite.resume_run(run_dir)
 
 
+def test_b_dev_pilot_can_continue_only_under_the_same_bundle_identity(
+        tmp_path, monkeypatch):
+    bundle_dir = _compiled(tmp_path)
+    bundle = json.loads((bundle_dir / "bundle.json").read_text())
+    cell_ids = bundle["tiers"]["b_dev"]
+    assert len(cell_ids) >= 2
+
+    def fake_execute(cell, out_root, budgets):
+        calls = t1_suite.estimate_bundle_cost({"cells": [cell]})[
+            "simulator_calls"]
+        cell_dir = Path(out_root) / "cells" / cell["cell_id"]
+        cell_dir.mkdir(parents=True, exist_ok=True)
+        payload = {"schema": "test-b-dev/v1"}
+        raw = json.dumps(payload).encode("utf-8")
+        (cell_dir / "result.json").write_bytes(raw)
+        return {"cell_id": cell["cell_id"], "status": "ok", "wall_s": 0.1,
+                "result_path": str(Path("cells") / cell["cell_id"]
+                                    / "result.json"),
+                "result_sha256": hashlib.sha256(raw).hexdigest(),
+                "result_schema": payload["schema"],
+                "predicate_verdict": {"passed": True, "checks": []},
+                "simulator_calls": {"started": calls, "ended": calls,
+                                     "failed": 0, "timed_out": 0,
+                                     "interrupted": 0, "unresolved": 0,
+                                     "simulator_wall_s": 0.05 * calls}}
+
+    monkeypatch.setattr(t1_suite, "_execute_cell", fake_execute)
+    run_dir = tmp_path / "staged-run"
+    pilot = t1_suite.run_bundle(
+        bundle_dir, "b_dev", run_dir, cell_ids=[cell_ids[0]],
+        smoke_validator=lambda *_: {"passed": True, "checks": []})
+    assert pilot["status"] == "INCOMPLETE"
+    assert pilot["pending_cell_ids"] == cell_ids[1:]
+
+    run_path = run_dir / "run.json"
+    saved_run = json.loads(run_path.read_text())
+    mismatched_run = dict(saved_run, bundle_fingerprint="wrong-bundle")
+    run_path.write_text(json.dumps(mismatched_run), encoding="utf-8")
+    with pytest.raises(t1_suite.SuiteError, match="identity"):
+        t1_suite.run_bundle(
+            bundle_dir, "b_dev", run_dir, cell_ids=cell_ids[1:],
+            append=True,
+            smoke_validator=None)
+    run_path.write_text(json.dumps(saved_run), encoding="utf-8")
+
+    completed = t1_suite.run_bundle(
+        bundle_dir, "b_dev", run_dir, cell_ids=cell_ids[1:], append=True)
+    assert completed["status"] == "ok"
+    assert completed["counts"]["ok"] == len(cell_ids)
+    assert completed["simulator_call_accounting"]["started"] == \
+        t1_suite.estimate_bundle_cost({"cells": [
+            next(cell for cell in bundle["cells"] if cell["cell_id"] == cid)
+            for cid in cell_ids]})["simulator_calls"]
+
+
 def test_a0_smoke_requires_real_four_arm_traffic_and_delivery():
     arms = [{
         "arm": name,
         "scope": {"packets_in_trace": 4, "forward_decisions": 8},
-        "outcome": {"offered": 4, "delivered": 3},
+        "outcome": {"offered": 4, "delivered": 3,
+                    "delivered_bits": 3000,
+                    "goodput_bps_in_window": 900.0},
+        "network_outcome": {"partition_exact": True},
     } for name in ("stale", "now", "common", "candidate")]
-    payload = {"document": {"status": "ok", "arms": arms, "failures": []}}
+    payload = {"document": {
+        "status": "ok", "arms": arms, "failures": [],
+        "source": {"synthetic_workload": {"summary": {
+            "unique_od_count": 6,
+            "flows": [{"id": f"od-{i}"} for i in range(6)],
+            "active_od_counts_by_1s_bin": {"0": 2, "1": 6},
+        }}},
+    }}
     record = {"status": "ok"}
     cell = {"cell_id": "b-steady_uniform_negative_control-network-seed-7"}
 
@@ -414,6 +479,13 @@ def test_a0_smoke_requires_real_four_arm_traffic_and_delivery():
     assert failed["passed"] is False
     assert any(check["name"] == "common_delivered_packets_positive"
                and not check["passed"] for check in failed["checks"])
+    arms[2]["outcome"]["delivered"] = 3
+    arms[2]["outcome"]["delivered_bits"] = 0
+    failed_bits = t1_development._negative_control_smoke(
+        cell, record, payload)
+    assert failed_bits["passed"] is False
+    assert any(check["name"] == "common_delivered_bits_positive"
+               and not check["passed"] for check in failed_bits["checks"])
 
 
 def test_a0_smoke_is_the_first_predeclared_cell_and_is_in_the_cost_bound(
@@ -430,7 +502,7 @@ def test_a0_smoke_is_the_first_predeclared_cell_and_is_in_the_cost_bound(
         yaml.safe_load(contract_path.read_text()), b_dev_cells) == b_dev_ids[0]
     assert b_dev_ids[0] == "b-steady_uniform_negative_control-network-seed-7"
     cost = t1_suite.estimate_bundle_cost({"cells": b_dev_cells})
-    assert cost["simulator_calls"] == 78
+    assert cost["simulator_calls"] == 83
     with pytest.raises(RuntimeError, match="first b_dev cell"):
         t1_development._validate_a0_smoke_cell(
             yaml.safe_load(contract_path.read_text()), b_dev_cells[1:])

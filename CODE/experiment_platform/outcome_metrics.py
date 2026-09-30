@@ -74,6 +74,7 @@ writes, so every figure can be regenerated from the tables alone.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import math
 import os
@@ -214,6 +215,232 @@ def _safe_rate(numerator, denominator):
     if denominator in (None, 0):
         return None
     return float(numerator) / float(denominator)
+
+
+def _pid_keyed_records(records, label):
+    if not isinstance(records, dict):
+        raise OutcomeMetricsError(f"{label} is missing or is not a mapping")
+    result = {}
+    for raw_pid, record in records.items():
+        try:
+            pid = int(raw_pid)
+        except (TypeError, ValueError) as exc:
+            raise OutcomeMetricsError(
+                f"{label} has a non-integer packet id {raw_pid!r}") from exc
+        if isinstance(raw_pid, bool) or pid < 0:
+            raise OutcomeMetricsError(
+                f"{label} has an invalid packet id {raw_pid!r}")
+        if pid in result:
+            raise OutcomeMetricsError(
+                f"{label} has duplicate packet id {pid}")
+        result[pid] = record
+    return result
+
+
+def _validated_trace_packets(trace_rows):
+    if not isinstance(trace_rows, (list, tuple)):
+        raise OutcomeMetricsError("trace_rows is missing or is not a sequence")
+    packets = {}
+    for index, row in enumerate(trace_rows):
+        if not isinstance(row, dict):
+            raise OutcomeMetricsError(f"trace row {index} is not a mapping")
+        pid = row.get("packet_id")
+        if isinstance(pid, bool) or not isinstance(pid, int) or pid < 0:
+            raise OutcomeMetricsError(
+                f"trace row {index}: invalid packet_id {pid!r}")
+        if pid in packets:
+            raise OutcomeMetricsError(f"duplicate packet_id {pid} in trace_rows")
+        emitted = _num(row.get("emit_time_s"), "trace_rows.emit_time_s")
+        bits = row.get("bits")
+        if emitted is None or emitted < 0:
+            raise OutcomeMetricsError(
+                f"trace row {index}: emit_time_s is missing or invalid")
+        if isinstance(bits, bool) or not isinstance(bits, int) or bits <= 0:
+            raise OutcomeMetricsError(
+                f"trace row {index}: bits is missing or invalid")
+        packets[pid] = {"packet_id": pid, "emit_time_s": emitted,
+                        "bits": int(bits)}
+    return packets
+
+
+def _packet_event_bits(result, trace_packets):
+    events = result.get("packet_events")
+    if not isinstance(events, list):
+        return None
+    emitted = {}
+    for index, event in enumerate(events):
+        if event.get("kind") != "packet_emitted":
+            continue
+        pid, bits = event.get("pid"), event.get("bits")
+        if isinstance(pid, bool) or not isinstance(pid, int):
+            raise OutcomeMetricsError(
+                f"packet_emitted event {index} has invalid pid {pid!r}")
+        if pid in emitted:
+            raise OutcomeMetricsError(
+                f"duplicate packet_emitted event for pid {pid}")
+        if pid not in trace_packets:
+            raise OutcomeMetricsError(
+                f"packet_emitted event has pid {pid} absent from trace_rows")
+        if isinstance(bits, bool) or not isinstance(bits, int) or bits <= 0:
+            raise OutcomeMetricsError(
+                f"packet_emitted event for pid {pid} has invalid bits")
+        if int(bits) != trace_packets[pid]["bits"]:
+            raise OutcomeMetricsError(
+                f"packet_emitted bits differ from trace_rows for pid {pid}")
+        emitted[pid] = int(bits)
+    return emitted
+
+
+def _deadline_packet_loss(fate, emitted_at, delivered_at, observation_end,
+                          deadline_s):
+    base = {"deadline_s": deadline_s, "value": None,
+            "lower_bound": None, "upper_bound": None,
+            "observed_delay_s": None, "missing_field": None}
+    if deadline_s is None:
+        return dict(base, status=NOT_COMPUTABLE, missing_field="deadline_s")
+    if fate == "DELIVERED":
+        if delivered_at is None:
+            return dict(base, status=NOT_COMPUTABLE,
+                        lower_bound=0.0, upper_bound=1.0,
+                        missing_field="deliveries[pid].delivered_at")
+        delay = delivered_at - emitted_at
+        loss = min(max(delay, 0.0), deadline_s) / deadline_s
+        return dict(base, status="COMPUTED", value=loss,
+                    lower_bound=loss, upper_bound=loss,
+                    observed_delay_s=delay,
+                    duration_basis="emitted_at_to_delivered_at")
+    if fate in TERMINAL_LOSS_FATES:
+        return dict(base, status="COMPUTED", value=1.0,
+                    lower_bound=1.0, upper_bound=1.0,
+                    duration_basis="terminal_loss")
+    if fate in CENSORING_FATES:
+        if observation_end is None:
+            return dict(base, status=NOT_COMPUTABLE, lower_bound=0.0,
+                        upper_bound=1.0,
+                        missing_field="result.stop_time_s")
+        observed = observation_end - emitted_at
+        if observed < 0:
+            raise OutcomeMetricsError(
+                "observation end precedes packet emission")
+        if observed >= deadline_s:
+            return dict(base, status="COMPUTED", value=1.0,
+                        lower_bound=1.0, upper_bound=1.0,
+                        observed_delay_s=observed,
+                        duration_basis="censored_after_full_deadline")
+        return dict(base, status="INTERVAL_CENSORED", value=None,
+                    lower_bound=observed / deadline_s, upper_bound=1.0,
+                    observed_delay_s=observed,
+                    duration_basis="observed_until_run_stop")
+    raise OutcomeMetricsError(f"unrecognised fate {fate!r}")
+
+
+def _packet_observations(trace_packets, fates, delivery_records,
+                         observation_end, deadline_s, window, context):
+    trace_ids, fate_ids = set(trace_packets), set(fates)
+    missing = sorted(trace_ids - fate_ids)
+    extra = sorted(fate_ids - trace_ids)
+    if missing or extra:
+        raise OutcomeMetricsError(
+            f"trace/fate packet set mismatch; missing fate records {missing[:10]}, "
+            f"extra fate records {extra[:10]}")
+    delivery_ids = set(delivery_records)
+    extra_deliveries = sorted(delivery_ids - trace_ids)
+    if extra_deliveries:
+        raise OutcomeMetricsError(
+            f"delivery records have pids absent from trace_rows: "
+            f"{extra_deliveries[:10]}")
+    window_block = _window_from(window, [
+        dict(packet, packet_id=pid)
+        for pid, packet in trace_packets.items()])
+    stop = _num(observation_end, "result.stop_time_s")
+    packet_rows = []
+    for pid in sorted(trace_packets):
+        trace = trace_packets[pid]
+        fate = fates[pid]
+        if fate not in set(TERMINAL_LOSS_FATES) | set(CENSORING_FATES) | {"DELIVERED"}:
+            raise OutcomeMetricsError(f"unrecognised fate {fate!r} for pid {pid}")
+        record_present = pid in delivery_records
+        record = delivery_records.get(pid)
+        if record_present and not isinstance(record, dict):
+            raise OutcomeMetricsError(f"delivery record for pid {pid} is invalid")
+        if fate != "DELIVERED" and record_present:
+            raise OutcomeMetricsError(
+                f"non-delivered pid {pid} has a delivery record")
+        delivered_at = None
+        if fate == "DELIVERED" and isinstance(record, dict):
+            raw_at = record.get("delivered_at")
+            if raw_at is not None:
+                delivered_at = _num(raw_at, "deliveries[pid].delivered_at")
+                if delivered_at is None:
+                    raise OutcomeMetricsError(
+                        f"delivery time for pid {pid} is non-finite")
+                if delivered_at < trace["emit_time_s"]:
+                    raise OutcomeMetricsError(
+                        f"delivery time precedes emission for pid {pid}")
+                if stop is not None and delivered_at > stop:
+                    raise OutcomeMetricsError(
+                        f"delivery time is after observation end for pid {pid}")
+        emitted_at = trace["emit_time_s"]
+        in_population = (window_block.get("status") == "COMPUTED"
+                         and window_block["start_s"] <= emitted_at
+                         <= window_block["end_s"])
+        loss = _deadline_packet_loss(
+            fate, emitted_at, delivered_at, stop, deadline_s)
+        packet_rows.append({
+            "pid": pid,
+            "trace_sha256": (context.get("trace_sha256")
+                             or context.get("trace_rows_digest")),
+            "emit_time_s": emitted_at,
+            "bits": trace["bits"],
+            "observation_end_s": stop,
+            "fate": fate,
+            "delivery_record_present": record_present,
+            "delivery_time_s": delivered_at,
+            "terminal_reason": (fate if fate in TERMINAL_LOSS_FATES else None),
+            "censor_reason": ("administrative_censoring_at_stop"
+                              if fate in CENSORING_FATES else None),
+            "in_population": bool(in_population),
+            "deadline_loss": loss,
+        })
+    return packet_rows, window_block
+
+
+def _deadline_summary(packet_rows, deadline_s):
+    population = [row for row in packet_rows if row["in_population"]]
+    if deadline_s is None or not population:
+        return {"status": NOT_COMPUTABLE, "deadline_s": deadline_s,
+                "packets": len(population), "value": None,
+                "lower_mean": None, "upper_mean": None,
+                "missing_field": ("deadline_s" if deadline_s is None
+                                  else "population_window")}
+    lower, upper, exact = [], [], 0
+    interval_censored = 0
+    missing = 0
+    for row in population:
+        item = row["deadline_loss"]
+        if item.get("status") == "COMPUTED":
+            value = float(item["value"])
+            lower.append(value)
+            upper.append(value)
+            exact += 1
+        else:
+            interval_censored += item.get("status") == "INTERVAL_CENSORED"
+            missing += item.get("status") == NOT_COMPUTABLE
+            lo = item.get("lower_bound")
+            hi = item.get("upper_bound")
+            lower.append(0.0 if lo is None else float(lo))
+            upper.append(1.0 if hi is None else float(hi))
+    lo_mean = statistics.fmean(lower)
+    hi_mean = statistics.fmean(upper)
+    complete = exact == len(population)
+    return {"status": "COMPUTED" if complete else "PARTIAL_BOUNDS",
+            "deadline_s": deadline_s, "packets": len(population),
+            "exact_packets": exact,
+            "interval_censored": interval_censored,
+            "not_computable_packets": missing,
+            "value": lo_mean if complete else None,
+            "lower_mean": lo_mean, "upper_mean": hi_mean,
+            "missing_field": None if complete else "packet deadline outcome"}
 
 
 # ------------------------------------------------------- measurement window
@@ -370,12 +597,19 @@ def _emitted_bits(result):
 
 
 def _admitted_pids(result):
+    events = result.get("packet_events")
+    if not isinstance(events, list):
+        return None
     out = set()
-    for event in result.get("packet_events") or []:
+    for event in events:
         if event.get("kind") == "satellite_ingress":
             pid = event.get("pid")
-            if isinstance(pid, int) and not isinstance(pid, bool):
-                out.add(pid)
+            if isinstance(pid, bool) or not isinstance(pid, int):
+                raise OutcomeMetricsError(
+                    f"satellite_ingress event has invalid pid {pid!r}")
+            if pid in out:
+                continue  # a packet may have more than one ingress event
+            out.add(pid)
     return out
 
 
@@ -402,7 +636,7 @@ def _totals(pids, bits, fates):
 
 
 def compare_outcome(result, timeline_rows, decision_rows, trace_rows, *,
-                    window=None, cost=None, context=None):
+                    window=None, deadline_s=None, cost=None, context=None):
     """Publish the A4 outcome + total-cost document for ONE mode row.
 
     result        the dict returned by CODE.leo_sim.kernel.run_simulation
@@ -413,7 +647,9 @@ def compare_outcome(result, timeline_rows, decision_rows, trace_rows, *,
     window        None (derive from trace_rows), a window dict, or
                   (start_s, end_s)
     cost          {"service_s", "servers"} from the resolved config
-    context       traceability: {"cell", "run_id", "mode", "config_sha256"}
+    deadline_s    one predeclared deadline used for the packet-level primary
+                  loss; an absent delivery/observation field remains missing
+    context       traceability including the immutable trace digest
     """
     if not isinstance(result, dict):
         raise OutcomeMetricsError("result must be the kernel result dict")
@@ -422,62 +658,105 @@ def compare_outcome(result, timeline_rows, decision_rows, trace_rows, *,
         context["mode"] = (result.get("execution_mode") or {}).get("mode")
     cost = dict(cost or {})
 
-    declared_bits = _packet_bits(trace_rows)
-    emissions = _emission_times(trace_rows)
-    event_bits = _emitted_bits(result)
-    bits = {}
-    for pid in set(declared_bits) | set(event_bits) | set(emissions):
-        if pid in declared_bits:
-            bits[pid] = declared_bits[pid]
-        elif pid in event_bits:
-            bits[pid] = event_bits[pid]
-    deliveries = _delivery_instants(result)
-    admitted = _admitted_pids(result)
-    fates = {pid: _fate_of(result, pid)
-             for pid in set(bits) | set(emissions) | set(deliveries)}
+    trace_packets = _validated_trace_packets(trace_rows)
+    trace_ids = set(trace_packets)
+    bits = {pid: item["bits"] for pid, item in trace_packets.items()}
+    emissions = {pid: item["emit_time_s"]
+                 for pid, item in trace_packets.items()}
+    trace_rows_digest = hashlib.sha256(json.dumps(
+        trace_rows, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, default=str).encode("utf-8")).hexdigest()
+    context.setdefault("trace_rows_digest", trace_rows_digest)
+    if deadline_s is not None:
+        deadline_s = _num(deadline_s, "deadline_s")
+        if deadline_s is None or deadline_s <= 0:
+            raise OutcomeMetricsError("deadline_s must be finite and positive")
+    fates = _pid_keyed_records(result.get("fates"), "result.fates")
+    fates = {pid: value for pid, value in fates.items()}
+    delivery_records = _pid_keyed_records(result.get("deliveries"),
+                                          "result.deliveries")
+    event_bits = _packet_event_bits(result, trace_packets)
+    if event_bits is not None and set(event_bits) != trace_ids:
+        raise OutcomeMetricsError(
+            "packet_emitted events do not match trace_rows packet ids; "
+            f"missing {sorted(trace_ids - set(event_bits))[:10]}, "
+            f"extra {sorted(set(event_bits) - trace_ids)[:10]}")
+    delivery_times = {}
+    for pid, record in delivery_records.items():
+        if isinstance(record, dict) and record.get("delivered_at") is not None:
+            at = _num(record.get("delivered_at"),
+                      "deliveries[pid].delivered_at")
+            if at is None:
+                raise OutcomeMetricsError(
+                    f"delivery time for pid {pid} is non-finite")
+            delivery_times[pid] = at
+    admitted_pids = _admitted_pids(result)
+    if admitted_pids is not None:
+        outside = sorted(admitted_pids - trace_ids)
+        if outside:
+            raise OutcomeMetricsError(
+                f"satellite_ingress events have pids absent from trace_rows: "
+                f"{outside[:10]}")
+    stop_time = _num(result.get("stop_time_s"), "result.stop_time_s")
+    packet_outcomes, window_block = _packet_observations(
+        trace_packets, fates, delivery_records, stop_time, deadline_s,
+        window, context)
+    deadline_primary_loss = _deadline_summary(packet_outcomes, deadline_s)
+    packet_outcomes_sha256 = hashlib.sha256(json.dumps(
+        packet_outcomes, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, default=str).encode("utf-8")).hexdigest()
 
     # The authoritative counts/bits layer is the kernel's own congestion
     # metrics (CODE/leo_sim/metrics.py::summarize with access_boundary=True);
     # the fates and the delivery instants are read from the fate ledger and the
     # delivery map, which that summarizer does not own.
     congestion = result.get("congestion_metrics") or {}
+    if not isinstance(congestion, dict):
+        congestion = {}
     rows = []
     stop_rule = {
         "natural_end": bool(result.get("natural_end", True)),
         "interrupted": bool(result.get("interrupted", False)),
         "error": result.get("error"),
-        "stop_time_s": _num(result.get("stop_time_s"), "stop_time_s"),
+        "stop_time_s": stop_time,
         "horizon_s": _num(result.get("horizon_s"), "horizon_s"),
         "events_processed": result.get("events_processed"),
     }
 
     # -- partition -----------------------------------------------------------
-    offered = sorted(set(emissions) | set(bits) | set(event_bits))
-    delivered = sorted(pid for pid in offered if pid in deliveries)
+    offered = sorted(trace_ids)
+    delivered = sorted(pid for pid in offered
+                       if fates.get(pid) == "DELIVERED")
     terminal = sorted(pid for pid in offered
-                      if pid not in deliveries
-                      and fates.get(pid) in TERMINAL_LOSS_FATES)
+                      if fates.get(pid) in TERMINAL_LOSS_FATES)
     censored = sorted(pid for pid in offered
-                      if pid not in deliveries
-                      and fates.get(pid) in CENSORING_FATES)
-    unclassified = sorted(pid for pid in offered
-                          if pid not in deliveries and pid not in terminal
-                          and pid not in censored)
-    partition_exact = not unclassified
-    if unclassified:
-        # fail loud rather than silently shrinking the population: a packet
-        # whose fate is neither delivered, terminal nor censored is a bug in
-        # the reading, not a zero
+                      if fates.get(pid) in CENSORING_FATES)
+    partition_exact = len(delivered) + len(terminal) + len(censored) == len(offered)
+    if not partition_exact:
+        raise OutcomeMetricsError("packet fate partition is not exact")
+
+    admitted_metric = congestion.get(
+        "admitted_at_satellite_ingress_packets")
+    admitted_canonical = (_num(admitted_metric, "canonical admitted count")
+                          if admitted_metric is not None else None)
+    if (admitted_canonical is not None and admitted_pids is not None
+            and admitted_canonical != len(admitted_pids)):
         raise OutcomeMetricsError(
-            f"packets with an unclassifiable fate: {unclassified[:10]}")
+            "satellite_ingress event count differs from canonical congestion "
+            "admitted count")
+    admitted_count = (len(admitted_pids) if admitted_pids is not None
+                      else admitted_canonical)
+    admitted_bits = (None if admitted_pids is None
+                     else int(sum(bits[pid] for pid in admitted_pids)))
+    delivered_bits = int(sum(bits[pid] for pid in delivered))
 
     counts = {
         "offered": len(offered),
-        "admitted": len(admitted),
+        "admitted": admitted_count,
         "delivered": len(delivered),
-        "offered_bits": int(sum(bits.get(pid, 0) for pid in offered)),
-        "admitted_bits": int(sum(bits.get(pid, 0) for pid in admitted)),
-        "delivered_bits": int(sum(bits.get(pid, 0) for pid in delivered)),
+        "offered_bits": int(sum(bits[pid] for pid in offered)),
+        "admitted_bits": admitted_bits,
+        "delivered_bits": delivered_bits,
         "fate_counts": dict(result.get("fate_counts") or {}),
     }
     if congestion:
@@ -513,7 +792,6 @@ def compare_outcome(result, timeline_rows, decision_rows, trace_rows, *,
     }
 
     # -- measurement window --------------------------------------------------
-    window_block = _window_from(window, trace_rows)
     inside, warmup, drain = ([], [], [])
     if window_block.get("status") == "COMPUTED":
         inside, warmup, drain = _window_membership(window_block, emissions)
@@ -523,20 +801,32 @@ def compare_outcome(result, timeline_rows, decision_rows, trace_rows, *,
     payload = {}
     if window_block.get("status") == "COMPUTED":
         window_s = float(window_block["fixed_window_s"])
-        inside_delivered = [pid for pid in delivered
-                            if window_block["start_s"] <= deliveries[pid]
-                            <= window_block["end_s"]]
-        inside_bits = int(sum(bits.get(pid, 0) for pid in inside_delivered))
+        missing_delivery_times = sorted(
+            pid for pid in delivered if pid not in delivery_times)
+        inside_delivered = ([pid for pid in delivered
+                             if window_block["start_s"] <= delivery_times[pid]
+                             <= window_block["end_s"]]
+                            if not missing_delivery_times else None)
+        inside_bits = (int(sum(bits[pid] for pid in inside_delivered))
+                       if inside_delivered is not None else None)
         generated = list(inside)
-        delivered_of_generated = [pid for pid in generated if pid in deliveries]
+        delivered_of_generated = [pid for pid in generated
+                                  if fates[pid] == "DELIVERED"]
         delivered_of_generated_bits = int(
-            sum(bits.get(pid, 0) for pid in delivered_of_generated))
+            sum(bits[pid] for pid in delivered_of_generated))
         throughput = {
             "delivered_bits_in_window_over_fixed_window": {
-                "value_bps": _safe_rate(inside_bits, window_s),
+                "value_bps": (None if inside_bits is None
+                              else _safe_rate(inside_bits, window_s)),
                 "delivered_bits_in_window": inside_bits,
                 "window_s": window_s,
-                "packets_delivered_in_window": len(inside_delivered),
+                "packets_delivered_in_window": (
+                    None if inside_delivered is None
+                    else len(inside_delivered)),
+                "status": (NOT_COMPUTABLE if inside_delivered is None
+                           else "COMPUTED"),
+                "missing_field": ("result.deliveries[pid].delivered_at"
+                                  if inside_delivered is None else None),
                 "denominator_kind": DENOMINATOR_FIXED_WINDOW,
                 "numerator_kind": "bits_of_packets_delivered_inside_the_window",
                 "definition": "sum(bits of packets whose delivered_at is inside "
@@ -564,7 +854,11 @@ def compare_outcome(result, timeline_rows, decision_rows, trace_rows, *,
         payload = {
             "delivered_bits_in_window": inside_bits,
             "fixed_window_s": window_s,
-            "goodput_bps": _safe_rate(inside_bits, window_s),
+            "goodput_bps": (None if inside_bits is None
+                             else _safe_rate(inside_bits, window_s)),
+            "status": (NOT_COMPUTABLE if inside_bits is None else "COMPUTED"),
+            "missing_field": ("result.deliveries[pid].delivered_at"
+                              if inside_bits is None else None),
             "basis": "bits_delivered_inside_the_window",
             "delivery_ratio": delivery_ratio,
             "all_delivered_bits": counts["delivered_bits"],
@@ -583,7 +877,7 @@ def compare_outcome(result, timeline_rows, decision_rows, trace_rows, *,
     rate = _rate_block(decision_rows or [], timeline_rows or [], window_s)
 
     queue = _queue_block(result, timeline_rows or [])
-    e2e = _e2e_block(emissions, deliveries)
+    e2e = _e2e_block(emissions, delivery_times, delivered)
     table = _table_block(decision_rows or [], timeline_rows or [])
     prediction = _prediction_block(decision_rows or [], timeline_rows or [],
                                    emissions)
@@ -592,7 +886,9 @@ def compare_outcome(result, timeline_rows, decision_rows, trace_rows, *,
     network_rows = _network_rows(counts, terminal_loss, censoring,
                                  delivery_ratio, window_block, throughput,
                                  payload, queue, e2e, rate, table, prediction,
-                                 warmup, drain, bits, deliveries)
+                                 warmup, drain, bits, delivery_records,
+                                 admitted_count, deadline_primary_loss,
+                                 delivered)
     cost_rows = _cost_rows(cost_block)
     all_rows = network_rows + cost_rows
 
@@ -604,19 +900,22 @@ def compare_outcome(result, timeline_rows, decision_rows, trace_rows, *,
         "delivery_ratio": delivery_ratio,
         "throughput": throughput,
         "payload": payload,
+        "deadline_primary_loss": deadline_primary_loss,
+        "packet_outcomes": packet_outcomes,
+        "packet_outcomes_sha256": packet_outcomes_sha256,
         "queue": queue,
         "e2e": e2e,
         "rate_per_satellite": rate,
         "table": table,
         "prediction": prediction,
         "warmup": {"packets": len(warmup), "pids": warmup,
-                   "bits": int(sum(bits.get(p, 0) for p in warmup)),
+                  "bits": int(sum(bits[p] for p in warmup)),
                    "window_start_s": window_block.get("start_s"),
                    "note": "emitted before the measurement window; excluded "
                            "from every window denominator"},
         "drain": {"packets": len(drain), "pids": drain,
-                  "bits": int(sum(bits.get(p, 0) for p in drain)),
-                  "delivered": sum(1 for p in drain if p in deliveries),
+                  "bits": int(sum(bits[p] for p in drain)),
+            "delivered": sum(1 for p in drain if p in set(delivered)),
                   "window_end_s": window_block.get("end_s"),
                   "note": "emitted after the measurement window closed; kept "
                           "separable so a ceiling is not mistaken for a loss"},
@@ -817,14 +1116,29 @@ def _queue_block(result, timeline_rows):
     }
 
 
-def _e2e_block(emissions, deliveries):
+def _e2e_block(emissions, deliveries, delivered_pids=None):
+    expected = (sorted(delivered_pids) if delivered_pids is not None
+                else sorted(deliveries))
     samples, pids = [], []
-    for pid in sorted(deliveries):
+    missing_delivery_times = []
+    for pid in expected:
         emitted_at = emissions.get(pid)
-        if emitted_at is None:
+        delivered_at = deliveries.get(pid)
+        if emitted_at is None or delivered_at is None:
+            missing_delivery_times.append(pid)
             continue
-        samples.append(float(deliveries[pid]) - float(emitted_at))
+        samples.append(float(delivered_at) - float(emitted_at))
         pids.append(pid)
+    if missing_delivery_times:
+        return {"samples": len(samples), "expected_samples": len(expected),
+                "mean_s": None, "p50_s": None, "p90_s": None,
+                "p95_s": None, "p99_s": None, "pids": pids,
+                "status": NOT_COMPUTABLE,
+                "missing_delivery_time_pids": missing_delivery_times,
+                "missing_field": "result.deliveries[pid].delivered_at",
+                "source": "result.deliveries + trace_rows.emit_time_s",
+                "note": "one or more delivered packets lack a delivery or "
+                        "emission instant; no partial E2E summary is reported"}
     if not samples:
         return {"samples": 0, "mean_s": None, "p50_s": None, "p90_s": None,
                 "p95_s": None, "p99_s": None, "pids": [],
@@ -1240,7 +1554,7 @@ def _job_class(job):
     return COMPUTE_BACKGROUND_UPDATES
 
 
-def _jobs_summary(jobs):
+def _jobs_summary(jobs, observation_end_s=None):
     """Counts, queue wait and service seconds for one class of compute job.
 
     A job is complete when it has a request, a start and a finish: the
@@ -1255,15 +1569,32 @@ def _jobs_summary(jobs):
     requested = [job for job in jobs if job.get("requested_at") is not None]
     started = [job for job in jobs if job.get("started_at") is not None]
     finished = [job for job in jobs if job.get("finished_at") is not None]
-    service = []
+    completed_service = []
+    partial_service = []
+    configured_service = []
     for job in jobs:
-        value = _num(job.get("service_finished_s"), "service_s")
-        if value is None:
-            value = _num(job.get("service_s"), "service_s")
-        if value is not None:
-            service.append(value)
+        nominal = _num(job.get("service_s"), "service_s")
+        if job.get("requested_at") is not None and nominal is not None:
+            configured_service.append(nominal)
+        finished_at = _num(job.get("finished_at"), "compute_finish.at")
+        started_at = _num(job.get("started_at"), "compute_start.at")
+        measured = _num(job.get("service_finished_s"),
+                        "compute_finish.service_s")
+        if measured is None and finished_at is not None and started_at is not None:
+            measured = max(0.0, finished_at - started_at)
+        if finished_at is not None and measured is not None:
+            completed_service.append(measured)
+        elif (started_at is not None and observation_end_s is not None
+              and observation_end_s > started_at):
+            elapsed = float(observation_end_s) - started_at
+            if nominal is not None:
+                elapsed = min(elapsed, max(0.0, nominal))
+            partial_service.append(max(0.0, elapsed))
     satellites = sorted({job.get("sat") for job in jobs
                          if job.get("sat") is not None})
+    configured_total = float(sum(configured_service))
+    completed_total = float(sum(completed_service))
+    partial_total = float(sum(partial_service))
     return {
         "jobs": len(jobs),
         "job_ids": sorted(job["job_id"] for job in jobs),
@@ -1275,8 +1606,20 @@ def _jobs_summary(jobs):
         "queue_wait_max_s": (max(waits) if waits else None),
         "queued_jobs": sum(1 for job in jobs
                            if (_num(job.get("wait_s"), "wait_s") or 0.0) > 0.0),
-        "service_s": float(sum(service)),
-        "service_mean_s": (statistics.fmean(service) if service else None),
+        # `service_s` is measured service for jobs that reached a finish event.
+        # Never charge an unfinished job its full configured duration.
+        "service_s": completed_total,
+        "service_mean_s": (statistics.fmean(completed_service)
+                           if completed_service else None),
+        "service_s_completed": completed_total,
+        "service_s_observed_partial": partial_total,
+        "service_s_observed_lower_bound": completed_total + partial_total,
+        "service_s_configured_requested": configured_total,
+        "service_s_projected_remaining": max(
+            0.0, configured_total - completed_total - partial_total),
+        "unfinished_jobs": sum(1 for job in jobs
+                               if job.get("requested_at") is not None
+                               and job.get("finished_at") is None),
         "zero_queueing": (all((_num(job.get("wait_s"), "wait_s") or 0.0) <= 0.0
                               for job in jobs) if jobs else None),
         "by_satellite": {str(sat): sum(1 for job in jobs
@@ -1296,9 +1639,20 @@ def _cost_block(result, timeline_rows, cost):
     execution = result.get("execution_mode") or {}
     # Whole-run job accounting: a compute job's request/start/finish are a
     # single unit, so windowing the JOBS would split one job across two rows.
-    served = _jobs_summary(list(packet_jobs.values()))
-    background = _jobs_summary(list(background_jobs.values()))
+    observation_end = _num(result.get("stop_time_s"), "result.stop_time_s")
+    served = _jobs_summary(list(packet_jobs.values()), observation_end)
+    background = _jobs_summary(list(background_jobs.values()), observation_end)
     background["mode"] = ("async" if background_jobs else "none")
+
+    def _observed_service_end(job, start):
+        finished = _num(job.get("finished_at"), "compute_finish.at")
+        if finished is not None:
+            return finished
+        if observation_end is None:
+            return None
+        nominal = _num(job.get("service_s"), "service_s")
+        return (observation_end if nominal is None
+                else min(observation_end, start + max(0.0, nominal)))
 
     service_intervals = []
     for row in timeline_rows:
@@ -1309,10 +1663,9 @@ def _cost_block(result, timeline_rows, cost):
             continue
         job_id = row.get("compute_job_id")
         job = jobs.get(job_id) or {}
-        end = _num(job.get("finished_at"), "compute_finish.at")
-        if end is None:
-            end = start + (_num(job.get("service_s"), "service_s") or 0.0)
-        service_intervals.append((start, end))
+        end = _observed_service_end(job, start)
+        if end is not None and end > start:
+            service_intervals.append((start, end))
 
     total = {
         "jobs": served["jobs"] + background["jobs"],
@@ -1321,6 +1674,20 @@ def _cost_block(result, timeline_rows, cost):
         "finish_events": served["finish_events"] + background["finish_events"],
         "queue_wait_s": served["queue_wait_s"] + background["queue_wait_s"],
         "service_s": served["service_s"] + background["service_s"],
+        "service_s_observed_partial": (
+            served["service_s_observed_partial"]
+            + background["service_s_observed_partial"]),
+        "service_s_observed_lower_bound": (
+            served["service_s_observed_lower_bound"]
+            + background["service_s_observed_lower_bound"]),
+        "service_s_configured_requested": (
+            served["service_s_configured_requested"]
+            + background["service_s_configured_requested"]),
+        "service_s_projected_remaining": (
+            served["service_s_projected_remaining"]
+            + background["service_s_projected_remaining"]),
+        "unfinished_jobs": served["unfinished_jobs"]
+        + background["unfinished_jobs"],
         "queued_jobs": served["queued_jobs"] + background["queued_jobs"],
         "includes_background_updates": True,
         "note": "the total is the sum of the per-packet decision compute and "
@@ -1341,11 +1708,8 @@ def _cost_block(result, timeline_rows, cost):
             continue
         start = _num(row.get("at"), "compute_start.at")
         job = jobs.get(row.get("compute_job_id")) or {}
-        end = _num(job.get("finished_at"), "compute_finish.at")
-        if start is None:
-            end = None
-        if end is None and start is not None:
-            end = start + (_num(job.get("service_s"), "service_s") or 0.0)
+        end = (_observed_service_end(job, start)
+               if start is not None else None)
         if start is None or end is None:
             continue
         sat = job.get("sat", row.get("sat"))
@@ -1481,18 +1845,25 @@ def _control_block(result, timeline_rows):
 # ------------------------------------------------------------ long-form rows
 def _network_rows(counts, terminal_loss, censoring, delivery_ratio, window_block,
                   throughput, payload, queue, e2e, rate, table, prediction,
-                  warmup, drain, bits, deliveries):
+                  warmup, drain, bits, deliveries, admitted_count,
+                  deadline_primary_loss, delivered_pids):
     source_counts = "trace rows (offer) + fate ledger + deliveries"
     rows = [
         _value_at("counts.offered", counts["offered"], COUNTS, source_counts),
         _value_at("counts.admitted", counts["admitted"], COUNTS,
-                  "packet_events satellite_ingress"),
+                  "packet_events satellite_ingress",
+                  missing_field=("result.packet_events.satellite_ingress"
+                                 if admitted_count is None else None)),
         _value_at("counts.delivered", counts["delivered"], COUNTS,
                   "result.deliveries"),
         _value_at("counts.offered_bits", counts["offered_bits"], BITS,
                   "trace rows bits"),
         _value_at("counts.delivered_bits", counts["delivered_bits"], BITS,
                   "trace rows bits of delivered packets"),
+        _value_at("counts.admitted_bits", counts["admitted_bits"], BITS,
+                  "trace rows bits of packets observed at satellite_ingress",
+                  missing_field=("result.packet_events.satellite_ingress"
+                                 if counts["admitted_bits"] is None else None)),
         _value_at("counts.delivery_ratio_by_packets",
                   delivery_ratio["by_packets"], "ratio", source_counts),
         _value_at("counts.delivery_ratio_by_bits", delivery_ratio["by_bits"],
@@ -1512,6 +1883,28 @@ def _network_rows(counts, terminal_loss, censoring, delivery_ratio, window_block
                   "result.fates == IN_SYSTEM_AT_STOP"),
         _value_at("censor.packets", censoring["packets"], COUNTS,
                   "result.fates filtered to censoring fates"),
+        _value_at("deadline_loss.mean", deadline_primary_loss.get("value"),
+                  "normalized delay / D",
+                  "trace_rows + result.fates + result.deliveries + stop_time_s",
+                  note=("population mean; censored packets retain interval bounds"
+                        if deadline_primary_loss.get("status") == "PARTIAL_BOUNDS"
+                        else "population mean over the fixed measurement window"),
+                  missing_field=deadline_primary_loss.get("missing_field")
+                  or "packet-level delivery/fate/deadline fields"),
+        _value_at("deadline_loss.lower_mean",
+                  deadline_primary_loss.get("lower_mean"),
+                  "normalized delay / D",
+                  "trace_rows + result.fates + result.deliveries + stop_time_s",
+                  note="lower bound; unknown outcomes are not replaced by zero",
+                  missing_field=deadline_primary_loss.get("missing_field")
+                  or "packet-level delivery/fate/deadline fields"),
+        _value_at("deadline_loss.upper_mean",
+                  deadline_primary_loss.get("upper_mean"),
+                  "normalized delay / D",
+                  "trace_rows + result.fates + result.deliveries + stop_time_s",
+                  note="upper bound; unknown outcomes retain their worst-case bound",
+                  missing_field=deadline_primary_loss.get("missing_field")
+                  or "packet-level delivery/fate/deadline fields"),
     ]
     if window_block.get("status") == "COMPUTED":
         rows += [
@@ -1574,8 +1967,8 @@ def _network_rows(counts, terminal_loss, censoring, delivery_ratio, window_block
                   "trace rows emit_time_s after the window",
                   "kept separable so a drain ceiling is not read as loss"),
         _value_at("drain.delivered",
-                  sum(1 for pid in drain if pid in deliveries), COUNTS,
-                  "result.deliveries"),
+                  sum(1 for pid in drain if pid in set(delivered_pids)), COUNTS,
+                  "result.fates == DELIVERED"),
         _value_at("e2e.mean_s", e2e.get("mean_s"), SECONDS, e2e.get("source", ""),
                   e2e.get("subset", "")),
         _value_at("e2e.p50_s", e2e.get("p50_s"), SECONDS, e2e.get("source", "")),

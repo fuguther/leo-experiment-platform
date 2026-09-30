@@ -700,6 +700,24 @@ def _branch(resolved, rows, geometry, decision_id):
     return capture(baseline, sink, timeline), target
 
 
+def _replay_payload(captured):
+    """Keep the real event streams needed by the offline branch replay."""
+    result = captured["result"]
+    return {
+        "decision_rows": captured["decision_rows"],
+        "timeline_rows": captured["timeline_rows"],
+        "packet_events": result["packet_events"],
+        "link_service_windows": result["link_service_windows"],
+        "link_available_windows": result["link_available_windows"],
+        "queue_state_events": [row for row in captured["timeline_rows"]
+                                if row.get("milestone") == "queue_state"],
+        "topology_trace": result.get("topology_trace"),
+        "fates": result["fates"],
+        "deliveries": result["deliveries"],
+        "handover_events": result["handover"]["events"],
+    }
+
+
 def load_frozen_deadline(path):
     """Load a development-frozen deadline with its provenance intact."""
     path = Path(path)
@@ -865,7 +883,7 @@ def arm_view(scored, detail, label, role, losses, best):
 
 
 def compare(resolved, rows, geometry, decision_id, deadline_s, source,
-            frozen_deadline=None, run_kind="dev"):
+            frozen_deadline=None, run_kind="dev", capture_replay=False):
     branch, target = _branch(resolved, rows, geometry, decision_id)
     decision_id = int(target["decision_id"])
     if target.get("kind") != "forward":
@@ -952,6 +970,8 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source,
                                      resource_link,
                                      target["t_decision_start"])),
             "outcome": outcome,
+            "replay": (_replay_payload(chosen_branch)
+                       if capture_replay else None),
         }
 
     deadline = _deadline(resolved, per_candidate, deadline_s,
@@ -1176,6 +1196,24 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source,
                                   for d in probe.legal_directions},
         },
         "candidates": per_candidate,
+        "replay": ({
+            "captured": True,
+            "offline_diagnostic": True,
+            "selection_rule": "first sampled structural decision with at least two legal directions and complete peer-resource identifiers; no outcome or arm ranking used",
+            "target_decision": target,
+            "target_packet_id": pid,
+            "shared_baseline": _replay_payload(branch),
+            "forced_candidate_branches": {
+                direction: item.get("replay")
+                for direction, item in per_candidate.items()},
+            "information_arms": arms,
+            "candidate_outcomes": {
+                direction: {key: item.get(key) for key in (
+                    "valid", "reason", "outcome", "loss", "regret",
+                    "resource_trajectory", "predicted_resource",
+                    "actual_egress_at_peer")}
+                for direction, item in per_candidate.items()},
+        } if capture_replay else {"captured": False}),
         "arms": arms,
         "ideal_arms": ideal_arms,
         "eta_queue_2x2": decomposition,

@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -31,7 +32,8 @@ from pathlib import Path
 
 import yaml
 
-from CODE.experiment_platform import artifact_identity, t1_stats, t1_tasks
+from CODE.experiment_platform import (artifact_identity, synthetic_od,
+                                      t1_stats, t1_tasks)
 
 SCHEMA_BUNDLE = "t1-suite-bundle/v1"
 SCHEMA_RUN = "t1-suite-run/v1"
@@ -43,6 +45,10 @@ DEFAULT_BUDGETS = {
     "cell_wall_s": 120.0,
     "max_cells": 120,
     "total_wall_s": 7200.0,
+    # The dedicated B development wrapper places a much smaller explicit cap
+    # in its frozen contract.  Ordinary acceptance/dev tiers retain their
+    # existing wall/cell gates and must not inherit that B-only allowance.
+    "simulator_call_budget": 10000,
 }
 
 VALIDATION_SCHEMA = "t1-suite-validation/v1"
@@ -131,6 +137,47 @@ DEV_DEADLINE_S = 30.0
 #: the control advertisements become reachable, and early enough to leave a
 #: drain tail.  Declared here, not inferred from the run.
 DEV_WINDOW_S = (5.0, 40.0)
+
+
+def _development_deadline_s(contract):
+    """Return the predeclared development D, not a task-local default."""
+    statistics_doc = contract.get("statistics")
+    if not isinstance(statistics_doc, dict):
+        statistics_doc = {}
+    deadline_doc = statistics_doc.get("deadline")
+    if not isinstance(deadline_doc, dict):
+        deadline_doc = {}
+    raw = deadline_doc.get("value_s", DEV_DEADLINE_S)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise SuiteError("statistics.deadline.value_s must be finite and > 0") from exc
+    if not math.isfinite(value) or value <= 0:
+        raise SuiteError("statistics.deadline.value_s must be finite and > 0")
+    return value
+
+
+def _development_population_window(contract):
+    """Return one fixed packet population window for every b_round task."""
+    statistics_doc = contract.get("statistics")
+    if not isinstance(statistics_doc, dict):
+        statistics_doc = {}
+    raw = (statistics_doc.get("population_window_s")
+           or contract.get("admission_measurement_window_s") or DEV_WINDOW_S)
+    if (not isinstance(raw, (list, tuple)) or len(raw) != 2):
+        raise SuiteError("statistics.population_window_s must be [start, end]")
+    try:
+        start, end = float(raw[0]), float(raw[1])
+    except (TypeError, ValueError) as exc:
+        raise SuiteError(
+            "statistics.population_window_s must be finite and ordered") from exc
+    if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start:
+        raise SuiteError("statistics.population_window_s must be finite and ordered")
+    admission = contract.get("admission_measurement_window_s")
+    if admission is not None and tuple(map(float, admission)) != (start, end):
+        raise SuiteError(
+            "admission_measurement_window_s must equal statistics.population_window_s")
+    return (start, end)
 
 #: The ACCEPTANCE tier is a mechanism fixture, not a research configuration.
 #: It keeps the historical 2 Mbps offered load so that a forward decision
@@ -307,9 +354,11 @@ def freeze_scenario_deadlines(contract_path, out_dir, root=None):
     try:
         for spec in plan:
             sid = str(spec["id"])
+            workload = _workload_spec(contract, spec)
             cfg = _seed_config(contract, work, 7,
                                dict(spec.get("parameters") or {}),
-                               tag=f"b-{sid}", profile=str(spec["profile"]))
+                               tag=f"b-{sid}", profile=str(spec["profile"]),
+                               workload=workload)
             resolved, rows, geometry, source = t1_tasks.design(
                 config_path=cfg, root=work)
             decisions = t1_tasks._baseline_decisions(resolved, rows, geometry)
@@ -375,6 +424,18 @@ def freeze_scenario_deadlines(contract_path, out_dir, root=None):
                     "scenario, shared by every arm and every mode",
             "contract_sha256": _sha256_file(contract_path)}
 
+
+def _workload_spec(contract, scenario_spec):
+    """Resolve a scenario's named immutable OD workload from the contract."""
+    name = scenario_spec.get("workload")
+    if name is None:
+        return None
+    workloads = contract.get("workloads") or {}
+    spec = workloads.get(name)
+    if not isinstance(spec, dict):
+        raise SuiteError(f"scenario workload {name!r} is missing or malformed")
+    return spec
+
 def _b_cells(contract, bundle_dir):
     """B0/B1: the PRE-DECLARED business scenarios, one small cell set each.
 
@@ -386,6 +447,13 @@ def _b_cells(contract, bundle_dir):
     plan = (contract.get("b_round") or {}).get("scenarios") or []
     if not plan:
         return []
+    deadline_s = _development_deadline_s(contract)
+    population_window = _development_population_window(contract)
+    shared_outcome_args = [
+        "--deadline-s", str(deadline_s),
+        "--window-start", str(population_window[0]),
+        "--window-end", str(population_window[1]),
+    ]
     cells = []
     for spec in plan:
         sid = str(spec["id"])
@@ -404,7 +472,7 @@ def _b_cells(contract, bundle_dir):
             deadline_args = ["--deadline-from", str(frozen_d)]
             deadline_note = "frozen D from " + frozen_d.name
         else:
-            deadline_args = ["--deadline-s", str(DEV_DEADLINE_S)]
+            deadline_args = ["--deadline-s", str(deadline_s)]
             deadline_note = ("D NOT YET FROZEN: the declared diagnostic value "
                              "is used and the cell says so")
         seeds = [int(seed) for seed in spec.get("seeds", [7])]
@@ -412,23 +480,30 @@ def _b_cells(contract, bundle_dir):
             "branch_alignment", "network_alignment", "benchmark")))
         task_seeds = spec.get("task_seeds") or {}
         for seed in seeds:
+            workload = _workload_spec(contract, spec)
             cfg = _seed_config(contract, bundle_dir, seed, params,
-                               tag=f"b-{sid}-seed-{seed}", profile=profile)
+                               tag=f"b-{sid}-seed-{seed}", profile=profile,
+                               workload=workload)
             if ("branch_alignment" in tasks and seed in [
                     int(v) for v in task_seeds.get("branch_alignment", seeds)]):
+                branch_args = [*deadline_args, "--max-branches",
+                               str(branches), "--window-start",
+                               str(population_window[0]), "--window-end",
+                               str(population_window[1])]
+                if spec.get("replay_seed") == seed:
+                    branch_args.append("--capture-replay")
                 cells.append(_task_cell(
                     f"b-{sid}-branch-seed-{seed}", "b_round",
                     "branch_alignment", cfg,
-                    extra_args=[*deadline_args, "--max-branches",
-                                str(branches), "--window-start",
-                                str(DEV_WINDOW_S[0]), "--window-end",
-                                str(DEV_WINDOW_S[1])],
+                    extra_args=branch_args,
                     description=f"{sid}: offline branch block (at most "
                                 f"{branches} branches; {deadline_note})",
                     seed=seed,
                     require={"require_task": "branch_alignment",
                              "require_sampling_rule":
                                  t1_tasks.BRANCH_SAMPLING_RULE,
+                             "require_explanation_replay":
+                                 spec.get("replay_seed") == seed,
                              "min_branches": int(spec.get(
                                  "min_sampled_branches", 1))}))
             if ("network_alignment" in tasks and seed in [
@@ -437,13 +512,21 @@ def _b_cells(contract, bundle_dir):
                 if spec.get("arms"):
                     network_args = ["--arms", ",".join(
                         str(arm) for arm in spec["arms"])]
+                if spec.get("replay_seed") == seed:
+                    network_args.append("--capture-replay")
                 cells.append(_task_cell(
                     f"b-{sid}-network-seed-{seed}", "b_round",
-                    "network_alignment", cfg, extra_args=network_args,
+                    "network_alignment", cfg,
+                    extra_args=[*shared_outcome_args, *network_args],
                     description=f"{sid}: four online arms, whole network",
                     seed=seed,
                     require={"require_task": "network_alignment",
                              "arms": list(t1_tasks.NETWORK_ARMS),
+                             "synthetic_od_count": 6,
+                             "require_compiled_od_mapping": True,
+                             "require_routing_audit_log": True,
+                             "require_full_replay":
+                                 spec.get("replay_seed") == seed,
                              "min_decisions_per_arm": 1,
                              "min_satellites": 1}))
             if ("benchmark" in tasks and seed in [
@@ -472,6 +555,7 @@ def _b_cells(contract, bundle_dir):
                 cells.append(_task_cell(
                     f"b-{sid}-execution-modes-seed-{seed}", "b_round",
                     "execution_modes", cfg,
+                    extra_args=shared_outcome_args,
                     description=f"{sid}: the five execution modes",
                     seed=seed,
                     require={"require_task": "execution_modes",
@@ -487,7 +571,7 @@ def _b_cells(contract, bundle_dir):
                     dict(params, **{"time_alignment.execution_mode":
                                     "async_window"}),
                     tag=f"b-{sid}-{matrix_id}-seed-{matrix_seed}",
-                    profile=profile)
+                    profile=profile, workload=workload)
                 extra_args = [
                     "--compute-servers", str(int(matrix["compute_servers"])),
                     "--service-s", str(float(matrix["service_s"])),
@@ -907,7 +991,7 @@ def _formal_cells(contract, bundle_dir):
 
 
 def _seed_config(contract, bundle_dir, seed, params=None, tag=None,
-                 profile=None):
+                 profile=None, workload=None):
     """Write a per-seed copy of the frozen branch profile into the bundle.
 
     A2: the SAME apply_parameters() the confirmation tier uses writes the
@@ -927,10 +1011,29 @@ def _seed_config(contract, bundle_dir, seed, params=None, tag=None,
     if isinstance(doc["scenario"], dict):
         doc["scenario"]["seed"] = int(seed)
     apply_parameters(doc, params)
-    configs = Path(bundle_dir) / "configs"
-    configs.mkdir(exist_ok=True)
+    bundle_dir = Path(bundle_dir).resolve()
+    configs = bundle_dir / "configs"
+    configs.mkdir(parents=True, exist_ok=True)
     name = f"seed-{seed}.yaml" if tag is None else f"seed-{seed}-{tag}.yaml"
     out = configs / name
+    if workload is not None:
+        inputs = bundle_dir / "inputs"
+        inputs.mkdir(parents=True, exist_ok=True)
+        workload_id = str(workload["workload_id"])
+        safe_workload_id = "".join(
+            ch if ch.isalnum() or ch in "-_." else "_"
+            for ch in workload_id)
+        trace_path = inputs / f"{name.removesuffix('.yaml')}-{safe_workload_id}.csv"
+        summary = synthetic_od.write_trace(trace_path, workload, seed=int(seed))
+        summary_path = trace_path.with_suffix(".workload.json")
+        _write_json(summary_path, summary)
+        doc.setdefault("demand", {})
+        doc["demand"].update({
+            "mode": "csv",
+            "csv_path": str(trace_path),
+            "emission_end_s": float(summary["emission_end_s"]),
+            "packet_bits": int(summary["packet_bits"]),
+        })
     out.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
     return out
 
@@ -1059,6 +1162,24 @@ def _cell_input_binding(cell):
             binding["config_path"] = str(path)
             binding["config_sha256"] = (_sha256_file(path)
                                         if path.exists() else None)
+            demand_path = None
+            if path.is_file():
+                try:
+                    config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                    demand_path = (config.get("demand") or {}).get("csv_path")
+                except (OSError, yaml.YAMLError, AttributeError):
+                    demand_path = None
+            if demand_path:
+                trace_path = Path(demand_path)
+                summary_path = trace_path.with_suffix(".workload.json")
+                binding["files"]["demand_csv"] = {
+                    "path": str(trace_path),
+                    "sha256": (_sha256_file(trace_path)
+                               if trace_path.is_file() else None)}
+                binding["files"]["demand_workload_summary"] = {
+                    "path": str(summary_path),
+                    "sha256": (_sha256_file(summary_path)
+                               if summary_path.is_file() else None)}
         if flag == "--scenario":
             binding["scenario"] = value
         if flag in ("--deadline-from", "--checkpoint", "--metadata",
@@ -1214,6 +1335,31 @@ def _identity_matches(recorded, current):
     return recorded == current
 
 
+def _estimated_calls_for_cells(cells):
+    return int(estimate_bundle_cost({"cells": list(cells)})[
+        "simulator_calls"])
+
+
+def _aggregate_simulator_calls(records):
+    totals = {"started": 0, "ended": 0, "failed": 0,
+              "timed_out": 0, "interrupted": 0,
+              "unresolved": 0, "simulator_wall_s": 0.0,
+              "cells_with_ledger": 0}
+    for record in records:
+        accounting = record.get("simulator_calls") or {}
+        if accounting.get("ledger_path"):
+            totals["cells_with_ledger"] += 1
+        for name in ("started", "ended", "failed", "timed_out",
+                     "interrupted", "unresolved"):
+            totals[name] += int(accounting.get(name) or 0)
+        totals["simulator_wall_s"] += float(
+            accounting.get("simulator_wall_s") or 0.0)
+    totals["terminal"] = (totals["ended"] + totals["failed"]
+                          + totals["timed_out"] + totals["interrupted"])
+    totals["unaccounted"] = totals["started"] - totals["terminal"]
+    return totals
+
+
 def _execute_cell(cell, out_root, budgets):
     cell_dir = Path(out_root) / "cells" / cell["cell_id"]
     cell_dir.mkdir(parents=True, exist_ok=True)
@@ -1227,13 +1373,24 @@ def _execute_cell(cell, out_root, budgets):
             index += 1
         superseded = cell_dir / f"result.superseded-{index}.json"
         result_path.rename(superseded)
+    call_ledger = cell_dir / "simulator-calls.jsonl"
+    if call_ledger.exists():
+        index = 1
+        while (cell_dir / f"simulator-calls.superseded-{index}.jsonl").exists():
+            index += 1
+        call_ledger.rename(
+            cell_dir / f"simulator-calls.superseded-{index}.jsonl")
     argv = [sys.executable, "-m", cell["driver"], *cell["args"],
             "--out", str(result_path)]
     started = time.perf_counter()
     timed_out = False
+    environment = os.environ.copy()
+    environment["T1_SIM_CALL_LEDGER"] = str(call_ledger)
+    environment["T1_SIM_CALL_CONTEXT"] = str(cell["cell_id"])
     try:
         proc = subprocess.run(argv, cwd=str(REPO_ROOT), capture_output=True,
-                              text=True, timeout=budgets["cell_wall_s"])
+                              text=True, timeout=budgets["cell_wall_s"],
+                              env=environment)
         returncode, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired as exc:
         timed_out = True
@@ -1243,6 +1400,9 @@ def _execute_cell(cell, out_root, budgets):
         stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (
             exc.stderr or "")
     wall = time.perf_counter() - started
+    call_accounting = _finalize_simulator_call_ledger(
+        call_ledger, timed_out=timed_out,
+        interrupted=(not timed_out and returncode not in (0, None)))
     result_probe = _inspect_result(result_path)
     predicate = cell.get("predicate") or {"kind": None}
     verdict = (check_predicate(result_probe["payload"], predicate)
@@ -1265,11 +1425,14 @@ def _execute_cell(cell, out_root, budgets):
         status = "predicate_failed"
     else:
         status = "ok"
+    if call_accounting.get("unresolved", 0) and status == "ok":
+        status = "error"
     return {
         "cell_id": cell["cell_id"],
         "status": status,
         "returncode": returncode,
         "wall_s": wall,
+        "simulator_calls": call_accounting,
         "argv": argv,
         "stdout_tail": (stdout or "")[-2000:],
         "stderr_tail": (stderr or "")[-2000:],
@@ -1288,6 +1451,81 @@ def _execute_cell(cell, out_root, budgets):
                           or verdict.get("reason")
                           or (f"returncode {returncode}"
                               if returncode else "result missing or invalid")))),
+    }
+
+
+def _finalize_simulator_call_ledger(path, *, timed_out=False,
+                                    interrupted=False):
+    """Reconcile kernel begin/end events, including an outer cell timeout."""
+    path = Path(path)
+    events = []
+    if path.exists():
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise SuiteError(
+                    f"invalid simulator-call ledger line {line_no}: {exc}") from exc
+            if not isinstance(event, dict):
+                raise SuiteError(
+                    f"simulator-call ledger line {line_no} is not a mapping")
+            events.append(event)
+    begins = {}
+    terminals = {}
+    for event in events:
+        call_id = event.get("call_id")
+        if event.get("event") == "begin":
+            if not isinstance(call_id, str) or call_id in begins:
+                raise SuiteError("simulator-call ledger has invalid/duplicate begin")
+            begins[call_id] = event
+        elif event.get("event") in ("end", "fail", "timeout", "interrupted"):
+            if call_id not in begins or call_id in terminals:
+                raise SuiteError(
+                    f"simulator-call ledger has orphan/duplicate terminal {call_id!r}")
+            terminals[call_id] = event
+        else:
+            raise SuiteError(
+                f"simulator-call ledger has unknown event {event.get('event')!r}")
+    pending = [call_id for call_id in begins if call_id not in terminals]
+    if pending and (timed_out or interrupted):
+        now_ns = time.perf_counter_ns()
+        terminal = "timeout" if timed_out else "interrupted"
+        for call_id in pending:
+            started_ns = begins[call_id].get("monotonic_ns")
+            duration = (None if not isinstance(started_ns, int)
+                        else max(0.0, (now_ns - started_ns) / 1e9))
+            synthetic = {
+                "schema": "t1-simulator-call/v1", "call_id": call_id,
+                "sequence": begins[call_id].get("sequence"),
+                "context": begins[call_id].get("context"),
+                "event": terminal, "wall_time_ns": time.time_ns(),
+                "monotonic_ns": now_ns, "duration_s": duration,
+                "reason": ("outer_cell_wall_timeout" if timed_out
+                           else "driver_exited_before_call_terminal"),
+            }
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(synthetic, sort_keys=True,
+                                        separators=(",", ":")) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            events.append(synthetic)
+            terminals[call_id] = synthetic
+        pending = []
+    counts = {name: sum(1 for event in events if event.get("event") == name)
+              for name in ("begin", "end", "fail", "timeout", "interrupted")}
+    durations = [float(event["duration_s"]) for event in events
+                 if event.get("event") in ("end", "fail", "timeout", "interrupted")
+                 and isinstance(event.get("duration_s"), (int, float))
+                 and not isinstance(event.get("duration_s"), bool)]
+    raw = path.read_bytes() if path.exists() else b""
+    return {
+        "started": counts["begin"], "ended": counts["end"],
+        "failed": counts["fail"], "timed_out": counts["timeout"],
+        "interrupted": counts["interrupted"], "unresolved": len(pending),
+        "simulator_wall_s": float(sum(durations)),
+        "ledger_path": str(path),
+        "ledger_sha256": hashlib.sha256(raw).hexdigest(),
+        "events": len(events),
     }
 
 
@@ -1424,8 +1662,33 @@ def _check_task_predicate(result, require):
             checks.append(["ineligible decisions keep their reasons",
                            isinstance(eligibility.get("rejected"), list),
                            eligibility.get("rejected_count")])
+        if require.get("require_explanation_replay"):
+            replay = doc.get("explanation_replay") or {}
+            selection = doc.get("explanation_selection") or {}
+            checks.append(["the structural explanation replay was captured",
+                           replay.get("captured") is True
+                           and bool(replay.get("shared_baseline"))
+                           and bool(replay.get("forced_candidate_branches")),
+                           {"captured": replay.get("captured"),
+                            "decision_id": selection.get("decision_id"),
+                            "selection_rule": selection.get("rule")}])
     elif task == "network_alignment":
         rows = {row.get("arm"): row for row in (doc.get("arms") or [])}
+        source = doc.get("source") or {}
+        workload = source.get("synthetic_workload") or {}
+        workload_summary = workload.get("summary") or {}
+        if require.get("synthetic_od_count") is not None:
+            checks.append(["the frozen input has the declared directed OD count",
+                           workload_summary.get("unique_od_count")
+                           == int(require["synthetic_od_count"]),
+                           workload_summary.get("unique_od_count")])
+        if require.get("require_compiled_od_mapping"):
+            mapping = workload_summary.get("compiled_od_mapping") or {}
+            checks.append(["every OD maps to one compiled platform endpoint pair",
+                           len(mapping) == int(require.get(
+                               "synthetic_od_count", 0)),
+                           {"mapping_count": len(mapping),
+                            "expected": require.get("synthetic_od_count")}])
         for arm in require.get("arms", []):
             row = rows.get(arm)
             checks.append([f"arm {arm} ran the network", row is not None, None])
@@ -1451,6 +1714,32 @@ def _check_task_predicate(result, require):
                 count = _background_jobs_count(row)
                 checks.append([f"arm {arm} counts background jobs",
                                count > 0, count])
+            audit_log = row.get("routing_audit_log") or {}
+            if require.get("require_routing_audit_log"):
+                scope = row.get("scope") or {}
+                records = audit_log.get("decision_records") or []
+                complete_masks = all(
+                    (item.get("four_direction_audit") or {}).get(
+                        "direction_order") == ["N", "E", "S", "W"]
+                    and set((item.get("four_direction_audit") or {}).get(
+                        "final_legal_mask", {})) == {"N", "E", "S", "W"}
+                    for item in records)
+                checks.append([f"arm {arm} logs every forward decision with all four directions",
+                               audit_log.get("decision_record_count")
+                               == scope.get("forward_decisions")
+                               and complete_masks,
+                               {"records": audit_log.get("decision_record_count"),
+                                "forward_decisions": scope.get("forward_decisions"),
+                                "all_masks_complete": complete_masks}])
+            if require.get("require_full_replay"):
+                replay = row.get("replay") or {}
+                checks.append([f"arm {arm} has the full-network event replay",
+                               replay.get("captured") is True
+                               and len(replay.get("packet_events") or []) > 0
+                               and len(replay.get("topology_trace") or []) > 0,
+                               {"captured": replay.get("captured"),
+                                "packet_events": len(replay.get("packet_events") or []),
+                                "topology_snapshots": len(replay.get("topology_trace") or [])}])
     elif task == "execution_modes":
         rows = {row.get("mode"): row for row in (doc.get("modes") or [])}
         for mode in require.get("modes", []):
@@ -1590,7 +1879,7 @@ def check_predicate(result, predicate):
 #: A5: the number of simulator runs ONE task cell expands into.  Declared here
 #: because the outer cell count hides the real cost: a branch block of twelve
 #: branches is not one run, and a four-arm network cell is four.
-BRANCH_REPLAY_CANDIDATES = 3   # four directed egress choices is the upper bound
+BRANCH_REPLAY_CANDIDATES = 4   # preserve the full N/E/S/W legal-action upper bound
 
 
 def estimate_bundle_cost(bundle):
@@ -1734,7 +2023,8 @@ def _inspect_result(result_path):
 
 
 def run_bundle(bundle_dir, tier, out_dir, authorization=None,
-               smoke_validator=None):
+               smoke_validator=None, *, cell_ids=None, append=False,
+               stop_on_failure=False):
     bundle_dir = Path(bundle_dir)
     # a run must never start from a bundle whose inputs or code have moved
     validate_bundle(bundle_dir)
@@ -1746,32 +2036,90 @@ def run_bundle(bundle_dir, tier, out_dir, authorization=None,
         # cell runs; a package that changed, or an authorization for another
         # package, cannot start.
         formal_plan = formal_execution_plan(bundle_dir, authorization)
-    cell_ids = (bundle.get("tiers") or {}).get(tier)
-    if cell_ids is None:
+    tier_entry = (bundle.get("tiers") or {}).get(tier)
+    if tier_entry is None:
         raise SuiteError(f"unknown tier {tier!r}; "
                          f"have {sorted((bundle.get('tiers') or {}))}")
     out_dir = Path(out_dir)
-    if out_dir.exists():
-        raise SuiteError(f"run destination exists: {out_dir}")
-    if not out_dir.parent.is_dir() or out_dir.parent.is_symlink():
-        raise SuiteError(f"run parent must be a real directory: {out_dir.parent}")
-    out_dir.mkdir()
     budgets = bundle["budgets"]
-    if len(cell_ids) > budgets["max_cells"]:
+    tier_cell_ids = list(tier_entry or [])
+    if not tier_cell_ids:
+        raise SuiteError(f"tier {tier!r} has no cells")
+    if len(tier_cell_ids) > budgets["max_cells"]:
         raise BudgetExceeded("tier exceeds max_cells")
     cells = {c["cell_id"]: c for c in bundle["cells"]}
-    started = time.perf_counter()
-    records = []
+    estimate = estimate_bundle_cost({"cells": [cells[cid]
+                                               for cid in tier_cell_ids]})
+    if estimate["simulator_calls"] > budgets["simulator_call_budget"]:
+        raise BudgetExceeded(
+            f"tier simulator-call upper bound {estimate['simulator_calls']} "
+            f"exceeds budget {budgets['simulator_call_budget']}")
+    selected_ids = list(cell_ids) if cell_ids is not None else tier_cell_ids
+    if len(selected_ids) != len(set(selected_ids)):
+        raise SuiteError("selected cell_ids contains duplicates")
+    outside = sorted(set(selected_ids) - set(tier_cell_ids))
+    if outside:
+        raise SuiteError(f"selected cells are outside tier {tier!r}: {outside}")
+    if cell_ids is not None and tier != "b_dev":
+        raise SuiteError("partial cell selection is permitted only for b_dev")
+    if append:
+        if not out_dir.is_dir() or not (out_dir / "run.json").is_file():
+            raise SuiteError("append requires an existing b_dev run directory")
+        if tier != "b_dev":
+            raise SuiteError("append is permitted only for b_dev")
+        run_doc = json.loads((out_dir / "run.json").read_text(
+            encoding="utf-8"))
+        if (run_doc.get("tier") != tier
+                or run_doc.get("bundle_fingerprint")
+                != bundle.get("bundle_fingerprint")
+                or run_doc.get("bundle_dir") != str(bundle_dir)):
+            raise SuiteError("append run identity differs from the bundle")
+        if run_doc.get("status") != "INCOMPLETE":
+            raise SuiteError("append is permitted only after a clean pilot phase")
+        records = list(run_doc.get("cells") or [])
+        if any(record.get("status") != "ok" for record in records):
+            raise SuiteError("append refused after a failed pilot cell")
+    else:
+        if out_dir.exists():
+            raise SuiteError(f"run destination exists: {out_dir}")
+        if not out_dir.parent.is_dir() or out_dir.parent.is_symlink():
+            raise SuiteError(
+                f"run parent must be a real directory: {out_dir.parent}")
+        out_dir.mkdir()
+        records = []
+        run_doc = {
+            "schema": SCHEMA_RUN, "bundle_dir": str(bundle_dir),
+            "bundle_fingerprint": bundle.get("bundle_fingerprint"),
+            "tier": tier, "status": "INCOMPLETE", "budgets": budgets,
+            "identity": bundle.get("identity"),
+            "started_wall_s": time.perf_counter(), "cells": records,
+            "counts": _count_records(records, len(tier_cell_ids)),
+            "smoke_gate": None, "run_phases": [],
+        }
+    completed_ids = {record.get("cell_id") for record in records}
+    selected_ids = [cid for cid in selected_ids if cid not in completed_ids]
+    phase_wall_started = time.perf_counter()
     status = "ok"
-    smoke_gate = None
-    for index, cell_id in enumerate(cell_ids):
-        if time.perf_counter() - started > budgets["total_wall_s"]:
+    smoke_gate = run_doc.get("smoke_gate")
+    for cell_id in selected_ids:
+        actual = _aggregate_simulator_calls(records)
+        if actual["started"] + _estimated_calls_for_cells(
+                [cells[cid] for cid in
+                 tier_cell_ids if cid not in completed_ids]) > \
+                budgets["simulator_call_budget"]:
+            status = "BUDGET_EXCEEDED"
+            break
+        remaining_sim_s = budgets["total_wall_s"] - actual["simulator_wall_s"]
+        if remaining_sim_s <= 0:
             status = "BUDGET_EXCEEDED"
             break
         cell = cells[cell_id]
-        record = _execute_cell(cell, out_dir, budgets)
+        cell_budgets = dict(budgets)
+        cell_budgets["cell_wall_s"] = min(
+            float(budgets["cell_wall_s"]), float(remaining_sim_s))
+        record = _execute_cell(cell, out_dir, cell_budgets)
         record["identity"] = _cell_identity(bundle, cell)
-        if index == 0 and smoke_validator is not None:
+        if not records and smoke_validator is not None:
             probe = _inspect_result(out_dir / record["result_path"])
             try:
                 smoke_gate = smoke_validator(
@@ -1794,26 +2142,36 @@ def run_bundle(bundle_dir, tier, out_dir, authorization=None,
                 status = "SMOKE_FAILED"
         _write_json(out_dir / "cells" / cell_id / "cell.json", record)
         records.append(record)
+        completed_ids.add(cell_id)
+        run_doc["cells"] = records
+        run_doc["smoke_gate"] = smoke_gate
+        run_doc["simulator_call_accounting"] = _aggregate_simulator_calls(records)
+        run_doc["counts"] = _count_records(records, len(tier_cell_ids))
+        _write_json(out_dir / "run.json", run_doc)
         if status == "SMOKE_FAILED":
             break
+        if stop_on_failure and record["status"] != "ok":
+            status = "FAILED_CELLS"
+            break
     failed = sum(1 for r in records if r["status"] != "ok")
+    pending = [cid for cid in tier_cell_ids if cid not in completed_ids]
     if status not in ("BUDGET_EXCEEDED", "SMOKE_FAILED") and failed:
         status = "FAILED_CELLS"
-    counts = _count_records(records, len(cell_ids))
+    elif status == "ok" and pending:
+        status = "INCOMPLETE"
+    counts = _count_records(records, len(tier_cell_ids))
     counts["smoke_failed"] = int(
         smoke_gate is not None and smoke_gate.get("passed") is False)
-    run_doc = {
-        "schema": SCHEMA_RUN,
-        "bundle_dir": str(bundle_dir),
-        "tier": tier,
-        "status": status,
-        "budgets": budgets,
-        "identity": bundle.get("identity"),
-        "started_wall_s": started,
-        "cells": records,
-        "counts": counts,
-        "smoke_gate": smoke_gate,
-    }
+    run_doc.update({"status": status, "budgets": budgets,
+                    "cells": records, "counts": counts,
+                    "smoke_gate": smoke_gate,
+                    "pending_cell_ids": pending,
+                    "simulator_call_accounting":
+                        _aggregate_simulator_calls(records)})
+    run_doc.setdefault("run_phases", []).append({
+        "selected_cell_ids": list(selected_ids),
+        "wall_s": time.perf_counter() - phase_wall_started,
+        "append": bool(append), "status": status})
     if formal_plan is not None:
         run_doc["formal_plan"] = formal_plan
         _write_json(out_dir / "formal-plan.json", formal_plan)

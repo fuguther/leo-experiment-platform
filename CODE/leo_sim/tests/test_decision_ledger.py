@@ -83,6 +83,25 @@ def test_timeline_sink_does_not_change_behavior():
     assert timeline, "timeline sink must actually record something"
 
 
+def test_control_packet_failure_is_not_written_as_data_packet_fate():
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    control = kernel.ControlPacket(
+        iid="ctrl-1", origin=0, seq=1, generated_at=0.0, ttl_s=10.0,
+        remaining_hops=1, bits=64, payload={})
+    instance = object.__new__(kernel.Kernel)
+    instance.timeline_sink = []
+    instance.env = SimpleNamespace(now=2.0)
+    instance.ctrl_ledger = Mock()
+
+    instance._fail(control, "CONTROL_TTL_EXPIRED")
+
+    assert instance.timeline_sink == []
+    instance.ctrl_ledger.record.assert_called_once_with(
+        "ctrl-1", "CONTROL_TTL_EXPIRED", 64)
+
+
 def test_both_sinks_together_do_not_change_behavior():
     rows = [row(i, 0.0, A, B) for i in (1, 2, 3)]
     base = _run(rows)
@@ -106,6 +125,11 @@ def test_timeline_records_the_decision_lifecycle_in_order():
         assert expected in names, expected
     # milestones attributed to a decision must follow that decision's commit
     for m in timeline:
+        # queue_state is a resource snapshot, not a packet lifecycle event;
+        # it has trigger_pid but intentionally no decision_id.
+        if m.get("milestone") == "queue_state":
+            assert "decision_id" not in m
+            continue
         if m["decision_id"] is not None:
             assert isinstance(m["at"], float)
         assert m["pid"] == 1
@@ -261,7 +285,8 @@ def test_hold_milestones_do_not_enter_the_decision_sink():
     # therefore scoped to data rows, and the control rows are pinned as a
     # separate, pid-less category instead of being ignored.
     assert all(m["pid"] == 1 for m in timeline
-               if m.get("packet_kind") != "control")
+               if (m.get("packet_kind") != "control"
+                   and m.get("milestone") != "queue_state"))
     ctrl = [m for m in timeline if m.get("packet_kind") == "control"]
     assert ctrl, "the control plane is enabled, so control rows must exist"
     assert all(m["pid"] is None for m in ctrl)
@@ -308,4 +333,3 @@ def test_commit_caused_enqueue_carries_the_committed_decision():
                 if m["milestone"] == "queue_enter" and m["decision_id"] == did]
     assert credited, "the committed decision must own its own enqueue"
     assert credited[0]["queue"] == "isl"
-

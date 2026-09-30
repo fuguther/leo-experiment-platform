@@ -42,7 +42,8 @@ import statistics
 import tempfile
 from pathlib import Path
 
-from CODE.experiment_platform import artifact_identity, execution_compare
+from CODE.experiment_platform import (artifact_identity, execution_compare,
+                                      outcome_metrics)
 from CODE.experiment_platform import time_alignment_compare as tac
 from CODE.leo_sim import config as config_mod, kernel
 
@@ -411,6 +412,44 @@ def _arm_action_log(sink, *, limit=DEFAULT_ACTION_LOG_LIMIT):
             "rule": "one record per forward decision, in decision order"}
 
 
+def _routing_audit_log(sink, timeline):
+    """Retain each committed route mask and each hold/fail attempt."""
+    decisions = []
+    for row in sink:
+        audit = row.get("four_direction_audit")
+        if not isinstance(audit, dict):
+            continue
+        observation = row.get("observation_at_start") or {}
+        decisions.append({
+            "t_decision_start": row.get("t_decision_start"),
+            "t_decision_commit": row.get("t"),
+            "decision_id": row.get("decision_id"),
+            "pid": row.get("pid"), "src": row.get("src"),
+            "dst": row.get("dst"), "sat": row.get("sat"),
+            "kind": row.get("kind"), "candidates": row.get("candidates"),
+            "chosen": row.get("chosen"),
+            "four_direction_audit": audit,
+            "observation_at_start": {
+                key: observation.get(key) for key in (
+                    "mode", "source", "t_observed", "sat", "neighbours",
+                    "candidate_directions", "legal_directions",
+                    "routing_status", "kind", "action", "own_queue_bits",
+                    "candidate_resources", "time_alignment", "compute_state")
+            },
+            "estimate_at_start": row.get("estimate_at_start"),
+        })
+    attempts = [dict(row) for row in timeline
+                if row.get("milestone") == "decision_attempt"]
+    return {
+        "schema": "t1-routing-audit-log/v1",
+        "decision_records": decisions,
+        "decision_record_count": len(decisions),
+        "attempt_records": attempts,
+        "attempt_record_count": len(attempts),
+        "coverage_note": "committed records include each four-direction candidate mask, received-history provenance, estimates, scores and action; hold/fail attempts include masks and reasons",
+    }
+
+
 def _fallback_reason_counts(action_log):
     """Count WHY decisions fell back, keyed by the candidate term missing.
 
@@ -427,7 +466,8 @@ def _fallback_reason_counts(action_log):
     return dict(sorted(counts.items()))
 
 def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
-                           max_branches=DEFAULT_MAX_BRANCHES, window=None):
+                           max_branches=DEFAULT_MAX_BRANCHES, window=None,
+                           capture_replay=False):
     """Several branches of ONE baseline trajectory, merged into one block.
 
     The unit of replication is the BLOCK (scenario x trace x seed), not the
@@ -448,10 +488,29 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
     sample = sample_branches(eligible, max_branches=max_branches)
     by_id = {item["decision_id"]: item for item in eligible}
     branches, failures = [], []
+    capture_id = None
+    if capture_replay:
+        # This rule is structural and outcome-independent: among the
+        # pre-sampled decisions, take the first forward point with at least
+        # two legal directions and named resources for every direction.
+        for decision_id in sample["decisions"]:
+            candidate = next((row for row in decision_rows
+                              if row.get("decision_id") == decision_id), None)
+            observation = (candidate or {}).get("observation_at_start") or {}
+            legal = observation.get("legal_directions") or []
+            resources = observation.get("candidate_resources") or {}
+            if (len(legal) >= 2 and all(
+                    isinstance(resources.get(direction), dict)
+                    and resources[direction].get("peer") is not None
+                    for direction in legal)):
+                capture_id = decision_id
+                break
+    explanation_replay = None
     for decision_id in sample["decisions"]:
         try:
             document = tac.compare(resolved, rows, geometry, decision_id,
-                                   deadline_s, source)
+                                   deadline_s, source,
+                                   capture_replay=(decision_id == capture_id))
         except Exception as exc:          # noqa: BLE001 - recorded, not lost
             failures.append({"decision_id": decision_id,
                              "reason": f"{type(exc).__name__}: {exc}"})
@@ -494,6 +553,8 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
             "trace_identity": (document.get("identity") or {}).get(
                 "sources"),
         })
+        if decision_id == capture_id:
+            explanation_replay = document.get("replay")
     identity = artifact_identity.build_identity(
         config=resolved, trace_digest=source.get("trace_sha256"),
         driver_paths=artifact_identity.execution_chain_paths(),
@@ -510,6 +571,12 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
                      "rule": "one D for the whole block: every arm and "
                              "every branch is scored against the same "
                              "deadline"},
+        "measurement_window": {
+            "start_s": (None if window is None else float(window[0])),
+            "end_s": (None if window is None else float(window[1])),
+            "rule": "branch eligibility and even-stride sampling use this "
+                    "predeclared decision-time window",
+        },
         "sampling": sample,
         "eligibility": {"eligible": len(eligible),
                         "rejected": rejected,
@@ -519,6 +586,12 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
                                 "the future of the unchosen actions is "
                                 "never consulted"},
         "branches": branches,
+        "explanation_replay": explanation_replay,
+        "explanation_selection": {
+            "rule": "first sampled forward decision with at least two legal directions and a named peer resource for every legal direction; selection uses no outcome fields",
+            "decision_id": capture_id,
+            "captured": explanation_replay is not None,
+        },
         "failures": failures,
         "units": {"loss": "normalized loss in [0,1] (dimensionless)",
                   "regret": "normalized loss difference (dimensionless)"},
@@ -656,7 +729,8 @@ def _compute_cost(timeline, resolved):
     }
 
 
-def _arm_row(resolved, rows, geometry, arm):
+def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
+             source=None, capture_replay=False):
     """One full-network run under ONE online arm.
 
     The four arms start from the SAME input trace and the SAME initial
@@ -685,14 +759,28 @@ def _arm_row(resolved, rows, geometry, arm):
         key = str(row.get("sat"))
         per_sat[key] = per_sat.get(key, 0) + 1
     counts = sorted(per_sat.values())
-    delivered_bits = sum(int(d.get("bits") or 0)
-                         for d in result["deliveries"].values())
     congestion_metrics = result["congestion_metrics"]
-    # The kernel records the admission boundary as satellite_ingress and
-    # publishes its canonical count in congestion_metrics; there is no
-    # packet_admitted event kind.
-    admitted = int(congestion_metrics[
-        "admitted_at_satellite_ingress_packets"])
+    measurement_window = (window if window is not None
+                          else outcome_metrics.build_measurement_window(rows))
+    trace_digest = ((source or {}).get("trace_sha256")
+                    or (source or {}).get("rows_digest")
+                    or _rows_digest(rows))
+    outcome_document = outcome_metrics.compare_outcome(
+        result, timeline, sink, rows, window=measurement_window,
+        deadline_s=deadline_s,
+        cost={"service_s": local["config"]["execution"]["compute_delay_s"],
+              "servers": local["config"]["execution"][
+                  "compute_servers_per_satellite"]},
+        context={"cell": f"network-{arm}", "run_id": f"network-{arm}",
+                 "mode": local["config"]["time_alignment"][
+                     "execution_mode"],
+                 "config_sha256": local["sha256"],
+                 "trace_sha256": trace_digest})
+    network_outcome = outcome_document["network_outcome"]
+    outcome_counts = network_outcome["counts"]
+    delivered_bits = outcome_counts["delivered_bits"]
+    admitted = outcome_counts["admitted"]
+    goodput = network_outcome["payload"].get("goodput_bps")
     # Evidence that THIS arm actually ran the state-time path: an inert arm
     # (feature disabled, or a config that silently ignored the arm) would
     # produce a run indistinguishable from the deterministic baseline, and
@@ -740,11 +828,12 @@ def _arm_row(resolved, rows, geometry, arm):
             "note": "the all-satellite mean must not stand in for hotspot "
                     "pressure"},
         "outcome": {
-            "offered": len(rows), "admitted": admitted,
-            "delivered": len(result["deliveries"]),
+            "offered": outcome_counts["offered"], "admitted": admitted,
+            "delivered": outcome_counts["delivered"],
             "delivered_bits": delivered_bits,
-            "goodput_bps_in_window": (delivered_bits / duration
-                                      if duration else None),
+            "goodput_bps_in_window": goodput,
+            "deadline_primary_loss": network_outcome[
+                "deadline_primary_loss"],
             "fate_counts": {k: v for k, v in result["fate_counts"].items()
                             if v},
             "e2e_samples": len(e2e),
@@ -756,8 +845,21 @@ def _arm_row(resolved, rows, geometry, arm):
             "queue_area_bits_s": dict(result["queue_area_bits_s"]),
             "events_processed": result["events_processed"],
         },
+        "measurement_window": network_outcome["window"],
+        "network_outcome": network_outcome,
+        "total_cost": outcome_document["total_cost"],
+        "outcome_document": {
+            "schema": outcome_document["schema"],
+            "partition_exact": outcome_document["partition_exact"],
+            "not_computable": outcome_document["not_computable"],
+            "packet_outcomes_sha256": network_outcome[
+                "packet_outcomes_sha256"],
+            "row_count": len(outcome_document["rows"]),
+            "rows": outcome_document["rows"],
+        },
         "time_alignment_audit": audit_block,
         "action_log": action_log,
+        "routing_audit_log": _routing_audit_log(sink, timeline),
         "fallback_reason_counts": _fallback_reason_counts(action_log),
         "compute": _compute_cost(timeline, local),
         "control": {"bits": dict(result["control"]["bits"]),
@@ -766,11 +868,33 @@ def _arm_row(resolved, rows, geometry, arm):
         "congestion_metrics": congestion_metrics,
         "mechanisms": result["mechanisms"],
         "natural_end": result["natural_end"],
+        "stop_time_s": result["stop_time_s"],
+        "horizon_s": result["horizon_s"],
+        "replay": ({
+            "captured": True,
+            "arm": arm,
+            "decision_rows": sink,
+            "timeline_rows": timeline,
+            "packet_events": result["packet_events"],
+            "link_service_windows": result["link_service_windows"],
+            "link_available_windows": result["link_available_windows"],
+            "queue_state_events": [row for row in timeline
+                                    if row.get("milestone") == "queue_state"],
+            "topology_trace": result.get("topology_trace"),
+            "fates": result["fates"],
+            "stop_time_s": result["stop_time_s"],
+            "horizon_s": result["horizon_s"],
+            "deliveries": result["deliveries"],
+            "handover_events": result["handover"]["events"],
+            "counts": dict(outcome_counts),
+            "cost": outcome_document["total_cost"],
+        } if capture_replay else {"captured": False}),
     }
 
 
 def network_alignment(resolved, rows, geometry, source,
-                     arms=NETWORK_ARMS, overrides=None):
+                     arms=NETWORK_ARMS, overrides=None, *, deadline_s=None,
+                     window=None, capture_replay=False):
     """The FOUR online arms, each running the WHOLE network to the horizon."""
     if overrides:
         cfg = copy.deepcopy(resolved["config"])
@@ -785,7 +909,10 @@ def network_alignment(resolved, rows, geometry, source,
         if arm not in NETWORK_ARMS:
             raise TaskError(f"unknown online arm {arm!r}")
         try:
-            arm_rows.append(_arm_row(resolved, rows, geometry, arm))
+            arm_rows.append(_arm_row(
+                resolved, rows, geometry, arm, deadline_s=deadline_s,
+                window=window, source=source,
+                capture_replay=capture_replay))
         except Exception as exc:      # noqa: BLE001 - recorded, not lost
             failures.append({"arm": arm,
                              "reason": f"{type(exc).__name__}: {exc}"})
@@ -797,6 +924,18 @@ def network_alignment(resolved, rows, geometry, source,
             extra={"task": "network_alignment", "arms": list(arms)}),
         "source": dict(source, rows_digest=rows_digest,
                        config_sha256=resolved["sha256"]),
+        "replay_capture": {
+            "requested": bool(capture_replay),
+            "captured_arms": [row["arm"] for row in arm_rows
+                              if (row.get("replay") or {}).get("captured")],
+            "rule": "capture all four arms only for the predeclared replay seed; no outcome-based arm or packet selection",
+        },
+        "deadline": {"deadline_s": (None if deadline_s is None
+                                      else float(deadline_s)),
+                     "population_window_s": (list(window)
+                                             if isinstance(window, tuple)
+                                             else window),
+                     "rule": "one frozen D and population window shared by all four arms"},
         "fairness": {
             "rows_digest": rows_digest,
             "same_trace": True,
@@ -826,7 +965,7 @@ def network_alignment(resolved, rows, geometry, source,
 # ------------------------------------------------------- the task dispatcher
 def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
              max_branches=DEFAULT_MAX_BRANCHES, window=None, modes=None,
-             overrides=None, arms=NETWORK_ARMS):
+             overrides=None, arms=NETWORK_ARMS, capture_replay=False):
     """One entry point for the three task types.
 
     The suite only ever calls this, so budget enforcement, failure
@@ -838,15 +977,18 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
     if task == "branch_alignment":
         driver = branch_alignment_block(
             resolved, rows, geometry, deadline_s=deadline_s, source=source,
-            max_branches=max_branches, window=window)
+            max_branches=max_branches, window=window,
+            capture_replay=capture_replay)
     elif task == "network_alignment":
         driver = network_alignment(resolved, rows, geometry, source,
-                                   arms=arms, overrides=overrides)
+                                   arms=arms, overrides=overrides,
+                                   deadline_s=deadline_s, window=window,
+                                   capture_replay=capture_replay)
     else:
         driver = execution_compare.compare(
             resolved, rows, geometry, source,
             modes=tuple(modes) if modes else execution_compare.MODES,
-            overrides=overrides)
+            overrides=overrides, deadline_s=deadline_s, window=window)
     failures = driver.get("failures") or []
     return {
         "schema": SCHEMA_TASK,
@@ -927,6 +1069,51 @@ def design(config_path=None, scenario=None, root=None, overrides=None):
     source = {"scenario": "config", "config": str(config_path),
               "trace_sha256": digest, "rows": len(rows),
               "overrides": dict(overrides or {})}
+    demand = resolved["config"].get("demand") or {}
+    if demand.get("mode") == "csv" and demand.get("csv_path"):
+        input_path = Path(demand["csv_path"])
+        summary_path = input_path.with_suffix(".workload.json")
+        if summary_path.is_file():
+            try:
+                summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise TaskError(
+                    f"synthetic workload summary is unreadable: {exc}") from exc
+            input_hash = hashlib.sha256(input_path.read_bytes()).hexdigest()
+            if (summary.get("schema") != "t1-synthetic-od-workload/v1"
+                    or summary.get("input_sha256") != input_hash):
+                raise TaskError(
+                    "synthetic workload sidecar does not bind the configured CSV")
+            manifest_pids = sorted(
+                int(item["pid"]) for item in summary.get("packet_manifest", []))
+            trace_pids = sorted(int(row["packet_id"]) for row in rows)
+            if (summary.get("packet_count") != len(rows)
+                    or manifest_pids != trace_pids):
+                raise TaskError(
+                    "synthetic OD packet manifest differs from the compiled platform trace")
+            row_by_pid = {int(row["packet_id"]): row for row in rows}
+            od_grid_mapping = {}
+            for packet in summary.get("packet_manifest", []):
+                pid = int(packet["pid"])
+                row = row_by_pid[pid]
+                mapping = {"src_grid_id": str(row["src_grid_id"]),
+                           "dst_grid_id": str(row["dst_grid_id"])}
+                od_id = str(packet["od_id"])
+                previous = od_grid_mapping.setdefault(od_id, mapping)
+                if previous != mapping:
+                    raise TaskError(
+                        f"synthetic OD {od_id!r} maps to multiple compiled endpoint pairs")
+            summary["compiled_od_mapping"] = dict(sorted(
+                od_grid_mapping.items()))
+            source["synthetic_workload"] = {
+                "input_csv_path": str(input_path),
+                "input_csv_sha256": input_hash,
+                "summary_path": str(summary_path),
+                "summary_sha256": hashlib.sha256(
+                    summary_path.read_bytes()).hexdigest(),
+                "summary": summary,
+                "manifest_matches_compiled_trace": True,
+            }
     return resolved, rows, None, source
 
 
@@ -981,6 +1168,8 @@ def main(argv=None) -> int:
     parser.add_argument("--window-end", type=float, default=None)
     parser.add_argument("--modes", default=None)
     parser.add_argument("--arms", default=None)
+    parser.add_argument("--capture-replay", action="store_true",
+                        help="retain real event streams for an offline replay")
     parser.add_argument("--compute-servers", type=int, default=None)
     parser.add_argument("--service-s", type=float, default=None)
     parser.add_argument("--packet-bits", type=int, default=None)
@@ -1030,7 +1219,8 @@ def main(argv=None) -> int:
             modes=([m.strip() for m in str(args.modes).split(",") if m.strip()]
                    if args.modes else None),
             arms=(tuple(a.strip() for a in str(args.arms).split(",") if a.strip())
-                  if args.arms else NETWORK_ARMS))
+                  if args.arms else NETWORK_ARMS),
+            capture_replay=args.capture_replay)
         publish(document, args.out)
     except TaskError as exc:
         print(f"T1TASKS REFUSED: {exc}")

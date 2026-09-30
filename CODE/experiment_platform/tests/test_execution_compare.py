@@ -42,6 +42,30 @@ def test_all_five_modes_run_on_one_fair_trace(tmp_path):
         assert r["seed"] == doc["fairness"]["seed"]
         assert r["arm"] == doc["modes"][0]["arm"]
         assert r["predictor"] == doc["modes"][0]["predictor"]
+        outcome = r["network_outcome"]
+        packets = outcome["packet_outcomes"]
+        assert len(packets) == outcome["counts"]["offered"]
+        assert outcome["packet_outcomes_sha256"]
+        assert outcome["counts"]["delivered_bits"] == sum(
+            row["bits"] for row in packets if row["fate"] == "DELIVERED")
+        assert outcome["counts"]["delivered_bits"] > 0
+        assert r["outcome_document"]["partition_exact"] is True
+
+
+def test_five_modes_share_declared_deadline_and_packet_loss_bounds():
+    resolved, rows, geometry, meta = scripted_scenarios.build("contention")
+    source = {"scenario": "contention", "trace_sha256": "scripted-trace",
+              "rows": len(rows)}
+    report = ec.compare(resolved, rows, geometry, source, deadline_s=30.0,
+                        window=(0.0, 30.0))
+    assert report["deadline"]["deadline_s"] == 30.0
+    for mode in report["modes"]:
+        primary = mode["network_outcome"]["deadline_primary_loss"]
+        assert primary["deadline_s"] == 30.0
+        assert "lower_mean" in primary and "upper_mean" in primary
+        assert all(packet["deadline_loss"]["status"] in
+                   {"COMPUTED", "INTERVAL_CENSORED", "NOT_COMPUTABLE"}
+                   for packet in mode["network_outcome"]["packet_outcomes"])
 
 
 def test_the_only_config_difference_is_the_execution_mechanism(tmp_path):

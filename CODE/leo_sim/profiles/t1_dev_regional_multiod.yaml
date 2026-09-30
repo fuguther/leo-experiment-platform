@@ -1,0 +1,58 @@
+config_version: leo-sim-config/v1
+# T1 development profile template.  t1_suite binds a frozen synthetic OD
+# workload CSV for each scenario/seed before validating and running a cell.
+# The packet router remains the existing full 24-satellite, four-direction
+# orbital platform; only business endpoints are regional.
+scenario:
+  name: t1-dev-regional-multiod
+  duration_s: 50.0
+  time_step_s: 0.1
+  num_satellites: 24
+  num_planes: 3
+  altitude_km: 550.0
+  inclination_deg: 53.0
+  min_elevation_deg: 25.0
+  seed: 7
+endpoints:
+  grid_deg: 0.25
+  aggregation_deg: 1.0
+  sites:
+    - {name: equator, lat: 0.1, lon: 0.1, demand_weight: 1.0}
+    - {name: north, lat: 52.6, lon: 90.4, demand_weight: 1.0}
+    - {name: west, lat: 0.1, lon: -80.1, demand_weight: 1.0}
+demand:
+  mode: uniform
+  emission_end_s: 20.0
+  offered_mbps: 3.0
+  packet_bits: 1000000
+access:
+  unavailable_policy: queue
+  uplink_rate_mbps: 1000.0
+  downlink_rate_mbps: 1000.0
+  association: bbm
+links:
+  rate_model: constant
+  isl_rate_mbps: 5.0
+  isl_dirs: [N, S, E, W]
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 2.0
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  compute_delay_s: 0.001
+  compute_servers_per_satellite: 1
+  decision_observation_mode: frozen
+  available_capacity_interval_s: 1.0
+  max_events: 5000000
+  max_entities: 20000
+  max_packets: 20000
+topology:
+  recompute_interval_s: 5.0
+outputs:
+  out_dir: leo_sim_out/t1_dev_regional_multiod
+  plotting: false
