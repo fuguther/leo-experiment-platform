@@ -76,10 +76,10 @@ def _negative_control_smoke(cell, record, payload):
               and not isinstance(goodput, bool)
               and math.isfinite(float(goodput)) and goodput > 0,
               goodput)
-        network = row.get("network_outcome") or {}
+        outcome_document = row.get("outcome_document") or {}
         check(f"{name}_event_partition_exact",
-              network.get("partition_exact") is True,
-              network.get("partition_exact"))
+              outcome_document.get("partition_exact") is True,
+              outcome_document.get("partition_exact"))
         check(f"{name}_offered_count_matches_trace", offered == packets,
               {"offered": offered, "trace": packets})
     return {

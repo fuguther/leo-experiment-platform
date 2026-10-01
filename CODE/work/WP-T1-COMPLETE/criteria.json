@@ -1700,10 +1700,10 @@
  },
  "work_id": "WP-T1-COMPLETE",
  "b_round": {
-  "status": "PRE_RELEASE_VERIFIED; B VM simulation not started",
+  "status": "SECOND_STRUCTURE_ADJUSTMENT_FROZEN; previous B run failed exit 3; second pilot pending release",
   "contract": "CODE/work/WP-T1-COMPLETE/contract_dev_b.yaml",
-  "contract_sha256": "dbe2d2636066e394bacecbc1c55e1b50f2b79e078544ebc0595765b8296af9b2",
-  "planned_run_id": "wp-b-dev-20261001-01",
+  "contract_sha256": "a9a6e1ac0ad82c5c20dac916a9b40f456c3522f016631581bfc3bf8522440778",
+  "planned_run_id": "wp-b-dev-20261001-02",
   "release_id": null,
   "platform_profile": {
    "path": "CODE/leo_sim/profiles/t1_dev_regional_multiod.yaml",
@@ -1717,8 +1717,55 @@
     "control plane",
     "end-to-end forwarding and queue/compute contention"
    ],
-   "region_scope": "business endpoints only; six directed ODs over three sites; paths may traverse satellites outside the business region",
-   "synthetic_not_measured_traffic": true
+   "region_scope": "finite three-endpoint geographic corridor (equator, North, northwest Pacific); six directed ODs; paths may traverse the full constellation outside the business endpoints",
+   "synthetic_not_measured_traffic": true,
+   "endpoint_cells": [
+    {
+     "id": "equator",
+     "aggregate_grid": "G1:90:180",
+     "center_lat_lon": [
+      0.5,
+      0.5
+     ]
+    },
+    {
+     "id": "north",
+     "aggregate_grid": "G1:142:270",
+     "center_lat_lon": [
+      52.5,
+      90.5
+     ]
+    },
+    {
+     "id": "pacific_corridor",
+     "aggregate_grid": "G1:131:336",
+     "center_lat_lon": [
+      41.5,
+      156.5
+     ]
+    }
+   ],
+   "geometric_screen": {
+    "basis": "Constellation.next_gsl_change certified over 0-50 s; dynamic N/E/S/W topology rebuilt every 5 s",
+    "visible_satellites_over_window": {
+     "equator": [
+      0
+     ],
+     "north": [
+      2
+     ],
+     "pacific_corridor": [
+      9
+     ]
+    },
+    "shortest_isl_hops_by_pair": {
+     "equator_north": 2,
+     "equator_pacific_corridor": 4,
+     "north_pacific_corridor": 2
+    },
+    "north_to_candidate_great_circle_km": 4967.35,
+    "claim_limit": "geometric reachability only; does not establish control-advertisement arrival, access admission or packet delivery"
+   }
   },
   "scenario_ids": [
    "steady_multi_od_negative_control_b",
@@ -1762,12 +1809,12 @@
    "claim_scope": "development only; report all offered packets, loss/censoring, delivered latency and separated compute/query/background costs; no significance claim"
   },
   "matrix": {
-   "compiled_container_cells": 42,
+   "compiled_container_cells": 41,
    "container_compile_max_cells": 60,
-   "b_dev_cells": 9,
-   "static_simulator_calls": 57,
-   "pilot_cells": 5,
-   "pilot_static_calls": 39,
+   "b_dev_cells": 8,
+   "static_simulator_calls": 52,
+   "pilot_cells": 4,
+   "pilot_static_calls": 34,
    "post_pilot_cells": 4,
    "post_pilot_static_calls": 18,
    "pilot_and_remainder_reuse": "same frozen bundle, run id and output directory; append remaining cells only after pilot gate passes; no independent pilot rerun"
@@ -1778,21 +1825,23 @@
    "max_simulator_wall_s": 3600,
    "max_cell_wall_s": 120,
    "concurrency": 1,
-   "actual_simulator_calls_started": 0,
-   "actual_simulator_wall_s": 0,
+   "actual_simulator_calls_started": 4,
+   "actual_simulator_wall_s": 42.100891407,
    "cumulative_a_b_wall_cap_s": 7200,
    "a_run02_conservatively_charged_outer_elapsed_s": 1061,
-   "b_plus_a_conservative_upper_s": 4661
+   "b_plus_a_conservative_upper_s": 4703.100891407,
+   "previous_b_failed_run_calls": 4,
+   "new_b_static_call_upper": 52
   },
   "static_validation": {
-   "bundle_fingerprint": "8c27cec33af8dc0b2e90c869d89f931e956af598ac8a5bc1d7989e89b765d337",
-   "compile_status": "compiled",
+   "bundle_fingerprint": "86409cd85589fcaf291f292a288c956e3a67892381129f4399a0cf4c144c2644",
+   "compile_status": "compiled; 41 total cells, 8 b_dev cells",
    "validate_status": "valid=true",
    "structural_branch_fanout_assumption": 4
   },
   "local_verification": {
-   "latest_targeted_tests": "25 passed in 0.18 s",
-   "py_compile": "passed for modified Python modules",
+   "latest_targeted_tests": "smoke/schema and B contract: 2 passed; admission: 4 passed",
+   "py_compile": "passed for t1_development.py and modified test modules",
    "maintenance_check_errors": 0,
    "maintenance_check_scope_warning": "external backup media and dependency lock were not checked"
   },
@@ -1809,6 +1858,34 @@
    "FORMAL_RUN",
    "training",
    "pressure/benchmark/period scans"
-  ]
+  ],
+  "prior_run": {
+   "run_id": "wp-b-dev-20261001-01",
+   "release_id": "f3f86a2bea0a4b23f10d9c22867d0eb70fdf331a-2c254ea7baf6732941905f5445e2ee9347cf7d0c2573436548586485e4658536",
+   "source_git_commit": "f3f86a2bea0a4b23f10d9c22867d0eb70fdf331a",
+   "status": "failed",
+   "exit_code": 3,
+   "receipt_canonical_sha256": "6ff26002b3cb53d122611c3c8b2dde359b167c56551b94652a11431eefb7fb39",
+   "receipt_file_sha256": "9380622ce0f76437e697a38389b96504b5e727ed3a17da0a2a6dd333895a153a",
+   "pullback_index_status": "VERIFIED",
+   "simulator_calls_started_ended": 4,
+   "simulator_wall_s_sum": 42.100891407,
+   "negative_control_arms": {
+    "each_offered": 60,
+    "each_forward_decisions": 60,
+    "each_admitted": 40,
+    "each_delivered": 0,
+    "each_delivered_bits": 0,
+    "outcome_document_partition_exact_all_arms": true,
+    "corrected_smoke_result": "fails positive delivered packet/bit/goodput checks in all four arms"
+   },
+   "interpretation": "inadmissible scenario and censored at stop; not a performance-negative conclusion"
+  },
+  "smoke_schema_fix": {
+   "field_path": "arm.outcome_document.partition_exact",
+   "old_field_path_bug": "arm.network_outcome.partition_exact",
+   "counterexample_test": "correct-level true / wrong-level false passes; correct-level false / wrong-level true fails",
+   "admission_thresholds_changed": false
+  }
  }
 }

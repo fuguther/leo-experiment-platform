@@ -459,7 +459,11 @@ def test_a0_smoke_requires_real_four_arm_traffic_and_delivery():
         "outcome": {"offered": 4, "delivered": 3,
                     "delivered_bits": 3000,
                     "goodput_bps_in_window": 900.0},
-        "network_outcome": {"partition_exact": True},
+        # Production nests the exact packet partition on the arm's
+        # outcome_document.  Keep a contradictory decoy at the wrong level
+        # so this test catches schema drift in the smoke gate.
+        "network_outcome": {"partition_exact": False},
+        "outcome_document": {"partition_exact": True},
     } for name in ("stale", "now", "common", "candidate")]
     payload = {"document": {
         "status": "ok", "arms": arms, "failures": [],
@@ -474,6 +478,15 @@ def test_a0_smoke_requires_real_four_arm_traffic_and_delivery():
 
     assert t1_development._negative_control_smoke(
         cell, record, payload)["passed"] is True
+    arms[0]["outcome_document"]["partition_exact"] = False
+    arms[0]["network_outcome"]["partition_exact"] = True
+    failed_partition = t1_development._negative_control_smoke(
+        cell, record, payload)
+    assert failed_partition["passed"] is False
+    assert any(check["name"] == "stale_event_partition_exact"
+               and check["value"] is False and not check["passed"]
+               for check in failed_partition["checks"])
+    arms[0]["outcome_document"]["partition_exact"] = True
     arms[2]["outcome"]["delivered"] = 0
     failed = t1_development._negative_control_smoke(cell, record, payload)
     assert failed["passed"] is False

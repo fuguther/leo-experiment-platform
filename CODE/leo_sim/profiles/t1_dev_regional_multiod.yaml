@@ -19,7 +19,9 @@ endpoints:
   sites:
     - {name: equator, lat: 0.1, lon: 0.1, demand_weight: 1.0}
     - {name: north, lat: 52.6, lon: 90.4, demand_weight: 1.0}
-    - {name: west, lat: 0.1, lon: -80.1, demand_weight: 1.0}
+    # Synthetic geometric endpoint for the bounded corridor workload; not an
+    # asserted real gateway location or empirical population observation.
+    - {name: pacific_corridor, lat: 41.5, lon: 156.5, demand_weight: 1.0}
 demand:
   mode: uniform
   emission_end_s: 20.0

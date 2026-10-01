@@ -4,17 +4,15 @@
 > 交付：`REPORT.md`（含"第二轮复审返工 S1–S7"节）；判据：`criteria.json`；语义合同：`contract.yaml`。
 > **执行位置硬规则（AGENTS.md）**：所有实验只在 VM 上跑；本机只做代码/测试/只读复核。
 
-## 当前工作包 B 状态（2026-10-01；发布前冻结点）
+## 当前工作包 B 状态（2026-10-01；第二次 pilot 设计冻结，待发布）
 
-- 工作树 `.t1-dev-experiment-a`，分支 `codex/20260930-t1-experiment-a`；本包变更尚未提交，正在按精确源码身份准备发布。没有修改 `leo-exp-main` 或其他工作树。
-- 当前合同 `contract_dev_b.yaml` SHA-256：`dbe2d2636066e394bacecbc1c55e1b50f2b79e078544ebc0595765b8296af9b2`。最终合同编译/校验：42 格容器（仅静态打包），B tier 9 格 / 57 静态调用上界；pilot 为 5 格 / 39 次，余下 4 格 / 18 次，只有同一冻结身份、同一 bundle/run 的 pilot gate 通过后才 append，不独立重跑 pilot。
-- B 运行硬限额：40 个 B cell、60 次实际内核调用、累计模拟墙钟 3600 s、每格 120 s、并发 1。容器级编译格数上限 60 与 B 实际运行 40 格门禁分开；本矩阵只选 B tier 的 9 格。
-- 24 星/3 轨道面、550 km/53°平台配置以及平台原 N/E/S/W 方向、动态可见性/拓扑与完整路由过程保留。区域仅限三个地面站点和六条有向 OD；路径不限制在区域，仍可经区域外卫星。负对照为六 OD、3 Mbps 稳态；竞争情景在六 OD 上经历 3→10 Mbps 增长、12 s 热点方向转移、16 s 消退，20 s 停止发流、仿真到 50 s。该流量是冻结的合成开发工作负载。
-- 全网四信息臂（stale/now/common/candidate）各保留完整四方向候选和 mask；全网日志按每臂分别复核 ≥10 个可比较点、≥5 个竞争点及并发覆盖。四个解释性完整快照分支只用于机制解释，`max_branches=4` 指抽样干预数，不替代准入计数。五执行模式保留 `precomputed`，报告预计算范围，不把零前台 job 写成零生命周期成本。
-- 主损失 D=30 s，目标 population [5,20] s、观察结束 50 s；完整逐包人口以全部 offered 为分母，明确 delivered、terminal loss 与行政删失，D=30 可从原始逐包记录重算。三个竞争种子 11/23/42 仅作开发区组描述，不作显著性推断；阴性对照 seed 7 保留。
-- 最新定向实现测试 25 passed (0.18 s)，覆盖回放、结构准入、pilot gate、报告、六 OD 生成、模拟调用账本、四方向审计；修改 Python 文件 `py_compile` 通过。最终静态 compile/validate：42 容器格、9 B 格/57 调用，valid=true。WP-A 核心套件此前另有 102 passed；该长回归早于最后一轮 B gate/回放更改，不能替代此处最新定向验证。
-- 当前没有 B VM run：实际 B 调用 0，B 模拟墙钟 0；release 未发布，预留唯一 run-id `wp-b-dev-20261001-01`。A 的 1061 s 外层 VM elapsed 保守计入跨包累计墙钟。修正后的历史 A 四出口结构调用上界为 83（旧冻结估算 78 使用了三出口假设），其真实内部调用数未知；不改 A 回执或声称 A 重跑。
-- 当前阻塞：无。剩余步骤依次为更新冻结前账本 → 发布干净 commit → 唯一 B run（pilot 与剩余格同 run append）→ 按精确身份拉回验 receipt/manifest/文件集 → 独立只读复核 → 更新实际结果账本。FORMAL_RUN、确认种子、训练明确排除。
+- 工作树 `.t1-dev-experiment-a`，分支 `codex/20260930-t1-experiment-a`，基点 `f3f86a2bea0a4b23f10d9c22867d0eb70fdf331a`。当前修复与合同尚未提交，正式发布前仍须提交、推送并绑定完整 commit；没有改动 formal 根、`leo-exp-main` 或其他工作树。
+- 前次运行 `wp-b-dev-20261001-01` 已重验：release `f3f86a2…-2c254ea7…`；receipt canonical SHA `6ff26002…b7fb39`、receipt 文件字节 SHA `9380622c…153a`、46 个回传文件，部署索引行 `VERIFIED`；run `failed` / exit 3。负控 cell 四次调用均结束，内层模拟墙钟合计 42.100891407 s。四臂各 60 offered、60 forward decisions、40 admitted、0 delivered/0 bits，实际 `outcome_document.partition_exact=true`。修正字段层级后分区检查通过，但四臂都未通过正交付、正交付比特与正 goodput 检查，故旧场景没有准入且不是性能负结果。
+- smoke 代码已改为从 `outcome_document.partition_exact` 取值，并有相反错误层级值的反例；目标 smoke 测试与 B 合同测试 2 passed，准入测试 4 passed，修改 Python 文件 `py_compile` 通过。
+- 唯一第二次端点结构调整将原 west 替换成合成 `pacific_corridor`。实际聚合中心：赤道 G1:90:180 (0.5,0.5)、North G1:142:270 (52.5,90.5)、候选 G1:131:336 (41.5,156.5)；North–候选球面距离约 4967.35 km。用模型认证的 `next_gsl_change` 检查 [0,50] s，无 GSL 可见性切换，服务星为 sat0/2/9；每 5 s 动态 N/E/S/W 拓扑的最短路径不变：赤道↔North 2 ISL、赤道↔候选 4、North↔候选 2。该合成位置代表三个端点间有限走廊，不是邻站、实测地面站或全球 OD。几何不能证明广告传播、控制信息或实际送达；pilot 必须从 VM 完整日志判定这些条件。
+- 当前合同 SHA-256：`a9a6e1ac0ad82c5c20dac916a9b40f456c3522f016631581bfc3bf8522440778`。静态 compile/validate 为 `valid=true`：41 个总容器格（compile cap 60），B tier 8 格/52 调用上界；pilot 4 格/34 调用，剩余 4 格/18 调用。只移除负控五模式格；负控四臂、竞争 seed 11/23/42 的网络四臂和五执行模式、seed 11 的四个解释分支保留。旧合同使用的准入阈值全部未改：≥10 可比较决策、≥5 竞争点、≥90% 有效查询覆盖、6 OD、≥5 同时包、≥2 同时 OD 等按全网日志计算。
+- 新 run-id 唯一预留为 `wp-b-dev-20261001-02`；第二 pilot 尚未发布/启动。旧 4 次 + 新上界 52 次 = 最多 56/60；A 保守 1061 s + 旧 B 42.100891407 s + 新 B 上限 3600 s，合计上界约 4703.10/7200 s。pilot 通过才会在同一 bundle、run 与输出目录 append 余下 4 格，不重跑已完成格；pilot 失败则保留并停止，不再试场景。
+- D=30 s、人口窗 [5,20] s、仿真/排空至 50 s、全包分母、终态与行政删失分开、seed 11/23/42 仅开发描述、seed 1001+未用、非训练/非 formal 边界不变。形式运行、确认种子与训练均未执行。维护检查的外部备份/依赖锁范围 warning 仍按原规则记录，不把它记为本任务已验证。
 ---
 
 ## 历史状态（WP-A 与更早执行；后文身份不作为当前执行身份）

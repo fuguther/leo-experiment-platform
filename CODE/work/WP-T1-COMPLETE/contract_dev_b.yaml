@@ -27,7 +27,7 @@ a0_smoke:
   scenario_id: steady_multi_od_negative_control_b
   network_seed: 7
   cell_rule: first_b_dev_cell
-  gate: stale/now/common/candidate四个全网策略臂均有正发包、转发决策和交付，且offered等于输入轨迹行数
+  gate: stale/now/common/candidate四个全网策略臂均有正发包、转发决策和交付，outcome_document.partition_exact为真，且offered等于输入轨迹行数
   on_failure: stop_before_any_remaining_b_dev_cell;preserve_result;do_not_resume_run
   call_accounting: included in the declared negative-control network cell; not an extra call
 simulator_call_budget: 60
@@ -87,17 +87,27 @@ formal_design:
   reason: development-only; confirmation requires a separate frozen contract, sample-size review, independent review and exact FORMAL_RUN authorization
   confirm_seeds: []
 workloads:
+  # Development-only synthetic endpoint adjustment selected from
+  # geometry/topology screening, without using method outcomes:
+  # G1:131:336 resolves to (41.5,156.5), 4967.35 km from North
+  # G1:142:270. Certified next_gsl_change checks find no GSL visibility
+  # transition on [0,50]s; 5-second topology snapshots keep North-to-candidate
+  # shortest paths at 2 ISL hops, and equator-to-candidate at 4. This is a
+  # finite three-endpoint corridor, not a locally adjacent North site, a real
+  # ground-station claim, or global OD coverage. Geometry does not establish
+  # control-advertisement reachability or packet delivery; the VM trace gates
+  # those separately.
   sites: &sites
     - {id: equator, lat: 0.1, lon: 0.1}
     - {id: north, lat: 52.6, lon: 90.4}
-    - {id: west, lat: 0.1, lon: -80.1}
+    - {id: pacific_corridor, lat: 41.5, lon: 156.5}
   flows: &flows
     - {id: equator_to_north, src: equator, dst: north}
-    - {id: equator_to_west, src: equator, dst: west}
+    - {id: equator_to_pacific_corridor, src: equator, dst: pacific_corridor}
     - {id: north_to_equator, src: north, dst: equator}
-    - {id: north_to_west, src: north, dst: west}
-    - {id: west_to_equator, src: west, dst: equator}
-    - {id: west_to_north, src: west, dst: north}
+    - {id: north_to_pacific_corridor, src: north, dst: pacific_corridor}
+    - {id: pacific_corridor_to_equator, src: pacific_corridor, dst: equator}
+    - {id: pacific_corridor_to_north, src: pacific_corridor, dst: north}
   steady_low:
     schema: t1-synthetic-od-workload/v1
     workload_id: steady_low_six_directed_od
@@ -109,7 +119,7 @@ workloads:
       - id: steady
         start_s: 0.0
         end_s: 20.0
-        rates_pps: {equator_to_north: 0.5, equator_to_west: 0.5, north_to_equator: 0.5, north_to_west: 0.5, west_to_equator: 0.5, west_to_north: 0.5}
+        rates_pps: {equator_to_north: 0.5, equator_to_pacific_corridor: 0.5, north_to_equator: 0.5, north_to_pacific_corridor: 0.5, pacific_corridor_to_equator: 0.5, pacific_corridor_to_north: 0.5}
   temporal_transfer:
     schema: t1-synthetic-od-workload/v1
     workload_id: low_growth_hotspot_transfer_decay_six_directed_od
@@ -121,21 +131,21 @@ workloads:
       - id: low
         start_s: 0.0
         end_s: 4.0
-        rates_pps: {equator_to_north: 0.5, equator_to_west: 0.5, north_to_equator: 0.5, north_to_west: 0.5, west_to_equator: 0.5, west_to_north: 0.5}
+        rates_pps: {equator_to_north: 0.5, equator_to_pacific_corridor: 0.5, north_to_equator: 0.5, north_to_pacific_corridor: 0.5, pacific_corridor_to_equator: 0.5, pacific_corridor_to_north: 0.5}
       - id: growth
         start_s: 4.0
         end_s: 12.0
-        rates_pps: {equator_to_north: 3.0, equator_to_west: 1.0, north_to_equator: 3.0, north_to_west: 1.0, west_to_equator: 1.0, west_to_north: 1.0}
+        rates_pps: {equator_to_north: 3.0, equator_to_pacific_corridor: 1.0, north_to_equator: 3.0, north_to_pacific_corridor: 1.0, pacific_corridor_to_equator: 1.0, pacific_corridor_to_north: 1.0}
       - id: transfer
         start_s: 12.0
         end_s: 16.0
-        rates_pps: {equator_to_north: 1.0, equator_to_west: 1.0, north_to_equator: 1.0, north_to_west: 3.0, west_to_equator: 1.0, west_to_north: 3.0}
+        rates_pps: {equator_to_north: 1.0, equator_to_pacific_corridor: 1.0, north_to_equator: 1.0, north_to_pacific_corridor: 3.0, pacific_corridor_to_equator: 1.0, pacific_corridor_to_north: 3.0}
       - id: decay
         start_s: 16.0
         end_s: 20.0
-        rates_pps: {equator_to_north: 0.5, equator_to_west: 0.5, north_to_equator: 0.5, north_to_west: 0.5, west_to_equator: 0.5, west_to_north: 0.5}
+        rates_pps: {equator_to_north: 0.5, equator_to_pacific_corridor: 0.5, north_to_equator: 0.5, north_to_pacific_corridor: 0.5, pacific_corridor_to_equator: 0.5, pacific_corridor_to_north: 0.5}
 b_round:
-  note: B-only complete full-network regional multi-OD design; normal 24-satellite three-plane platform and N/E/S/W action space are retained, while only three ground-site business coverage is regional
+  note: B-only development uses a finite three-endpoint geographic corridor (equator, North, northwest Pacific); normal 24-satellite three-plane platform, six directed ODs, and N/E/S/W action space are retained; this is neither a locally adjacent North cluster nor global OD coverage
   budgets:
     simulator_call_budget: 60
     max_b_dev_cells: 40
@@ -156,10 +166,9 @@ b_round:
         execution.compute_servers_per_satellite: 1
         time_alignment.enabled: true
       seeds: [7]
-      tasks: [network_alignment, execution_modes]
+      tasks: [network_alignment]
       task_seeds:
         network_alignment: [7]
-        execution_modes: [7]
     - id: temporal_multi_od_transfer_b
       business: six directed ODs; all active while total nominal demand grows from 3 to 10 Mbps, the two hot OD directions transfer at 12 s, then demand decays to 3 Mbps
       expectation: competitive_multi_od
@@ -188,11 +197,10 @@ b_round:
       capture_explanation_rule: first_structurally_eligible_sampled_decision
 pilot_cell_ids:
   - b-steady_multi_od_negative_control_b-network-seed-7
-  - b-steady_multi_od_negative_control_b-execution-modes-seed-7
   - b-temporal_multi_od_transfer_b-network-seed-11
   - b-temporal_multi_od_transfer_b-execution-modes-seed-11
   - b-temporal_multi_od_transfer_b-branch-seed-11
-pilot_note: first pilot covers negative control and one complete paired competitive seed, including four structurally sampled complete-snapshot decisions under the full N/E/S/W candidate upper bound; proceed to remaining four cells only if all structure, denominator, call-budget and cost gates pass
+pilot_note: second and final structure-adjustment pilot covers the negative-control four-arm network cell and one complete paired competitive seed (network, five execution modes, and four structurally sampled complete-snapshot decisions under the full N/E/S/W candidate upper bound); it uses four cells and must pass all unchanged structure, denominator, call-budget and cost gates before appending only the remaining four cells
 excluded_from_this_matrix:
   - M-Lab and locally registered traffic tables with unverified redistribution rights
   - trained model performance or training

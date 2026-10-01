@@ -182,8 +182,8 @@ def test_b_contract_compiles_the_minimum_frozen_matrix_and_common_d(tmp_path):
     estimate = t1_suite.estimate_bundle_cost({"cells": cells})
     by_id = {cell["cell_id"]: cell for cell in cells}
 
-    assert len(cells) == 9
-    assert estimate["simulator_calls"] == 57
+    assert len(cells) == 8
+    assert estimate["simulator_calls"] == 52
     assert not any("benchmark" in cell["driver"] for cell in cells)
     for cell in cells:
         args = cell["args"]
@@ -196,6 +196,13 @@ def test_b_contract_compiles_the_minimum_frozen_matrix_and_common_d(tmp_path):
             assert args[args.index("--max-branches") + 1] == "4"
     assert by_id[contract["pilot_cell_ids"][0]]["cell_id"] == \
         "b-steady_multi_od_negative_control_b-network-seed-7"
+    pilot_cells = [by_id[cell_id]
+                   for cell_id in contract["pilot_cell_ids"]]
+    assert len(pilot_cells) == 4
+    assert t1_suite.estimate_bundle_cost({"cells": pilot_cells})[
+        "simulator_calls"] == 34
+    assert "b-steady_multi_od_negative_control_b-execution-modes-seed-7" \
+        not in by_id
     branch = by_id["b-temporal_multi_od_transfer_b-branch-seed-11"]
     network = by_id["b-temporal_multi_od_transfer_b-network-seed-11"]
     assert "--capture-replay" in branch["args"]

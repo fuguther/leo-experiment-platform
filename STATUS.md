@@ -2,15 +2,16 @@
 
 本文是仓库级当前状态入口；工作包内 STATUS 只记录各自范围。具体版本以完整 Git commit、release-id 和 run-id 为准。
 
-## 当前研究工作包 B（2026-10-01；发布前）
+## 当前研究工作包 B（2026-10-01；第二次 pilot 冻结待发布）
 
-- 执行树为 工作树 `.t1-dev-experiment-a`，分支 `codex/20260930-t1-experiment-a`，当前修改以新 commit 为待发布身份；仅此工作树有本包改动。
-- 当前合同 `CODE/work/WP-T1-COMPLETE/contract_dev_b.yaml` 已编译并校验：容器打包 42 格；实际 B tier 9 格、57 次模拟调用上界，其中 pilot 5 格/39 次、同一 bundle 与 run 内续跑 4 格/18 次。容器编译 cap 60 格，B 执行门禁仍为 ≤40 格、≤60 次调用、≤3600 s 模拟墙钟、≤120 s/格、单并发。
-- 场景保留原 24 星/3 轨道面平台与完整 N/E/S/W 邻居候选，只把六条有向 OD 端点限定在区域内；包含六 OD 稳态阴性对照和六 OD 低—增长—热点方向转移—消退竞争轨迹。四信息臂、五模式（含 `precomputed`）、D=30 s、人口窗 [5,20] s 均按新合同执行。
-- 本机关键门禁/回放/OD/调用账本/四方向测试 25 passed，修改 Python 文件 `py_compile` 通过；完整合同编译 42 格、B tier 9 格/57 调用，`validate` 为 valid。以上是本机软件/静态证据，不是 VM 运行结果；B VM 尚未启动，实际模拟调用和 B 模拟墙钟均为 0。
-- WP-A run02 的实际 VM elapsed 1061 s。四邻居调用估算修正后，A 原冻结的 78 上界可追溯为历史三出口假设，四出口结构上界为 83；A 内部实际调用数没有单独记录，不能把任一估算写成观察值。保守累计墙钟记账把 A 全部 1061 s 计入；B 仍受 3600 s 上限，总计上界 4661 s，低于 7200 s。A 结果与身份保持历史且不重跑。
-- 目标新 run-id 为 `wp-b-dev-20261001-01`（部署索引未发现已用记录）；release 尚待提交、推送和发布。FORMAL_RUN、确认种子与训练均未启动。
-- WP-A 的 `REWORK`、已回传结果和历史缺陷仍只代表其原运行身份；不得把 B 的本机测试/静态通过当作科研结果。
+- 执行树为 `.t1-dev-experiment-a`，分支 `codex/20260930-t1-experiment-a`，冻结基点 `f3f86a2bea0a4b23f10d9c22867d0eb70fdf331a`。当前源、合同、测试和状态变更尚未提交；发布仍须绑定后续完整 commit 与不可变 release-id。
+- 前一实际 run `wp-b-dev-20261001-01` 已独立重验并保留：release `f3f86a2…-2c254ea7…`，receipt canonical SHA `6ff26002…b7fb39`（文件字节 SHA `9380622c…153a`），46 个回传文件，索引状态 `VERIFIED`；VM 执行 `failed`/exit 3。唯一负控 cell 的四次调用均结束，模拟墙钟合计 42.100891407 s。四臂各 60 offered、60 forward decisions、40 admitted、0 delivered/0 bits；`outcome_document.partition_exact=true`。修正 smoke 层级后分区检查全部通过，仍因每臂零交付、零交付比特与零 goodput 不通过门禁。该场景未准入，不能解释为性能负结果。
+- `t1_development` 的 smoke 门禁已修正为读取 `outcome_document.partition_exact`。新反例同时放入相反的错误层级值，验证正确层级为真时通过、正确层级为假时拒绝。旧失败回执与结果没有改写。
+- 唯一第二次结构调整把西侧端点替换为合成端点 `pacific_corridor`：赤道 G1:90:180、North G1:142:270、候选 G1:131:336；候选聚合中心为 (41.5°N, 156.5°E)，与 North 中心相距约 4967.35 km。用 `Constellation.next_gsl_change` 认证检查 0–50 s 无 GSL 可见性切换，服务星分别为 sat0/2/9；逐 5 s 动态 N/E/S/W 拓扑的最短 ISL 路径分别为赤道↔North 2、赤道↔候选 4、North↔候选 2。它是覆盖三个端点的有限地理走廊，不是 North 邻站、真实地面站或全球 OD；几何不能代替控制广告、接入、排空和交付日志。
+- 新合同已本机编译并 `valid=true`：总容器 41 格（cap 60），B tier 8 格/52 次静态调用上界；第二 pilot 四格/34 次，余下四格/18 次，仅在同一新 bundle、同一 run 内经 gate 后 append。只删去负控五模式格；负控四臂、竞争 seeds 11/23/42 的四臂与五模式、seed 11 的四个解释分支都保留。准入门未放宽：≥10 可比较点、≥5 竞争点、≥90% 查询覆盖、6 OD、≥5 同时包、≥2 同时 OD 等仍从全网日志重算。
+- 新 run-id 预留为 `wp-b-dev-20261001-02`；它尚未发布或启动。旧 run 的 4 次与新静态上界 52 次相加最多 56/60；旧 B 42.100891407 s、新 B 上限 3600 s 与 A 保守 1061 s 合计上界约 4703.10/7200 s。超时、失败和提前停止调用均计入预算。
+- 本机定向 smoke/合同测试 2 passed，准入测试 4 passed，修改 Python 文件 `py_compile` 通过；这些属于软件/静态证据，不能代替 VM 运行结论。FORMAL_RUN、确认种子 1001+、训练均未执行。
+- WP-A `REWORK`、其历史结果与缺陷仍只代表原运行身份；不得把 B 的软件测试或几何筛查写成方法收益。
 
 ## 已完成的治理发布与同步记录（保留原身份）
 
