@@ -2,6 +2,7 @@
 
 > 计划书：`docs/superpowers/plans/2026-09-27-t1-complete-implementation.md`
 > 交付：`REPORT.md`（含"第二轮复审返工 S1–S7"节）；判据：`criteria.json`；语义合同：`contract.yaml`。
+- 主控集中复核（2026-10-01）：回执、预算和有限错误排序已独立核实；证据交付通过，实验仍为 `REWORK_REQUIRED`。目的下传候选评分、尾部访问约束及无决策 OD 的等待原因须先闭合；详情见 REPORT 的“主控集中复核”，未开始第三次试跑。
 > **执行位置硬规则（AGENTS.md）**：所有实验只在 VM 上跑；本机只做代码/测试/只读复核。
 
 ## 当前工作包 B 状态（2026-10-01；第二 pilot 失败后停止）

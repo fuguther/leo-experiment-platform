@@ -828,3 +828,19 @@ PID1 的 W 尾部预测为 sat19 的 E→sat1，`remaining_hops=2`、`remaining_
 - 无完整 B paired table、四种信息臂配对种子完整性、五模式成本比较、统计/功效结论或可交付 replay HTML；`replay_capture.captured=false` / `replay=NOT_AVAILABLE`。FORMAL_RUN、confirm seed 1001+、训练均未运行。第一次 run 的失败身份不覆盖。
 - pullback 46 个文件，独立的 protocol receipt/manifest/file-set 核验已通过；部署索引记录 `pullback_status=VERIFIED`。复核入口为 evidence URI `evidence://t1/wp-b-dev-20261001-02`（本机证据目录由执行环境管理）。运行启动/结束时间、源 commit、release、receipt、manifest、archive 哈希均见本节，不从较早本机 `out/` 读取结果。
 - `criteria.json#b_round` 保存机器可读的 release/run identity、回执哈希、每臂结局、实际调用/墙钟、准入、有限诊断及限制。发布前的 2 项 smoke/schema+B contract 测试与 4 项 admission 测试仍作为代码证据；它们不把本次远端 smoke 变为通过。
+
+
+### 主控集中复核（2026-10-01）
+
+**裁决：证据交付通过，实验执行仍须返工。** 主控在执行者停止写入后核验了提交 `99433669340b36b4ac84ef5cf40d830db07d6bf1` 的干净状态、两次运行索引和本机回执；维护检查 0 errors，15/15 回执验证通过。读取第二次 run 原始 `result.json`、`pipeline-summary.json` 与调用账本，独立确认仅 1/8 格、4 次正常结束的调用、66.970945898 s；两次 B 合计 8 次、109.071837305 s。四臂各 60 offered/60 ingress、0 delivered、60 `IN_SYSTEM_AT_STOP`。终态仍在系统与 D=30 人口窗内已知未达期限并不矛盾：45 个目标人口的期限结局已知为失败，但不能将全部 60 个包称为终端丢包。
+
+主控核对 `kernel.py::_build_ta_snapshot`、`_candidate_resource_map`、`time_alignment.py` 的评分排序以及 `_precomputed_order`：目的绑定存在；`delivered_downlink` 不属于 `status=ok`，仍作为合法候选却未创建预测资源，评分进入 fallback，而所有有限候选排在 fallback 之前。原始 stale 臂 PID1/sat1 决策中，N→sat2 合法且为目的服务星；W→sat19 的有限分为 0.2030894264789592 s，实际选 W，peer-tail 的 E→sat1 返回已访问卫星。这与诊断一致。此核验确认这些错误排序，不能推出修复必定解决全网零交付。
+
+还应修复或明确覆盖边界：原始 `routing_audit_log` 的 committed decision records 为 120，而 attempt records 为 0；两个 OD 的 20 个已入网包没有路由决策记录。不能把“审计结构支持 hold/fail”当作本 run 已覆盖其等待原因。下一工作包应按下列依赖顺序收敛，保持现有场景和门槛，避免再靠换端点修策略缺陷：
+
+1. 用 PID1、PID20001、PID30001 的决策结构建立能复现错误的反例；为目的服务候选定义合法本地信息下的终端/下传资源与服务成本，未知信息明确处理，不默认置零，也不无条件强制目的方向获胜。
+2. 使尾部预测遵守包的访问约束；区分局部队列/传播代理与完整剩余端到端成本，四臂共用相同规则。
+3. 为无决策的 OD 追踪接入后位置、等待原因、目的广告接收/失效及唤醒条件；在真实等待路径补上可核验记录，不能用汇总控制字节推定安装成功。
+4. 先完成针对反例和真实内核交付链的验证，再冻结修复代码、运行合同与新身份。后续开发运行须保持全网正交付、并发、多候选、资源竞争、查询覆盖和人口守恒门；竞争三种子四臂、五模式强基线与实际日志回放仍是未完成任务。
+
+本轮不修改上述实现，不再启动第三次场景 pilot，不执行正式实验。现有预算余量不等于准入通过，也不替代下一工作包的明确范围和冻结身份。没有四臂效果、五模式优势、统计显著性或星载结论。

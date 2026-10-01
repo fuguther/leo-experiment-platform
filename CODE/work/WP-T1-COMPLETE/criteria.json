@@ -2103,6 +2103,37 @@
    ],
    "bundle_fingerprint": "35c0c79ed012279eb4d064189e57a80b17c590ab23d8ed6e578e9e40b6fe35b8",
    "execution_chain_sha256": "a179cc33691d85ddf703411669a6bf4cf8beca6ee1c19c898936ba9bc5eb8ca4"
+  },
+  "root_concentrated_review": {
+   "date": "2026-10-01",
+   "reviewed_commit": "99433669340b36b4ac84ef5cf40d830db07d6bf1",
+   "evidence_verdict": "VERIFIED",
+   "experiment_verdict": "REWORK_REQUIRED",
+   "maintenance": {
+    "errors": 0,
+    "verified_receipts": 15
+   },
+   "verified_run": "wp-b-dev-20261001-02",
+   "actual_b_calls": 8,
+   "actual_b_simulator_wall_s": 109.071837305,
+   "confirmed_defects": [
+    "legal delivered_downlink candidate lacks prediction resource and falls behind every finite candidate",
+    "peer-tail prediction permits return to an already visited satellite"
+   ],
+   "unresolved": [
+    "20 ingress packets from two ODs have no decision audit",
+    "whole-network zero delivery cause not fully closed",
+    "hold/fail attempt audit coverage is not established: recorded attempts=0"
+   ],
+   "next_dependency_order": [
+    "regression counterexamples and explicit terminal/downlink scoring",
+    "packet-path-constrained tail prediction",
+    "observable hold/no-info/advertisement lifecycle for missing ODs",
+    "kernel delivery validation before frozen VM development matrix"
+   ],
+   "implementation_changed_by_review": false,
+   "third_pilot_started": false,
+   "formal_run": false
   }
  }
 }

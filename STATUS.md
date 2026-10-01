@@ -2,6 +2,7 @@
 
 本文是仓库级当前状态入口；工作包内 STATUS 只记录各自范围。具体版本以完整 Git commit、release-id 和 run-id 为准。
 
+- 主控集中复核（2026-10-01）：回执、预算和有限错误排序已独立核实；证据交付通过，实验仍为 `REWORK_REQUIRED`。目的下传候选评分、尾部访问约束及无决策 OD 的等待原因须先闭合；详情见 REPORT 的“主控集中复核”，未开始第三次试跑。
 ## 当前研究工作包 B（2026-10-01；第二次结构调整 pilot 已运行并因 smoke 失败停止）
 
 - 当前执行树 `.t1-dev-experiment-a`，分支 `codex/20260930-t1-experiment-a`。第二 pilot 的唯一不可变 release 绑定源码 commit `ffedada9274e7db1fdb5ea548d13ce4920c9815b`，release-id `ffedada9274e7db1fdb5ea548d13ce4920c9815b-8e624431c26c54ea52efc795fa0cc72b5d484e32708bb1a4ff5f535959753a74`；artifact SHA-256 `ae6c9845ffa2b64fe56c30c34b351f197b84382075e527fc3518c26b6280fa7d`。唯一第二 pilot run `wp-b-dev-20261001-02` 已结束 `failed` / exit 3，pullback `VERIFIED`。canonical receipt SHA `23399d84caa975b252e6a325d85be67834e1c9bd4699ded37dbcc49e224090cd`（receipt 文件 SHA `374ec812050c35721e29adc8e20f1eaec7bf7ec859cede72dc1584aebea43bd3`），manifest SHA `03b76ef8b2a816cc87d9cf22b0472f8110fa8e9f016832c89fb3c888d7c92c44`，archive SHA `8724bb437e33ca91aff9a7b46ea298f35e59ceecfd65e954d2a256f6ff1d3c48`，46 个文件；证据 URI `evidence://t1/wp-b-dev-20261001-02`。旧 run `wp-b-dev-20261001-01` 保留原身份和失败证据，没有覆盖或复用。
