@@ -5,8 +5,10 @@
 > 结论分层：IMPLEMENTED / TESTED / DIAGNOSTIC_RUN / FORMAL_RUN。**本报告不含任何 FORMAL_RUN。**
 
 > ### 现状与历史边界（2026-10-01）
-> WP-A 的最新真实运行仍是历史 run `wp-a-dev-20260930-02`（5 格通过、8 格超时）；主控已裁为 REWORK。B 的首个实际 run `wp-b-dev-20261001-01` 已终止为 failed/exit 3：负控四臂各 60 offered、60 次 forward、40 admitted、0 delivered；真实 `outcome_document.partition_exact` 为 true。旧 smoke 误读分区字段且四臂确无交付，二者均已明确，不把此 run 当性能负结果。当前已冻结唯一第二结构调整与第二 pilot 合同，正在提交发布；`wp-b-dev-20261001-02` 尚未启动。本节后续将追加该 run 的实际身份与结果；既有 run 身份、历史分析与更早的本机口径不倒改。
-> 第二 pilot 的候选为合成端点 G1:131:336 中心 (41.5°N,156.5°E)，距 North 聚合中心约 4967.35 km。`next_gsl_change` 认证几何检查显示三个端点在 0–50 s 均持续可见，服务卫星为 0/2/9；5 s N/E/S/W 拓扑快照中 North–候选最短路径为 2 ISL。该有限端点走廊不代表邻站、真实网关或全球业务；几何也不代替实际控制广告、并发、逐包结局和送达证据。
+> WP-A 最新真实运行仍是历史 run `wp-a-dev-20260930-02`（5 格通过、8 格超时），主控裁决 REWORK。B 首次运行 `wp-b-dev-20261001-01` 与唯一第二 pilot `wp-b-dev-20261001-02` 均 failed/exit 3，receipt 和日志保留其独立身份。第二 pilot 的 smoke 字段已读正确的 `outcome_document.partition_exact=true`；失败原因是四臂各 60 admitted 但 0 delivered/0 bits/0 goodput。所有包在 stop=50 s 时仍 `IN_SYSTEM_AT_STOP`；D=30 的 [5,20] 人口样本各 45 包精确 deadline loss=1.0。它是准入失败且结局受截止删失，不是方法性能负结果。
+> 第二 pilot 使用合成端点 G1:131:336 聚合格中心 (41.5°N,156.5°E)，距 North 中心约 4967.35 km。用同一几何代码对固定服务星 0/2/9 认证检查 [0,50] s 无 GSL 可见性切换；按运行拓扑规则在 0,5,…,50 s 边界检查，端点服务可见且最短 ISL hops 2/4/2。该端点代表覆盖三站的有限地理走廊，不是 North 邻站、真实网关或全球 OD；几何不证明控制广告已安装或端到端服务已激活。
+> 第二 pilot 只启动负控全网 cell 的四次模拟调用，pilot gate 未通过；其余 7/8 格未运行。零交付的有界诊断发现：策略读取目的和已到达服务广告，但直达目的服务星的候选在评分资源映射中落入 fallback，有限分绕行胜过它；一条记录的候选尾预测还回到已访问卫星。这解释若干已观察绕行动作，但全网 0 交付、两个无决策 OD、route/control 安装和完整服务原因仍未闭合。`precomputed` 的目的绑定方向排序仅由源码推断，本 run 未测该模式。
+> 当前报告里的 VM 证据链、账本、成本边界、准入状态、修复建议与复现身份详见后文“工作包 B（运行后状态与证据）”；既有 run 身份、WP-A/更早的本机口径与历史审查不倒改。
 > `t1-final-06572b6`、其 509.8 µs 确定性评分器 VM 主机计时以及更早的本机报告仍保留原证据边界；它们不是 B 的运行身份，也不支持 DDQN/星载结论。**第 3–8 节是 VM 规则生效之前的本机口径**，不得再作为新实验来源；第 9 节起的 R/S 审查史保留为历史。
 
 ## 1. 用户问题
@@ -785,27 +787,44 @@ CODE/scripts/remote/pull-release-results-remote.sh \
 - 审查者提出假设判定规则的可追溯性轻度疑问。复核本账本后，`criteria.json` 已在运行前列出 H1/H2、主比较与各自 falsifier；`contract_dev_a.yaml` 还冻结了 D=30、最小实质差异 0.01、敏感性阈值和配对区组规则。因此“未命名/未冻结”不成立。可改进处是将支持/否定/信息不足的操作性决策句写得更直接；本 run 的 H1 `NOT_COMPUTABLE` 和 H2 描述性分类不受影响。
 - 本次内部审查只有一名审查者，覆盖实现/证据与研究/统计两个方面；不宣称双人独立复核。
 
-## 工作包 B（2026-10-01；当前冻结合同与发布前状态）
+## 工作包 B（2026-10-01；运行后状态与证据）
 
-### 设计与执行身份
+### 冻结设计与区域边界
 
-WP-A 的集中验收为 **REWORK**。B 是一份独立开发合同，拥有新场景、D=30 s、OD trace、配对区组和新 release/run 身份，不与 A 的输出拼接或挑选场景。
+- **平台和业务。** `CODE/leo_sim/profiles/t1_dev_regional_multiod.yaml` 保留原 24 星、3 轨道面、550 km、53° LEO 平台、动态可见性/ISL、完整控制面、逐跳转发与 N/E/S/W 四候选 mask，拓扑每 5 s 重算。业务端点为 equator G1:90:180、North G1:142:270、Pacific G1:131:336 三个聚合格，中心分别 (0.5°,0.5°)、(52.5°,90.5°)、(41.5°,156.5°)，North–Pacific 大圆距离约 4967.35 km。它们定义覆盖三端点的有限地理走廊，不称邻近 North、本地城市区域或全球 OD。六条有向 OD、合成外生轨迹、路径穿过全星座的设置保持不变。
+- **几何检查。** 用与 profile 相同的 `Constellation(24,3,550 km,53°,25°)`，选定 endpoint 服务星 0/2/9 在 [0,50] s 的 certified `next_gsl_change` 均无切换，20 s 与 50 s 仍可见。按同一 `routing.build_topology` 在 0,5,…,50 s 边界重算后，equator↔North、equator↔Pacific、North↔Pacific 最短 ISL hops 分别为 2、4、2；route audit 涉及的 sat 0/1/2/3/4/5/9/19/20 方向邻居映射在这些边界未变。此只读几何核验覆盖 [20,50] 的排空区间，但只证明固定候选服务星的可见性及离散重算点拓扑结构；它不证明广告到达/安装、目的服务在内核激活、接入成功或逐包交付。
+- **轨迹与准入。** 阴性对照为六 OD 各 0.5 pps、0–20 s 发流；竞争 trace 保持低负载→4–12 s equator↔North 热点→12–16 s North↔Pacific 热点→低负载，20 s 停止发流，截止 D=30 s，仿真观察至 50 s。目标 population 窗 [5,20]。seed 7 为阴性对照，竞争 seed 11/23/42 仅用于开发描述，不做显著性结论。准入阈值没有放宽：≥10 个全网可比较决策、≥5 个竞争点、≥90% 有效查询覆盖、六个 OD、≥5 同时包、≥2 同时 OD；须从完整全网日志重算，抽样解释分支不能替代总体门槛。所有 offered 包为分母，终端失败与截止删失分开。
+- **矩阵与成本计划。** 静态 bundle 有 41 个容器格（编译 cap 60）；B tier 8 格、52 静态调用上界。冻结 pilot 为 4 格/34 次，余下 4 格/18 次只可在同一 bundle、run-id 和输出目录中于 gate 通过后 append。全包限制 40 格、60 实际调用、3600 s VM 模拟墙钟、120 s/格、并发 1。调用和失败均计预算。
 
-- **平台关系。** profile `CODE/leo_sim/profiles/t1_dev_regional_multiod.yaml` 使用现有 LEO 仿真内核，24 星、3 轨道面、550 km、53°，保留平台的 N/E/S/W 四邻居动作空间与每步实际合法性 mask；常量 5 Mbps ISL 配置、5 s 拓扑重算、完整控制面和逐跳路由过程继续运行。区域范围只定义三个业务站点（equator、north、west）及其六条有向 OD，路径可穿过区域外卫星，不人为削成 A/B 两条路，也不裁切全网拓扑。
-- **外生业务。** 所有六 OD 由 seed 固定生成并在阶段内共同活跃。阴性对照在 0–20 s 六 OD 各 0.5 pps（1 Mbit/包，总名义 3 Mbps），其余时间观察至 50 s。竞争情景先为六 OD 各 0.5 pps；4–12 s 提升 equator↔north 两条 OD 到 3 pps、其余四条到 1 pps（合计 10 Mbps）；12–16 s 热点转至 north↔west；16–20 s 全部降为 0.5 pps，20 s 停止发流。多个 OD、多个包同时生成、在途、排队，争用真实 ISL 和各星计算池；需求是合成开发流量，不冒充实测数据。
-- **两个研究组。** 四种时间信息臂 stale/now/common/candidate 共享历史快照、逐包真实运行和候选空间；在线只用当时收到的历史，未来真值只用于事后诊断。四臂从同一完整初始全网克隆分别独立演化。第二组对相同 trace/seed 保留 per_packet、per_flow、precomputed、async_point、async_window；成本分开报告前台、查询、后台 job/实际 service/等待及占用范围。
-- **准入规则。** 窗口 [5,20] s。全网四臂各自从完整 `decision_records` 检查 ≥10 个有至少两个合法方向的可比较决策、≥5 个结构定义的非零出口 backlog 竞争点；有效查询覆盖 ≥90%，并核对六个 OD 和实际并发人口。不得按损失、动作赢家或臂排名准入。四个抽样完整快照仅作因果解释，`max_branches=4` 是重演的决策点数，不替代准入计数；有向 N/E/S/W 分支保留平台 mask 与实际轨迹。
-- **期限与统计单位。** 全矩阵 D=30 s，目标人口生成窗 [5,20] s、观测至 50 s。每包期限损失是 `min(delay,D)/D`，终止失败或已观察满 D 未交付记 1；未覆盖 D 的包保留行政删失与界限。全部 offered 为总人口分母，入网另报；源逐包记录必须可重算 delivered、terminal loss、censor 与 fate partition。区组单位为 scenario × trace × seed，包和分支不当独立样本；seed 11/23/42 三区组只支持开发描述，不做显著性结论。阴性对照 seed 7 保留。
-- **预算。** 最终静态编译打包 42 个容器 cell（包括本轮不运行的既有 acceptance/dev-sweep 包）；容器 compile 上限 60。B 实际 tier 只有 9 格、57 个静态内核调用上界：阴性全网 4 + 五模式 5；竞争 seed 11 的四方向分支上界 21 + 全网四臂 4 + 五模式 5；seed 23/42 各 4 + 5。pilot 按合同顺序为 5 格 / 39 次，余下 4 格 / 18 次只在 pilot 结构、人口/期限、调用及成本门通过后于**相同 bundle 与 run 目录** append；pilot 不重跑。失败/pilot 实际调用计入 60 次；B 限 40 格、60 次调用、3600 s 模拟墙钟、120 s/格、单并发。
-- **A+B 墙钟账本。** A run02 的 VM 外层 elapsed 为 1061 s，旧 run 没有内部调用实计器；保守把全部 1061 s 计作 A 已耗墙钟，B 仍硬限 3600 s，保守合计 4661 s ≤ 原累计 7200 s。A 原 78 次静态上界使用最多三个未选出口；完整四方向的事后结构上界修正为 83。它不是 A 实际调用数，也不能由它推出实际超出或低于调用预算。A receipt、运行代码身份和五格/八超时结果均不改写、不重跑。
+### 第二 pilot 身份与实际矩阵
 
-### 发布前核验（尚无 VM 模拟）
+- 源码 commit `ffedada9274e7db1fdb5ea548d13ce4920c9815b` 已发布为不可变 release `ffedada9274e7db1fdb5ea548d13ce4920c9815b-8e624431c26c54ea52efc795fa0cc72b5d484e32708bb1a4ff5f535959753a74`，artifact SHA-256 `ae6c9845ffa2b64fe56c30c34b351f197b84382075e527fc3518c26b6280fa7d`；该 run bundle fingerprint `35c0c79ed012279eb4d064189e57a80b17c590ab23d8ed6e578e9e40b6fe35b8`、执行链 SHA-256 `a179cc33691d85ddf703411669a6bf4cf8beca6ee1c19c898936ba9bc5eb8ca4`。唯一 run `wp-b-dev-20261001-02` 于 `2026-10-01T06:27:02Z` 启动、`06:28:28Z` 结束，`failed`/exit 3，结果 `SMOKE_FAILED`。46 个回传文件的 pullback 为 `VERIFIED`；evidence URI `evidence://t1/wp-b-dev-20261001-02`。canonical receipt SHA-256 `23399d84caa975b252e6a325d85be67834e1c9bd4699ded37dbcc49e224090cd`，receipt 原文件 SHA-256 `374ec812050c35721e29adc8e20f1eaec7bf7ec859cede72dc1584aebea43bd3`，manifest SHA-256 `03b76ef8b2a816cc87d9cf22b0472f8110fa8e9f016832c89fb3c888d7c92c44`，archive SHA-256 `8724bb437e33ca91aff9a7b46ea298f35e59ceecfd65e954d2a256f6ff1d3c48`。
+- **执行格状态。** 仅第一格 `b-steady_multi_od_negative_control_b-network-seed-7` 启动，4/4 simulator calls ended，cell predicate `ok`，但每臂 positive delivery smoke 失败，故 run 总状态失败；其余 7 格没有启动。`scenario-admission.summary={admitted:0, not_valid:0, not_computable:1}`，`paired-analysis.status=INCOMPLETE`，`pilot_gate=null`。不重试、不 append 剩余格，不再第三次调整场景。
+- **逐臂结果。** stale/now/common/candidate 各自 60 offered、60 satellite-ingress admitted、0 delivered packets、0 delivered bits、0 goodput，`outcome_document.partition_exact=true` 且 row_count=75。四臂所有 60 个包都在 stop=50 s 时为 `IN_SYSTEM_AT_STOP`；这表示仍在系统/右删失，不是终端丢失。D=30 主损失对 [5,20] population 每臂 45 包均可精确计算，loss=1.0，0 interval-censored、0 not-computable。由于 0 delivered，E2E latency 没有样本；不能用已送达包时延代替总体损失。
+- 冻结 trace 本身覆盖 6 个有向 OD，源轨迹最大并发为 5 个 OD；但每臂 120 条逐包路由决策记录只含 40 个唯一 PID/4 个 OD，每包 3 次决策。eq→Pacific 和 Pacific→eq 的 20 个包未出现 route audit 决策。故本次没有从完整的在窗 decisions 得到 ≥10/≥5 点和有效查询覆盖门，准入为 NOT_COMPUTABLE；trace 结构与几个已记录分支不能替代它。
 
-- 本机针对 B 的最新关键回归：回放、结构准入、pilot gate、报告、OD 合成、真实调用账本及四方向审计共 **25 passed in 0.18 s**；修改 Python 文件 `py_compile` 通过。更早完整核心套件 **102 passed in 966.45 s**，早于最后一轮 B gate 与回放改动，不取代上项最新定向测试。
-- 最终静态合同 SHA-256 `dbe2d2636066e394bacecbc1c55e1b50f2b79e078544ebc0595765b8296af9b2`；编译容器 42 格。独立 `t1_suite validate` 输出 `valid=true`，bundle fingerprint `8c27cec33af8dc0b2e90c869d89f931e956af598ac8a5bc1d7989e89b765d337`；B tier 9 格/57 次上界，pilot 5 格/39 次，余下 4 格/18 次。上述皆为本机软件与静态成本证据。
-- 预留新 run-id `wp-b-dev-20261001-01`，部署索引未发现同名使用。当前还没有 B 发布身份/release、VM run、实际模拟调用或 B 模拟墙钟。FORMAL_RUN、确认种子和训练没有启动。
-- **回放交付边界。** `replay.html` 从验证哈希的运行日志生成，整体先展示全区 OD/24 星网络、各臂并发与队列，再可下钻到指定包/卫星四候选 mask、过滤原因、评分与决策时间；共享时钟联动 measurement-received、decision、query target、predicted-use、actual service、propagation 及交付/损失/成本。未来真实资源轨迹显式为事后离线诊断；缺失字段显示缺失，不伪造轨迹。仍未完成/未验证的是 VM 日志生成的最终离线 HTML 与对实际 run 的典型包展示。
+### 有界路由诊断：来源与结论边界
 
-### 运行顺序与停止规则
+**源码事实。** `kernel.py` `_build_ta_snapshot` 把 `pkt.dst` 传给 `_candidate_resource_map`。后者在 `destinations_in_cache(cache,pkt.dst,now)` 中使用当前 satellite cache 的实际已收到广告，识别邻居是否是目的服务星（`kernel.py` 约 4409–4451 行）。 `_build_ta_snapshot` 只为 `status="ok"` 的 ISL peer-resource 建 `ResourceKey`；处于 `delivered_downlink` 的终端候选仍合法，但没有对应 ISL resource mapping（约 4161–4167 行）。`time_alignment.py` 对缺 `resource_mapping`、prediction 或 ETA 的候选生成 fallback 排名，并将所有 fallback 排在完整评分之后（约 632–690 行）。因此目的绑定确实存在，但直接目的服务候选没有有限 terminal/downlink 总成本；不能把算法简化成“没有目的输入”，也不能说只看邻居负载。
 
-源码提交到本任务分支并推送后，只经 `CODE/scripts/remote/publish-release-remote.sh` 发布精确 clean commit；再经 `run-release-remote.sh` 运行固定 release 与唯一 run-id，`--config` 绑定合同快照。pilot 和余下矩阵复用一个 run，pilot 失败就保留其完整证据并停止，不改合同后重复跑到通过。运行后通过 `pull-release-results-remote.sh` 精确拉回，验证 receipt、manifest、文件集与部署索引；再从原始工件复算 admission、D=30 fate/主损失、执行成本及回放。出现单格失败/超时按合同停止门处理，所有已花调用和模拟秒保留；不把测试通过表述为研究收益，也不启动 confirmation/formal/训练。
+**日志事实与机制推断。** 四臂记录相同的关键候选和选择：
+
+| 记录 | 已到达的目的服务候选 | 实际评分排序证据 | 决策 |
+|---|---|---|---|
+| PID1，equator→North，sat1 | N→sat2 `delivered_downlink`；目的服务广告已收到 | N 为 fallback/missing `resource_mapping,no_received_history`；W→19 得 `0.2030894264789592 s` | W；后续真实路径 0→1→19→20 |
+| PID20001，North→equator，sat1 | S→sat0 `delivered_downlink` | S 为 fallback；W→19 是完整有限候选 | W |
+| PID30001，North→Pacific，sat3 | E→sat9 `delivered_downlink` | E 为 fallback；N→4 得 `0.2540077117963812 s` | N；后续路径 sat2→3→4→5 |
+
+PID1 的 W 尾部预测为 sat19 的 E→sat1，`remaining_hops=2`、`remaining_prop_s=0.0013929509859727887`；sat1 已在该包的 `pkt.path`。当前数据包转发候选会按 `pkt.path` 排除回环，但 `_candidate_resource_map` 中构造 peer lookahead 时没有同样的 packet-path 约束。评分中本地 ETA 和单个 peer egress 广告队列工作会进入代价，同时用“到最近可见 serving satellite 的剩余 hop 数 × 当前候选传播时延”近似剩余传播；它没有计完整后续路径的队列/服务与目的下传。因此实际证据支持：这些已审计选择受直达服务候选 fallback 和不受包路径约束的尾部预测影响；这不够解释两个没有 route record 的 OD、全网全部删失或全网 0 交付。控制 ledger 的 31.68 Mb offered/31.2 Mb delivered/0.48 Mb in-system 只是汇总控制流量，不能确认所有目的广告的安装状态；日志中出现的个别已收到广告也不能证明全窗每 OD 服务激活。
+
+**与 precomputed 的代码对照。** `_precompute_build` 为各目标构造有向最短 hop 表；`_precomputed_order` 在每次查询按已到达的目的服务广告选择目标，再将 `table[target]` 的首方向放到候选排序首位（`kernel.py` 约 3887–3955 行）。按本次 PID1、PID20001、PID30001 的已记录状态，预计算会把直接通向 sat2、sat0、sat9 的 N/S/E 方向列在首位。这是由源码和同一时刻观察到的 cache 状态推断出的动作排序，**本次没有运行 precomputed cell，不能作为测得的比较，也不保证该方向最终送达**。
+
+**最小修复建议（尚未实现/验证）。** 将目的服务候选建成有有限且显式的 terminal/downlink 服务分数；区分未知和不可行，不让“没有 ISL resource mapping”自动把目的直达方向劣后于每个完整绕行。peer-tail 预测约束 `pkt.path`，至少排除重返已访问卫星的预测；若继续主张端到端尾代价，需要把可合法获知的下游排队/服务和目的下传纳入模型，否则将结论限制为单 peer 队列工作加传播代理。先对上述两个真实决策结构加单元反例，再在冻结的可见几何和合法收到的广告下作内核交付验证。任何未来开发 VM 运行仍须满足原来的全网准入、分区、并发、查询覆盖与正交付门，不能选择成功包或降低阈值；本工作没有执行此修复或启动第三 pilot。
+
+### 成本、未完成项与复现边界
+
+- 本 run 四次模拟调用持续 66.970945898 s，均正常结束；run 外层 elapsed 为 86 s。旧 B run 四次、42.100891407 s，故当前 B 累计 8 次、109.071837305 s。旧 A 的 1061 s 是 VM 外层 elapsed；按保守记账把它和 B 实测 simulator 内层墙钟相加：A+B 当前记账 1170.071837305/7200 s。该总计是混合计费口径，不等同于同一种时钟。B 最大模拟时长仍为 3600 s；静态 B 上界 52 次不是本次实际调用量。
+- 每臂实际成本：per-packet compute 23,843 jobs、service `23.84299999998487 s`、queue wait `134.06938052110257 s`；query 23,843 requests、service `0.023842999980325352 s`、queue wait `157.91238052105885 s`；background jobs=0。各类 service/wait 分开报告，不相加声称 E2E 延迟。通用 control ledger 为 31,680,000 offered bits、31,200,000 delivered bits、480,000 bits still in system、0 terminal loss；这不是逐目的广告覆盖指标。
+- 无完整 B paired table、四种信息臂配对种子完整性、五模式成本比较、统计/功效结论或可交付 replay HTML；`replay_capture.captured=false` / `replay=NOT_AVAILABLE`。FORMAL_RUN、confirm seed 1001+、训练均未运行。第一次 run 的失败身份不覆盖。
+- pullback 46 个文件，独立的 protocol receipt/manifest/file-set 核验已通过；部署索引记录 `pullback_status=VERIFIED`。复核入口为 evidence URI `evidence://t1/wp-b-dev-20261001-02`（本机证据目录由执行环境管理）。运行启动/结束时间、源 commit、release、receipt、manifest、archive 哈希均见本节，不从较早本机 `out/` 读取结果。
+- `criteria.json#b_round` 保存机器可读的 release/run identity、回执哈希、每臂结局、实际调用/墙钟、准入、有限诊断及限制。发布前的 2 项 smoke/schema+B contract 测试与 4 项 admission 测试仍作为代码证据；它们不把本次远端 smoke 变为通过。

@@ -1700,11 +1700,11 @@
  },
  "work_id": "WP-T1-COMPLETE",
  "b_round": {
-  "status": "SECOND_STRUCTURE_ADJUSTMENT_FROZEN; previous B run failed exit 3; second pilot pending release",
+  "status": "SECOND_PILOT_SMOKE_FAILED; stopped after first full-network negative-control cell; no further B run authorized in this task",
   "contract": "CODE/work/WP-T1-COMPLETE/contract_dev_b.yaml",
   "contract_sha256": "a9a6e1ac0ad82c5c20dac916a9b40f456c3522f016631581bfc3bf8522440778",
   "planned_run_id": "wp-b-dev-20261001-02",
-  "release_id": null,
+  "release_id": "ffedada9274e7db1fdb5ea548d13ce4920c9815b-8e624431c26c54ea52efc795fa0cc72b5d484e32708bb1a4ff5f535959753a74",
   "platform_profile": {
    "path": "CODE/leo_sim/profiles/t1_dev_regional_multiod.yaml",
    "base": "existing leo_sim full network; 24 satellites, 3 planes, 550 km, 53 deg inclination",
@@ -1746,7 +1746,7 @@
     }
    ],
    "geometric_screen": {
-    "basis": "Constellation.next_gsl_change certified over 0-50 s; dynamic N/E/S/W topology rebuilt every 5 s",
+    "basis": "Constellation.next_gsl_change for selected service satellites 0/2/9 has no GSL visibility switch on [0,50] s; same runtime routing.build_topology checked at 0,5,...,50 s boundaries",
     "visible_satellites_over_window": {
      "equator": [
       0
@@ -1764,7 +1764,43 @@
      "north_pacific_corridor": 2
     },
     "north_to_candidate_great_circle_km": 4967.35,
-    "claim_limit": "geometric reachability only; does not establish control-advertisement arrival, access admission or packet delivery"
+    "claim_limit": "geometric reachability only; does not establish control-advertisement arrival, access admission or packet delivery",
+    "drain_window_check": {
+     "interval_s": [
+      20.0,
+      50.0
+     ],
+     "selected_service_satellites": {
+      "equator": 0,
+      "north": 2,
+      "pacific_corridor": 9
+     },
+     "certified_gsl_switches": {
+      "equator": [],
+      "north": [],
+      "pacific_corridor": []
+     },
+     "visible_at_20_and_50_s": true,
+     "topology_recompute_boundaries_s": [
+      0,
+      5,
+      10,
+      15,
+      20,
+      25,
+      30,
+      35,
+      40,
+      45,
+      50
+     ],
+     "shortest_isl_hops_at_all_checked_boundaries": {
+      "equator_north": 2,
+      "equator_pacific_corridor": 4,
+      "north_pacific_corridor": 2
+     },
+     "claim_limit": "fixed candidate-service visibility, endpoint-pair shortest-hop values and route-audit-relevant satellite direction maps at checked topology boundaries only; not whole-constellation continuous topology invariance, control-advertisement installation, access admission or packet delivery"
+    }
    }
   },
   "scenario_ids": [
@@ -1825,13 +1861,21 @@
    "max_simulator_wall_s": 3600,
    "max_cell_wall_s": 120,
    "concurrency": 1,
-   "actual_simulator_calls_started": 4,
-   "actual_simulator_wall_s": 42.100891407,
+   "actual_simulator_calls_started": 8,
+   "actual_simulator_wall_s": 109.071837305,
    "cumulative_a_b_wall_cap_s": 7200,
    "a_run02_conservatively_charged_outer_elapsed_s": 1061,
    "b_plus_a_conservative_upper_s": 4703.100891407,
    "previous_b_failed_run_calls": 4,
-   "new_b_static_call_upper": 52
+   "new_b_static_call_upper": 52,
+   "second_run_simulator_calls": 4,
+   "second_run_simulator_wall_s": 66.97094589800001,
+   "second_run_outer_elapsed_s": 86,
+   "second_run_cells_started": 1,
+   "second_run_cells_not_started": 7,
+   "second_run_static_calls_not_started": 48,
+   "cumulative_a_b_observed_charge_s": 1170.071837305,
+   "cumulative_a_b_observed_charge_basis": "A run02 outer elapsed 1061 s plus actual B inner simulator wall seconds 109.071837305 s; mixed conservative accounting, not a homogeneous elapsed clock"
   },
   "static_validation": {
    "bundle_fingerprint": "86409cd85589fcaf291f292a288c956e3a67892381129f4399a0cf4c144c2644",
@@ -1843,7 +1887,10 @@
    "latest_targeted_tests": "smoke/schema and B contract: 2 passed; admission: 4 passed",
    "py_compile": "passed for t1_development.py and modified test modules",
    "maintenance_check_errors": 0,
-   "maintenance_check_scope_warning": "external backup media and dependency lock were not checked"
+   "maintenance_check_scope_warning": "external backup media and dependency lock were not checked",
+   "post_pullback_maintenance_errors": 0,
+   "post_pullback_verified_receipts": 15,
+   "pullback_index_status": "VERIFIED"
   },
   "a_static_cost_reconciliation": {
    "original_frozen_estimate_calls": 78,
@@ -1886,6 +1933,176 @@
    "old_field_path_bug": "arm.network_outcome.partition_exact",
    "counterexample_test": "correct-level true / wrong-level false passes; correct-level false / wrong-level true fails",
    "admission_thresholds_changed": false
+  },
+  "source_git_commit": "ffedada9274e7db1fdb5ea548d13ce4920c9815b",
+  "source_tree_sha256": "8e624431c26c54ea52efc795fa0cc72b5d484e32708bb1a4ff5f535959753a74",
+  "artifact_sha256": "ae6c9845ffa2b64fe56c30c34b351f197b84382075e527fc3518c26b6280fa7d",
+  "run_id": "wp-b-dev-20261001-02",
+  "second_run": {
+   "run_id": "wp-b-dev-20261001-02",
+   "execution_class": "development",
+   "release_id": "ffedada9274e7db1fdb5ea548d13ce4920c9815b-8e624431c26c54ea52efc795fa0cc72b5d484e32708bb1a4ff5f535959753a74",
+   "source_git_commit": "ffedada9274e7db1fdb5ea548d13ce4920c9815b",
+   "source_tree_sha256": "8e624431c26c54ea52efc795fa0cc72b5d484e32708bb1a4ff5f535959753a74",
+   "artifact_sha256": "ae6c9845ffa2b64fe56c30c34b351f197b84382075e527fc3518c26b6280fa7d",
+   "status": "failed",
+   "exit_code": 3,
+   "run_status": "SMOKE_FAILED",
+   "started_at": "2026-10-01T06:27:02+00:00",
+   "finished_at": "2026-10-01T06:28:28+00:00",
+   "receipt_canonical_sha256": "23399d84caa975b252e6a325d85be67834e1c9bd4699ded37dbcc49e224090cd",
+   "receipt_file_sha256": "374ec812050c35721e29adc8e20f1eaec7bf7ec859cede72dc1584aebea43bd3",
+   "manifest_sha256": "03b76ef8b2a816cc87d9cf22b0472f8110fa8e9f016832c89fb3c888d7c92c44",
+   "archive_sha256": "8724bb437e33ca91aff9a7b46ea298f35e59ceecfd65e954d2a256f6ff1d3c48",
+   "pullback_status": "VERIFIED",
+   "evidence_uri": "evidence://t1/wp-b-dev-20261001-02",
+   "receipt_file_count": 46,
+   "executed_cells": [
+    "b-steady_multi_od_negative_control_b-network-seed-7"
+   ],
+   "executed_cell_status": "cell predicate ok; positive-delivery smoke failed",
+   "unstarted_cells": [
+    "b-temporal_multi_od_transfer_b-branch-seed-11",
+    "b-temporal_multi_od_transfer_b-network-seed-11",
+    "b-temporal_multi_od_transfer_b-execution-modes-seed-11",
+    "b-temporal_multi_od_transfer_b-network-seed-23",
+    "b-temporal_multi_od_transfer_b-execution-modes-seed-23",
+    "b-temporal_multi_od_transfer_b-network-seed-42",
+    "b-temporal_multi_od_transfer_b-execution-modes-seed-42"
+   ],
+   "simulator_calls_started_ended": 4,
+   "simulator_wall_s": 66.97094589800001,
+   "outer_elapsed_s": 86,
+   "admission_summary": {
+    "admitted": 0,
+    "not_valid": 0,
+    "not_computable": 1
+   },
+   "paired_analysis_status": "INCOMPLETE",
+   "pilot_gate": null,
+   "arm_outcomes": {
+    "stale": {
+     "offered": 60,
+     "satellite_ingress_admitted": 60,
+     "delivered": 0,
+     "delivered_bits": 0,
+     "goodput_bps": 0.0,
+     "outcome_document_partition_exact": true,
+     "row_count": 75,
+     "fate_counts": {
+      "IN_SYSTEM_AT_STOP": 60
+     }
+    },
+    "now": {
+     "offered": 60,
+     "satellite_ingress_admitted": 60,
+     "delivered": 0,
+     "delivered_bits": 0,
+     "goodput_bps": 0.0,
+     "outcome_document_partition_exact": true,
+     "row_count": 75,
+     "fate_counts": {
+      "IN_SYSTEM_AT_STOP": 60
+     }
+    },
+    "common": {
+     "offered": 60,
+     "satellite_ingress_admitted": 60,
+     "delivered": 0,
+     "delivered_bits": 0,
+     "goodput_bps": 0.0,
+     "outcome_document_partition_exact": true,
+     "row_count": 75,
+     "fate_counts": {
+      "IN_SYSTEM_AT_STOP": 60
+     }
+    },
+    "candidate": {
+     "offered": 60,
+     "satellite_ingress_admitted": 60,
+     "delivered": 0,
+     "delivered_bits": 0,
+     "goodput_bps": 0.0,
+     "outcome_document_partition_exact": true,
+     "row_count": 75,
+     "fate_counts": {
+      "IN_SYSTEM_AT_STOP": 60
+     }
+    }
+   },
+   "deadline_population": {
+    "deadline_s": 30,
+    "measurement_window_s": [
+     5,
+     20
+    ],
+    "packets_per_arm": 45,
+    "exact_packets_per_arm": 45,
+    "interval_censored_per_arm": 0,
+    "not_computable_per_arm": 0,
+    "loss_per_arm": 1.0,
+    "e2e_latency_status": "NOT_COMPUTABLE; no delivered packets"
+   },
+   "trace_and_route_audit": {
+    "generated_directed_od_count": 6,
+    "max_coactive_ods_in_source_trace": 5,
+    "route_decisions_per_arm": 120,
+    "unique_packets_with_route_decisions_per_arm": 40,
+    "ods_with_route_decisions_per_arm": 4,
+    "unlogged_od_packets": 20,
+    "unlogged_ods": [
+     "equator_to_pacific_corridor",
+     "pacific_corridor_to_equator"
+    ]
+   },
+   "control_ledger_bits_each_arm": {
+    "offered": 31680000,
+    "delivered": 31200000,
+    "in_system_at_stop": 480000,
+    "terminal_loss": 0,
+    "interpretation": "aggregate control traffic only; not proof of per-destination advertisement installation"
+   },
+   "cost_per_arm": {
+    "compute_jobs": 23843,
+    "compute_service_s": 23.84299999998487,
+    "compute_queue_wait_s": 134.06938052110257,
+    "query_requests": 23843,
+    "query_service_s": 0.023842999980325352,
+    "query_queue_wait_s": 157.91238052105885,
+    "background_jobs": 0
+   },
+   "scenario_interpretation": "inadmissible and censored at stop; not a method performance-negative conclusion",
+   "route_diagnosis": {
+    "source_facts": [
+     "Online snapshot passes pkt.dst to candidate mapping and uses received serving advertisements from the current cache.",
+     "A destination-serving neighbor is status=delivered_downlink, but _build_ta_snapshot maps ResourceKey only for status=ok ISL candidates; score_candidates ranks incomplete candidates as fallback after complete candidates.",
+     "PID1 at sat1, equator->North: N->sat2 is advertised destination service but falls back with resource_mapping/no_received_history; W->19 has finite score 0.2030894264789592 s and all four arms choose W.",
+     "PID1 W peer-tail predicts E->sat1, with two remaining hops and 0.0013929509859727887 s remaining propagation; sat1 is in packet path and tail construction has no pkt.path filter.",
+     "PID20001 at sat1 North->equator has direct S->sat0 fallback and all four arms choose W; PID30001 at sat3 North->Pacific has direct E->sat9 fallback and all four arms choose N."
+    ],
+    "precomputed_contrast": "Code-derived: target-specific directed hop tables are built offline; at query time received destination-serving advertisements choose the target and its table direction is primary. Would order N for PID1, target-serving S for PID20001, and E for PID30001. The precomputed execution cell was not run; this is not a measured baseline or a delivery guarantee.",
+    "bounded_inference": "Direct-serving fallback and a path-unconstrained tail prediction explain these audited detours; they do not explain all zero delivery or the two ODs without route records. Full root cause remains unresolved.",
+    "minimal_unimplemented_fix": [
+     "Give destination-serving/downlink actions an explicit finite terminal-service score; distinguish unknown from infeasible instead of treating a missing ISL ResourceKey as a route penalty.",
+     "Constrain candidate-tail routing to packet history and exclude predictions that re-enter a visited satellite.",
+     "If claiming end-to-end tail cost, add legally observable downstream queue/service and destination downlink; otherwise narrow the cost claim to the current one-peer queue-work plus propagation proxy."
+    ],
+    "validation_gate": "Add unit counterexamples for the captured North and Pacific decisions, then a fixed-geometry kernel test with legitimately received destination advertisements and end-to-end delivery. Any future VM run must pass unchanged full-network thresholds and positive delivery smoke; no third pilot was run here."
+   },
+   "replay": {
+    "status": "NOT_AVAILABLE",
+    "html_generated": false,
+    "reason": "smoke stopped after the first network cell; no captured replay bundle"
+   },
+   "limits": [
+    "Only the negative-control four-arm network cell was run; seven cells were not started.",
+    "No paired cell/block table, no execution-mode comparison, no seed completeness result and no total-cost ranking.",
+    "Zero deliveries are not a terminal-loss or method-negative result because all packet fates were censored at stop.",
+    "Aggregate control traffic and selected received advertisements do not establish route advertisement installation across all flows.",
+    "No formal run, confirmatory seed, training or main merge."
+   ],
+   "bundle_fingerprint": "35c0c79ed012279eb4d064189e57a80b17c590ab23d8ed6e578e9e40b6fe35b8",
+   "execution_chain_sha256": "a179cc33691d85ddf703411669a6bf4cf8beca6ee1c19c898936ba9bc5eb8ca4"
   }
  }
 }
