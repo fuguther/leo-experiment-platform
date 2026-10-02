@@ -18,7 +18,7 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633
+    execution_chain_sha256: dd26e1e7f9fc509765f41546d01a60838b1edc7837796a572bad2e6e4ab04cb3
     cell_input_sha256:
       b-bounded_population_cost_smoke-network-seed-7: 70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905
   release_ready: false
@@ -32,7 +32,7 @@ input_identity:
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633
+  source_execution_chain_sha256: dd26e1e7f9fc509765f41546d01a60838b1edc7837796a572bad2e6e4ab04cb3
   compiled_trace_sha256: null
   bundle_sha256: null
   cell_input_sha256:

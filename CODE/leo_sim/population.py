@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +14,45 @@ from . import grid
 
 class PopulationError(ValueError):
     pass
+
+
+POPULATION_RASTER_ENV = "T1_INPUT_POPULATION_RASTER"
+
+
+def resolve_population_path(path: str | Path, *, source_root=None,
+                            environ=None) -> Path:
+    """Locate the declared population raster, honoring a runner snapshot.
+
+    The configured path remains the logical input identity. A T1 runner may
+    materialize its authorized bytes outside the immutable release and expose
+    that physical location through ``T1_INPUT_POPULATION_RASTER``. Once the
+    variable is present it is authoritative: an empty, relative, missing, or
+    symlink target fails closed instead of falling back to the configured
+    source-tree path.
+    """
+    env = os.environ if environ is None else environ
+    if POPULATION_RASTER_ENV in env:
+        raw_snapshot = env.get(POPULATION_RASTER_ENV)
+        if not isinstance(raw_snapshot, str) or not raw_snapshot.strip():
+            raise PopulationError(
+                "population snapshot path is empty or invalid")
+        source = Path(raw_snapshot)
+        if not source.is_absolute():
+            raise PopulationError(
+                f"population snapshot path must be absolute: {source}")
+        if source.is_symlink() or not source.is_file():
+            raise PopulationError(
+                f"population snapshot not found or unsafe: {source}")
+        return source
+
+    source = Path(path)
+    if not source.is_absolute():
+        root = Path.cwd() if source_root is None else Path(source_root)
+        source = root / source
+    if source.is_symlink() or not source.is_file():
+        raise PopulationError(
+            f"population raster not found or unsafe: {source}")
+    return source
 
 
 @dataclass(frozen=True)
@@ -135,10 +175,12 @@ def filter_population_regions(regions, *, lat_bounds_deg=None,
 def load_population_regions(path: str | Path,
                             aggregation_deg: float, *,
                             lat_bounds_deg=None,
-                            lon_bounds_deg=None) -> PopulationTable:
-    source = Path(path)
-    if not source.is_file() or source.is_symlink():
-        raise PopulationError(f"population raster not found or unsafe: {source}")
+                            lon_bounds_deg=None,
+                            source_root=None,
+                            environ=None) -> PopulationTable:
+    configured_path = Path(path)
+    source = resolve_population_path(
+        configured_path, source_root=source_root, environ=environ)
     try:
         from PIL import Image
         with Image.open(source) as image:
@@ -174,7 +216,7 @@ def load_population_regions(path: str | Path,
         regions=regions,
         # Preserve the configured spelling. An absolute checkout path would
         # make otherwise identical manifests differ across machines.
-        source_path=str(source),
+        source_path=str(configured_path),
         source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
         source_shape=tuple(int(v) for v in values.shape),
         source_resolution_deg=(pixel_lat_deg, pixel_lon_deg),

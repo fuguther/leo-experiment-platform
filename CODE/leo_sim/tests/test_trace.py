@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 import numpy as np
 
@@ -490,6 +491,77 @@ def test_population_gravity_trace_is_byte_reproducible(tmp_path, monkeypatch):
     assert m1["trace_identity_sha256"] == m2["trace_identity_sha256"]
 
 
+def _write_tiny_global_population_tiff(path, values):
+    pytest.importorskip("PIL")
+    from PIL import Image, TiffImagePlugin
+
+    info = TiffImagePlugin.ImageFileDirectory_v2()
+    info[33550] = (90.0, 90.0, 0.0)
+    info[33922] = (0.0, 0.0, 0.0, -180.0, 90.0, 0.0)
+    Image.fromarray(np.asarray(values, dtype=np.uint16)).save(
+        path, tiffinfo=info)
+
+
+def _tiny_population_trace_config(population_path):
+    profile_path = (Path(__file__).resolve().parents[1] / "profiles"
+                    / "t1_population_region_cost_smoke.yaml")
+    raw = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    raw.pop("config_version", None)
+    raw["scenario"]["duration_s"] = 1.0
+    raw["endpoints"].update({
+        "grid_deg": 90.0,
+        "aggregation_deg": 90.0,
+        "region_lat_bounds_deg": None,
+        "region_lon_bounds_deg": None,
+    })
+    raw["demand"].update({
+        "population_path": population_path,
+        "offered_mbps": 0.12,
+        "emission_start_s": 0.0,
+        "emission_end_s": 1.0,
+        "burst_start_s": 0.25,
+        "burst_duration_s": 0.25,
+    })
+    raw["execution"]["max_packets"] = 100
+    return config.resolve_config(raw)
+
+
+def test_population_trace_reads_runner_snapshot_and_keeps_logical_source(
+        tmp_path, monkeypatch):
+    release_root = tmp_path / "release"
+    fallback = release_root / "CODE/population_map/gpw.tif"
+    fallback.parent.mkdir(parents=True)
+    _write_tiny_global_population_tiff(
+        fallback, [[31, 0, 0, 0], [0, 0, 0, 47]])
+    snapshot = tmp_path / "run/inputs/population_raster.tif"
+    snapshot.parent.mkdir(parents=True)
+    _write_tiny_global_population_tiff(
+        snapshot, [[101, 0, 0, 0], [0, 0, 0, 203]])
+    monkeypatch.chdir(release_root)
+    monkeypatch.setenv("T1_INPUT_POPULATION_RASTER", str(snapshot))
+
+    declared = "CODE/population_map/gpw.tif"
+    manifest = trace.compile_trace(
+        _tiny_population_trace_config(declared), tmp_path / "trace-from-snapshot")
+
+    snapshot_sha = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+    fallback_sha = hashlib.sha256(fallback.read_bytes()).hexdigest()
+    assert snapshot_sha != fallback_sha
+    assert manifest["input_sha256"] == snapshot_sha
+    assert manifest["population"]["source_sha256"] == snapshot_sha
+    assert manifest["population"]["source_path"] == declared
+
+    # An explicitly declared but missing runner snapshot must fail closed,
+    # even though the configured release-local fallback still exists.
+    monkeypatch.setenv(
+        "T1_INPUT_POPULATION_RASTER",
+        str(tmp_path / "run/inputs/vanished-population.tif"))
+    with pytest.raises(population.PopulationError, match="snapshot.*not found"):
+        trace.compile_trace(
+            _tiny_population_trace_config(declared),
+            tmp_path / "trace-missing-snapshot")
+
+
 def test_regional_population_trace_respects_two_second_warmup_and_burst(
         tmp_path, monkeypatch):
     table = population.PopulationTable(
@@ -520,7 +592,8 @@ def test_regional_population_trace_respects_two_second_warmup_and_burst(
     assert min(row["emit_time_s"] for row in rows) >= 2.0
     assert max(row["emit_time_s"] for row in rows) < 4.0
     assert captured == {"lat_bounds_deg": [5.0, 50.0],
-                        "lon_bounds_deg": [65.0, 140.0]}
+                        "lon_bounds_deg": [65.0, 140.0],
+                        "source_root": Path.cwd()}
     contract = manifest["provenance_contract"]
     assert contract["traffic_transform"]["burst"] == {
         "start_s": 2.5, "duration_s": 1.0, "multiplier": 2.0}

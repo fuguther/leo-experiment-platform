@@ -10,10 +10,12 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 import yaml
 
 from CODE.experiment_platform import t1_development, t1_suite, t1_tasks
+from CODE.leo_sim import trace as leo_trace
 
 ROOT = Path(__file__).resolve().parents[3]
 CONTRACT = ROOT / "CODE/work/WP-T1-COMPLETE/contract.yaml"
@@ -157,7 +159,14 @@ def test_root_authorized_persistent_contract_allows_only_exact_four_call_cell(
 
 
 def test_persistent_cost_probe_compile_preserves_native_profile_parameters(
-        tmp_path):
+        tmp_path, monkeypatch):
+    input_identity = yaml.safe_load(Path(DEV_COST_PROBE_CONTRACT).read_text(
+        encoding="utf-8"))["input_identity"]
+    source_raster = ROOT / input_identity["population_path"]
+    snapshot = tmp_path / "run/inputs/population_raster.tif"
+    snapshot.parent.mkdir(parents=True)
+    snapshot.write_bytes(source_raster.read_bytes())
+    monkeypatch.setenv("T1_INPUT_POPULATION_RASTER", str(snapshot))
     bundle = t1_suite.compile_bundle(
         DEV_COST_PROBE_CONTRACT, tmp_path / "compiled-native-probe")
     cell_id = "b-bounded_population_cost_smoke-network-seed-7"
@@ -200,6 +209,25 @@ def test_persistent_cost_probe_compile_preserves_native_profile_parameters(
         population_sha
     assert cell["input"]["files"]["population_path"]["sha256"] == \
         population_sha
+    assert cell["input"]["files"]["population_path"]["path"] == \
+        str(snapshot.resolve())
+    snapshot_digest = t1_suite._cell_input_sha256(cell["input"])
+    assert snapshot_digest == contract["design_readiness"][
+        "runtime_authorization"]["cell_input_sha256"][cell_id]
+
+    # Same bytes at the original source path produce the same semantic input
+    # identity even though the recorded physical locator differs.
+    monkeypatch.delenv("T1_INPUT_POPULATION_RASTER")
+    local_binding = t1_suite._cell_input_binding(
+        cell, bundle_root=tmp_path / "compiled-native-probe",
+        source_root=ROOT)
+    assert local_binding["files"]["population_path"]["path"] == \
+        str(source_raster.resolve())
+    assert t1_suite._cell_input_sha256(local_binding) == snapshot_digest
+    monkeypatch.setenv("T1_INPUT_POPULATION_RASTER", str(snapshot))
+    validation = t1_suite.validate_bundle(
+        tmp_path / "compiled-native-probe")
+    assert validation["valid"] is True
     assert "synthetic_od_count" not in cell["predicate"]["require"]
     assert "require_compiled_od_mapping" not in cell["predicate"]["require"]
     argv = cell["args"]
@@ -229,6 +257,143 @@ def test_persistent_cost_probe_compile_preserves_native_profile_parameters(
                        if row["cell_id"] == cell_id)
     assert second_bundle["contract_sha256"] != bundle["contract_sha256"]
     assert t1_suite._cell_input_sha256(second_cell["input"]) == cell_sha
+
+
+def _write_small_global_tiff(path, first=11, second=23):
+    pytest.importorskip("PIL")
+    from PIL import Image, TiffImagePlugin
+
+    values = np.zeros((2, 4), dtype=np.uint16)
+    values[0, 0] = first
+    values[1, 3] = second
+    info = TiffImagePlugin.ImageFileDirectory_v2()
+    info[33550] = (90.0, 90.0, 0.0)
+    info[33922] = (0.0, 0.0, 0.0, -180.0, 90.0, 0.0)
+    Image.fromarray(values).save(path, tiffinfo=info)
+
+
+def test_cold_release_population_cell_binds_and_traces_same_snapshot(
+        tmp_path, monkeypatch):
+    # Model the immutable release exactly: profile and driver are present,
+    # while the excluded source raster is absent. The runner-provided run
+    # input is the only available population file.
+    release_root = tmp_path / "release"
+    profile_path = Path("CODE/leo_sim/profiles/cold-probe.yaml")
+    release_profile = release_root / profile_path
+    release_profile.parent.mkdir(parents=True)
+    profile = yaml.safe_load((ROOT / "CODE/leo_sim/profiles/"
+                              "t1_population_region_cost_smoke.yaml"
+                              ).read_text(encoding="utf-8"))
+    profile["scenario"]["duration_s"] = 1.0
+    profile["endpoints"].update({
+        "grid_deg": 90.0, "aggregation_deg": 90.0,
+        "region_lat_bounds_deg": None, "region_lon_bounds_deg": None,
+    })
+    profile["demand"].update({
+        "population_path": "CODE/population_map/gpw.tif",
+        "offered_mbps": 0.12, "emission_start_s": 0.0,
+        "emission_end_s": 1.0, "burst_start_s": 0.25,
+        "burst_duration_s": 0.25,
+    })
+    profile["execution"]["max_packets"] = 1000
+    release_profile.write_text(
+        yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+    driver = release_root / "CODE/experiment_platform/t1_tasks.py"
+    driver.parent.mkdir(parents=True)
+    driver.write_bytes((ROOT / "CODE/experiment_platform/t1_tasks.py"
+                        ).read_bytes())
+
+    release_raster = release_root / "CODE/population_map/gpw.tif"
+    assert not release_raster.exists()
+    snapshot = tmp_path / "run-a/inputs/population_raster.tif"
+    snapshot.parent.mkdir(parents=True)
+    _write_small_global_tiff(snapshot)
+    snapshot_sha = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+
+    contract = yaml.safe_load(Path(DEV_COST_PROBE_CONTRACT).read_text(
+        encoding="utf-8"))
+    contract["input_identity"].update({
+        "profile_path": profile_path.as_posix(),
+        "profile_sha256": hashlib.sha256(
+            release_profile.read_bytes()).hexdigest(),
+        "population_path": "CODE/population_map/gpw.tif",
+        "population_sha256": snapshot_sha,
+    })
+    scenario = contract["b_round"]["scenarios"][0]
+    scenario["profile"] = profile_path.as_posix()
+    scenario["parameters"].update({
+        "scenario.duration_s": 1.0,
+        "endpoints.aggregation_deg": 90.0,
+        "endpoints.region_lat_bounds_deg": None,
+        "endpoints.region_lon_bounds_deg": None,
+        "demand.emission_start_s": 0.0,
+        "demand.emission_end_s": 1.0,
+        "execution.max_packets": 1000,
+    })
+    contract["statistics"]["population_window_s"] = [0.0, 1.0]
+    contract["admission_measurement_window_s"] = [0.0, 1.0]
+
+    monkeypatch.setattr(t1_suite, "REPO_ROOT", release_root)
+    monkeypatch.chdir(release_root)
+    monkeypatch.setenv("T1_INPUT_POPULATION_RASTER", str(snapshot))
+    bundle_dir = tmp_path / "bundle-a"
+    cells = t1_suite._b_cells(contract, bundle_dir)
+    assert len(cells) == 1
+    cell = cells[0]
+    cell["input"] = t1_suite._cell_input_binding(
+        cell, bundle_root=bundle_dir, source_root=release_root)
+    assert cell["predicate"]["require"]["population_sha256"] == snapshot_sha
+    pop_binding = cell["input"]["files"]["population_path"]
+    assert pop_binding["path"] == str(snapshot.resolve())
+    assert pop_binding["identity"] == "source:CODE/population_map/gpw.tif"
+    assert pop_binding["sha256"] == snapshot_sha
+    assert t1_suite._cell_input_sha256(cell["input"]) == \
+        t1_suite._cell_input_sha256(t1_suite._cell_input_binding(
+            cell, bundle_root=bundle_dir, source_root=release_root))
+
+    # Trace compilation resolves the same declared path through the same
+    # runner snapshot, and retains the logical profile path in provenance.
+    config_path = Path(cell["args"][cell["args"].index("--config") + 1])
+    resolved = t1_tasks.config_mod.load_config_file(str(config_path))
+    trace_manifest = leo_trace.compile_trace(
+        resolved, tmp_path / "trace-from-run-a")
+    assert trace_manifest["input_sha256"] == snapshot_sha
+    assert trace_manifest["population"]["source_path"] == \
+        "CODE/population_map/gpw.tif"
+
+    # Different physical run location, identical bytes, same semantic cell
+    # authorization. The absolute locator is intentionally not in the digest.
+    snapshot_b = tmp_path / "run-b/inputs/population_raster.tif"
+    snapshot_b.parent.mkdir(parents=True)
+    snapshot_b.write_bytes(snapshot.read_bytes())
+    monkeypatch.setenv("T1_INPUT_POPULATION_RASTER", str(snapshot_b))
+    cell_b = dict(cell)
+    cell_b["input"] = t1_suite._cell_input_binding(
+        cell_b, bundle_root=bundle_dir, source_root=release_root)
+    assert cell_b["input"]["files"]["population_path"]["path"] == \
+        str(snapshot_b.resolve())
+    assert t1_suite._cell_input_sha256(cell_b["input"]) == \
+        t1_suite._cell_input_sha256(cell["input"])
+
+    # Content changes are rejected by the contract input SHA, and a missing
+    # explicit runner snapshot never falls back to the release-local path.
+    tampered = tmp_path / "run-c/inputs/population_raster.tif"
+    tampered.parent.mkdir(parents=True)
+    _write_small_global_tiff(tampered, first=12, second=24)
+    monkeypatch.setenv("T1_INPUT_POPULATION_RASTER", str(tampered))
+    with pytest.raises(t1_suite.SuiteError, match="differs from contract"):
+        t1_suite._b_cells(contract, tmp_path / "bundle-tampered")
+
+    release_raster.parent.mkdir(parents=True)
+    _write_small_global_tiff(release_raster)
+    monkeypatch.setenv(
+        "T1_INPUT_POPULATION_RASTER",
+        str(tmp_path / "run-c/inputs/missing-population.tif"))
+    with pytest.raises(t1_suite.SuiteError, match="not found"):
+        t1_suite._cell_input_binding(
+            cell, bundle_root=bundle_dir, source_root=release_root)
+    with pytest.raises(t1_suite.SuiteError, match="not found"):
+        t1_suite._b_cells(contract, tmp_path / "bundle-missing")
 
 
 def test_native_population_predicate_checks_source_and_full_offered_count():

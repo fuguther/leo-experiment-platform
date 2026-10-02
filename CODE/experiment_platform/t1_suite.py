@@ -37,6 +37,7 @@ import yaml
 
 from CODE.experiment_platform import (artifact_identity, synthetic_od,
                                       t1_stats, t1_tasks)
+from CODE.leo_sim import population
 
 SCHEMA_BUNDLE = "t1-suite-bundle/v1"
 SCHEMA_RUN = "t1-suite-run/v1"
@@ -688,13 +689,13 @@ def _b_cells(contract, bundle_dir):
                 if not raw_population_path:
                     raise SuiteError(
                         "native population trace has no population input path")
-                population_path = Path(raw_population_path)
-                if not population_path.is_absolute():
-                    population_path = REPO_ROOT / population_path
-                if not population_path.is_file():
+                try:
+                    population_path = population.resolve_population_path(
+                        raw_population_path, source_root=REPO_ROOT)
+                except population.PopulationError as exc:
                     raise SuiteError(
-                        "native population trace input is missing: "
-                        f"{population_path}")
+                        "native population trace input is missing or unsafe: "
+                        f"{exc}") from exc
                 population_sha = _sha256_file(population_path)
                 expected_sha = (contract.get("input_identity") or {}).get(
                     "population_sha256")
@@ -1475,12 +1476,23 @@ def _cell_input_binding(cell, *, bundle_root=None, source_root=REPO_ROOT):
                 binding["files"]["profile_config"] = _bound_file(
                     path, role="profile_config", bundle_root=bundle_root,
                     source_root=source_root)
-                pop_path = Path(population_path)
-                if not pop_path.is_absolute():
-                    pop_path = source_root / pop_path
-                binding["files"]["population_path"] = _bound_file(
-                    pop_path, role="population_path", bundle_root=bundle_root,
-                    source_root=source_root)
+                try:
+                    resolved_population = population.resolve_population_path(
+                        population_path, source_root=source_root)
+                except population.PopulationError as exc:
+                    raise SuiteError(
+                        "native population input is missing or unsafe: "
+                        f"{exc}") from exc
+                pop_binding = _bound_file(
+                    resolved_population, role="population_path",
+                    bundle_root=bundle_root, source_root=source_root)
+                logical_population = Path(population_path)
+                if not logical_population.is_absolute():
+                    logical_population = source_root / logical_population
+                pop_binding["identity"] = _input_location_identity(
+                    logical_population, role="population_path",
+                    bundle_root=bundle_root, source_root=source_root)
+                binding["files"]["population_path"] = pop_binding
             if demand_path:
                 trace_path = _resolve_bound_path(
                     demand_path, bundle_root=bundle_root,

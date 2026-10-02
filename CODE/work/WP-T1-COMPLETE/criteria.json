@@ -2142,12 +2142,12 @@
   "worktree_branch": "codex/20260930-t1-experiment-a",
   "current_authority": {
    "manual_path": "/Users/lge/Desktop/topic/平台与实验计划审计-20260927/实验执行手册.md",
-   "manual_sha256": "3c1bb9bf3f11da997cdc564b9431adcd5f16aac3d29084c3e545b272bb8536a7",
+   "manual_sha256": "f82dac0a1efc73bc54ad6a3ffcb64be2f0ca439ef05faca0e11c13777ba2d622",
    "implementation_plan": "docs/superpowers/plans/2026-09-27-t1-complete-implementation.md",
    "report_current_section": "CODE/work/WP-T1-COMPLETE/REPORT.md",
    "root_status": "STATUS.md",
    "work_package_status": "CODE/work/WP-T1-COMPLETE/STATUS.md",
-   "implementation_plan_sha256": "4a22217c173d7ee21e3db468fae8e6412e5a6098374ad7367bebe2916f2500c8"
+   "implementation_plan_sha256": "5522bf77902f82fc1bd9965e2c9ba8667b96a089da502710e1c8ef6512ff005c"
   },
   "readiness": {
    "design_ready": true,
@@ -2157,7 +2157,7 @@
    "release_ready": false,
    "runtime_gate_implemented": true,
    "old_contract_readiness": false,
-   "current_action": "ROOT_ACCEPTED_PROBE_CODE_AND_INPUT; CLEAN_PUSH_IMMUTABLE_RELEASE_RUNTIME_AND_RUN_ID_PENDING; MAIN_AND_TRAINING_NOT_READY",
+   "current_action": "ROOT_ACCEPTED_SNAPSHOT_ADAPTER_AND_EXACT_PROBE_SCOPE; CLEAN_PUSH_IMMUTABLE_RELEASE_RUNTIME_AND_RUN_ID_PENDING; MAIN_AND_TRAINING_NOT_READY",
    "cost_probe_ready": false,
    "core_cost_ready": false,
    "ddqn_cost_ready": false,
@@ -2171,7 +2171,7 @@
   },
   "cost_probe_contract_candidate": {
    "path": "CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml",
-   "sha256": "6b02bf9014ae2423f99b08d6951594aa87d57d5675f1857847c27b9bbf62a505",
+   "sha256": "bb8910902ac366f9b4a9e1ae0716c2cf39e9c8a91151878d6cb54cf082e2e8ff",
    "status": "ROOT_SCOPE_AUTHORIZED; pending clean release/runtime/run verification",
    "profile_path": "CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml",
    "profile_sha256": "31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518",
@@ -2780,19 +2780,21 @@
    "scope": "continuous implementation, tests, bounded development matrix up to 51 new calls, and DDQN training package up to 100 VM minutes",
    "historical_b_budget": "8 calls/109.071837305 seconds remain charged against 60 calls/3600 seconds; at most 52 calls/3490.928162695 seconds remain",
    "stage_gates_waived": false,
-   "root_review_required_before_vm_simulation_training_or_release": true,
+   "root_review_required_before_vm_simulation_training_or_release": false,
+   "probe_root_review": "completed for the accepted population snapshot adapter and exact four-call seed7 scope; proceed after technical release/runtime/input identity gates",
    "not_authorized": [
     "FORMAL_RUN",
     "seed1001_and_later",
     "merge_main"
    ],
-   "current_manual_sha256": "3c1bb9bf3f11da997cdc564b9431adcd5f16aac3d29084c3e545b272bb8536a7",
-   "current_plan_sha256": "4a22217c173d7ee21e3db468fae8e6412e5a6098374ad7367bebe2916f2500c8"
+   "current_manual_sha256": "f82dac0a1efc73bc54ad6a3ffcb64be2f0ca439ef05faca0e11c13777ba2d622",
+   "current_plan_sha256": "5522bf77902f82fc1bd9965e2c9ba8667b96a089da502710e1c8ef6512ff005c"
   },
   "this_execution": {
    "phase": "ROOT_ACCEPTED_PROBE_SCOPE; COMMIT_PUSH_RELEASE_RUNTIME_AND_RUN_PENDING",
    "source_changes_started_this_round": true,
    "tests_run_this_round": true,
+   "latest_bounded_recheck": "10 authorization, cold-release snapshot and native trace locator tests passed in 1.41s; maintenance 0 errors/1 external-scope warning",
    "vm_calls_this_round": 0,
    "training_started": false,
    "release_started": false,
@@ -2803,7 +2805,7 @@
    "execution_chain": {
     "discovery": "CODE/experiment_platform/artifact_identity.execution_chain_paths() over CODE/leo_sim and CODE/experiment_platform production Python files; tests and caches excluded",
     "path_count": 70,
-    "combined_sha256": "a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633",
+    "combined_sha256": "dd26e1e7f9fc509765f41546d01a60838b1edc7837796a572bad2e6e4ab04cb3",
     "missing_paths": 0,
     "identity_scope": "current dirty source candidate only; not a release identity"
    },
@@ -2899,6 +2901,7 @@
   "root_probe_acceptance": {
    "date": "2026-10-02",
    "scope": "seed7 native population low-load network_alignment, four arms only",
+   "superseded_by": "root_probe_snapshot_adapter_review; historical source-chain identity retained",
    "verdict": "PROBE_CODE_AND_SEMANTIC_INPUT_ACCEPTED; RELEASE/RUNTIME_NOT_YET_VERIFIED",
    "execution_chain_sha256": "a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633",
    "production_files": 70,
@@ -2931,6 +2934,22 @@
    "principle_changes": false,
    "new_vm_calls_at_review": 0,
    "research_claims": []
+  },
+  "root_probe_snapshot_adapter_review": {
+   "verdict": "ACCEPTED_ONLY_SAME_FOUR_CALL_PROBE",
+   "source_chain_sha256": "dd26e1e7f9fc509765f41546d01a60838b1edc7837796a572bad2e6e4ab04cb3",
+   "independent_tests": 60,
+   "changed_production_paths": [
+    "CODE/leo_sim/population.py",
+    "CODE/leo_sim/trace.py",
+    "CODE/experiment_platform/t1_suite.py"
+   ],
+   "principle_or_parameter_changes": false,
+   "cell_input_sha256_unchanged": "70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905",
+   "fix": "suite compile, fresh binding and trace share authoritative declared raster snapshot; missing/unsafe declaration rejects, logical input identity remains configured path",
+   "prior_release": "51e7a86b32e0184fdacbf324eaa6b3e18a25e50f release was verified but not run; production update requires new clean release",
+   "new_vm_calls_at_review": 0,
+   "full_readiness": false
   }
  }
 }

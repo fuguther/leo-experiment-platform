@@ -8,11 +8,13 @@
 
 根已独立接受仅限seed7原生人口低负载四臂成本探针的PROBE_CODE子图和语义输入，并写入精确合同授权；这不是整体CODE_READY或主矩阵/模型/成本门通过。已授权审阅当前任务路径、提交推送干净完整SHA、发布immutable release，再以固定VM环境启动唯一新run和唯一网络cell，最多4次kernel调用。禁止append/resume/隐藏重试、训练、主矩阵、改研究参数或进入formal。失败/timeout照计预算并保留运行身份。
 
-合同`CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml` SHA-256 `6b02bf9014ae2423f99b08d6951594aa87d57d5675f1857847c27b9bbf62a505`；cell为`b-bounded_population_cost_smoke-network-seed-7`、stale/now/common/candidate四臂、4 calls、不可append；执行链SHA `a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633`，cell input SHA `70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905`。根compile-only复核实际值：280星/14面、原生人口区域、5Mbps/12000bit、1个compute server/1ms、research D=4且物理TTL独立、业务窗[2,4)、观察到8秒、广告协议v2，validate=true。该探针只取证流程、正交付/全体人口/回执和实际成本，不检验竞争或算法收益。
+研究定义见权威手册及实施计划；当前执行身份、哈希和门状态以本工作包 STATUS 与 criteria 当前段为准。
 
-根独立验证原始五因果反例及stage门30 passed，ETA/四臂/receipt/control/trace/config/population相关集164 passed。本机新增授权合同测试与关联反例30 passed（18.64秒；日志SHA-256 `465d82109db3df61b3c2923f68ee9bfc3a7bfdcc9954cb719c0af784524c5a0f`）：移除授权的合同副本拒绝，当前授权仅放行唯一seed7四臂四调用scope；实际合同compile/validate=true，执行链和cell input摘要与授权相同。此前拒绝候选的REQUEST_CHANGES、原始反例1 failed/4 passed及较宽相关回归251 passed/4 failed后于623.52s中断等历史事实保留。旧`contract_dev_c.yaml`仍明确无效。
+合同`CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml` SHA-256 `bb8910902ac366f9b4a9e1ae0716c2cf39e9c8a91151878d6cb54cf082e2e8ff`；cell为`b-bounded_population_cost_smoke-network-seed-7`、stale/now/common/candidate四臂、4 calls、不可append；70文件执行链SHA `dd26e1e7f9fc509765f41546d01a60838b1edc7837796a572bad2e6e4ab04cb3`，cell input SHA `70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905`。根compile-only复核实际值：280星/14面、原生人口区域、5Mbps/12000bit、1个compute server/1ms、research D=4且物理TTL独立、业务窗[2,4)、观察到8秒、广告协议v2，validate=true；根接受suite编译、fresh input binding与trace共用声明的run人口快照定位器。该探针只取证流程、正交付/全体人口/回执和实际成本，不检验竞争或算法收益。
 
-预算不清零：旧B 8 calls/109.071837305s继续占用60/3600上限。本段更新时新VM calls=0、无本轮release/run。阶段门：DESIGN_READY=true、PROBE_CODE_READY=true；COST_PROBE_READY待clean push、immutable release、VM依赖与GPW输入/实际bundle/argv/seed/run ledger验真。整体CODE_READY、CORE_COST、MODEL、DDQN_COST、FULL_COST和完整RELEASE仍false；BP、五模式、DDQN、主竞争R与主矩阵未完成，不能从成本probe推断全scope成本或机制结论。
+根独立验证原始五因果反例及stage门30 passed，ETA/四臂/receipt/control/trace/config/population相关集164 passed；人口快照适配另经根独立验证60项通过。本机本轮10项授权、cold-release快照与原生trace定位测试通过（1.41秒）；移除授权的合同副本仍拒绝，合同compile/validate=true，执行链和cell input摘要与授权相同。此前拒绝候选的REQUEST_CHANGES、原始反例1 failed/4 passed及较宽相关回归251 passed/4 failed后于623.52s中断等历史事实保留。旧`contract_dev_c.yaml`仍明确无效。
+
+预算不清零：旧B 8 calls/109.071837305s继续占用60/3600上限。本段更新时新VM calls=0。旧release `51e7a86b32e0184fdacbf324eaa6b3e18a25e50f-8fd946cf155db9bbd320f6b68f0014f5b71e88ced289085f461c0cc77ab91157`验证过但未运行；新提交、release和run尚未创建。阶段门：DESIGN_READY=true、PROBE_CODE_READY=true；COST_PROBE_READY待clean push、immutable release、VM依赖与GPW输入/实际bundle/argv/seed/run ledger验真。整体CODE_READY、CORE_COST、MODEL、DDQN_COST、FULL_COST和完整RELEASE仍false；BP、五模式、DDQN、主竞争R与主矩阵未完成，不能从成本probe推断全scope成本或机制结论。
 
 ## 历史：设计改写前 C 的本机验证记录（未发布、未运行；不覆盖当前合同）
 

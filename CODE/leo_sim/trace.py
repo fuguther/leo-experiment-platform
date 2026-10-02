@@ -1256,7 +1256,8 @@ def compile_trace(resolved: dict, out_dir: str,
             population_table = population.load_population_regions(
                 dm["population_path"], ep["aggregation_deg"],
                 lat_bounds_deg=ep["region_lat_bounds_deg"],
-                lon_bounds_deg=ep["region_lon_bounds_deg"])
+                lon_bounds_deg=ep["region_lon_bounds_deg"],
+                source_root=Path.cwd())
             endpoints = [
                 {"name": region.grid_id, "lat": region.lat, "lon": region.lon,
                  "weight": region.population, "agg_grid_id": region.grid_id}

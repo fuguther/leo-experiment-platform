@@ -76,3 +76,41 @@ def test_population_loader_rejects_missing_file(tmp_path):
     with pytest.raises(population.PopulationError, match="not found"):
         population.load_population_regions(
             tmp_path / "missing.tif", aggregation_deg=5.0)
+
+
+def test_runner_population_snapshot_is_authoritative_and_fail_closed(tmp_path):
+    release_root = tmp_path / "release"
+    declared = release_root / "CODE/population_map/gpw.tif"
+    declared.parent.mkdir(parents=True)
+    declared.write_bytes(b"release fallback must not be used")
+    snapshot = tmp_path / "run/inputs/population_raster.tif"
+    snapshot.parent.mkdir(parents=True)
+    snapshot.write_bytes(b"authorized run snapshot")
+
+    resolved = population.resolve_population_path(
+        "CODE/population_map/gpw.tif", source_root=release_root,
+        environ={"T1_INPUT_POPULATION_RASTER": str(snapshot)})
+    assert resolved == snapshot
+
+    with pytest.raises(population.PopulationError, match="snapshot.*not found"):
+        population.resolve_population_path(
+            "CODE/population_map/gpw.tif", source_root=release_root,
+            environ={"T1_INPUT_POPULATION_RASTER":
+                     str(tmp_path / "run/inputs/missing.tif")})
+
+    with pytest.raises(population.PopulationError, match="must be absolute"):
+        population.resolve_population_path(
+            "CODE/population_map/gpw.tif", source_root=release_root,
+            environ={"T1_INPUT_POPULATION_RASTER": "inputs/population.tif"})
+
+    symlink = tmp_path / "run/inputs/population-link.tif"
+    symlink.symlink_to(snapshot)
+    with pytest.raises(population.PopulationError, match="unsafe"):
+        population.resolve_population_path(
+            "CODE/population_map/gpw.tif", source_root=release_root,
+            environ={"T1_INPUT_POPULATION_RASTER": str(symlink)})
+
+    # With no runner declaration, legacy source-root resolution is unchanged.
+    assert population.resolve_population_path(
+        "CODE/population_map/gpw.tif", source_root=release_root,
+        environ={}) == declared
