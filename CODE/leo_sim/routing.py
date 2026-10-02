@@ -150,6 +150,24 @@ def _multi_source_bfs(adj, sources) -> dict[int, int]:
     return dist
 
 
+def without_nodes(reverse_adj, forbidden_nodes):
+    """Return a reverse graph with visited packet nodes removed.
+
+    ``reverse_adj[u]`` contains predecessors of ``u`` in the forward graph,
+    so both the key and each predecessor must be filtered to prevent a tail
+    estimate from re-entering a node already in the packet path.
+    """
+    forbidden = set(forbidden_nodes or ())
+    if not forbidden:
+        return reverse_adj
+    return {
+        node: [previous for previous in previous_nodes
+               if previous not in forbidden]
+        for node, previous_nodes in reverse_adj.items()
+        if node not in forbidden
+    }
+
+
 def destinations_in_cache(cache, dst_cell: str, now: float,
                           max_cache_hops: int | None = None) -> list[int]:
     """Origins whose valid, actually-arrived advertisement reports CURRENT
@@ -172,7 +190,8 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
                     reverse_adj: dict | None = None,
                     sorted_adj: dict | None = None,
                     rate_from_propagation=None,
-                    cache_hops: int | None = None) -> tuple[list[str], str]:
+                    cache_hops: int | None = None,
+                    forbidden_nodes=None) -> tuple[list[str], str]:
     """Return (ordered candidate directions, status).
 
     status: "ok" (candidates non-empty), "no_info" (no destination
@@ -187,13 +206,17 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
 
     if policy == "oracle":
         # analysis upper bound: caller passes the true current serving sats.
-        targets = list(oracle_targets or [])
+        advertised_targets = list(oracle_targets or [])
     else:
-        targets = destinations_in_cache(
+        advertised_targets = destinations_in_cache(
             cache, dst_cell, now, max_cache_hops=cache_hops)
-    targets = [t for t in targets if t != sat]
-    if not targets:
+    if not advertised_targets:
         return [], "no_info"
+    forbidden = set(forbidden_nodes or ())
+    targets = [t for t in advertised_targets
+               if t != sat and t not in forbidden]
+    if not targets:
+        return [], "unreachable"
 
     # reachability and path cost follow the TRUE directed edges only: the
     # multi-source search expands backward from the targets over the reverse
@@ -204,8 +227,8 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
     # precomputed by the kernel; tests may pass None to rebuild on demand.
     if reverse_adj is None:
         reverse_adj = _reverse_adj(topo)
-    adj = reverse_adj
-    if sorted_adj is None:
+    adj = without_nodes(reverse_adj, forbidden)
+    if forbidden or sorted_adj is None:
         sorted_adj = {u: sorted(adj.get(u, ())) for u in adj}
 
     def observed_propagation(a, b):

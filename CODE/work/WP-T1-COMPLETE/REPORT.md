@@ -1,14 +1,39 @@
-# WP-T1-COMPLETE 最终交付报告
+# WP-T1-COMPLETE 执行与交付报告
 
 > 计划书：`docs/superpowers/plans/2026-09-27-t1-complete-implementation.md`
 > 账本：`CODE/work/WP-T1-COMPLETE/STATUS.md`、`criteria.json`、`contract.yaml`
-> 结论分层：IMPLEMENTED / TESTED / DIAGNOSTIC_RUN / FORMAL_RUN。**本报告不含任何 FORMAL_RUN。**
+> 结论分层：IMPLEMENTED / TESTED / DIAGNOSTIC_RUN / FORMAL_RUN。**本报告不含任何 FORMAL_RUN；以首节状态作为当前阶段。**
 
-> ### 现状与历史边界（2026-10-01）
+## 当前研究准备复核与首探针放行范围（2026-10-02）
+
+根已独立接受仅限seed7原生人口低负载四臂成本探针的PROBE_CODE子图和语义输入，并写入精确合同授权；这不是整体CODE_READY或主矩阵/模型/成本门通过。已授权审阅当前任务路径、提交推送干净完整SHA、发布immutable release，再以固定VM环境启动唯一新run和唯一网络cell，最多4次kernel调用。禁止append/resume/隐藏重试、训练、主矩阵、改研究参数或进入formal。失败/timeout照计预算并保留运行身份。
+
+合同`CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml` SHA-256 `6b02bf9014ae2423f99b08d6951594aa87d57d5675f1857847c27b9bbf62a505`；cell为`b-bounded_population_cost_smoke-network-seed-7`、stale/now/common/candidate四臂、4 calls、不可append；执行链SHA `a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633`，cell input SHA `70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905`。根compile-only复核实际值：280星/14面、原生人口区域、5Mbps/12000bit、1个compute server/1ms、research D=4且物理TTL独立、业务窗[2,4)、观察到8秒、广告协议v2，validate=true。该探针只取证流程、正交付/全体人口/回执和实际成本，不检验竞争或算法收益。
+
+根独立验证原始五因果反例及stage门30 passed，ETA/四臂/receipt/control/trace/config/population相关集164 passed。本机新增授权合同测试与关联反例30 passed（18.64秒；日志SHA-256 `465d82109db3df61b3c2923f68ee9bfc3a7bfdcc9954cb719c0af784524c5a0f`）：移除授权的合同副本拒绝，当前授权仅放行唯一seed7四臂四调用scope；实际合同compile/validate=true，执行链和cell input摘要与授权相同。此前拒绝候选的REQUEST_CHANGES、原始反例1 failed/4 passed及较宽相关回归251 passed/4 failed后于623.52s中断等历史事实保留。旧`contract_dev_c.yaml`仍明确无效。
+
+预算不清零：旧B 8 calls/109.071837305s继续占用60/3600上限。本段更新时新VM calls=0、无本轮release/run。阶段门：DESIGN_READY=true、PROBE_CODE_READY=true；COST_PROBE_READY待clean push、immutable release、VM依赖与GPW输入/实际bundle/argv/seed/run ledger验真。整体CODE_READY、CORE_COST、MODEL、DDQN_COST、FULL_COST和完整RELEASE仍false；BP、五模式、DDQN、主竞争R与主矩阵未完成，不能从成本probe推断全scope成本或机制结论。
+
+## 历史：设计改写前 C 的本机验证记录（未发布、未运行；不覆盖当前合同）
+
+### 改写前设计与验证身份
+
+修复和新批次合同已在唯一工作树 `.t1-dev-experiment-a` 的 `codex/20260930-t1-experiment-a` 上完成定向本机验证；记录时基线 HEAD 为 `c164048c952cbfd6deb49210d5b3e039b7dcd62e`，代码/配置仍待提交，尚未产生 C release 或 C run。C0 合同 `contract_dev_c.yaml` 的 SHA-256 为 `a63a3f7cb3e80edbe012abd583322535142d57f9faf485e5f6d18679ab024d8c`。本机静态 compile 得到 35 个容器 cell，C0 `b_dev` 两格，静态上界 10 次模拟调用；bundle fingerprint `9e3638220029728d415d7c1a062451474ccbd43ad13218411d27579c38049bfe`。这只验证合同展开，不代表 VM 运行。
+
+源码修复为合法目的下传候选加入共享 terminal resource 分数，使用本地 GSL 服务速率和已收到的服务/队列广告，不套用 ISL rate；未知信息保留 unknown，并由四臂共用明确回退，目的方向不被强制获胜。peer-tail 路由不得重新进入当前 `pkt.path` 已访问节点；无合法 tail 时不编造最短路。hold/no-info 路径增加兼容别名，并保留原始 milestone；在线策略不读取 peer truth 或未来。统一 `vis_k=4` 后可见的是整条广告的目的服务、队列、rate 与 availability 字段，所有四臂范围相同，控制包流量计入实际成本。
+
+本机修复后定向测试：核心时间对齐/ETA/路径/控制/hold 101 passed；`test_benchmark_decision.py` 17 passed；`test_t1_suite.py` 关键合同、候选并列披露、正交付 smoke 和聚合测试 5 passed（34 deselected）；`git diff --check` 通过。另一次更广的 `test_t1_suite.py` 运行已有 38 passed，但最后一个五候选损失列测试运行 708.49 s 后被中断，因此全文件状态仍为未完成，不记为全套通过。软件通过尚未证明 VM 正交付。
+
+新包长是固定 1500 B（12,000 bit）实验假设，没有本 workload 的实测包长分布。旧 B 大包为 1,000,000 bit、5 Mbps ISL、每包序列化 200 ms；C 保持绝对 ISL rate=5 Mbps 和几何传播，改为低/衰减 252 pps（3.024 Mbps）、增长/传输 832 pps（9.984 Mbps），单包序列化 2.4 ms；因此名义 offered/单条 5 Mbps ISL 比为 0.6048/1.9968，真实逐链路利用率只从 VM 日志重算。仿真 profile 将 GSL 上/下行配置为 1000 Mbps 且使用 constant rate；这是仿真参数，不是实测或星载速率，下传候选使用独立 GSL rate。24 颗卫星每 2 s 生成一次广告快照，即 12 个 origin snapshot/s；多跳转发的 control packet/s 与 bytes 将由实际运行事件计数。新包发流窗 0–8 s，population [5,8] s，D=30 s，观察停止 40 s；其余相对时标也发生变化：1 ms compute 占包序列化从 0.5% 增至 41.67%，1 μs query 从 0.0005% 增至 0.04167%，8 kbit 广告仍需 1.6 ms（从包发送时长的 0.8% 增至 66.67%），2 s interval 与 10 s TTL 分别相当于 833.33 和 4166.67 个新包发送时长，绝对传播时延不变但相对包发送时间增大 83.33 倍。1 ms compute service/1 μs query 是仿真假设；VM 主机执行墙钟另报。该包尺度不是现实链路标定，也不与旧配置动力学等价；完整合同参数表列在 `contract_dev_c.yaml#parameter_table`。
+
+C0 第一格用旧 B 大包故障 workload 验证四臂都能实际转发并正交付；它同时启用整条 `vis_k=4` 广告范围，故不是“只改变代码”的隔离对照。第二格在独立开发 seed 7 用同一冻结 t0 observation 和按合法方向独立演化的结果表校准五个 common horizon 规则。候选并列按预声明顺序处理并披露；若无完整可评分候选，C1 固定 median operational rule 并报告 `NO_STRONG_COMMON`。评价 seeds 11/23/42 不用于选择。C0 上限 10 calls/600 VM 模拟秒；C1 预留 41 calls/2890.928162695 秒，所有格 120 秒、并发 1。历史 B 已用 8 calls/109.071837305 秒，两个新阶段共预留 51 calls/3490.928162695 秒，完毕后累计 59/60 calls 和 3600/3600 B 模拟秒。当前 C 实际 calls=0；任何 C 结果、候选选择、种子配对、指标或 replay 都尚不存在。
+
+## B 历史运行与证据边界（2026-10-01）
+
 > WP-A 最新真实运行仍是历史 run `wp-a-dev-20260930-02`（5 格通过、8 格超时），主控裁决 REWORK。B 首次运行 `wp-b-dev-20261001-01` 与唯一第二 pilot `wp-b-dev-20261001-02` 均 failed/exit 3，receipt 和日志保留其独立身份。第二 pilot 的 smoke 字段已读正确的 `outcome_document.partition_exact=true`；失败原因是四臂各 60 admitted 但 0 delivered/0 bits/0 goodput。所有包在 stop=50 s 时仍 `IN_SYSTEM_AT_STOP`；D=30 的 [5,20] 人口样本各 45 包精确 deadline loss=1.0。它是准入失败且结局受截止删失，不是方法性能负结果。
 > 第二 pilot 使用合成端点 G1:131:336 聚合格中心 (41.5°N,156.5°E)，距 North 中心约 4967.35 km。用同一几何代码对固定服务星 0/2/9 认证检查 [0,50] s 无 GSL 可见性切换；按运行拓扑规则在 0,5,…,50 s 边界检查，端点服务可见且最短 ISL hops 2/4/2。该端点代表覆盖三站的有限地理走廊，不是 North 邻站、真实网关或全球 OD；几何不证明控制广告已安装或端到端服务已激活。
 > 第二 pilot 只启动负控全网 cell 的四次模拟调用，pilot gate 未通过；其余 7/8 格未运行。零交付的有界诊断发现：策略读取目的和已到达服务广告，但直达目的服务星的候选在评分资源映射中落入 fallback，有限分绕行胜过它；一条记录的候选尾预测还回到已访问卫星。这解释若干已观察绕行动作，但全网 0 交付、两个无决策 OD、route/control 安装和完整服务原因仍未闭合。`precomputed` 的目的绑定方向排序仅由源码推断，本 run 未测该模式。
-> 当前报告里的 VM 证据链、账本、成本边界、准入状态、修复建议与复现身份详见后文“工作包 B（运行后状态与证据）”；既有 run 身份、WP-A/更早的本机口径与历史审查不倒改。
+> B 的 VM 证据链、账本、成本边界、准入状态和原始复现身份详见后文“工作包 B（历史运行后状态与证据）”；既有 run 身份、WP-A/更早的本机口径与历史审查不倒改。
 > `t1-final-06572b6`、其 509.8 µs 确定性评分器 VM 主机计时以及更早的本机报告仍保留原证据边界；它们不是 B 的运行身份，也不支持 DDQN/星载结论。**第 3–8 节是 VM 规则生效之前的本机口径**，不得再作为新实验来源；第 9 节起的 R/S 审查史保留为历史。
 
 ## 1. 用户问题
@@ -787,7 +812,7 @@ CODE/scripts/remote/pull-release-results-remote.sh \
 - 审查者提出假设判定规则的可追溯性轻度疑问。复核本账本后，`criteria.json` 已在运行前列出 H1/H2、主比较与各自 falsifier；`contract_dev_a.yaml` 还冻结了 D=30、最小实质差异 0.01、敏感性阈值和配对区组规则。因此“未命名/未冻结”不成立。可改进处是将支持/否定/信息不足的操作性决策句写得更直接；本 run 的 H1 `NOT_COMPUTABLE` 和 H2 描述性分类不受影响。
 - 本次内部审查只有一名审查者，覆盖实现/证据与研究/统计两个方面；不宣称双人独立复核。
 
-## 工作包 B（2026-10-01；运行后状态与证据）
+## 工作包 B（历史运行结果与证据；2026-10-01）
 
 ### 冻结设计与区域边界
 

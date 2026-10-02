@@ -66,6 +66,27 @@ def test_best_only_returns_only_shortest_ties():
     assert status == "ok" and dirs == ["E"]
 
 
+def test_tail_route_cannot_return_through_a_visited_satellite():
+    # At sat1 the packet already traversed 0->1. A candidate next hop to sat2
+    # can reach serving sat3 only by returning through sat1, so its tail is
+    # not a legal estimate for this packet even though the topology is connected.
+    topo_map = {0: {"E": 1}, 1: {"W": 0, "E": 2, "N": 3},
+                2: {"W": 1}, 3: {"S": 1}}
+    geo = StaticGeometry(4, neighbors_map=topo_map)
+    topo = _topo(geo)
+    cache = _cache_with([
+        (3, {"serve_cells": [B], "isl_queue_bits": {}}, 0.0, 0.01, 10.0)
+    ])
+    unfiltered, unfiltered_status = routing.choose_next_hop(
+        "hop", 2, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458)
+    filtered, filtered_status = routing.choose_next_hop(
+        "hop", 2, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458, forbidden_nodes={0, 1})
+    assert unfiltered_status == "ok" and unfiltered == ["W"]
+    assert filtered_status == "unreachable" and filtered == []
+
+
 def test_delay_policy_uses_propagation_not_hops():
     ranges = {(0, 1): 100.0, (1, 2): 100.0, (0, 2): 10_000.0}
     fn = lambda a, b, t: ranges.get((a, b), ranges.get((b, a), 100.0))

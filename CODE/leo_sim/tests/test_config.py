@@ -125,8 +125,45 @@ def test_burst_window_is_measured_against_the_emission_end_not_the_horizon():
     assert accepted["config"]["demand"]["burst_duration_s"] == 10.0
 
 
+def test_regional_population_filter_and_warmup_business_window_validate():
+    base = {
+        "scenario": {"duration_s": 8.0},
+        "endpoints": {"region_lat_bounds_deg": [5.0, 50.0],
+                      "region_lon_bounds_deg": [65.0, 140.0]},
+        "demand": {"mode": "population_gravity",
+                   "population_path": "CODE/population_map/gpw.tif",
+                   "emission_start_s": 2.0, "emission_end_s": 4.0,
+                   "burst_start_s": 2.5, "burst_duration_s": 1.0,
+                   "burst_multiplier": 2.0},
+    }
+    resolved = config.resolve_config(base)["config"]
+    assert resolved["endpoints"]["region_lat_bounds_deg"] == [5.0, 50.0]
+    assert resolved["demand"]["emission_start_s"] == 2.0
+    with pytest.raises(config.ConfigError, match="supplied together"):
+        config.resolve_config({"endpoints": {
+            "region_lat_bounds_deg": [5.0, 50.0]}})
+    with pytest.raises(config.ConfigError, match="only valid"):
+        config.resolve_config({
+            "endpoints": {"region_lat_bounds_deg": [5.0, 50.0],
+                          "region_lon_bounds_deg": [65.0, 140.0]},
+        })
+    with pytest.raises(config.ConfigError, match="inside the emission window"):
+        config.resolve_config({**base, "demand": {
+            **base["demand"], "burst_start_s": 1.9}})
+
+
+def test_emission_start_is_finite_inside_emission_end():
+    with pytest.raises(config.ConfigError, match="emission_start_s"):
+        config.resolve_config({"scenario": {"duration_s": 8.0},
+                               "demand": {"emission_start_s": float("nan")}})
+    with pytest.raises(config.ConfigError, match="before the emission end"):
+        config.resolve_config({"scenario": {"duration_s": 8.0},
+                               "demand": {"emission_start_s": 4.0,
+                                          "emission_end_s": 4.0}})
+
+
 def test_a_burst_window_under_a_mode_that_ignores_it_is_refused():
-    """Only mode in {burst, mlab} applies the transform (trace._rate_multiplier).
+    """Only modes with an implemented rate transform may declare a window.
 
     Every other mode used to resolve with the window still in the resolved
     config and traffic_transform.burst = null in the manifest, so nothing
@@ -140,8 +177,12 @@ def test_a_burst_window_under_a_mode_that_ignores_it_is_refused():
             demand["csv_path"] = "CODE/data/traffic/t1_step5_micro_ab.csv"
         elif mode == "population_gravity":
             demand["population_path"] = "CODE/data/geoip/GPW_2020.tif"
-        with pytest.raises(config.ConfigError, match="never applies the burst transform"):
-            config.resolve_config({"demand": demand})
+        if mode == "population_gravity":
+            resolved = config.resolve_config({"demand": demand})
+            assert resolved["config"]["demand"]["burst_start_s"] == 1.0
+        else:
+            with pytest.raises(config.ConfigError, match="never applies the burst transform"):
+                config.resolve_config({"demand": demand})
     # the same window under a mode that does apply it resolves
     ok = config.resolve_config({"demand": {
         "mode": "burst", "burst_start_s": 1.0, "burst_duration_s": 2.0,
@@ -232,6 +273,7 @@ NEW_DEMAND_FIELDS = (
     "population_destination_sampler",
     "destination_rejection_max_draws",
     "nested_master_offered_mbps",
+    "research_deadline_s",
 )
 
 

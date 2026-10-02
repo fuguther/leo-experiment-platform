@@ -93,8 +93,49 @@ def aggregate_population_array(
     return tuple(regions)
 
 
+def filter_population_regions(regions, *, lat_bounds_deg=None,
+                              lon_bounds_deg=None) -> tuple[PopulationRegion, ...]:
+    """Select aggregate-cell CENTERS inside paired half-open bounds.
+
+    Filtering happens after raster aggregation but before the trace generator
+    normalizes either its source or destination weights.  Bounds are explicit
+    geographic intervals; this does not clip cell area or weight cells by
+    area.
+    """
+    if (lat_bounds_deg is None) != (lon_bounds_deg is None):
+        raise PopulationError("latitude and longitude bounds must be supplied together")
+    rows = tuple(regions)
+    if lat_bounds_deg is None:
+        return rows
+
+    def checked(bounds, label, low, high):
+        if not isinstance(bounds, (tuple, list)) or len(bounds) != 2:
+            raise PopulationError(f"{label} bounds must be a pair")
+        values = []
+        for value in bounds:
+            if isinstance(value, bool) or not isinstance(value, (int, float)) \
+                    or not math.isfinite(float(value)):
+                raise PopulationError(f"{label} bounds must be finite numbers")
+            values.append(float(value))
+        if not low <= values[0] < values[1] <= high:
+            raise PopulationError(f"{label} bounds must be ordered within [{low}, {high}]")
+        return values
+
+    lat0, lat1 = checked(lat_bounds_deg, "latitude", -90.0, 90.0)
+    lon0, lon1 = checked(lon_bounds_deg, "longitude", -180.0, 180.0)
+    selected = tuple(region for region in rows
+                     if lat0 <= region.lat < lat1
+                     and lon0 <= region.lon < lon1)
+    if len(selected) < 2:
+        raise PopulationError(
+            "population region filter produced fewer than two positive cells")
+    return selected
+
+
 def load_population_regions(path: str | Path,
-                            aggregation_deg: float) -> PopulationTable:
+                            aggregation_deg: float, *,
+                            lat_bounds_deg=None,
+                            lon_bounds_deg=None) -> PopulationTable:
     source = Path(path)
     if not source.is_file() or source.is_symlink():
         raise PopulationError(f"population raster not found or unsafe: {source}")
@@ -123,6 +164,9 @@ def load_population_regions(path: str | Path,
         values, west=west, north=north,
         pixel_lon_deg=pixel_lon_deg, pixel_lat_deg=pixel_lat_deg,
         aggregation_deg=aggregation_deg)
+    regions = filter_population_regions(
+        regions, lat_bounds_deg=lat_bounds_deg,
+        lon_bounds_deg=lon_bounds_deg)
     total = float(sum(region.population for region in regions))
     if not math.isfinite(total) or total <= 0.0:
         raise PopulationError("population raster has no positive finite population")

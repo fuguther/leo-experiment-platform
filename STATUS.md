@@ -2,8 +2,18 @@
 
 本文是仓库级当前状态入口；工作包内 STATUS 只记录各自范围。具体版本以完整 Git commit、release-id 和 run-id 为准。
 
-- 主控集中复核（2026-10-01）：回执、预算和有限错误排序已独立核实；证据交付通过，实验仍为 `REWORK_REQUIRED`。目的下传候选评分、尾部访问约束及无决策 OD 的等待原因须先闭合；详情见 REPORT 的“主控集中复核”，未开始第三次试跑。
-## 当前研究工作包 B（2026-10-01；第二次结构调整 pilot 已运行并因 smoke 失败停止）
+## 当前研究与工程状态（2026-10-02；DESIGN_READY=true，PROBE_CODE_READY=true，COST_PROBE_READY=false，RELEASE_READY=false）
+
+- 用户2026-10-02已授权连续实施代码、反例/回归、有界开发矩阵（最多51新calls，历史B8次继续计账）及独立DDQN训练包（最多100 VM分钟）。根已独立接受仅限seed7原生人口低负载四臂成本探针的代码与语义输入，授权提交推送、不可变release及唯一新run；不扩为主矩阵/训练/formal或改研究参数。权威手册与顺序计划SHA见工作包报告及criteria当前段。正式确认、seed1001+或main合并不在授权内。
+- 主线是同一确定性目的时延规则的四臂闭环，仅查询状态时刻不同；参照是最短可见路径约束的目的背压启发式（目的Q×H、FIFO/DRR保留，无经典稳定性保证）。真实训练DDQN是本轮必交扩展，可后于主实验推进，未完成则整轮PARTIAL。
+- 保留280颗卫星/14轨道面的工程参考，仅过滤地面人口区域。根独立复算2310个正人口格及人口/OD距离概率；这些是静态输入证据，不能证明已形成竞争场景。首探针profile `CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml` SHA-256 `31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518`，广告协议明确为v2；GPW SHA-256 `c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a`。低竞争5Mbps只验流程/成本。已有静态R候选绑定较早profile字节SHA `c7c55d5b7d7f781e0d0d690e2b39c5b58de53c809cefc12dedb318eb6b9d38ec`，R=6283.447102910832Mbps；计算器不读广告协议字段，故仅称静态参数等价候选，不改旧工件身份、不证明trace竞争、未获COST_READY。
+- 预热0–2s、业务2–4s、峰窗2.5–3.5s、观察至8s、每包D=4s；分段Poisson及全体offered身份冻结。每跳守合法历史、独立计算/查询/资源时间，缓存/建表不读未来。误差和四层回放规格见手册。
+- 根已接受`PROBE_CODE_READY=true`的有限代码子图，不等同整体`CODE_READY`。持久合同 `CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml` SHA-256 `6b02bf9014ae2423f99b08d6951594aa87d57d5675f1857847c27b9bbf62a505` 绑定唯一seed7四臂cell、4 calls、执行链`a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633`和cell输入`70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905`。旧`contract_dev_c.yaml`保持无效并拒绝。只有clean推送提交、immutable release、VM依赖/GPW验真及受控run身份准备完成后，`COST_PROBE_READY`才记为通过；完整代码、成本、模型和release门仍false。
+- 预算不清零：B历史8/60 calls、109.071837305/3600s；剩52 calls/3490.928162695s；方案最多新增51。DDQN训练上限100 VM分钟独立另计，已获范围授权但尚未启动，不代表训练充分或收敛。
+- 根最终独立复核原始五反例及stage门为30 passed，ETA/四臂/receipt/control/trace/config/population相关集164 passed；本机合同授权、旧合同拒绝与限定scope门禁再通过30项定向测试（18.64秒，日志见criteria）；实际合同compile/validate=true且cell摘要未变。前一候选REQUEST_CHANGES及`251 passed/4 failed`主动中断事实保留；历史137/37/8不覆盖该失败，也不是研究运行。
+- 当前完整70文件生产源码链SHA-256仍为`a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633`，文档/测试调整不改变它。根验收的47路径清单SHA-256 `bf1a259c54970f52f773af770958c3e6f7d7a214f62a6ad76b8300fd89f61105`。下一步审阅本任务路径并提交推送、发布immutable release及单cell成本探针；本条记录时C VM calls=0。历史B调用费用保留；CORE_COST/MODEL/DDQN_COST/FULL_COST和完整RELEASE仍false。
+
+## 历史工作包 B（2026-10-01；第二次结构调整 pilot 已运行并因 smoke 失败停止）
 
 - 当前执行树 `.t1-dev-experiment-a`，分支 `codex/20260930-t1-experiment-a`。第二 pilot 的唯一不可变 release 绑定源码 commit `ffedada9274e7db1fdb5ea548d13ce4920c9815b`，release-id `ffedada9274e7db1fdb5ea548d13ce4920c9815b-8e624431c26c54ea52efc795fa0cc72b5d484e32708bb1a4ff5f535959753a74`；artifact SHA-256 `ae6c9845ffa2b64fe56c30c34b351f197b84382075e527fc3518c26b6280fa7d`。唯一第二 pilot run `wp-b-dev-20261001-02` 已结束 `failed` / exit 3，pullback `VERIFIED`。canonical receipt SHA `23399d84caa975b252e6a325d85be67834e1c9bd4699ded37dbcc49e224090cd`（receipt 文件 SHA `374ec812050c35721e29adc8e20f1eaec7bf7ec859cede72dc1584aebea43bd3`），manifest SHA `03b76ef8b2a816cc87d9cf22b0472f8110fa8e9f016832c89fb3c888d7c92c44`，archive SHA `8724bb437e33ca91aff9a7b46ea298f35e59ceecfd65e954d2a256f6ff1d3c48`，46 个文件；证据 URI `evidence://t1/wp-b-dev-20261001-02`。旧 run `wp-b-dev-20261001-01` 保留原身份和失败证据，没有覆盖或复用。
 - 新 run 只执行 B tier 的第 1/8 格：负控全网四臂；cell 谓词结果为 `ok`，但正交付 smoke gate 未过，整体 `SMOKE_FAILED`。四臂各 60 offered、60 satellite-ingress admitted、0 delivered、0 delivered bits、0 goodput，且 `outcome_document.partition_exact=true`。每臂 60 个包最终均为 `IN_SYSTEM_AT_STOP`，不是终端丢包。D=30 的 [5,20] 人口窗各 45 包均为精确结局，deadline loss=1.0，interval-censored/not-computable 均为 0；没有已送达包，E2E latency 不可计算。该结果是场景未通过准入/烟测并在截止时删失，不是方法性能负结果。

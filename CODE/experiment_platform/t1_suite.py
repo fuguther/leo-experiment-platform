@@ -19,11 +19,14 @@ Recovery rules
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import math
 import os
+import secrets
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -60,6 +63,191 @@ class SuiteError(RuntimeError):
 
 class BudgetExceeded(SuiteError):
     pass
+
+
+def require_runtime_ready_contract(contract, *, source="contract"):
+    """Fail closed for contracts that declare implementation readiness.
+
+    Legacy contracts with no readiness declaration retain their prior runner
+    behavior.  Explicit contracts may authorize either a complete release or
+    the one bounded cost-probe stage.  The latter is narrowed again against
+    the compiled bundle by :func:`enforce_runtime_stage` before a run directory
+    is created.  Planning labels never authorize simulation.
+    """
+    readiness = contract.get("design_readiness")
+    if readiness is None:
+        if ("runtime_status" not in contract
+                and "runtime_gate_implemented" not in contract):
+            return
+        readiness = {
+            "status": contract.get("runtime_status"),
+            "runtime_gate_implemented": contract.get(
+                "runtime_gate_implemented"),
+        }
+    if not isinstance(readiness, dict):
+        raise SuiteError(
+            f"runtime readiness gate refuses {source}: design_readiness "
+            "must be a mapping")
+    status = readiness.get("status")
+    gate_implemented = readiness.get("runtime_gate_implemented")
+    if gate_implemented is not True:
+        raise SuiteError(
+            f"runtime readiness gate refuses {source}: status={status!r}, "
+            f"runtime_gate_implemented={gate_implemented!r}; require "
+            "runtime_gate_implemented=true")
+    if status == "RELEASE_READY":
+        return readiness
+    if status == "COST_PROBE_READY":
+        _validate_cost_probe_authorization(
+            readiness.get("runtime_authorization"), source=source)
+        return readiness
+    raise SuiteError(
+        f"runtime readiness gate refuses {source}: status={status!r}; "
+        "only COST_PROBE_READY or RELEASE_READY can authorize execution")
+
+
+_COST_PROBE_AUTH_KEYS = {
+    "stage", "tier", "cell_ids", "max_selected_cells",
+    "expected_simulator_calls", "max_simulator_calls", "allow_append",
+    "task", "seed", "execution_chain_sha256", "cell_input_sha256",
+}
+
+
+def _is_sha256(value):
+    return (isinstance(value, str) and len(value) == 64
+            and all(char in "0123456789abcdef" for char in value))
+
+
+def _validate_cost_probe_authorization(auth, *, source="contract"):
+    if not isinstance(auth, dict) or set(auth) != _COST_PROBE_AUTH_KEYS:
+        raise SuiteError(
+            f"runtime readiness gate refuses {source}: cost-probe "
+            "authorization has missing or unknown fields")
+    ids = auth.get("cell_ids")
+    if (auth.get("stage") != "cost_probe" or auth.get("tier") != "b_dev"
+            or not isinstance(ids, list) or len(ids) != 1
+            or not isinstance(ids[0], str) or not ids[0]
+            or auth.get("max_selected_cells") != 1
+            or auth.get("expected_simulator_calls") != 4
+            or auth.get("max_simulator_calls") != 4
+            or auth.get("allow_append") is not False
+            or auth.get("task") != "network_alignment"
+            or auth.get("seed") != 7
+            or not _is_sha256(auth.get("execution_chain_sha256"))):
+        raise SuiteError(
+            f"runtime readiness gate refuses {source}: malformed bounded "
+            "cost-probe authorization")
+    input_hashes = auth.get("cell_input_sha256")
+    if (not isinstance(input_hashes, dict) or set(input_hashes) != set(ids)
+            or not all(_is_sha256(value)
+                       for value in input_hashes.values())):
+        raise SuiteError(
+            f"runtime readiness gate refuses {source}: cost-probe input "
+            "hash allowlist is malformed")
+
+
+def enforce_runtime_stage(contract, bundle, *, tier, selected_cell_ids,
+                          append, cells, estimated_calls,
+                          bundle_root=None, source_root=REPO_ROOT):
+    """Enforce the exact runtime allowlist for the contract's current stage."""
+    readiness = require_runtime_ready_contract(contract)
+    if readiness is None or readiness.get("status") == "RELEASE_READY":
+        return
+    auth = readiness["runtime_authorization"]
+    allowed_ids = auth["cell_ids"]
+    if tier != auth["tier"]:
+        raise SuiteError("cost-probe tier differs from its allowlist")
+    if list(selected_cell_ids) != allowed_ids:
+        raise SuiteError(
+            "cost-probe allowlist permits exactly its one declared cell")
+    if append or auth["allow_append"]:
+        raise SuiteError("cost-probe append is forbidden")
+    if len(selected_cell_ids) > auth["max_selected_cells"]:
+        raise SuiteError("cost-probe selected-cell count exceeds allowlist")
+    if estimated_calls != auth["expected_simulator_calls"]:
+        raise SuiteError(
+            "cost-probe simulator-call estimate differs from its frozen "
+            "four-call authorization")
+    if estimated_calls > auth["max_simulator_calls"]:
+        raise SuiteError("cost-probe simulator-call estimate exceeds cap")
+    chain_sha = ((bundle.get("execution_chain") or {}).get(
+        "combined_sha256"))
+    if chain_sha != auth["execution_chain_sha256"]:
+        raise SuiteError("cost-probe execution-chain SHA differs from allowlist")
+    cell_id = allowed_ids[0]
+    cell = cells.get(cell_id)
+    if not isinstance(cell, dict):
+        raise SuiteError("cost-probe allowlisted cell is absent from bundle")
+    if cell.get("group") != "b_round" or cell.get("driver") != \
+            "CODE.experiment_platform.t1_tasks":
+        raise SuiteError("cost-probe allowlisted cell has the wrong driver/group")
+    args = cell.get("args") or []
+    allowed_flags = {"--task", "--config", "--deadline-s",
+                     "--window-start", "--window-end", "--arms"}
+    options = {}
+    index = 0
+    while index < len(args):
+        flag = args[index]
+        if (not isinstance(flag, str) or not flag.startswith("--")
+                or flag not in allowed_flags or index + 1 >= len(args)
+                or flag in options):
+            raise SuiteError(
+                "cost-probe cell contains an unapproved task override")
+        options[flag] = args[index + 1]
+        index += 2
+    if options.get("--task") != auth["task"]:
+        raise SuiteError("cost-probe cell is not the declared seed-7 network task")
+    cell_seed = cell.get("seed")
+    if cell_seed != auth["seed"]:
+        raise SuiteError("cost-probe cell seed metadata differs from seed-7")
+    if not options.get("--config"):
+        raise SuiteError("cost-probe cell must bind one resolved profile")
+    try:
+        resolved = t1_tasks.config_mod.load_config_file(options["--config"])
+    except (OSError, t1_tasks.config_mod.ConfigError) as exc:
+        raise SuiteError(
+            f"cost-probe profile cannot be resolved: {exc}") from exc
+    effective_seed = resolved["config"]["scenario"]["seed"]
+    if effective_seed != auth["seed"]:
+        raise SuiteError(
+            "cost-probe resolved profile seed differs from seed-7")
+    arms = options.get("--arms")
+    if arms is not None and tuple(
+            value.strip() for value in arms.split(",")) != tuple(
+                t1_tasks.NETWORK_ARMS):
+        raise SuiteError(
+            "cost-probe arms differ from the frozen four-arm order")
+    # Re-resolve the current argv and the materialized bytes in this bundle.
+    # Hashing the recorded binding alone would let an edited argv reuse its old
+    # digest, while hashing absolute paths would make the same release differ
+    # between the authoring checkout and the VM materialization.
+    actual_input_sha = _cell_input_sha256(_cell_input_binding(
+        cell, bundle_root=bundle_root, source_root=source_root))
+    if actual_input_sha != auth["cell_input_sha256"][cell_id]:
+        raise SuiteError("cost-probe cell input SHA differs from allowlist")
+
+
+def _require_bundle_contract_runtime_ready(bundle):
+    contract_path = Path(str(bundle.get("contract_path") or ""))
+    if not contract_path.is_file():
+        raise SuiteError(
+            f"runtime readiness gate cannot read contract: {contract_path}")
+    try:
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise SuiteError(
+            f"runtime readiness gate cannot parse contract {contract_path}: "
+            f"{type(exc).__name__}: {exc}") from exc
+    readiness = require_runtime_ready_contract(
+        contract, source=str(contract_path))
+    recorded_sha = bundle.get("contract_sha256")
+    if readiness is not None:
+        actual_sha = _sha256_file(contract_path)
+        if recorded_sha != actual_sha:
+            raise SuiteError(
+                "runtime readiness gate refuses bundle: contract SHA differs "
+                "from the compiled identity")
+    return contract
 
 
 def _sha256_file(path):
@@ -484,12 +672,58 @@ def _b_cells(contract, bundle_dir):
             cfg = _seed_config(contract, bundle_dir, seed, params,
                                tag=f"b-{sid}-seed-{seed}", profile=profile,
                                workload=workload)
+            resolved_profile = t1_tasks.config_mod.load_config_file(
+                str(cfg))["config"]
+            demand = resolved_profile.get("demand") or {}
+            network_require = {
+                "require_task": "network_alignment",
+                "arms": list(t1_tasks.NETWORK_ARMS),
+                "require_routing_audit_log": True,
+                "require_full_replay": spec.get("replay_seed") == seed,
+                "min_decisions_per_arm": 1,
+                "min_satellites": 1,
+            }
+            if demand.get("mode") == "population_gravity":
+                raw_population_path = demand.get("population_path")
+                if not raw_population_path:
+                    raise SuiteError(
+                        "native population trace has no population input path")
+                population_path = Path(raw_population_path)
+                if not population_path.is_absolute():
+                    population_path = REPO_ROOT / population_path
+                if not population_path.is_file():
+                    raise SuiteError(
+                        "native population trace input is missing: "
+                        f"{population_path}")
+                population_sha = _sha256_file(population_path)
+                expected_sha = (contract.get("input_identity") or {}).get(
+                    "population_sha256")
+                if expected_sha is not None and population_sha != expected_sha:
+                    raise SuiteError(
+                        "native population input SHA differs from contract")
+                network_require.update({
+                    "require_native_population_trace": True,
+                    "population_sha256": population_sha,
+                })
+            elif demand.get("mode") == "csv":
+                csv_path = Path(str(demand.get("csv_path") or ""))
+                summary_path = csv_path.with_suffix(".workload.json")
+                if summary_path.is_file():
+                    summary = json.loads(summary_path.read_text(
+                        encoding="utf-8"))
+                    network_require.update({
+                        "synthetic_od_count": int(
+                            summary.get("unique_od_count", 0)),
+                        "require_compiled_od_mapping": True,
+                    })
             if ("branch_alignment" in tasks and seed in [
                     int(v) for v in task_seeds.get("branch_alignment", seeds)]):
                 branch_args = [*deadline_args, "--max-branches",
                                str(branches), "--window-start",
                                str(population_window[0]), "--window-end",
                                str(population_window[1])]
+                if spec.get("calibrate_common_horizon"):
+                    branch_args.append("--calibrate-common-horizon")
                 if spec.get("replay_seed") == seed:
                     branch_args.append("--capture-replay")
                 cells.append(_task_cell(
@@ -519,16 +753,7 @@ def _b_cells(contract, bundle_dir):
                     "network_alignment", cfg,
                     extra_args=[*shared_outcome_args, *network_args],
                     description=f"{sid}: four online arms, whole network",
-                    seed=seed,
-                    require={"require_task": "network_alignment",
-                             "arms": list(t1_tasks.NETWORK_ARMS),
-                             "synthetic_od_count": 6,
-                             "require_compiled_od_mapping": True,
-                             "require_routing_audit_log": True,
-                             "require_full_replay":
-                                 spec.get("replay_seed") == seed,
-                             "min_decisions_per_arm": 1,
-                             "min_satellites": 1}))
+                    seed=seed, require=network_require))
             if ("benchmark" in tasks and seed in [
                     int(v) for v in task_seeds.get("benchmark", seeds)]):
                 benchmark_args = ["--config", str(cfg),
@@ -1090,7 +1315,8 @@ def compile_bundle(contract_path, out_dir):
     identity = artifact_identity.build_identity(
         driver_paths=artifact_identity.execution_chain_paths())
     for cell in cells:
-        cell["input"] = _cell_input_binding(cell)
+        cell["input"] = _cell_input_binding(
+            cell, bundle_root=out_dir, source_root=REPO_ROOT)
     bundle = {
         "schema": SCHEMA_BUNDLE,
         "contract_path": str(contract_path),
@@ -1146,52 +1372,189 @@ def compile_bundle(contract_path, out_dir):
     return bundle
 
 
-def _cell_input_binding(cell):
-    """Hash every input file a cell actually reads.
+def _resolve_bound_path(raw_path, *, bundle_root, source_root):
+    path = Path(raw_path)
+    if path.is_absolute():
+        return path.resolve()
+    anchor = bundle_root if bundle_root is not None else source_root
+    return (anchor / path).resolve()
 
-    A cell that names a config file is bound to that file content, so editing
-    the config after the compile invalidates the cell instead of being re-read
-    silently.
+
+def _input_location_identity(path, *, role, bundle_root, source_root):
+    """Return a logical path token; never use a host absolute path in auth."""
+    resolved = Path(path).resolve()
+    for label, root in (("bundle", bundle_root), ("source", source_root)):
+        if root is None:
+            continue
+        try:
+            return f"{label}:{resolved.relative_to(root).as_posix()}"
+        except ValueError:
+            pass
+    return f"external:{role}"
+
+
+def _bound_file(path, *, role, bundle_root, source_root):
+    resolved = Path(path).resolve()
+    return {
+        "path": str(resolved),
+        "identity": _input_location_identity(
+            resolved, role=role, bundle_root=bundle_root,
+            source_root=source_root),
+        "sha256": _sha256_file(resolved) if resolved.is_file() else None,
+    }
+
+
+def _cell_input_identity(binding):
+    """Stable content identity, excluding machine-specific materialization paths."""
+    files = {}
+    for role, entry in sorted((binding.get("files") or {}).items()):
+        files[role] = {"identity": entry.get("identity"),
+                       "sha256": entry.get("sha256")}
+    return {
+        "config_sha256": binding.get("config_sha256"),
+        "config_identity": binding.get("config_identity"),
+        "scenario": binding.get("scenario"),
+        "driver_identity": binding.get("driver_identity"),
+        "driver_sha256": binding.get("driver_sha256"),
+        "files": files,
+        "invocation": binding.get("invocation"),
+    }
+
+
+def _cell_input_sha256(binding):
+    return hashlib.sha256(
+        _canonical(_cell_input_identity(binding)).encode("utf-8")).hexdigest()
+
+
+def _cell_input_binding(cell, *, bundle_root=None, source_root=REPO_ROOT):
+    """Bind input content and record its local path separately.
+
+    The per-cell authorization hashes logical input roles and content only.
+    Absolute paths remain in the bundle for local resolution/revalidation, but
+    moving the same release/bundle content between hosts does not change the
+    authorization digest.
     """
+    bundle_root = (None if bundle_root is None else
+                   Path(bundle_root).resolve())
+    source_root = Path(source_root).resolve()
     binding = {"config_sha256": None, "config_path": None,
-               "scenario": None, "driver_sha256": None, "files": {}}
+               "config_identity": None, "scenario": None,
+               "driver_identity": None, "driver_sha256": None,
+               "files": {}, "invocation": None}
     args = list(cell.get("args") or [])
     for flag, value in zip(args, args[1:]):
         if flag == "--config":
-            path = Path(value)
+            path = _resolve_bound_path(
+                value, bundle_root=bundle_root, source_root=source_root)
             binding["config_path"] = str(path)
             binding["config_sha256"] = (_sha256_file(path)
                                         if path.exists() else None)
+            binding["config_identity"] = _input_location_identity(
+                path, role="config", bundle_root=bundle_root,
+                source_root=source_root)
             demand_path = None
+            population_path = None
+            population_mode = None
             if path.is_file():
                 try:
                     config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-                    demand_path = (config.get("demand") or {}).get("csv_path")
+                    demand = config.get("demand") or {}
+                    demand_path = demand.get("csv_path")
                 except (OSError, yaml.YAMLError, AttributeError):
                     demand_path = None
+                try:
+                    resolved = t1_tasks.config_mod.load_config_file(str(path))
+                    demand = (resolved.get("config") or {}).get("demand") or {}
+                    population_path = demand.get("population_path")
+                    population_mode = demand.get("mode")
+                except (OSError, t1_tasks.config_mod.ConfigError,
+                        AttributeError):
+                    population_path = None
+                    population_mode = None
+            if population_mode == "population_gravity" and population_path:
+                binding["files"]["profile_config"] = _bound_file(
+                    path, role="profile_config", bundle_root=bundle_root,
+                    source_root=source_root)
+                pop_path = Path(population_path)
+                if not pop_path.is_absolute():
+                    pop_path = source_root / pop_path
+                binding["files"]["population_path"] = _bound_file(
+                    pop_path, role="population_path", bundle_root=bundle_root,
+                    source_root=source_root)
             if demand_path:
-                trace_path = Path(demand_path)
+                trace_path = _resolve_bound_path(
+                    demand_path, bundle_root=bundle_root,
+                    source_root=source_root)
                 summary_path = trace_path.with_suffix(".workload.json")
-                binding["files"]["demand_csv"] = {
-                    "path": str(trace_path),
-                    "sha256": (_sha256_file(trace_path)
-                               if trace_path.is_file() else None)}
-                binding["files"]["demand_workload_summary"] = {
-                    "path": str(summary_path),
-                    "sha256": (_sha256_file(summary_path)
-                               if summary_path.is_file() else None)}
+                binding["files"]["demand_csv"] = _bound_file(
+                    trace_path, role="demand_csv", bundle_root=bundle_root,
+                    source_root=source_root)
+                binding["files"]["demand_workload_summary"] = _bound_file(
+                    summary_path, role="demand_workload_summary",
+                    bundle_root=bundle_root, source_root=source_root)
         if flag == "--scenario":
             binding["scenario"] = value
         if flag in ("--deadline-from", "--checkpoint", "--metadata",
                     "--policy-checkpoint"):
-            path = Path(value)
-            binding["files"][flag] = {
-                "path": str(path),
-                "sha256": _sha256_file(path) if path.exists() else None}
-    driver = REPO_ROOT / str(cell.get("driver", "")).replace(".", "/")
+            path = _resolve_bound_path(
+                value, bundle_root=bundle_root, source_root=source_root)
+            binding["files"][flag] = _bound_file(
+                path, role=flag, bundle_root=bundle_root,
+                source_root=source_root)
+    driver_rel = str(cell.get("driver", "")).replace(".", "/")
+    driver = source_root / driver_rel
     driver_py = driver.with_suffix(".py")
+    binding["driver_identity"] = _input_location_identity(
+        driver_py, role="driver", bundle_root=bundle_root,
+        source_root=source_root)
     binding["driver_sha256"] = (_sha256_file(driver_py)
                                 if driver_py.exists() else None)
+    normalized_args = []
+    boolean_flags = {"--calibrate-common-horizon", "--capture-replay"}
+    path_flags = {"--deadline-from", "--checkpoint", "--metadata",
+                  "--policy-checkpoint"}
+    index = 0
+    while index < len(args):
+        flag = args[index]
+        if flag in boolean_flags:
+            normalized_args.append([flag])
+            index += 1
+            continue
+        if index + 1 >= len(args):
+            normalized_args.append([flag, None])
+            index += 1
+            continue
+        value = args[index + 1]
+        if flag == "--config":
+            normalized_value = {"identity": binding["config_identity"],
+                                "sha256": binding["config_sha256"]}
+        elif flag in path_flags:
+            file_binding = binding["files"].get(flag) or {}
+            normalized_value = {"identity": file_binding.get("identity"),
+                                "sha256": file_binding.get("sha256")}
+        else:
+            # Non-path values (including every task, seed, arm, deadline and
+            # measurement-window argument) are exact parts of the cell input.
+            normalized_value = value
+        normalized_args.append([flag, normalized_value])
+        index += 2
+    effective_seed = None
+    config_path = binding.get("config_path")
+    if config_path and Path(config_path).is_file():
+        try:
+            resolved = t1_tasks.config_mod.load_config_file(config_path)
+            effective_seed = ((resolved.get("config") or {}).get(
+                "scenario") or {}).get("seed")
+        except (OSError, t1_tasks.config_mod.ConfigError):
+            pass
+    binding["invocation"] = {
+        "cell_id": cell.get("cell_id"),
+        "group": cell.get("group"),
+        "driver": cell.get("driver"),
+        "cell_seed": cell.get("seed"),
+        "effective_profile_seed": effective_seed,
+        "argv": normalized_args,
+    }
     return binding
 
 
@@ -1243,7 +1606,8 @@ def validate_bundle(bundle_dir):
         if recorded is None:
             errors.append(f"cell {cell.get('cell_id')!r} has no input binding")
             continue
-        fresh = _cell_input_binding(cell)
+        fresh = _cell_input_binding(
+            cell, bundle_root=bundle_dir, source_root=REPO_ROOT)
         if fresh != recorded:
             changed = sorted(k for k in set(fresh) | set(recorded)
                              if fresh.get(k) != recorded.get(k))
@@ -1360,7 +1724,299 @@ def _aggregate_simulator_calls(records):
     return totals
 
 
-def _execute_cell(cell, out_root, budgets):
+def _suite_task_runtime_context(bundle_dir, bundle, tier, cell_id,
+                               selected_cell_ids, append, result_path):
+    """Bind a controlled-profile child process to this checked suite cell."""
+    return {
+        "schema": "t1-suite-task-runtime-context/v1",
+        "bundle_dir": str(Path(bundle_dir).resolve()),
+        "bundle_fingerprint": bundle.get("bundle_fingerprint"),
+        "contract_path": bundle.get("contract_path"),
+        "contract_sha256": bundle.get("contract_sha256"),
+        "tier": str(tier),
+        "cell_id": str(cell_id),
+        "selected_cell_ids": list(selected_cell_ids),
+        "append": bool(append),
+        "result_path": str(Path(result_path).resolve()),
+    }
+
+
+_SUITE_LAUNCH_SCHEMA = "t1-suite-launch-ledger/v1"
+_SUITE_LAUNCH_CONTEXT_FIELDS = (
+    "launch_nonce", "launch_ledger_path", "simulator_call_ledger_path",
+    "max_simulator_calls", "expires_at")
+
+
+def _suite_launch_identity(context):
+    if not isinstance(context, dict):
+        raise SuiteError("suite launch context is missing")
+    required = set(_SUITE_LAUNCH_CONTEXT_FIELDS) | {
+        "bundle_fingerprint", "cell_id", "result_path"}
+    if not required.issubset(context):
+        raise SuiteError("suite launch context has missing fields")
+    nonce = context.get("launch_nonce")
+    if (not isinstance(nonce, str) or len(nonce) != 64
+            or any(char not in "0123456789abcdef" for char in nonce)):
+        raise SuiteError("suite launch nonce is malformed")
+    max_calls = context.get("max_simulator_calls")
+    expires_at = context.get("expires_at")
+    if (not isinstance(max_calls, int) or isinstance(max_calls, bool)
+            or max_calls <= 0 or not isinstance(expires_at, (int, float))
+            or isinstance(expires_at, bool)
+            or not math.isfinite(float(expires_at))):
+        raise SuiteError("suite launch budget or expiry is malformed")
+    if (not isinstance(context.get("cell_id"), str)
+            or not context["cell_id"]
+            or not isinstance(context.get("bundle_fingerprint"), str)
+            or not isinstance(context.get("result_path"), str)):
+        raise SuiteError("suite launch identity is malformed")
+    paths = []
+    for key in ("launch_ledger_path", "simulator_call_ledger_path"):
+        value = context.get(key)
+        if not isinstance(value, str) or not Path(value).is_absolute():
+            raise SuiteError(f"suite launch {key} is missing or not absolute")
+        paths.append(value)
+    if not Path(context["result_path"]).is_absolute():
+        raise SuiteError("suite launch result path is not absolute")
+    return {
+        "launch_nonce": nonce,
+        "launch_ledger_path": paths[0],
+        "bundle_fingerprint": context["bundle_fingerprint"],
+        "cell_id": context["cell_id"],
+        "result_path": context["result_path"],
+        "simulator_call_ledger_path": paths[1],
+        "max_simulator_calls": max_calls,
+        "expires_at": float(expires_at),
+    }
+
+
+def _write_suite_launch_ledger(context):
+    """Create a fresh, unclaimed launch record; an existing path is never reused."""
+    identity = _suite_launch_identity(context)
+    path = Path(context["launch_ledger_path"])
+    if path.is_symlink():
+        raise SuiteError("suite launch ledger path is a symlink")
+    state = dict(identity, schema=_SUITE_LAUNCH_SCHEMA, status="issued",
+                 reserved_calls=0)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except FileExistsError as exc:
+        raise SuiteError("suite launch ledger already exists; launch is single-use") from exc
+    except OSError as exc:
+        raise SuiteError(f"suite launch ledger cannot be created: {exc}") from exc
+    try:
+        payload = (json.dumps(state, sort_keys=True, separators=(",", ":"))
+                   + "\n").encode("utf-8")
+        view = memoryview(payload)
+        while view:
+            written = os.write(descriptor, view)
+            view = view[written:]
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _suite_launch_ledger_update(context, *, now, expected_statuses, update):
+    identity = _suite_launch_identity(context)
+    when = time.time() if now is None else float(now)
+    if not math.isfinite(when):
+        raise SuiteError("suite launch ledger clock is invalid")
+    path = Path(context["launch_ledger_path"])
+    if path.is_symlink():
+        raise SuiteError("suite launch ledger path is a symlink")
+    flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except FileNotFoundError as exc:
+        raise SuiteError("suite launch ledger is missing") from exc
+    except OSError as exc:
+        raise SuiteError(f"suite launch ledger cannot be opened: {exc}") from exc
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode):
+            raise SuiteError("suite launch ledger is not a regular file")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        try:
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            with os.fdopen(os.dup(descriptor), "r", encoding="utf-8") as stream:
+                state = json.load(stream)
+            if not isinstance(state, dict) or state.get("schema") != \
+                    _SUITE_LAUNCH_SCHEMA:
+                raise SuiteError("suite launch ledger schema is invalid")
+            for key, value in identity.items():
+                if state.get(key) != value:
+                    raise SuiteError(
+                        f"suite launch ledger identity mismatch for {key}")
+            required_state = set(identity) | {
+                "schema", "status", "reserved_calls"}
+            optional_state = {"claimed_at", "closed_at"}
+            if (not required_state.issubset(state)
+                    or set(state) - required_state - optional_state
+                    or not isinstance(state.get("reserved_calls"), int)
+                    or isinstance(state.get("reserved_calls"), bool)
+                    or not 0 <= state["reserved_calls"]
+                    <= state["max_simulator_calls"]):
+                raise SuiteError("suite launch ledger fields are malformed")
+            if (state.get("status") not in {"issued", "active", "closed"}
+                    or (state.get("status") == "issued"
+                        and (state["reserved_calls"] != 0
+                             or "claimed_at" in state
+                             or "closed_at" in state))
+                    or (state.get("status") == "active"
+                        and ("claimed_at" not in state
+                             or "closed_at" in state))
+                    or (state.get("status") == "closed"
+                        and ("claimed_at" not in state
+                             or "closed_at" not in state))):
+                raise SuiteError("suite launch ledger state is malformed")
+            if when >= float(state.get("expires_at", 0)):
+                raise SuiteError("suite launch ledger has expired")
+            if state.get("status") not in expected_statuses:
+                raise SuiteError(
+                    f"suite launch ledger is {state.get('status')!r}; "
+                    "single launch is already claimed or closed")
+            changed = update(state, when)
+            if changed:
+                payload = (json.dumps(state, sort_keys=True,
+                                      separators=(",", ":")) + "\n").encode(
+                                          "utf-8")
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                os.ftruncate(descriptor, 0)
+                view = memoryview(payload)
+                while view:
+                    written = os.write(descriptor, view)
+                    view = view[written:]
+                os.fsync(descriptor)
+            return dict(state)
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+    except json.JSONDecodeError as exc:
+        raise SuiteError("suite launch ledger is invalid JSON") from exc
+    finally:
+        os.close(descriptor)
+
+
+def _suite_simulator_call_begins(context):
+    path = Path(context["simulator_call_ledger_path"])
+    if path.is_symlink() or not path.is_file():
+        raise SuiteError("simulator-call ledger is missing or unsafe")
+    active = set()
+    seen = set()
+    begins = 0
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise SuiteError(f"simulator-call ledger cannot be read: {exc}") from exc
+    for line_no, line in enumerate(lines, 1):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise SuiteError(
+                f"simulator-call ledger line {line_no} is invalid JSON") from exc
+        if (not isinstance(event, dict)
+                or event.get("schema") != "t1-simulator-call/v1"
+                or event.get("context") != context["cell_id"]
+                or not isinstance(event.get("call_id"), str)):
+            raise SuiteError("simulator-call ledger identity is invalid")
+        call_id = event["call_id"]
+        if event.get("event") == "begin":
+            sequence = event.get("sequence")
+            if (call_id in seen or not isinstance(sequence, int)
+                    or isinstance(sequence, bool)
+                    or call_id != f"{context['cell_id']}:{sequence:04d}"):
+                raise SuiteError("simulator-call ledger has duplicate/invalid begin")
+            seen.add(call_id)
+            active.add(call_id)
+            begins += 1
+        elif event.get("event") in ("end", "fail", "timeout", "interrupted"):
+            if call_id not in active:
+                raise SuiteError("simulator-call ledger has orphan terminal")
+            active.remove(call_id)
+        else:
+            raise SuiteError("simulator-call ledger has an unknown event")
+    if active:
+        raise SuiteError("previous simulator call has no terminal event")
+    return begins
+
+
+def _validate_suite_launch_ledger(context, *, now=None):
+    _suite_launch_ledger_update(
+        context, now=now, expected_statuses={"issued"},
+        update=lambda _state, _when: False)
+    return True
+
+
+def _claim_suite_launch_ledger(context, *, now=None):
+    def claim(state, when):
+        state["status"] = "active"
+        state["claimed_at"] = when
+        return True
+
+    return _suite_launch_ledger_update(
+        context, now=now, expected_statuses={"issued"}, update=claim)
+
+
+def _reserve_suite_simulator_call(context, *, now=None):
+    def reserve(state, _when):
+        begins = _suite_simulator_call_begins(context)
+        if begins != state["reserved_calls"]:
+            raise SuiteError(
+                "simulator-call ledger differs from reserved budget; "
+                "refusing next call")
+        if state["reserved_calls"] >= state["max_simulator_calls"]:
+            raise SuiteError("simulator-call budget has no remaining calls")
+        state["reserved_calls"] += 1
+        return True
+
+    return _suite_launch_ledger_update(
+        context, now=now, expected_statuses={"active"}, update=reserve)[
+            "reserved_calls"]
+
+
+def _close_suite_launch_ledger(context, *, now=None):
+    def close(state, when):
+        begins = _suite_simulator_call_begins(context)
+        if begins != state["reserved_calls"]:
+            raise SuiteError(
+                "simulator-call ledger differs from reserved budget at close")
+        state["status"] = "closed"
+        state["closed_at"] = when
+        return True
+
+    return _suite_launch_ledger_update(
+        context, now=now, expected_statuses={"active"}, update=close)
+
+
+def _suite_launch_ledger_snapshot(context):
+    identity = _suite_launch_identity(context)
+    path = Path(context["launch_ledger_path"])
+    if path.is_symlink():
+        raise SuiteError("suite launch ledger path is a symlink")
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError as exc:
+        raise SuiteError(f"suite launch ledger is unavailable: {exc}") from exc
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_SH)
+        try:
+            with os.fdopen(os.dup(descriptor), "r", encoding="utf-8") as stream:
+                state = json.load(stream)
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SuiteError(f"suite launch ledger cannot be read: {exc}") from exc
+    finally:
+        os.close(descriptor)
+    if not isinstance(state, dict) or state.get("schema") != \
+            _SUITE_LAUNCH_SCHEMA:
+        raise SuiteError("suite launch ledger schema is invalid")
+    if any(state.get(key) != value for key, value in identity.items()):
+        raise SuiteError("suite launch ledger identity mismatch")
+    return state
+
+
+def _execute_cell(cell, out_root, budgets, runtime_context=None):
     cell_dir = Path(out_root) / "cells" / cell["cell_id"]
     cell_dir.mkdir(parents=True, exist_ok=True)
     # Old evidence is never overwritten: a superseded result is moved aside and
@@ -1380,13 +2036,61 @@ def _execute_cell(cell, out_root, budgets):
             index += 1
         call_ledger.rename(
             cell_dir / f"simulator-calls.superseded-{index}.jsonl")
+    config_path = None
+    cell_args = list(cell.get("args") or [])
+    for index, value in enumerate(cell_args[:-1]):
+        if value == "--config":
+            config_path = cell_args[index + 1]
+            break
+    if config_path is not None and not Path(config_path).is_absolute():
+        config_path = str(REPO_ROOT / config_path)
+    controlled_population = (
+        config_path is not None
+        and t1_tasks._is_controlled_population_region_profile(config_path))
+    launch_context = None
+    if controlled_population:
+        if runtime_context is None:
+            raise SuiteError(
+                "controlled native-population cell requires a suite launch context")
+        task_index = cell_args.index("--task") if "--task" in cell_args else -1
+        if (task_index < 0 or task_index + 1 >= len(cell_args)
+                or cell_args[task_index + 1] != "network_alignment"):
+            raise SuiteError(
+                "controlled native-population suite cell must be network_alignment")
+        max_calls = _estimated_calls_for_cells([cell])
+        max_calls = min(max_calls, int(budgets["simulator_call_budget"]))
+        if max_calls <= 0:
+            raise SuiteError("controlled native-population call budget is empty")
+        call_ledger.write_text("", encoding="utf-8")
+        nonce = secrets.token_hex(32)
+        launch_context = dict(runtime_context)
+        launch_context.update({
+            "result_path": str(result_path.resolve()),
+            "launch_nonce": nonce,
+            "launch_ledger_path": str(
+                (cell_dir / f"suite-launch-{nonce}.json").resolve()),
+            "simulator_call_ledger_path": str(call_ledger.resolve()),
+            "max_simulator_calls": max_calls,
+            "expires_at": time.time() + float(budgets["cell_wall_s"]) + 60.0,
+        })
+        _write_suite_launch_ledger(launch_context)
     argv = [sys.executable, "-m", cell["driver"], *cell["args"],
             "--out", str(result_path)]
     started = time.perf_counter()
     timed_out = False
     environment = os.environ.copy()
-    environment["T1_SIM_CALL_LEDGER"] = str(call_ledger)
+    environment["T1_SIM_CALL_LEDGER"] = str(call_ledger.resolve())
     environment["T1_SIM_CALL_CONTEXT"] = str(cell["cell_id"])
+    if runtime_context is not None:
+        context = (launch_context if launch_context is not None
+                   else dict(runtime_context))
+        context["result_path"] = str(result_path.resolve())
+        environment["T1_SUITE_RUNTIME_CONTEXT"] = json.dumps(
+            context, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"))
+        if launch_context is not None:
+            environment["T1_SUITE_LAUNCH_NONCE"] = launch_context[
+                "launch_nonce"]
     try:
         proc = subprocess.run(argv, cwd=str(REPO_ROOT), capture_output=True,
                               text=True, timeout=budgets["cell_wall_s"],
@@ -1403,6 +2107,18 @@ def _execute_cell(cell, out_root, budgets):
     call_accounting = _finalize_simulator_call_ledger(
         call_ledger, timed_out=timed_out,
         interrupted=(not timed_out and returncode not in (0, None)))
+    if launch_context is not None:
+        try:
+            launch_state = _suite_launch_ledger_snapshot(launch_context)
+            if launch_state.get("status") != "closed":
+                raise SuiteError(
+                    "suite launch ledger was not closed by its single child")
+            if launch_state.get("reserved_calls") != call_accounting["started"]:
+                raise SuiteError(
+                    "suite launch reservations differ from kernel call ledger")
+        except SuiteError as exc:
+            returncode = 2
+            stderr = (stderr or "") + f"\nSUITE LAUNCH REFUSED: {exc}"
     result_probe = _inspect_result(result_path)
     predicate = cell.get("predicate") or {"kind": None}
     verdict = (check_predicate(result_probe["payload"], predicate)
@@ -1672,11 +2388,121 @@ def _check_task_predicate(result, require):
                            {"captured": replay.get("captured"),
                             "decision_id": selection.get("decision_id"),
                             "selection_rule": selection.get("rule")}])
+        if require.get("require_common_horizon_audit"):
+            calibration = doc.get("common_horizon_calibration") or {}
+            selection = calibration.get("selection") or {}
+            candidate_names = set(calibration.get(
+                "candidate_definitions") or {})
+            projected = calibration.get("status") == "projected"
+            calibration_shape_ok = (
+                candidate_names == {"mean_eta_offset", "median_eta_offset",
+                                    "p25_offset", "p50_offset", "p75_offset"}
+                if projected else
+                calibration.get("status") == "NO_CANDIDATE_ETA_OFFSETS"
+                and not candidate_names
+                and selection.get("status") == "NO_STRONG_COMMON")
+            candidate_order = list(selection.get("candidate_order") or [])
+            tied_candidates = selection.get("tied_candidates")
+            tie_tolerance = selection.get("tie_tolerance")
+            selected_by_tie_break = selection.get("selected_by_tie_break")
+            expected_order = ["mean_eta_offset", "median_eta_offset",
+                              "p25_offset", "p50_offset", "p75_offset"]
+            if projected:
+                if selection.get("status") == "selected":
+                    tie_disclosed = (
+                        candidate_order == expected_order
+                        and isinstance(tied_candidates, list)
+                        and bool(tied_candidates)
+                        and len(tied_candidates) == len(set(tied_candidates))
+                        and tied_candidates == [name for name in expected_order
+                                                if name in tied_candidates]
+                        and selection.get("candidate") == tied_candidates[0]
+                        and selected_by_tie_break is (len(tied_candidates) > 1)
+                        and tie_tolerance == 1e-12)
+                else:
+                    tie_disclosed = (
+                        selection.get("status") == "NO_STRONG_COMMON"
+                        and candidate_order == expected_order
+                        and tied_candidates == []
+                        and selected_by_tie_break is False
+                        and tie_tolerance == 1e-12)
+            else:
+                tie_disclosed = (
+                    candidate_order == [] and tied_candidates == []
+                    and selected_by_tie_break is False
+                    and tie_tolerance == 1e-12)
+            checks.append(["the independent common-horizon calibration audit is complete",
+                           calibration.get("status") in (
+                               "projected", "NO_CANDIDATE_ETA_OFFSETS")
+                           and calibration.get("cross_arm_leakage") is False
+                           and selection.get("status") in (
+                               "selected", "NO_STRONG_COMMON")
+                           and calibration_shape_ok,
+                           {"status": calibration.get("status"),
+                            "selection": selection.get("status"),
+                            "candidate_names": sorted(candidate_names)}])
+            checks.append(["common-horizon ties and frozen tie-break are disclosed",
+                           tie_disclosed,
+                           {"selected": selection.get("candidate"),
+                            "tied_candidates": tied_candidates,
+                            "selected_by_tie_break": selected_by_tie_break,
+                            "tie_tolerance": tie_tolerance}])
     elif task == "network_alignment":
         rows = {row.get("arm"): row for row in (doc.get("arms") or [])}
         source = doc.get("source") or {}
         workload = source.get("synthetic_workload") or {}
         workload_summary = workload.get("summary") or {}
+        if require.get("require_native_population_trace"):
+            native = source.get("native_population") or {}
+            expected_sha = require.get("population_sha256")
+            trace_rows = source.get("rows")
+            native_ok = (
+                source.get("scenario") == "config"
+                and not workload
+                and native.get("mode") == "population_gravity"
+                and _is_sha256(expected_sha)
+                and native.get("population_sha256") == expected_sha
+                and isinstance(native.get("population_source"), str)
+                and bool(native.get("population_source"))
+                and isinstance(trace_rows, int)
+                and not isinstance(trace_rows, bool)
+                and trace_rows > 0
+                and _is_sha256(source.get("trace_sha256"))
+                and native.get("all_rows_have_ground_grid_ids") is True
+                and isinstance(native.get("source_grid_count"), int)
+                and native.get("source_grid_count", 0) > 0
+                and isinstance(native.get("destination_grid_count"), int)
+                and native.get("destination_grid_count", 0) > 0
+                and isinstance(native.get("directed_od_count"), int)
+                and native.get("directed_od_count", 0) > 0)
+            checks.append(["input is native population trace", native_ok,
+                           {"scenario": source.get("scenario"),
+                            "native_population": native,
+                            "trace_rows": trace_rows,
+                            "has_synthetic_workload": bool(workload)}])
+            for arm in require.get("arms", []):
+                row = rows.get(arm)
+                if row is None:
+                    continue
+                scope = row.get("scope") or {}
+                outcome = row.get("outcome") or {}
+                out_doc = row.get("outcome_document") or {}
+                offered = outcome.get("offered")
+                counts_match = (
+                    isinstance(offered, int)
+                    and not isinstance(offered, bool)
+                    and offered == trace_rows
+                    and scope.get("packets_in_trace") == trace_rows)
+                checks.append([f"arm {arm} retains every native offered packet",
+                               native_ok and counts_match,
+                               {"source_rows": trace_rows,
+                                "packets_in_trace": scope.get(
+                                    "packets_in_trace"),
+                                "offered": offered}])
+                checks.append([f"arm {arm} has an exact fate partition",
+                               native_ok and counts_match
+                               and out_doc.get("partition_exact") is True,
+                               out_doc.get("partition_exact")])
         if require.get("synthetic_od_count") is not None:
             checks.append(["the frozen input has the declared directed OD count",
                            workload_summary.get("unique_od_count")
@@ -1702,6 +2528,14 @@ def _check_task_predicate(result, require):
                            audit.get("decisions_with_query_targets", 0)
                            >= require.get("min_decisions_per_arm", 1),
                            audit.get("decisions_with_query_targets")])
+            if require.get("min_delivered_per_arm") is not None:
+                delivered = (row.get("outcome") or {}).get("delivered")
+                checks.append([f"arm {arm} delivered at least {require['min_delivered_per_arm']} packets",
+                               isinstance(delivered, int)
+                               and not isinstance(delivered, bool)
+                               and delivered >= int(require[
+                                   "min_delivered_per_arm"]),
+                               delivered])
             scope = row.get("scope") or {}
             checks.append([f"arm {arm} ran network-wide",
                            scope.get("satellites_that_decided", 0)
@@ -2029,6 +2863,9 @@ def run_bundle(bundle_dir, tier, out_dir, authorization=None,
     # a run must never start from a bundle whose inputs or code have moved
     validate_bundle(bundle_dir)
     bundle = json.loads((bundle_dir / "bundle.json").read_text(encoding="utf-8"))
+    contract = _require_bundle_contract_runtime_ready(bundle)
+    readiness = require_runtime_ready_contract(contract)
+    stage = readiness.get("status") if readiness else None
     formal_plan = None
     if tier == "formal":
         # A5: the boundary is evidence, not a refusal.  The plan re-verifies the
@@ -2050,7 +2887,9 @@ def run_bundle(bundle_dir, tier, out_dir, authorization=None,
     cells = {c["cell_id"]: c for c in bundle["cells"]}
     estimate = estimate_bundle_cost({"cells": [cells[cid]
                                                for cid in tier_cell_ids]})
-    if estimate["simulator_calls"] > budgets["simulator_call_budget"]:
+    if (stage != "COST_PROBE_READY"
+            and estimate["simulator_calls"]
+            > budgets["simulator_call_budget"]):
         raise BudgetExceeded(
             f"tier simulator-call upper bound {estimate['simulator_calls']} "
             f"exceeds budget {budgets['simulator_call_budget']}")
@@ -2062,6 +2901,20 @@ def run_bundle(bundle_dir, tier, out_dir, authorization=None,
         raise SuiteError(f"selected cells are outside tier {tier!r}: {outside}")
     if cell_ids is not None and tier != "b_dev":
         raise SuiteError("partial cell selection is permitted only for b_dev")
+    selected_estimate = estimate_bundle_cost(
+        {"cells": [cells[cid] for cid in selected_ids]})
+    enforce_runtime_stage(
+        contract, bundle, tier=tier, selected_cell_ids=selected_ids,
+        append=append, cells=cells,
+        estimated_calls=selected_estimate["simulator_calls"],
+        bundle_root=bundle_dir,
+        source_root=REPO_ROOT)
+    stage_call_cap = budgets["simulator_call_budget"]
+    if stage == "COST_PROBE_READY":
+        stage_call_cap = min(
+            stage_call_cap,
+            int((readiness.get("runtime_authorization") or {}).get(
+                "max_simulator_calls", 0)))
     if append:
         if not out_dir.is_dir() or not (out_dir / "run.json").is_file():
             raise SuiteError("append requires an existing b_dev run directory")
@@ -2097,16 +2950,19 @@ def run_bundle(bundle_dir, tier, out_dir, authorization=None,
             "smoke_gate": None, "run_phases": [],
         }
     completed_ids = {record.get("cell_id") for record in records}
+    selected_for_budget = list(selected_ids)
     selected_ids = [cid for cid in selected_ids if cid not in completed_ids]
     phase_wall_started = time.perf_counter()
     status = "ok"
     smoke_gate = run_doc.get("smoke_gate")
     for cell_id in selected_ids:
         actual = _aggregate_simulator_calls(records)
-        if actual["started"] + _estimated_calls_for_cells(
-                [cells[cid] for cid in
-                 tier_cell_ids if cid not in completed_ids]) > \
-                budgets["simulator_call_budget"]:
+        budget_scope = (selected_for_budget if stage == "COST_PROBE_READY"
+                        else tier_cell_ids)
+        calls_left_upper = _estimated_calls_for_cells(
+            [cells[cid] for cid in budget_scope
+             if cid not in completed_ids])
+        if actual["started"] + calls_left_upper > stage_call_cap:
             status = "BUDGET_EXCEEDED"
             break
         remaining_sim_s = budgets["total_wall_s"] - actual["simulator_wall_s"]
@@ -2117,7 +2973,13 @@ def run_bundle(bundle_dir, tier, out_dir, authorization=None,
         cell_budgets = dict(budgets)
         cell_budgets["cell_wall_s"] = min(
             float(budgets["cell_wall_s"]), float(remaining_sim_s))
-        record = _execute_cell(cell, out_dir, cell_budgets)
+        runtime_context = None
+        if readiness is not None:
+            runtime_context = _suite_task_runtime_context(
+                bundle_dir, bundle, tier, cell_id, selected_for_budget,
+                append, out_dir / "cells" / cell_id / "result.json")
+        record = _execute_cell(cell, out_dir, cell_budgets,
+                                runtime_context=runtime_context)
         record["identity"] = _cell_identity(bundle, cell)
         if not records and smoke_validator is not None:
             probe = _inspect_result(out_dir / record["result_path"])
@@ -2242,6 +3104,12 @@ def resume_run(run_dir):
     # disk, and the on-disk results must still match their recorded hashes
     validate_bundle(bundle_dir)
     bundle = json.loads((bundle_dir / "bundle.json").read_text(encoding="utf-8"))
+    contract = _require_bundle_contract_runtime_ready(bundle)
+    readiness = require_runtime_ready_contract(contract)
+    if readiness and readiness.get("status") == "COST_PROBE_READY":
+        raise SuiteError(
+            "cost-probe runs are single-attempt; failures stay counted and "
+            "must not be resumed or replayed")
     current_code = artifact_identity.chain_sha256()
     recorded_chain = (bundle.get("execution_chain") or {}).get("combined_sha256")
     if current_code != recorded_chain:
@@ -2285,7 +3153,15 @@ def resume_run(run_dir):
             run_doc["status"] = "BUDGET_EXCEEDED"
             break
         cell = cells[cell_id]
-        fresh = _execute_cell(cell, run_dir, budgets)
+        runtime_context = None
+        if readiness is not None:
+            runtime_context = _suite_task_runtime_context(
+                bundle_dir, bundle, run_doc["tier"], cell_id,
+                list((bundle.get("tiers") or {}).get(
+                    run_doc["tier"], [])), False,
+                run_dir / "cells" / cell_id / "result.json")
+        fresh = _execute_cell(cell, run_dir, budgets,
+                              runtime_context=runtime_context)
         fresh["identity"] = _cell_identity(bundle, cell)
         _write_json(run_dir / "cells" / cell_id / "cell.json", fresh)
         if record is not None:

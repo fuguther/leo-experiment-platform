@@ -1,0 +1,164 @@
+schema: t1-controlled-cost-probe/v1
+campaign_stage: ROOT_ACCEPTED_BOUNDED_COST_PROBE_ONLY
+purpose: bounded_development_cost_smoke
+not_formal: true
+not_training: true
+frozen_at_sha: null
+design_readiness:
+  status: COST_PROBE_READY
+  runtime_gate_implemented: true
+  runtime_authorization:
+    stage: cost_probe
+    tier: b_dev
+    cell_ids:
+    - b-bounded_population_cost_smoke-network-seed-7
+    max_selected_cells: 1
+    expected_simulator_calls: 4
+    max_simulator_calls: 4
+    allow_append: false
+    task: network_alignment
+    seed: 7
+    execution_chain_sha256: a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633
+    cell_input_sha256:
+      b-bounded_population_cost_smoke-network-seed-7: 70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905
+  release_ready: false
+  reason: Independent root review accepts only the four-call seed-7 native low-load
+    cost probe. Execution additionally requires a clean pushed full commit, immutable
+    release, fresh run identity, runtime verification and single-use suite ledger.
+    Main research, training and extension gates remain false.
+input_identity:
+  profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
+  profile_sha256: 31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518
+  population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
+  population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
+  advertisement_protocol_version: 2
+  source_execution_chain_sha256: a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633
+  compiled_trace_sha256: null
+  bundle_sha256: null
+  cell_input_sha256:
+    b-bounded_population_cost_smoke-network-seed-7: 70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905
+scenario:
+  reference_geometry: current complete 280-satellite, 14-plane engineering profile
+  reference_is_global_platform_freeze: false
+  satellite_count: 280
+  plane_count: 14
+  region_lat_half_open_deg:
+  - 5.0
+  - 50.0
+  region_lon_half_open_deg:
+  - 65.0
+  - 140.0
+  region_filter_stage: before_endpoint_and_demand_sampling
+  endpoints: native_population_grid_cells
+  routes: full_constellation_and_native_four_direction_topology
+  population_input_is_measurement: false
+statistics:
+  deadline:
+    value_s: 4.0
+    source: explicit_cost_smoke_diagnostic_not_frozen_research_result
+  population_window_s:
+  - 2.0
+  - 8.0
+  dev_seeds:
+  - 7
+b_round:
+  scenarios:
+  - id: bounded_population_cost_smoke
+    profile: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
+    seeds:
+    - 7
+    tasks:
+    - network_alignment
+    arms:
+    - stale
+    - now
+    - common
+    - candidate
+    parameters:
+      demand.offered_mbps: 5.0
+      demand.packet_bits: 12000
+      execution.compute_servers_per_satellite: 1
+      execution.compute_delay_s: 0.001
+workload:
+  network_seed: 7
+  arms:
+  - stale
+  - now
+  - common
+  - candidate
+  packet_bits: 12000
+  packet_bytes_assumption: 1500
+  offered_mbps: 5.0
+  control_prewarm_s:
+  - 0.0
+  - 2.0
+  emission_window_s:
+  - 2.0
+  - 4.0
+  peak_window_s:
+  - 2.5
+  - 3.5
+  peak_multiplier: 2.0
+  research_deadline_from_packet_generation_s: 4.0
+  physical_ttl_is_independent: true
+  observation_stop_s: 8.0
+  administrative_censoring_is_not_failure: true
+  offered_population_policy: retain_all_or_reject_compilation
+  purpose: low-competition and end-to-end cost smoke only
+  competition_claim: none_without_full_network_log_admission
+cell_allowlist:
+  tier: b_dev
+  cell_ids:
+  - b-bounded_population_cost_smoke-network-seed-7
+  max_selected_cells: 1
+  task: network_alignment
+  maximum_simulator_calls: 4
+  append: false
+  maximum_cell_wall_s: 120
+  concurrency: 1
+  exact_driver_argv_after_compile:
+  - --task
+  - network_alignment
+  - --config
+  - bundle:configs/seed-7-b-bounded_population_cost_smoke-seed-7.yaml
+  - --deadline-s
+  - '4.0'
+  - --window-start
+  - '2.0'
+  - --window-end
+  - '8.0'
+  - --arms
+  - stale,now,common,candidate
+  exact_bundle_cell_input_hash_after_compile: 70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905
+budget:
+  batch_limit_calls: 60
+  batch_limit_simulator_wall_s: 3600.0
+  historical_b_calls: 8
+  historical_b_simulator_wall_s: 109.071837305
+  remaining_calls_before_probe: 52
+  remaining_simulator_wall_s_before_probe: 3490.928162695
+  probe_calls_reserved: 4
+  probe_wall_s_upper_bound: 480.0
+  actual_calls_and_wall_time_are_authoritative: true
+  failed_timeout_and_replay_calls_count: true
+post_probe_gate:
+  status: COST_UNVERIFIED
+  required_evidence:
+  - exact release, unique run identity, and source/runtime chain hashes
+  - profile, raster, trace, bundle, cell-input, and receipt digest verification
+  - all-offered fate and population reconciliation
+  - positive-delivery smoke predicate
+  - actual per-cell call and simulator-wall accounting
+  - full-scope deterministic, execution-mode, and model cost bounds before any core
+    matrix
+  may_authorize_main_matrix: false
+prohibited:
+- FORMAL_RUN
+- seed_1001_or_later
+- training
+- main_branch_merge
+- endpoint_or_threshold_search
+- truncating_packets_to_fit_an_entity_or_time_budget
+source_release_binding: Clean full commit and immutable manifest/run receipt bind
+  this contract; no self-referential commit or bundle hash is inserted into its semantic
+  input digest.

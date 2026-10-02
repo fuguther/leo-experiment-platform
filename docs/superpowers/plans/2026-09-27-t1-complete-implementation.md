@@ -1,5 +1,72 @@
 # 状态时间对齐与异步转发：完整实施任务书
 
+## 2026-10-02 当前设计与落实顺序
+
+> 本节是当前唯一有效的执行入口；下方原 P0–P12 是历史材料，不作为当前任务列表。用户授权本轮最多51个新增开发calls和独立≤100 VM分钟DDQN训练预算。根已接受seed7原生人口低负载四臂成本探针的PROBE_CODE子图与语义输入，允许为该唯一cell提交推送、发布不可变release并运行最多4 calls；不代表全矩阵、DDQN或CODE/COST/MODEL/RELEASE全门通过。旧contract_dev_c.yaml仍失效。FORMAL_RUN、seed1001及以后、合并main不在本轮授权内。
+
+### 研究定义与输入冻结
+
+- 主问题：相同地面源宿输入、完整星座、合法候选与已到达历史下，只改变资源状态查询时刻，确定性目的导向队列时延规则是否改善全网期限损失。主比较为每个评价 seed 的 `mean_loss(common)-mean_loss(candidate)`，总体为全部 offered 包；四臂各自闭环演化。背压是受限算法参照；真实训练 DDQN 是本轮必交扩展，确定性主实验可先行；DDQN未完成时整轮必须保持PARTIAL。
+- 场景选择：保留完整 280 星/14 面参考几何，只对地面人口端点按纬度 `[5,50)`、经度 `[65,140)` 过滤。参考 profile `CODE/leo_sim/profiles/population_global_1deg_diagnostic.yaml` SHA-256 `05e1904cea297a7448bfb4c18bfd936ad5a60f70c06c3c23053af62f504f4efb`，不是官方全局冻结或实测。人口输入 `CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif` SHA-256 `c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a`。静态计算对 1°格内4×4个有限正人口15′计数直接相加，不作面积加权；2310格人口和 3,984,792,155.1563754，展示为四舍五入到人 3,984,792,155。按既有 gravity 权重、同格排除和条件归一化，静态 OD 距离积分 `P(≥2000km)=0.1978591556`、`P(≥3000km)=0.1039825175`。这些只是栅格静态计算，不是 trace、路由、多跳或竞争证据。
+- 首probe profile `CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml` SHA-256 `31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518`明确固定广告协议v2；GPW SHA见上。持久合同SHA-256 `6b02bf9014ae2423f99b08d6951594aa87d57d5675f1857847c27b9bbf62a505`由根授权唯一seed7网络cell、四臂/4-call、无append，执行链SHA `a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633`，cell输入SHA `70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905`。根独立compile-only核对280/14、5Mbps/12,000bit/N1/1ms、D=4与物理TTL独立、窗口正确，validate=true。删除授权的合同副本和旧invalid合同仍须拒绝。`PROBE_CODE_READY=true`；`COST_PROBE_READY`待clean pushed commit、immutable release、VM依赖/GPW/实际bundle和run身份验真后再通过。旧静态R工件保留旧profile和旧哈希，不是本probe的trace/竞争/成本证据。
+- 输入假设：包长1500 B；采用分段非齐次Poisson（各段强度=bit/s÷12,000），不叠加local_diurnal_cosine；低竞争/成本 smoke 用5 Mbps、两倍峰窗1秒。t=0–2 s为控制预热且计入VM墙钟；业务相对预热结束，发流[2,4) s、峰窗[2.5,3.5) s、观察至t=8 s、每包D=生成后4 s。按该积分期望15 Mbit/约1250包，但不是并发保证，不能以此宣称竞争实验或时间对齐负结果。旧 max_packets 不可沿用作截断上限。
+- 主竞争负载不是固定5 Mbps。已存在但未获准的静态候选只用于验证计算器，输入字节身份与当前cost-smoke profile不同；其名义R很高，不能先验宣称预算可行或竞争成立。主负载仍须在实施阶段按冻结规则复算当前完整输入，并按 `u_e=Σ_od p_od I(e∈path_od)/C_e`（单位1/Mbps）、每个OD单一最高仰角GSL服务星及有向端口容量生成；直达包对ISL贡献0，无路径概率质量单列、不重归一化。重算期望包量、输入/内存上限及预算；若放不进预算即停止报告缺口，不截包、不减负载、不放宽门槛。实际竞争只从完整VM日志门验收。
+- 所有方法冻结同一外生trace/hash并共享外部随机键；在线策略/后台/学习器只能见已到达合法信息。完整 offered 人口、物理终态、deadline损失与删失分开，观察须覆盖每个包D；11/23/42为描述性开发seed，不做确认或等效声明。
+
+### 按依赖顺序的实施任务（主矩阵与扩展仍有未实现项；首探针代码子图已通过集中复核）
+
+首个VM成本探针只依赖任务1、2中已接受的低负载四臂路径及合同/绑定/launch ledger，不等待任务4背压、任务5 DDQN或五执行模式全部实现；这些扩展仍OPEN，probe不代表完成。该探针只取证流程和成本，不检验竞争激活或算法收益。合同正例必须精确绑定根授权cell，删除授权副本、旧合同、错cell、append或超过4 calls均须继续拒绝。
+
+1. **区域输入与trace。** 改 `config.py`、`population.py::aggregate_population_array/load_population_regions`、`trace.py::_endpoints/_dst_choices/compile_trace`：先过滤再归一化源/宿分布，按固定分段调度冻结动态需求和包键。反例：边界外/半开边界格不入端点；每源目的概率和为1；运行时读取未来trace必须失败；按seed完整核对 offered hash 与人口守恒。静态R系数脚本/fixture须报告逐端口单位、路径、输入SHA；不伪称kernel轨迹。
+2. **资源事件、ETA和动作规则。** 改 `kernel.py` compute/query/快照/提交路径及 `time_alignment.py::estimate_eta/score_candidates`：同一 `bounded_linear` 最近≤8条同resource+epoch、未过期已收到记录，源时刻严格递增，邻接队列差分斜率中位数、容量裁剪；仅1条为hold_last；无历史为unknown。记录t0/compute/query请求-开始-结束、候选t_entry/start/done及实际对应时刻。四臂共享映射/预测器/评分单位，仅查询时间变化。共同规则在每请求最终合法mask内有限ETA集合上用HF type7；至少2个值，否则NO_STRONG_COMMON并共享回退；seed7校准p25/median/mean/p75，平局median>mean>p25>p75；不能补0。若开发整组没有至少两个有限候选，则标NO_STRONG_COMMON、冻结median为operational baseline；不以评价seed补救。候选评分 `J=t_entry−t0+W_r(t_entry)+S_p,r+B_after_r` 全为秒；不重复计GSL末段服务/传播，不把目标自身等待加进入队。计算/查询期间本地FIFO前方工作按已知剩余服务前推；peer再决策未知保留unknown，不读未来实付等待、不求在线固定点。统一回退为合法可见候选中剩余hop最少、方向稳定破同；无可信路径则hold并计费。物理resource generation与全局topology重算版本分开：相同peer/服务实体的历史跨重算保留，实际换peer才断开；新增不换peer两tick能保留≥2记录、换peer不能混入旧记录的反例。缓存按实际拓扑依赖指纹重验，不仅按全局计数丢历史。反例：compute期间出口队列清空；目的GSL速率与ISL不同；最终mask改变拒绝非法动作；资源identity/epoch不匹配必须记错配；unknown不等于零。
+3. **五模式与控制成本。** 改 `async_routing.py`、`_precompute_build/_precomputed_order/_packet_compute_required/decide_deferred`：逐模式冻结动作拥有者、推理/复用/查表和fallback计费。scope至少含(sat, ground destination ID, packet bytes/business class, topology epoch, policy/model version)；后台只读任务请求前已收到历史、已知端点目录和已观测业务。建表近似须声明；query做epoch/resource/path/final-mask校验，回退重算计费。工作按scope×候选×bin×操作展开；cache命中仍模型重推理即不算复用。async_window目标时刻实际传入评分；反例覆盖bin时刻变化、过期表、安装延迟与动作被模型覆盖。
+4. **最短可见路径约束的目的背压启发式。** 保留ISL物理FIFO和GSL DRR，新增合法目的广告/字节计费。按目的d计节点commodity虚拟积压：`Qhat_n^d=Q_n^d×H_n^d`，Q以包计，只计本节点持有/排队/等待/在服的该目的包；控制包排除，发送完成后从源扣账、到邻星后入账、不重复记传播包。H是未访问、可到已知目的GSL服务点的剩余hop，含最终GSL；未知路径保留unknown。对相邻合法转发候选计算 `mu_nm×(Qhat_n^d−Qhat_m^d)`；终端GSL连虚拟sink(Q=0,H=0)，μ用目的DRR可说明的服务估计。先在原生最终合法mask中按完整首动作的剩余总hop选最小有限hop组（ISL首动作加peer剩余hop，本地deliver为1），再在该组选择最大正压力；这只是参照策略约束、不改主四臂候选、不用矩形剪枝。压力速率μ统一为资源bit/s除以包长得到packet/s。；缺广告/非正/epoch冲突走冻结hop fallback或hold，绝不把未知Q当0。名称只能是“目的/路径偏置的背压启发式”：因无每目的联合调度，不称经典BP且无经典稳定性保证。反例需证目的Q字段合法到达/过期、控制字节计费与FIFO/DRR未变，以及无竞争且本地可合法下传时不会因ISL更快而绕行。
+5. **DDQN独立扩展与训练。** 真实训练、冻结的一份模型用于四臂，预测状态进入真实网络输入并由模型拥有动作；共用固定槽、缺失位，无arm标签。固定训练目标：每包结算一次：D前成功下传reward=-T/D、不可恢复丢弃reward=-1、仍在系统包于D到期reward=-1，三者互斥仅结算一次；中间0、gamma=1；物理包D后仍演化但不重开学习episode；行政截断为删失/未成熟，不造failure。网络MLP64×64 ReLU、Adam lr1e-3、batch64、replay50000、target每500 optimizer updates；epsilon按累计成熟packet transition从1线性降到0.05，前15000后固定。train seeds 301/307/311，validation313；最多3候选在同trace各验证一次，按完整offered mean loss最低选择、并列按训练seed。训练请求以等概率使用四种query rule，不输入arm名。固定观测字段/单位：packet age与remaining deadline秒/D再clip[0,1]；五logit槽顺序 `deliver,N,S,E,W`；每槽 `t_entry−t0,W,S,B_after,J` 秒/D clip[0,10]、queue/capacity和rate/reference各clip[0,1]、hops/280 clip[0,1]、legal及每数值missing位、resource identity/epoch valid；数值缺失占位0必须missing=1。旧queue奖励+50/gamma=.99不用于新目标。训练总≤100 VM分钟单列，已纳入用户授权但不能与仿真calls合并；仍需通过模型来源/训练契约/VM成本门，不承诺充分收敛。真实checkpoint来源当前未核实，绝不拿随机权重替代。
+6. **全网门、配对结果与错误归因。** admission由真实事件证明≥10全网可比点、≥5同命名资源跨OD竞争点，累计≥1秒同时active_OD≥2且in_system_packets≥5，并列连续区间/窗占比；完整snapshots、在线决策、重演数各自列出。低竞争smoke只验全体人口守恒、闭环流程和正交付。按seed报全部offered loss、物理drop、D结局、删失、OD阶段、直达/ISL暴露、ETA误差、队列误差、资源映射匹配与全部成本。结论区分未激活、预测/映射不准、已激活但无闭环增益、局部收益被外部性抵消；HTML只回放实存日志。扩展已有`CODE/experiment_platform/replay_html.py`和`test_replay_html.py`，按主手册§5.1接通全网、资源竞争、逐跳决策、配对指标/成本四视图及共同时间游标；没有数据显示NOT_AVAILABLE，同快照分支与全网四臂分开展示，禁止把分化后的状态伪装相同。
+7. **合同与预算防绕过门。** 新增分阶段成本探针合同/精确suite allowlist（计划名 `contract_dev_cost_probe.yaml`），旧invalid合同继续拒绝。实现必须验证完整输入/源SHA、预算、身份、allowlist；禁止普通调用绕过stage gate。首个成本探针只准seed7低竞争四臂，共4calls，需干净推送完整SHA、不可变probe release、新run-id；实际账本失败/超时照计。实际probe完成并验回执后，再将trace、scope数、候选/bin/操作/模式、最坏fallback、模型profile展开成保守分阶段上界；不从首格推算51格。累计实际 calls/秒每阶段重核；超限即停且不削核心配对/负载。DDQN未VM profile前没有DDQN预算。
+
+### 跨层反例验收（均待新增，非已通过）
+
+| 层 | 反例与预期 |
+|---|---|
+| 宏观 | 全网均值低而单命名ISL多OD同刻争用：门按该资源区间识别；直达GSL多也不删包造ISL暴露。 |
+| 中观 | compute/query期间出口继续服务并清队列：只把残余工作前推一次，区分预计入队/开始/完成。 |
+| 中观 | 目的commodity Q广告过期或epoch错配：未知/拒绝、bytes计费，不能把物理总出口队列称经典BP。 |
+| 微观 | 目标下传速率不是ISL速率、peer尾路回到已访问节点：按目的GSL建模；非法尾路unknown。 |
+| 微观 | commit最终mask变化、无信息、无物理可行候选：分别记录拒绝/共享回退/hold，不把未知填0。 |
+| 跨层 | cache hit后DDQN重选、四臂分化后试图同步内部队列、包到D仍在途中：分别判复用失败并计费、独立演化、到期结算loss且物理命运继续。 |
+
+### 矩阵、预算与阶段闸门
+
+B历史8 calls/109.071837305 s；批次上限60/3600，最多剩52/3490.928162695；A+B旧账1170.071837305/7200不清零。每cell≤120s、并发1，失败/timeout占预算。候选最大矩阵：低竞争4 + seed7 common规则4 + 主四臂12 + 五模式最多新增12（per_packet/candidate只有配置和身份完全相同才复用主矩阵3格） + 队列压力参照3 + 同快照分支≤4（只从已有运行捕获） + DDQN四臂12 = 51；历史后最多59/60，保留1不预用。51只是call展开，不是墙钟预测。非kernel snapshot/profile先做；固定seed7低竞争四臂为唯一首个VM端到端成本探针。总成本必须经范围×候选×bin×操作、各模式/fallback与实际模型profile逐阶段保守预算证明；首格耗时不可外推。若超预算则不启动后续核心矩阵并报告缺口，不能私自删配对、截包或降负载。DDQN≤100分钟另列，必须独立设计/授权。
+
+| 闸门 | 放行条件 | 当前 |
+|---|---|---|
+| DESIGN_READY | 本设计经根集中裁决 | true；仅逻辑准备通过 |
+| PROBE_CODE_READY | 根独立验收仅首probe真实调用依赖子图与语义输入；未用扩展不阻塞 | true；仅seed7四臂低竞争单cell，不等于整体CODE_READY |
+| CODE_READY | 所有按顺序实现项、必需反例和相关回归完成 | false；主矩阵、背压、五模式和DDQN扩展仍未完成 |
+| COST_PROBE_READY | 根授权合同中唯一seed7低竞争四臂4-call cell；clean full-SHA push、immutable release、VM依赖/GPW/bundle/argv/seed验真、新run-id与one-use ledger齐备后通过 | false；release/runtime/run验真待执行 |
+| MODEL_READY / DDQN_COST_READY | 真checkpoint来源/契约通过且模型、查询与模式VM实测成本 | false；未找到已审checkpoint，成本未测 |
+| FULL_COST_READY | deterministic core和获准DDQN范围的上界合计在原预算内 | false |
+| RELEASE_READY | 完整主矩阵/DDQN的发布门；首成本探针仅受单独COST_PROBE_READY授权 | false；不得执行主矩阵或训练 |
+
+### 后续验收命令（实施后运行；本轮未执行）
+
+```sh
+python3 -m pytest CODE/leo_sim/tests/test_population.py CODE/leo_sim/tests/test_trace.py -q
+python3 -m pytest CODE/leo_sim/tests/test_time_alignment.py CODE/leo_sim/tests/test_eta_terms.py CODE/leo_sim/tests/test_time_alignment_online.py -q
+python3 -m pytest CODE/leo_sim/tests/test_control.py CODE/leo_sim/tests/test_routing.py CODE/leo_sim/tests/test_async_routing.py -q
+python3 -m pytest CODE/experiment_platform/tests/test_t1_admission.py CODE/experiment_platform/tests/test_time_alignment_compare.py CODE/experiment_platform/tests/test_execution_compare.py CODE/experiment_platform/tests/test_t1_suite.py -q
+python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests -q
+```
+
+通过软件测试不等于VM成本、场景激活或研究效果成立。
+### 自动推进顺序与完成口径
+
+已接受的首probe子图先按“合同测试→clean commit/push→不可变release→VM runtime验真→唯一seed7低负载四臂4-call成本probe→pullback和人口/成本核验”完成；此步不等待BP/DDQN/五模式，也不运行主矩阵。之后才复算完整主输入R/trace/实体和scope成本，按CORE_COST_READY决定能否继续common校准、确定性配对、模式/BP/分支和DDQN。每阶段按既定门与预算继续；DDQN或核心配对未完成整轮记PARTIAL，正式确认仍未授权。
+
+---
+
 > 给执行 AI：按 P0→P12 连续实施。使用 `superpowers:executing-plans` 组织实施；若你有获授权的子代理，可使用 `superpowers:subagent-driven-development`。阶段验收是自动继续条件，不是向用户索要下一步指令的暂停点。用本文件的复选框跟踪进度。
 
 **目标：** 在现有 LEO 平台上补齐四组状态时间比较、真实包率与有限计算资源、异步方案更新，以及统一的诊断和实验交付链，使用户能够判断时间对齐的价值和逐包/异步执行的收益成本。

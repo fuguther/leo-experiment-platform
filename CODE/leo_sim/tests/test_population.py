@@ -46,6 +46,32 @@ def test_repository_gpw_aggregates_to_real_regions():
                - table.total_population) < 1.0
 
 
+def test_region_filter_uses_half_open_cell_centers_before_normalization():
+    regions = (
+        population.PopulationRegion("a", 4.5, 65.5, 1.0),
+        population.PopulationRegion("b", 5.5, 65.5, 2.0),
+        population.PopulationRegion("c", 49.5, 139.5, 3.0),
+        population.PopulationRegion("d", 50.5, 139.5, 4.0),
+        population.PopulationRegion("e", 25.5, 140.5, 5.0),
+    )
+    selected = population.filter_population_regions(
+        regions, lat_bounds_deg=(5.0, 50.0),
+        lon_bounds_deg=(65.0, 140.0))
+    assert [region.grid_id for region in selected] == ["b", "c"]
+    assert sum(region.population for region in selected) == 5.0
+
+
+def test_real_gpw_region_filter_excludes_outside_cells_before_trace_weights():
+    pytest.importorskip("PIL")
+    table = population.load_population_regions(
+        REPO_TIFF, aggregation_deg=1.0,
+        lat_bounds_deg=(5.0, 50.0), lon_bounds_deg=(65.0, 140.0))
+    assert len(table.regions) == 2310
+    assert all(5.0 <= region.lat < 50.0 for region in table.regions)
+    assert all(65.0 <= region.lon < 140.0 for region in table.regions)
+    assert table.total_population == pytest.approx(3984792155.1563754)
+
+
 def test_population_loader_rejects_missing_file(tmp_path):
     with pytest.raises(population.PopulationError, match="not found"):
         population.load_population_regions(

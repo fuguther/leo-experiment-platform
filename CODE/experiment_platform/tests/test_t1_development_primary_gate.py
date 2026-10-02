@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import yaml
+import json
 import pytest
 
 from CODE.experiment_platform import t1_development, t1_suite
@@ -174,6 +176,209 @@ def test_branch_primary_gate_rejects_missing_branch_outcome_or_wrong_window():
     assert gate["passed"] is False
     assert gate["checks"]["window_matches"] is False
     assert gate["checks"]["all_sampled_regrets_computed"] is False
+
+
+def test_plan_only_contract_is_rejected_before_development_outputs_are_created(
+        tmp_path):
+    contract = t1_suite.REPO_ROOT / \
+        "CODE/work/WP-T1-COMPLETE/contract_dev_c.yaml"
+    out_dir = tmp_path / "development-run"
+
+    with pytest.raises(RuntimeError, match="runtime readiness gate"):
+        t1_development.execute(contract, out_dir,
+                               run_id="run-not-started",
+                               release_id="a" * 40 + "-" + "b" * 64)
+
+    assert not out_dir.exists()
+
+
+def test_suite_run_rejects_plan_only_bundle_before_simulator_or_run_dir(
+        tmp_path, monkeypatch):
+    contract = tmp_path / "plan-only.yaml"
+    contract.write_text(yaml.safe_dump({
+        "design_readiness": {
+            "status": "PLAN_ONLY_NOT_RELEASE_READY",
+            "runtime_gate_implemented": False,
+        },
+    }), encoding="utf-8")
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    (bundle_dir / "bundle.json").write_text(json.dumps({
+        "contract_path": str(contract),
+        "tiers": {"b_dev": ["cell-1"]},
+        "cells": [{"cell_id": "cell-1", "group": "dev",
+                   "driver": "CODE.experiment_platform.t1_tasks",
+                   "args": []}],
+        "budgets": dict(t1_suite.DEFAULT_BUDGETS),
+    }), encoding="utf-8")
+    monkeypatch.setattr(t1_suite, "validate_bundle",
+                        lambda _bundle: {"valid": True})
+    monkeypatch.setattr(
+        t1_suite, "_execute_cell",
+        lambda *_args, **_kwargs: pytest.fail("simulator must not start"))
+    out_dir = tmp_path / "run"
+
+    with pytest.raises(t1_suite.SuiteError,
+                       match="runtime readiness gate"):
+        t1_suite.run_bundle(bundle_dir, "b_dev", out_dir)
+
+    assert not out_dir.exists()
+
+
+def test_suite_resume_rechecks_plan_only_runtime_gate_before_retry(
+        tmp_path, monkeypatch):
+    contract = tmp_path / "plan-only.yaml"
+    contract.write_text(yaml.safe_dump({
+        "design_readiness": {
+            "status": "PLAN_ONLY_NOT_RELEASE_READY",
+            "runtime_gate_implemented": False,
+        },
+    }), encoding="utf-8")
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    (bundle_dir / "bundle.json").write_text(json.dumps({
+        "contract_path": str(contract),
+    }), encoding="utf-8")
+    run_dir = tmp_path / "existing-run"
+    run_dir.mkdir()
+    (run_dir / "run.json").write_text(json.dumps({
+        "bundle_dir": str(bundle_dir), "tier": "b_dev",
+        "status": "INCOMPLETE", "cells": [],
+    }), encoding="utf-8")
+    monkeypatch.setattr(t1_suite, "validate_bundle",
+                        lambda _bundle: {"valid": True})
+    monkeypatch.setattr(
+        t1_suite, "_execute_cell",
+        lambda *_args, **_kwargs: pytest.fail("simulator must not retry"))
+
+    with pytest.raises(t1_suite.SuiteError,
+                       match="runtime readiness gate"):
+        t1_suite.resume_run(run_dir)
+
+
+def test_cost_probe_gate_requires_one_exact_seed7_four_arm_cell(tmp_path):
+    from CODE.experiment_platform import t1_suite as suite
+
+    cell_id = "b-native-low-cost-network-seed-7"
+    repo = suite.REPO_ROOT
+    profile = yaml.safe_load((repo / "CODE/leo_sim/profiles/"
+                              "t1_population_region_cost_smoke.yaml"
+                              ).read_text(encoding="utf-8"))
+    profile["scenario"]["seed"] = 7
+    profile_path = tmp_path / "profile-seed-7.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False),
+                            encoding="utf-8")
+    cell = {
+        "cell_id": cell_id,
+        "group": "b_round",
+        "driver": "CODE.experiment_platform.t1_tasks",
+        "args": ["--task", "network_alignment", "--config",
+                 str(profile_path), "--arms",
+                 "stale,now,common,candidate"],
+        "seed": 7,
+    }
+    cell["input"] = suite._cell_input_binding(cell)
+    cell_sha = suite._cell_input_sha256(cell["input"])
+    auth = {
+        "stage": "cost_probe",
+        "tier": "b_dev",
+        "cell_ids": [cell_id],
+        "max_selected_cells": 1,
+        "expected_simulator_calls": 4,
+        "max_simulator_calls": 4,
+        "allow_append": False,
+        "task": "network_alignment",
+        "seed": 7,
+        "execution_chain_sha256": "c" * 64,
+        "cell_input_sha256": {cell_id: cell_sha},
+    }
+    contract = {"design_readiness": {
+        "status": "COST_PROBE_READY",
+        "runtime_gate_implemented": True,
+        "runtime_authorization": auth,
+    }}
+    bundle = {"execution_chain": {"combined_sha256": "c" * 64}}
+
+    assert suite.require_runtime_ready_contract(contract)["status"] == \
+        "COST_PROBE_READY"
+    suite.enforce_runtime_stage(
+        contract, bundle, tier="b_dev", selected_cell_ids=[cell_id],
+        append=False, cells={cell_id: cell}, estimated_calls=4)
+    with pytest.raises(suite.SuiteError, match="allowlist"):
+        suite.enforce_runtime_stage(
+            contract, bundle, tier="b_dev",
+            selected_cell_ids=[cell_id, "b-other"], append=False,
+            cells={cell_id: cell}, estimated_calls=4)
+    with pytest.raises(suite.SuiteError, match="append"):
+        suite.enforce_runtime_stage(
+            contract, bundle, tier="b_dev", selected_cell_ids=[cell_id],
+            append=True, cells={cell_id: cell}, estimated_calls=4)
+    with pytest.raises(suite.SuiteError, match="simulator-call"):
+        suite.enforce_runtime_stage(
+            contract, bundle, tier="b_dev", selected_cell_ids=[cell_id],
+            append=False, cells={cell_id: cell}, estimated_calls=5)
+    with pytest.raises(suite.SuiteError, match="cell seed metadata"):
+        bad_cell = dict(cell, seed=11)
+        suite.enforce_runtime_stage(
+            contract, bundle, tier="b_dev", selected_cell_ids=[cell_id],
+            append=False, cells={cell_id: bad_cell}, estimated_calls=4)
+
+
+def test_suite_run_cost_probe_rejects_unlisted_selection_before_run_dir(
+        tmp_path, monkeypatch):
+    cell_id = "b-native-low-cost-network-seed-7"
+    cell = {
+        "cell_id": cell_id,
+        "group": "b_round",
+        "driver": "CODE.experiment_platform.t1_tasks",
+        "args": ["--task", "network_alignment", "--seed", "7",
+                 "--arms", "stale,current,common,candidate"],
+        "input": {"config_sha256": "a" * 64,
+                  "driver_sha256": "b" * 64, "files": {}},
+    }
+    cell_sha = t1_suite._cell_input_sha256(cell["input"])
+    contract = {
+        "design_readiness": {
+            "status": "COST_PROBE_READY",
+            "runtime_gate_implemented": True,
+            "runtime_authorization": {
+                "stage": "cost_probe", "tier": "b_dev",
+                "cell_ids": [cell_id], "max_selected_cells": 1,
+                "expected_simulator_calls": 4,
+                "max_simulator_calls": 4, "allow_append": False,
+                "task": "network_alignment", "seed": 7,
+                "execution_chain_sha256": "c" * 64,
+                "cell_input_sha256": {cell_id: cell_sha},
+            },
+        },
+    }
+    contract_path = tmp_path / "cost-probe.yaml"
+    contract_path.write_text(yaml.safe_dump(contract), encoding="utf-8")
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    bundle = {
+        "contract_path": str(contract_path),
+        "contract_sha256": hashlib.sha256(
+            contract_path.read_bytes()).hexdigest(),
+        "execution_chain": {"combined_sha256": "c" * 64},
+        "tiers": {"b_dev": [cell_id]},
+        "cells": [cell],
+        "budgets": {**t1_suite.DEFAULT_BUDGETS,
+                    "simulator_call_budget": 4},
+    }
+    (bundle_dir / "bundle.json").write_text(
+        json.dumps(bundle), encoding="utf-8")
+    monkeypatch.setattr(t1_suite, "validate_bundle",
+                        lambda _bundle: {"valid": True})
+    monkeypatch.setattr(
+        t1_suite, "_execute_cell",
+        lambda *_args, **_kwargs: pytest.fail("simulator must not start"))
+    out_dir = tmp_path / "run"
+
+    with pytest.raises(t1_suite.SuiteError, match="allowlist"):
+        t1_suite.run_bundle(bundle_dir, "b_dev", out_dir, cell_ids=[])
+
+    assert not out_dir.exists()
 
 
 def test_b_contract_compiles_the_minimum_frozen_matrix_and_common_d(tmp_path):

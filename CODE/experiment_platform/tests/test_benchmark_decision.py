@@ -127,6 +127,16 @@ def test_a_bounded_pool_without_service_time_is_skipped_with_a_reason():
     assert "positive service time" in report[0]["reason"]
 
 
+def test_online_capture_freezes_the_packet_path_at_the_scored_decision():
+    resolved, rows, geometry, _meta = scripted_scenarios.build("same_flow")
+    cfg = json.loads(json.dumps(resolved["config"]))
+    cfg["time_alignment"]["enabled"] = True
+    resolved = config_mod.resolve_config(cfg)
+    captured = bd._capture_online_decision(resolved, rows, geometry)
+
+    assert list(captured["pkt"].path) == captured["packet_path_at_capture"]
+
+
 def test_a_bounded_pool_really_queues_under_load():
     """Three packets inside one service interval must queue on N=1."""
     resolved, rows, geometry, _meta = scripted_scenarios.build("contention")

@@ -51,12 +51,16 @@ ETA_METHOD_MISSING = "missing"
 TERM_KEYS = (
     "compute_wait_s",
     "compute_service_s",
+    "query_wait_s",
+    "query_service_s",
     "local_egress_wait_s",
     "tx_s",
     "prop_s",
     "peer_process_s",
     "resource_work_s",
     "remaining_prop_s",
+    "terminal_tx_s",
+    "terminal_prop_s",
 )
 
 #: Names of the ETA terms, each a NON-OVERLAPPING interval in seconds.  The
@@ -65,6 +69,8 @@ TERM_KEYS = (
 ETA_TERM_KEYS = (
     "compute_wait_s",
     "compute_service_s",
+    "query_wait_s",
+    "query_service_s",
     "local_egress_wait_s",
     "tx_s",
     "prop_s",
@@ -102,6 +108,10 @@ class ResourceKey:
     satellite: int
     direction: str
     kind: str
+    # Physical generation is optional for historical/fixture identities.
+    # Online ISL estimates must bind it when the remote advertisement carries
+    # one; a same-peer rematch may create a different FIFO resource.
+    generation: int | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.satellite, bool) or not isinstance(self.satellite, int):
@@ -113,9 +123,17 @@ class ResourceKey:
                 f"direction must be a non-empty str, got {self.direction!r}")
         if self.kind not in VALID_KINDS:
             raise TimeAlignmentError(f"kind must be one of {VALID_KINDS}, got {self.kind!r}")
+        if self.generation is not None and (
+                isinstance(self.generation, bool)
+                or not isinstance(self.generation, int)
+                or self.generation < 0):
+            raise TimeAlignmentError(
+                "generation must be a non-negative integer or None, got "
+                f"{self.generation!r}")
 
     def as_tuple(self) -> tuple:
-        return (self.satellite, self.direction, self.kind)
+        base = (self.satellite, self.direction, self.kind)
+        return base if self.generation is None else base + (self.generation,)
 
 
 @dataclass(frozen=True)
@@ -200,6 +218,8 @@ class ObservationSnapshot:
     remaining_prop_s: tuple
     compute_wait_s: float
     compute_service_s: float
+    query_wait_s: float
+    query_service_s: float
     pkt_bits: float
     max_resource_queue_bits: float | None
     arm: str
@@ -209,6 +229,10 @@ class ObservationSnapshot:
     common_rule: str
     query_delay_s: float
     provenance: tuple = ()
+    resource_service_rate_bps: tuple = ()
+    terminal_propagation_s: tuple = ()
+    resource_available: tuple = ()
+    local_egress_in_service_s: tuple = ()
 
     def _lookup(self, table: tuple, direction: str):
         for key, value in table:
@@ -237,6 +261,18 @@ class ObservationSnapshot:
     def remaining_prop_for(self, direction: str):
         return self._lookup(self.remaining_prop_s, direction)
 
+    def resource_rate_for(self, direction: str):
+        return self._lookup(self.resource_service_rate_bps, direction)
+
+    def terminal_prop_for(self, direction: str):
+        return self._lookup(self.terminal_propagation_s, direction)
+
+    def resource_available_for(self, direction: str):
+        return self._lookup(self.resource_available, direction)
+
+    def local_egress_in_service_for(self, direction: str):
+        return self._lookup(self.local_egress_in_service_s, direction)
+
     def history_for(self, resource) -> tuple:
         return tuple(s for s in self.history if s.resource == resource)
 
@@ -246,6 +282,11 @@ class ObservationSnapshot:
             "snapshot_at": self.snapshot_at,
             "legal_directions": list(self.legal_directions),
             "resources": [[k, v.as_tuple()] for k, v in self.resources],
+            "resource_service_rate_bps": dict(self.resource_service_rate_bps),
+            "terminal_propagation_s": dict(self.terminal_propagation_s),
+            "resource_available": dict(self.resource_available),
+            "local_egress_in_service_s": dict(
+                self.local_egress_in_service_s),
             "arm": self.arm,
             "predictor": self.predictor,
             "provenance": list(self.provenance),
@@ -295,6 +336,19 @@ def _pairs(name: str, mapping) -> tuple:
     return tuple(items)
 
 
+def _optional_bool_pairs(name: str, mapping) -> tuple:
+    if mapping is None:
+        return ()
+    items = []
+    for key, value in dict(mapping).items():
+        if not isinstance(key, str) or not key:
+            raise TimeAlignmentError(f"{name} keys must be non-empty strings")
+        if value is not None and not isinstance(value, bool):
+            raise TimeAlignmentError(f"{name}[{key}] must be bool or None")
+        items.append((key, value))
+    return tuple(items)
+
+
 def make_snapshot(*, satellite: int, snapshot_at: float, history,
                   legal_directions, resources,
                   egress_queue_bits=None, link_rate_bps=None,
@@ -304,7 +358,13 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
                   max_resource_queue_bits=None, arm: str = "candidate",
                   predictor: str = "bounded_linear", history_limit: int = 8,
                   common_horizon_s=None, common_rule: str = "median_eta",
-                  query_delay_s: float = 0.0, provenance=()) -> ObservationSnapshot:
+                  query_delay_s: float = 0.0, provenance=(),
+                  query_wait_s: float = 0.0,
+                  query_service_s: float = 0.0,
+                  resource_service_rate_bps=None,
+                  terminal_propagation_s=None,
+                  resource_available=None,
+                  local_egress_in_service_s=None) -> ObservationSnapshot:
     """Build the frozen snapshot from kernel-selected fields only.
 
     Every accepted keyword is a field the kernel explicitly decided to expose;
@@ -353,6 +413,8 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
         remaining_prop_s=_pairs("remaining_prop_s", remaining_prop_s),
         compute_wait_s=_finite("compute_wait_s", compute_wait_s),
         compute_service_s=_finite("compute_service_s", compute_service_s),
+        query_wait_s=_finite("query_wait_s", query_wait_s),
+        query_service_s=_finite("query_service_s", query_service_s),
         pkt_bits=_finite("pkt_bits", pkt_bits),
         max_resource_queue_bits=max_q,
         arm=arm,
@@ -362,6 +424,14 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
         common_rule=common_rule,
         query_delay_s=_finite("query_delay_s", query_delay_s),
         provenance=tuple(str(p) for p in provenance),
+        resource_service_rate_bps=_pairs(
+            "resource_service_rate_bps", resource_service_rate_bps),
+        terminal_propagation_s=_pairs(
+            "terminal_propagation_s", terminal_propagation_s),
+        resource_available=_optional_bool_pairs(
+            "resource_available", resource_available),
+        local_egress_in_service_s=_pairs(
+            "local_egress_in_service_s", local_egress_in_service_s),
     )
 
 
@@ -522,10 +592,10 @@ class EtaEstimate:
 def estimate_eta(snapshot: ObservationSnapshot, direction: str) -> EtaEstimate:
     """Build the ETA to one candidate directed egress from known inputs.
 
-    eta = known compute wait + configured service + local wait + tx + prop +
-    known peer processing.  The peer processing term is only included when the
-    advertisement actually carried it; otherwise it is listed as unknown and
-    the method is flagged.
+    ETA includes the local compute request, its later query request, and
+    work-ahead on the source egress. Queue service continues during compute
+    and query. Future arrivals are not available online and are assumed absent
+    for this bounded forward estimate; prediction error is measured later.
     """
     reject_future_input(snapshot)
     terms = {}
@@ -539,6 +609,14 @@ def estimate_eta(snapshot: ObservationSnapshot, direction: str) -> EtaEstimate:
     known["compute_wait_s"] = True
     terms["compute_service_s"] = snapshot.compute_service_s
     known["compute_service_s"] = True
+    terms["query_wait_s"] = snapshot.query_wait_s
+    known["query_wait_s"] = True
+    terms["query_service_s"] = snapshot.query_service_s
+    known["query_service_s"] = True
+    pre_egress_elapsed = (snapshot.compute_wait_s
+                          + snapshot.compute_service_s
+                          + snapshot.query_wait_s
+                          + snapshot.query_service_s)
 
     rate = snapshot.rate_for(direction)
     egress = snapshot.egress_bits(direction)
@@ -559,9 +637,18 @@ def estimate_eta(snapshot: ObservationSnapshot, direction: str) -> EtaEstimate:
             known["local_egress_wait_s"] = False
             unknown.append("local_egress_wait_s")
         else:
-            # bits already queued on the local directed egress / known rate
-            terms["local_egress_wait_s"] = float(egress) / rate
-            known["local_egress_wait_s"] = True
+            # This includes all known queued classes. The PHY keeps serving
+            # while compute/query run, so subtract that elapsed time once.
+            in_service = snapshot.local_egress_in_service_for(direction)
+            if in_service is None:
+                terms["local_egress_wait_s"] = 0.0
+                known["local_egress_wait_s"] = False
+                unknown.append("local_egress_wait_s")
+            else:
+                terms["local_egress_wait_s"] = max(
+                    0.0, float(egress) / rate + float(in_service)
+                    - pre_egress_elapsed)
+                known["local_egress_wait_s"] = True
 
     prop = snapshot.propagation_for(direction)
     if prop is None:
@@ -612,8 +699,8 @@ class ScoredCandidates:
 
 
 def resource_service_bps(snapshot: ObservationSnapshot, direction: str):
-    """Known service rate of the peer directed egress, or None (missing)."""
-    return snapshot.rate_for(direction)
+    """Rate of the named target resource, distinct from the local first hop."""
+    return snapshot.resource_rate_for(direction)
 
 
 def score_candidates(snapshot: ObservationSnapshot, predictions, etas) -> ScoredCandidates:
@@ -635,6 +722,12 @@ def score_candidates(snapshot: ObservationSnapshot, predictions, etas) -> Scored
     """
     reject_future_input(snapshot, predictions, etas)
     scores = []
+    no_strong_common = (
+        snapshot.arm == "common"
+        and snapshot.common_rule != "fixed_horizon"
+        and snapshot.common_horizon_s is None)
+    visible_order = {direction: index for index, direction in
+                     enumerate(snapshot.legal_directions)}
     for direction in snapshot.legal_directions:
         resource = snapshot.resource_for(direction)
         prediction = predictions.get(direction)
@@ -649,15 +742,21 @@ def score_candidates(snapshot: ObservationSnapshot, predictions, etas) -> Scored
             missing.append(prediction.missing_reason)
         if eta is None:
             missing.append("eta")
+        if no_strong_common:
+            scores.append(CandidateScore(
+                direction, resource, math.inf, {}, ("NO_STRONG_COMMON",),
+                True, (visible_order[direction], direction)))
+            continue
         if missing:
             scores.append(CandidateScore(direction, resource, math.inf, {},
                                          tuple(missing), True,
-                                         (_direction_index(direction), direction)))
+                                         (visible_order[direction], direction)))
             continue
         # The local terms come from the ETA verbatim: re-deriving the egress
         # wait here would both double-count it and leave the query instant
         # untouched, which is exactly the defect this fixes.
         for name in ("compute_wait_s", "compute_service_s",
+                     "query_wait_s", "query_service_s",
                      "local_egress_wait_s", "tx_s", "prop_s",
                      "peer_process_s"):
             terms[name] = eta.terms.get(name, 0.0)
@@ -671,6 +770,34 @@ def score_candidates(snapshot: ObservationSnapshot, predictions, etas) -> Scored
             missing.append("resource_service_rate")
         else:
             terms["resource_work_s"] = prediction.predicted_bits / service_rate
+        resource_key = snapshot.resource_for(direction)
+        if resource_key is not None and resource_key.kind == KIND_ISL:
+            # The target resource is reached after the local first hop.  Its
+            # existing work-ahead is resource_work_s; this packet's own
+            # serialization on that resource is a separate interval and must
+            # be priced with the target resource's advertised rate.
+            if service_rate is None or service_rate <= 0:
+                missing.append("resource_service_rate")
+            else:
+                terms["resource_packet_tx_s"] = snapshot.pkt_bits / service_rate
+        if resource_key is not None and resource_key.kind == KIND_DOWNLINK:
+            availability = snapshot.resource_available_for(direction)
+            if availability is not True:
+                missing.append("terminal_resource_unavailable" if availability is False
+                               else "terminal_resource_availability_unknown")
+            if prediction.predicted_bits is not None \
+                    and service_rate is not None and service_rate > 0:
+                # Queue bits and the newly routed packet are separate work;
+                # use the advertised GSL rate, never the local ISL rate.
+                # This is the target packet's GSL serialization.  It already
+                # supplies target-resource service, so do not also add the
+                # generic ISL target-service term above.
+                terms["terminal_tx_s"] = snapshot.pkt_bits / service_rate
+            terminal_prop = snapshot.terminal_prop_for(direction)
+            if terminal_prop is None:
+                missing.append("terminal_prop_s")
+            else:
+                terms["terminal_prop_s"] = terminal_prop
         remaining = snapshot.remaining_prop_for(direction)
         if remaining is None:
             missing.append("remaining_prop")
@@ -679,15 +806,15 @@ def score_candidates(snapshot: ObservationSnapshot, predictions, etas) -> Scored
         if missing:
             scores.append(CandidateScore(direction, resource, math.inf, terms,
                                          tuple(sorted(set(missing))), True,
-                                         (_direction_index(direction), direction)))
+                                         (visible_order[direction], direction)))
             continue
         total = float(sum(terms.values()))
         scores.append(CandidateScore(direction, resource, total, terms, (),
                                      False,
-                                     (0, _direction_index(direction), direction)))
+                                     (0, visible_order[direction], direction)))
     scores.sort(key=lambda s: (s.fallback,
                                0.0 if s.fallback else s.total_s,
-                               _direction_index(s.direction), s.direction))
+                               visible_order[s.direction], s.direction))
     return ScoredCandidates(
         ranking=tuple(s.direction for s in scores),
         scores=tuple(scores),
@@ -705,6 +832,7 @@ class ScheduleEntry:
     starts_at: float
     ends_at: float
     ranking: tuple
+    query_target_at: float | None = None
 
 
 @dataclass(frozen=True)
@@ -762,8 +890,21 @@ class DecisionPlan:
         return None
 
 
+def _common_comparable_offsets(snapshot: ObservationSnapshot) -> tuple[float, ...]:
+    """Return only finite ETAs with every required term observed/known."""
+    offsets = []
+    for direction in snapshot.legal_directions:
+        eta = estimate_eta(snapshot, direction)
+        if eta.unknown_terms:
+            continue
+        offset = eta.target_at - snapshot.snapshot_at
+        if math.isfinite(offset) and offset >= 0.0:
+            offsets.append(float(offset))
+    return tuple(sorted(offsets))
+
+
 def resolve_common_horizon(snapshot: ObservationSnapshot,
-                           rule: str | None = None) -> float:
+                           rule: str | None = None) -> float | None:
     """The shared t0+h for the common arm, from candidate ETA offsets.
 
     Uses the SAME estimator the scorer uses, so the horizon and the per-candidate
@@ -775,10 +916,11 @@ def resolve_common_horizon(snapshot: ObservationSnapshot,
             raise TimeAlignmentError(
                 "fixed_horizon requires a configured common_horizon_s")
         return float(snapshot.common_horizon_s)
-    offsets = sorted(estimate_eta(snapshot, d).target_at - snapshot.snapshot_at
-                     for d in snapshot.legal_directions)
-    if not offsets:
-        return 0.0
+    offsets = _common_comparable_offsets(snapshot)
+    # A one-point statistic is not a meaningful shared reference. Unknown
+    # candidates are excluded rather than represented as zero offsets.
+    if len(offsets) < 2:
+        return None
     if rule == "mean_eta":
         return float(sum(offsets) / len(offsets))
     mid = len(offsets) // 2
@@ -787,7 +929,8 @@ def resolve_common_horizon(snapshot: ObservationSnapshot,
     return float(0.5 * (offsets[mid - 1] + offsets[mid]))
 
 
-def build_predictions(snapshot: ObservationSnapshot):
+def build_predictions(snapshot: ObservationSnapshot,
+                      target_at: float | None = None):
     """(predictions, etas, targets) for every legal candidate at the arm instant.
 
     Extracted so the benchmark can time prediction separately from scoring
@@ -795,6 +938,12 @@ def build_predictions(snapshot: ObservationSnapshot):
     does the timer.
     """
     reject_future_input(snapshot)
+    explicit_target = (None if target_at is None
+                       else _finite("target_at", target_at))
+    if (explicit_target is not None
+            and explicit_target < snapshot.snapshot_at):
+        raise TimeAlignmentError(
+            "explicit target_at may not precede the frozen snapshot")
     predictions = {}
     etas = {}
     targets = {}
@@ -803,7 +952,19 @@ def build_predictions(snapshot: ObservationSnapshot):
         eta = estimate_eta(snapshot, direction)
         etas[direction] = eta
         last_measured = _last_measured_at(snapshot, resource)
-        if last_measured is None:
+        if explicit_target is not None:
+            # Async window bins and offline fixed-instant comparisons ask the
+            # SAME causal estimator about an explicit absolute instant.  The
+            # normal online four-arm path passes no override and therefore
+            # keeps its arm-specific target rule unchanged.
+            target = explicit_target
+        elif (snapshot.arm == "common"
+              and snapshot.common_rule != "fixed_horizon"
+              and snapshot.common_horizon_s is None):
+            # NO_STRONG_COMMON uses the shared fallback; t0 here is a
+            # non-decision placeholder so every candidate remains auditable.
+            target = snapshot.snapshot_at
+        elif last_measured is None:
             # no advertisement for this candidate: the query instant is
             # irrelevant, predict_resource reports no_received_history
             target = snapshot.snapshot_at
@@ -823,14 +984,15 @@ def build_predictions(snapshot: ObservationSnapshot):
     return predictions, etas, targets
 
 
-def plan_decision(snapshot: ObservationSnapshot) -> DecisionPlan:
+def plan_decision(snapshot: ObservationSnapshot,
+                  target_at: float | None = None) -> DecisionPlan:
     """THE decision entry point: query instant -> prediction -> score.
 
     The kernel online path, the offline replay and the benchmark all call THIS
     function with a snapshot that already carries the arm and its horizon, so
     the three cannot query different instants for the same arm.
     """
-    predictions, etas, targets = build_predictions(snapshot)
+    predictions, etas, targets = build_predictions(snapshot, target_at=target_at)
     return DecisionPlan(snapshot=snapshot,
                         targets=tuple(sorted(targets.items())),
                         scored=score_candidates(snapshot, predictions, etas),
@@ -839,13 +1001,14 @@ def plan_decision(snapshot: ObservationSnapshot) -> DecisionPlan:
 
 def score_snapshot_at(snapshot: ObservationSnapshot,
                       target_at: float | None = None) -> ScoredCandidates:
-    """Backward-compatible wrapper around plan_decision.
+    """Score at an explicit absolute instant, or use the arm's normal instant.
 
-    The per-candidate query instant is derived from the arm (see
-    arm_target_at), NOT from the target_at argument; that argument is kept only
-    so older callers keep working and is deliberately ignored.
+    Ordinary online calls go through :func:`plan_decision` without an
+    override.  This function's explicit instant is used by offline diagnostics
+    and asynchronous schedule bins; it is still a causal prediction from the
+    snapshot's received history, never a read of truth at that instant.
     """
-    return plan_decision(snapshot).scored
+    return plan_decision(snapshot, target_at=target_at).scored
 
 
 def _last_measured_at(snapshot: ObservationSnapshot, resource):
@@ -882,7 +1045,8 @@ def build_schedule(snapshot: ObservationSnapshot, install_estimate: float,
         end = start + width
         midpoint = 0.5 * (start + end)
         scored = score_snapshot_at(snapshot, midpoint)
-        entries.append(ScheduleEntry(i, start, end, scored.ranking))
+        entries.append(ScheduleEntry(i, start, end, scored.ranking,
+                                     query_target_at=midpoint))
     return Schedule(scope=_scope_of(snapshot), version=int(version),
                     installed_at=install_estimate,
                     expires_at=install_estimate + window_s,
@@ -908,6 +1072,7 @@ def lookup_schedule(schedule: Schedule, now: float, legal, path=()) -> dict:
         if action in legal_set and action not in visited:
             return {"action": action, "bin": entry.bin_index,
                     "version": schedule.version, "state": "active",
+                    "query_target_at": entry.query_target_at,
                     "reason": None, "fallback": False}
     return {"action": None, "bin": entry.bin_index, "version": schedule.version,
             "state": "fallback", "reason": "no_legal_unvisited_direction",

@@ -130,6 +130,85 @@ def test_a_missing_candidate_is_scored_as_fallback_not_as_zero():
     assert scored.ranking[-1] == "W"
 
 
+def test_offline_branch_snapshot_keeps_destination_downlink_as_real_resource():
+    resolved = _resolved()
+    row = _row()
+    obs = row["observation_at_start"]
+    obs["legal_directions"] = ["N", "W"]
+    obs["own_queue_bits"] = {"N": 0, "W": 0}
+    obs["candidate_resources"] = {
+        "N": {"status": "delivered_downlink", "kind": "downlink",
+              "peer": 2, "isl_rate_bps": 1e6,
+              "candidate_isl_rate_bps": 1e6, "propagation_s": 0.01,
+              "remaining_prop_s": 0.0, "downlink_rate_bps": 100e6,
+              "downlink_propagation_s": 0.01,
+              "downlink_available": True,
+              "downlink_queue_scope": "satellite_shared_drr",
+              "downlink_queue_bits": 0.0},
+        "W": {"status": "ok", "kind": "isl", "peer": 3,
+              "egress_direction": "E", "egress_peer": 4,
+              "isl_rate_bps": 1e6, "candidate_isl_rate_bps": 1e6,
+              "propagation_s": 0.01, "remaining_prop_s": 0.02},
+    }
+    obs["neighbours"] = {
+        "2": {"advertised_history": [{
+            "generated_at": 4.0, "received_at": 4.1,
+            "advertised_downlink_resources": {"B": {
+                "queue_bits": 0.0, "rate_bps": 100e6,
+                "propagation_s": 0.01, "available": True,
+                "queue_scope": "satellite_shared_drr"}},
+        }]},
+        "3": {"advertised_history": [
+            _history(4.0, 4.1, {"E": 0}),
+        ]},
+    }
+    snap = cmp.build_snapshot(row, resolved, "candidate", 0.1,
+                              100_000, 0.0, 0.0)
+    assert snap.resource_for("N").kind == "downlink"
+    assert snap.resource_rate_for("N") == 100e6
+    assert snap.terminal_prop_for("N") == 0.01
+    scored = ta.score_snapshot_at(snap, snap.snapshot_at + 0.1).by_direction()
+    assert not scored["N"].fallback
+    assert scored["N"].terms["terminal_tx_s"] == pytest.approx(0.001)
+
+
+def test_common_horizon_candidates_share_observation_and_outcome_digests():
+    resolved = _resolved()
+    row = _row()
+    probe = cmp.build_snapshot(row, resolved, "candidate", None,
+                               1000.0, 0.0, 0.0)
+    losses = {"E": 0.2, "W": 0.4}
+    per_candidate = {
+        direction: {"valid": True, "loss": loss, "censored": False}
+        for direction, loss in losses.items()}
+    candidates = {
+        "mean_eta_offset": {"kind": "rule", "common_rule": "mean_eta"},
+        "p50_offset": {"kind": "fixed_horizon", "common_horizon_s": 1.0},
+    }
+
+    result = cmp.score_common_horizon_candidates(
+        probe, resolved, row, 1000.0, candidates, losses, per_candidate)
+
+    assert len(result) == 2
+    assert all(item["valid"] and item["fully_scored"] for item in result)
+    assert result[0]["sample_digest"] == result[1]["sample_digest"]
+    assert result[0]["outcome_digest"] == result[1]["outcome_digest"]
+    assert result[0]["query_at"] != result[1]["query_at"]
+    altered_losses = {"E": 0.4, "W": 0.2}
+    altered = cmp.score_common_horizon_candidates(
+        probe, resolved, row, 1000.0, candidates, altered_losses,
+        per_candidate)
+    assert [item["scores"] for item in altered] == [
+        item["scores"] for item in result]
+    altered_per_candidate = {
+        direction: {"valid": True, "loss": loss, "censored": False}
+        for direction, loss in altered_losses.items()}
+    altered = cmp.score_common_horizon_candidates(
+        probe, resolved, row, 1000.0, candidates, altered_losses,
+        altered_per_candidate)
+    assert altered[0]["outcome_digest"] != result[0]["outcome_digest"]
+
+
 # ------------------------------------------------------ evaluator isolation
 def test_the_oracle_is_never_a_policy_input():
     class BranchOutcome:

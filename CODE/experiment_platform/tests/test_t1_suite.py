@@ -1,19 +1,25 @@
 """T1-COMPLETE P10: suite compile/validate/run/resume/report and budgets."""
 from __future__ import annotations
 
+import argparse
 import json
 import hashlib
 import subprocess
 import sys
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
 
-from CODE.experiment_platform import t1_development, t1_suite
+from CODE.experiment_platform import t1_development, t1_suite, t1_tasks
 
 ROOT = Path(__file__).resolve().parents[3]
 CONTRACT = ROOT / "CODE/work/WP-T1-COMPLETE/contract.yaml"
+C_CONTRACT = ROOT / "CODE/work/WP-T1-COMPLETE/contract_dev_c.yaml"
+DEV_COST_PROBE_CONTRACT = ROOT / (
+    "CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml")
 
 
 def _run(*args):
@@ -68,6 +74,201 @@ def test_compile_writes_a_unique_cell_matrix_and_pre_registration(tmp_path):
     assert (out / "configs").is_dir()
 
 
+def test_retired_c_campaign_contract_is_explicitly_not_runnable():
+    contract = yaml.safe_load(C_CONTRACT.read_text(encoding="utf-8"))
+    readiness = contract["design_readiness"]
+    assert readiness["status"] == "INVALID_SUPERSEDED_NOT_RELEASE_READY"
+    assert readiness["runtime_gate_implemented"] is True
+    assert contract["design_validity"]["status"] == \
+        "SUPERSEDED_INVALID_NOT_RUNNABLE"
+    assert contract["historical_ledger"]["wp_b_runs_01_and_02"][
+        "simulator_calls"] == 8
+
+    # The archived C profile remains evidence only.  Its old C0/C1 estimates
+    # must not be compiled or interpreted as a current executable design.
+    with pytest.raises(t1_suite.SuiteError,
+                       match="only COST_PROBE_READY or RELEASE_READY"):
+        t1_suite.require_runtime_ready_contract(contract,
+                                                source=str(C_CONTRACT))
+
+
+def test_unreviewed_dev_cost_probe_candidate_without_authorization_is_not_runnable():
+    # Preserve the root-approved persisted contract on disk.  A candidate copy
+    # with its authorization removed must return to design-only status and be
+    # refused by the runtime gate.
+    contract = yaml.safe_load(
+        DEV_COST_PROBE_CONTRACT.read_text(encoding="utf-8"))
+    readiness = contract["design_readiness"]
+    assert readiness["status"] == "COST_PROBE_READY"
+    assert readiness["runtime_authorization"]
+    readiness["status"] = "DESIGN_READY"
+    readiness["runtime_authorization"] = None
+
+    with pytest.raises(t1_suite.SuiteError,
+                       match="only COST_PROBE_READY or RELEASE_READY"):
+        t1_suite.require_runtime_ready_contract(
+            contract, source=str(DEV_COST_PROBE_CONTRACT))
+
+
+def test_root_authorized_persistent_contract_allows_only_exact_four_call_cell(
+        tmp_path):
+    contract = yaml.safe_load(
+        DEV_COST_PROBE_CONTRACT.read_text(encoding="utf-8"))
+    readiness = t1_suite.require_runtime_ready_contract(
+        contract, source=str(DEV_COST_PROBE_CONTRACT))
+    assert readiness["status"] == "COST_PROBE_READY"
+    auth = readiness["runtime_authorization"]
+    assert auth["cell_ids"] == [
+        "b-bounded_population_cost_smoke-network-seed-7"]
+    assert auth["expected_simulator_calls"] == 4
+    assert auth["max_simulator_calls"] == 4
+    assert auth["allow_append"] is False
+
+    bundle_dir = tmp_path / "root-authorized-probe"
+    bundle = t1_suite.compile_bundle(DEV_COST_PROBE_CONTRACT, bundle_dir)
+    cell_id = auth["cell_ids"][0]
+    cell = next(row for row in bundle["cells"]
+                if row["cell_id"] == cell_id)
+    assert bundle["execution_chain"]["combined_sha256"] == \
+        auth["execution_chain_sha256"]
+    assert t1_suite._cell_input_sha256(cell["input"]) == \
+        auth["cell_input_sha256"][cell_id]
+    assert t1_suite.estimate_bundle_cost({"cells": [cell]})[
+        "simulator_calls"] == 4
+
+    frozen = {
+        "tier": "b_dev", "selected_cell_ids": [cell_id],
+        "append": False, "cells": {cell_id: cell},
+        "estimated_calls": 4, "bundle_root": bundle_dir,
+        "source_root": ROOT,
+    }
+    t1_suite.enforce_runtime_stage(contract, bundle, **frozen)
+
+    for override, message in (
+            ({"selected_cell_ids": [cell_id, cell_id]},
+             "exactly its one"),
+            ({"append": True}, "append is forbidden"),
+            ({"estimated_calls": 5}, "estimate differs"),
+            ({"tier": "a_dev"}, "tier differs")):
+        request = dict(frozen)
+        request.update(override)
+        with pytest.raises(t1_suite.SuiteError, match=message):
+            t1_suite.enforce_runtime_stage(contract, bundle, **request)
+
+
+def test_persistent_cost_probe_compile_preserves_native_profile_parameters(
+        tmp_path):
+    bundle = t1_suite.compile_bundle(
+        DEV_COST_PROBE_CONTRACT, tmp_path / "compiled-native-probe")
+    cell_id = "b-bounded_population_cost_smoke-network-seed-7"
+    cell = next(row for row in bundle["cells"]
+                if row["cell_id"] == cell_id)
+    config_path = Path(cell["args"][cell["args"].index("--config") + 1])
+    resolved = t1_tasks.config_mod.load_config_file(str(config_path))["config"]
+    assert resolved["scenario"]["num_satellites"] == 280
+    assert resolved["scenario"]["num_planes"] == 14
+    assert resolved["scenario"]["seed"] == 7
+    assert resolved["endpoints"]["region_lat_bounds_deg"] == [5.0, 50.0]
+    assert resolved["endpoints"]["region_lon_bounds_deg"] == [65.0, 140.0]
+    assert resolved["scenario"]["duration_s"] == 8.0
+    assert resolved["demand"]["mode"] == "population_gravity"
+    assert resolved["demand"]["offered_mbps"] == 5.0
+    assert resolved["demand"]["packet_bits"] == 12000
+    assert resolved["demand"]["emission_start_s"] == 2.0
+    assert resolved["demand"]["emission_end_s"] == 4.0
+    assert resolved["demand"]["research_deadline_s"] == 4.0
+    assert resolved["demand"]["deadline_s"] is None
+    assert resolved["demand"]["burst_start_s"] == 2.5
+    assert resolved["demand"]["burst_duration_s"] == 1.0
+    assert resolved["demand"]["burst_multiplier"] == 2.0
+    assert resolved["control_plane"]["ttl_s"] == 10.0
+    assert resolved["execution"]["compute_servers_per_satellite"] == 1
+    assert resolved["execution"]["compute_delay_s"] == 0.001
+    assert resolved["control_plane"]["advertisement_protocol_version"] == 2
+    assert cell["seed"] == 7
+    assert cell["predicate"]["require"]["arms"] == [
+        "stale", "now", "common", "candidate"]
+    assert cell["predicate"]["require"][
+        "require_native_population_trace"] is True
+    contract = yaml.safe_load(Path(DEV_COST_PROBE_CONTRACT).read_text(
+        encoding="utf-8"))
+    population_sha = contract["input_identity"]["population_sha256"]
+    profile_path = ROOT / contract["input_identity"]["profile_path"]
+    assert hashlib.sha256(profile_path.read_bytes()).hexdigest() == \
+        contract["input_identity"]["profile_sha256"]
+    assert cell["predicate"]["require"]["population_sha256"] == \
+        population_sha
+    assert cell["input"]["files"]["population_path"]["sha256"] == \
+        population_sha
+    assert "synthetic_od_count" not in cell["predicate"]["require"]
+    assert "require_compiled_od_mapping" not in cell["predicate"]["require"]
+    argv = cell["args"]
+    options = dict(zip(argv[::2], argv[1::2]))
+    assert options["--task"] == "network_alignment"
+    assert options["--deadline-s"] == "4.0"
+    assert options["--window-start"] == "2.0"
+    assert options["--window-end"] == "8.0"
+    assert options["--arms"] == "stale,now,common,candidate"
+    assert t1_suite.estimate_bundle_cost({"cells": [cell]})[
+        "simulator_calls"] == 4
+
+    # Authorization metadata can change the contract identity without
+    # changing the semantic per-cell digest; the latter is what the reviewed
+    # allowlist binds and is independent of temporary bundle locations.
+    cell_sha = t1_suite._cell_input_sha256(cell["input"])
+    authorized = yaml.safe_load(Path(DEV_COST_PROBE_CONTRACT).read_text(
+        encoding="utf-8"))
+    authorized["frozen_at_sha"] = "test-only metadata does not bind itself"
+    authorized_contract = tmp_path / "authorized-contract.yaml"
+    authorized_contract.write_text(
+        yaml.safe_dump(authorized, allow_unicode=True, sort_keys=False),
+        encoding="utf-8")
+    second_bundle = t1_suite.compile_bundle(
+        authorized_contract, tmp_path / "compiled-authorized-probe")
+    second_cell = next(row for row in second_bundle["cells"]
+                       if row["cell_id"] == cell_id)
+    assert second_bundle["contract_sha256"] != bundle["contract_sha256"]
+    assert t1_suite._cell_input_sha256(second_cell["input"]) == cell_sha
+
+
+def test_native_population_predicate_checks_source_and_full_offered_count():
+    require = {"require_task": "network_alignment",
+               "require_native_population_trace": True,
+               "population_sha256": "a" * 64,
+               "arms": ["stale", "now", "common", "candidate"]}
+    arms = [
+        {"arm": name,
+         "scope": {"packets_in_trace": 2,
+                   "satellites_that_decided": 1},
+         "outcome": {"offered": 2},
+         "outcome_document": {"partition_exact": True},
+         "time_alignment_audit": {
+             "arms_seen_in_the_audit": [name],
+             "decisions_with_query_targets": 1},
+         "request_rate_per_satellite": {"max": 0.0}}
+        for name in ("stale", "now", "common", "candidate")]
+    source = {
+        "scenario": "config", "rows": 2, "trace_sha256": "b" * 64,
+        "native_population": {
+            "mode": "population_gravity", "population_sha256": "a" * 64,
+            "population_source": "CODE/population_map/gpw.tif",
+            "all_rows_have_ground_grid_ids": True,
+            "source_grid_count": 2, "destination_grid_count": 2,
+            "directed_od_count": 2},
+    }
+    result = {"status": "ok", "failed_units": 0,
+              "task": "network_alignment",
+              "document": {"source": source, "arms": arms}}
+    assert all(ok for _name, ok, _detail in
+               t1_suite._check_task_predicate(result, require))
+
+    source["synthetic_workload"] = {"summary": {"unique_od_count": 6}}
+    checks = t1_suite._check_task_predicate(result, require)
+    native_check = next(row for row in checks
+                        if row[0] == "input is native population trace")
+    assert native_check[1] is False
+
+
 def test_compile_refuses_an_existing_destination(tmp_path):
     out = _compiled(tmp_path)
     done = _run("compile", "--contract", str(CONTRACT), "--out", str(out))
@@ -82,6 +283,362 @@ def test_compile_refuses_a_missing_contract(tmp_path):
     assert "not found" in done.stdout
 
 
+def test_runtime_readiness_fails_closed_for_plan_old_contract_and_probe_scope(
+        tmp_path):
+    with pytest.raises(t1_suite.SuiteError, match="runtime_gate_implemented"):
+        t1_suite.require_runtime_ready_contract({
+            "design_readiness": {
+                "status": "PLAN_ONLY_NOT_RELEASE_READY",
+                "runtime_gate_implemented": False,
+            },
+        })
+
+    retired = yaml.safe_load(C_CONTRACT.read_text(encoding="utf-8"))
+    with pytest.raises(t1_suite.SuiteError, match="only COST_PROBE_READY"):
+        t1_suite.require_runtime_ready_contract(retired)
+
+    cell_id = "b-probe-network-seed-7"
+    profile = yaml.safe_load((ROOT / "CODE/leo_sim/profiles/"
+                              "t1_population_region_cost_smoke.yaml"
+                              ).read_text(encoding="utf-8"))
+    profile["scenario"]["seed"] = 7
+    profile_path = tmp_path / "profile-seed-7.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False),
+                            encoding="utf-8")
+    cell = {
+        "cell_id": cell_id,
+        "group": "b_round",
+        "driver": "CODE.experiment_platform.t1_tasks",
+        "args": ["--task", "network_alignment", "--config",
+                 str(profile_path)],
+        "seed": 7,
+    }
+    cell["input"] = t1_suite._cell_input_binding(cell)
+    input_sha = t1_suite._cell_input_sha256(cell["input"])
+    chain_sha = "b" * 64
+    contract = {
+        "design_readiness": {
+            "status": "COST_PROBE_READY",
+            "runtime_gate_implemented": True,
+            "runtime_authorization": {
+                "stage": "cost_probe", "tier": "b_dev",
+                "cell_ids": [cell_id], "max_selected_cells": 1,
+                "expected_simulator_calls": 4, "max_simulator_calls": 4,
+                "allow_append": False, "task": "network_alignment",
+                "seed": 7, "execution_chain_sha256": chain_sha,
+                "cell_input_sha256": {cell_id: input_sha},
+            },
+        },
+    }
+    bundle = {"execution_chain": {"combined_sha256": chain_sha}}
+    cells = {cell_id: cell}
+    t1_suite.enforce_runtime_stage(
+        contract, bundle, tier="b_dev", selected_cell_ids=[cell_id],
+        append=False, cells=cells, estimated_calls=4)
+    for kwargs, message in (
+            ({"tier": "a_dev"}, "tier differs"),
+            ({"selected_cell_ids": ["another-cell"]}, "exactly its one"),
+            ({"append": True}, "append is forbidden"),
+            ({"estimated_calls": 3}, "estimate differs")):
+        call = {"tier": "b_dev", "selected_cell_ids": [cell_id],
+                "append": False, "estimated_calls": 4}
+        call.update(kwargs)
+        with pytest.raises(t1_suite.SuiteError, match=message):
+            t1_suite.enforce_runtime_stage(
+                contract, bundle, cells=cells, **call)
+
+    bad_metadata = dict(cell, seed=11)
+    with pytest.raises(t1_suite.SuiteError, match="cell seed metadata"):
+        t1_suite.enforce_runtime_stage(
+            contract, bundle, tier="b_dev", selected_cell_ids=[cell_id],
+            append=False, cells={cell_id: bad_metadata}, estimated_calls=4)
+
+    wrong_seed_profile = dict(profile)
+    wrong_seed_profile["scenario"]["seed"] = 11
+    profile_path.write_text(yaml.safe_dump(wrong_seed_profile,
+                                           sort_keys=False),
+                            encoding="utf-8")
+    with pytest.raises(t1_suite.SuiteError, match="resolved profile seed"):
+        t1_suite.enforce_runtime_stage(
+            contract, bundle, tier="b_dev", selected_cell_ids=[cell_id],
+            append=False, cells=cells, estimated_calls=4)
+
+
+def test_cell_input_binding_hashes_profile_and_population_path(tmp_path):
+    profile = yaml.safe_load((ROOT / "CODE/leo_sim/profiles/"
+                              "t1_population_region_cost_smoke.yaml"
+                              ).read_text(encoding="utf-8"))
+    population_path = tmp_path / "gpw_fixture.tif"
+    population_path.write_bytes(b"bounded GPW fixture bytes")
+    profile["scenario"]["name"] = "renamed-generic-label"
+    profile["demand"]["population_path"] = str(population_path)
+    profile_path = tmp_path / "renamed-profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False),
+                            encoding="utf-8")
+    cell = {"args": ["--task", "network_alignment", "--config",
+                      str(profile_path)]}
+
+    binding = t1_suite._cell_input_binding(cell)
+
+    assert binding["files"]["profile_config"] == {
+        "path": str(profile_path),
+        "identity": "external:profile_config",
+        "sha256": hashlib.sha256(profile_path.read_bytes()).hexdigest(),
+    }
+    assert binding["files"]["population_path"] == {
+        "path": str(population_path),
+        "identity": "external:population_path",
+        "sha256": hashlib.sha256(population_path.read_bytes()).hexdigest(),
+    }
+
+
+def test_probe_input_authorization_is_content_bound_not_checkout_path_bound(
+        tmp_path):
+    cell_id = "b-bounded_population_cost_smoke-network-seed-7"
+    auth_chain = "c" * 64
+    bindings, cells = [], []
+    for label in ("source-a", "source-b"):
+        source_root = tmp_path / label
+        bundle_root = source_root / "bundle"
+        config_dir = bundle_root / "configs"
+        population_path = source_root / "CODE/population_map/gpw.tif"
+        driver_path = source_root / "CODE/experiment_platform/t1_tasks.py"
+        config_dir.mkdir(parents=True)
+        population_path.parent.mkdir(parents=True)
+        driver_path.parent.mkdir(parents=True)
+        population_path.write_bytes(b"same GPW content")
+        driver_path.write_bytes((ROOT / "CODE/experiment_platform/t1_tasks.py"
+                                 ).read_bytes())
+        profile = yaml.safe_load((ROOT / "CODE/leo_sim/profiles/"
+                                  "t1_population_region_cost_smoke.yaml"
+                                  ).read_text(encoding="utf-8"))
+        profile["demand"]["population_path"] = \
+            "CODE/population_map/gpw.tif"
+        config_path = config_dir / "seed-7.yaml"
+        config_path.write_text(yaml.safe_dump(profile, sort_keys=False),
+                               encoding="utf-8")
+        cell = {
+            "cell_id": cell_id, "group": "b_round",
+            "driver": "CODE.experiment_platform.t1_tasks",
+            "seed": 7,
+            "args": ["--task", "network_alignment", "--config",
+                     str(config_path), "--deadline-s", "4.0",
+                     "--window-start", "2.0", "--window-end", "8.0",
+                     "--arms", "stale,now,common,candidate"],
+        }
+        cell["input"] = t1_suite._cell_input_binding(
+            cell, bundle_root=bundle_root, source_root=source_root)
+        bindings.append(cell["input"])
+        cells.append(cell)
+
+    assert bindings[0]["config_path"] != bindings[1]["config_path"]
+    assert bindings[0]["files"]["population_path"]["path"] != \
+        bindings[1]["files"]["population_path"]["path"]
+    expected_input_sha = t1_suite._cell_input_sha256(bindings[0])
+    assert expected_input_sha == t1_suite._cell_input_sha256(bindings[1])
+    auth = {
+        "stage": "cost_probe", "tier": "b_dev", "cell_ids": [cell_id],
+        "max_selected_cells": 1, "expected_simulator_calls": 4,
+        "max_simulator_calls": 4, "allow_append": False,
+        "task": "network_alignment", "seed": 7,
+        "execution_chain_sha256": auth_chain,
+        "cell_input_sha256": {cell_id: expected_input_sha},
+    }
+    contract = {"design_readiness": {
+        "status": "COST_PROBE_READY", "runtime_gate_implemented": True,
+        "runtime_authorization": auth}}
+    bundle = {"execution_chain": {"combined_sha256": auth_chain}}
+    for label, cell in zip(("source-a", "source-b"), cells):
+        t1_suite.enforce_runtime_stage(
+            contract, bundle, tier="b_dev", selected_cell_ids=[cell_id],
+            append=False, cells={cell_id: cell}, estimated_calls=4,
+            bundle_root=tmp_path / label / "bundle",
+            source_root=tmp_path / label)
+
+    changed_window = dict(cells[1])
+    changed_window["args"] = list(cells[1]["args"])
+    changed_window["args"][changed_window["args"].index(
+        "--window-end") + 1] = "9.0"
+    # Keep the compiled binding unchanged: runtime authorization must hash the
+    # current argv rather than trusting a stale input record.
+    with pytest.raises(t1_suite.SuiteError, match="cell input SHA differs"):
+        t1_suite.enforce_runtime_stage(
+            contract, bundle, tier="b_dev", selected_cell_ids=[cell_id],
+            append=False, cells={cell_id: changed_window}, estimated_calls=4,
+            bundle_root=tmp_path / "source-b" / "bundle",
+            source_root=tmp_path / "source-b")
+
+    changed_population = (tmp_path / "source-b/CODE/population_map/gpw.tif")
+    changed_population.write_bytes(b"tampered GPW content")
+    tampered = dict(cells[1])
+    tampered["input"] = t1_suite._cell_input_binding(
+        tampered, bundle_root=tmp_path / "source-b/bundle",
+        source_root=tmp_path / "source-b")
+    with pytest.raises(t1_suite.SuiteError, match="cell input SHA differs"):
+        t1_suite.enforce_runtime_stage(
+            contract, bundle, tier="b_dev", selected_cell_ids=[cell_id],
+            append=False, cells={cell_id: tampered}, estimated_calls=4,
+            bundle_root=tmp_path / "source-b" / "bundle",
+            source_root=tmp_path / "source-b")
+
+
+def _launch_ledger_context(tmp_path, *, nonce="a" * 64, max_calls=1,
+                           expires_at=200.0, suffix=""):
+    call_ledger = tmp_path / f"simulator-calls{suffix}.jsonl"
+    call_ledger.write_text("", encoding="utf-8")
+    return {
+        "schema": "t1-suite-task-runtime-context/v1",
+        "bundle_fingerprint": "b" * 64,
+        "cell_id": "probe-cell",
+        "result_path": str((tmp_path / "run" / "cells" / "probe-cell"
+                             / "result.json").resolve()),
+        "launch_nonce": nonce,
+        "launch_ledger_path": str((tmp_path / f"suite-launch-{nonce}{suffix}"
+                                    ".json").resolve()),
+        "simulator_call_ledger_path": str(call_ledger.resolve()),
+        "max_simulator_calls": max_calls,
+        "expires_at": expires_at,
+    }
+
+
+def _suite_launch_ledger_api():
+    names = ("_write_suite_launch_ledger", "_validate_suite_launch_ledger",
+             "_claim_suite_launch_ledger", "_reserve_suite_simulator_call",
+             "_close_suite_launch_ledger")
+    api = {name: getattr(t1_suite, name, None) for name in names}
+    assert all(callable(function) for function in api.values()), (
+        "suite launch nonce and per-call ledger lifecycle is not implemented"
+    )
+    return api
+
+
+def test_suite_launch_ledger_rejects_missing_wrong_reused_and_expired(tmp_path):
+    api = _suite_launch_ledger_api()
+
+    missing = _launch_ledger_context(tmp_path, suffix="-missing")
+    with pytest.raises(t1_suite.SuiteError, match="missing"):
+        api["_validate_suite_launch_ledger"](missing, now=100.0)
+
+    wrong = _launch_ledger_context(tmp_path, suffix="-wrong")
+    api["_write_suite_launch_ledger"](wrong)
+    wrong_nonce = dict(wrong, launch_nonce="c" * 64)
+    with pytest.raises(t1_suite.SuiteError,
+                       match="nonce|identity|path|mismatch"):
+        api["_validate_suite_launch_ledger"](wrong_nonce, now=100.0)
+
+    expired = _launch_ledger_context(
+        tmp_path, expires_at=99.0, suffix="-expired")
+    api["_write_suite_launch_ledger"](expired)
+    with pytest.raises(t1_suite.SuiteError, match="expired"):
+        api["_validate_suite_launch_ledger"](expired, now=100.0)
+
+    reused = _launch_ledger_context(tmp_path, suffix="-reused")
+    api["_write_suite_launch_ledger"](reused)
+    api["_claim_suite_launch_ledger"](reused, now=100.0)
+    with pytest.raises(t1_suite.SuiteError, match="single|active|claimed|used"):
+        api["_claim_suite_launch_ledger"](reused, now=101.0)
+    api["_close_suite_launch_ledger"](reused, now=102.0)
+    with pytest.raises(t1_suite.SuiteError, match="closed|single|used"):
+        api["_validate_suite_launch_ledger"](reused, now=103.0)
+
+
+def test_suite_launch_ledger_checks_remaining_calls_before_each_call(tmp_path):
+    api = _suite_launch_ledger_api()
+    context = _launch_ledger_context(tmp_path, max_calls=1,
+                                     suffix="-budget")
+    api["_write_suite_launch_ledger"](context)
+    api["_claim_suite_launch_ledger"](context, now=100.0)
+
+    assert api["_reserve_suite_simulator_call"](context, now=101.0) == 1
+    call_ledger = Path(context["simulator_call_ledger_path"])
+    call_ledger.write_text(json.dumps({
+        "schema": "t1-simulator-call/v1",
+        "call_id": "probe-cell:0001",
+        "sequence": 1,
+        "context": "probe-cell",
+        "event": "begin",
+    }) + "\n" + json.dumps({
+        "schema": "t1-simulator-call/v1",
+        "call_id": "probe-cell:0001",
+        "sequence": 1,
+        "context": "probe-cell",
+        "event": "end",
+    }) + "\n", encoding="utf-8")
+    with pytest.raises(t1_suite.SuiteError, match="budget|remaining"):
+        api["_reserve_suite_simulator_call"](context, now=102.0)
+
+
+def test_execute_cell_issues_one_bounded_launch_without_running_simulation(
+        tmp_path, monkeypatch):
+    profile = yaml.safe_load((ROOT / "CODE/leo_sim/profiles/"
+                              "t1_population_region_cost_smoke.yaml"
+                              ).read_text(encoding="utf-8"))
+    population_path = tmp_path / "population-fixture.tif"
+    population_path.write_bytes(b"fixture")
+    profile["demand"]["population_path"] = str(population_path)
+    profile_path = tmp_path / "population-profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False),
+                            encoding="utf-8")
+    cell = {
+        "cell_id": "probe-cell", "driver": "CODE.experiment_platform.t1_tasks",
+        "args": ["--task", "network_alignment", "--config",
+                 str(profile_path)], "predicate": {"kind": None},
+    }
+    runtime_context = {
+        "schema": "t1-suite-task-runtime-context/v1",
+        "bundle_dir": str(tmp_path.resolve()),
+        "bundle_fingerprint": "b" * 64,
+        "contract_path": str((tmp_path / "contract.yaml").resolve()),
+        "contract_sha256": "c" * 64, "tier": "b_dev",
+        "cell_id": "probe-cell", "selected_cell_ids": ["probe-cell"],
+        "append": False,
+        "result_path": str((tmp_path / "run" / "cells" / "probe-cell"
+                             / "result.json").resolve()),
+    }
+    observed = {}
+
+    def fake_subprocess_run(argv, *, cwd, capture_output, text, timeout, env):
+        assert argv[1:3] == ["-m", "CODE.experiment_platform.t1_tasks"]
+        assert cwd == str(t1_suite.REPO_ROOT)
+        assert capture_output and text and timeout == 30.0
+        context = json.loads(env["T1_SUITE_RUNTIME_CONTEXT"])
+        observed["context"] = context
+        assert env["T1_SUITE_LAUNCH_NONCE"] == context["launch_nonce"]
+        assert env["T1_SIM_CALL_LEDGER"] == context[
+            "simulator_call_ledger_path"]
+        t1_suite._claim_suite_launch_ledger(context)
+        ledger = Path(context["simulator_call_ledger_path"])
+        for sequence in range(1, 5):
+            assert t1_suite._reserve_suite_simulator_call(context) == sequence
+            call_id = f"probe-cell:{sequence:04d}"
+            with ledger.open("a", encoding="utf-8") as stream:
+                for event_name in ("begin", "end"):
+                    stream.write(json.dumps({
+                        "schema": "t1-simulator-call/v1",
+                        "call_id": call_id, "sequence": sequence,
+                        "context": "probe-cell", "event": event_name,
+                    }) + "\n")
+        t1_suite._close_suite_launch_ledger(context)
+        result_path = Path(context["result_path"])
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        result_path.write_text(json.dumps({
+            "schema": "t1-task-result/v1", "status": "ok",
+        }), encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(t1_suite.subprocess, "run", fake_subprocess_run)
+
+    record = t1_suite._execute_cell(
+        cell, tmp_path / "run", {"cell_wall_s": 30.0,
+                                  "simulator_call_budget": 4},
+        runtime_context=runtime_context)
+
+    assert record["status"] == "ok"
+    assert observed["context"]["max_simulator_calls"] == 4
+    assert t1_suite._suite_launch_ledger_snapshot(
+        observed["context"])["status"] == "closed"
+
+
 def test_compile_enforces_the_max_cell_budget(tmp_path):
     contract = yaml.safe_load(CONTRACT.read_text())
     contract["budgets"] = {"max_cells": 2}
@@ -91,6 +648,115 @@ def test_compile_enforces_the_max_cell_budget(tmp_path):
                 "--out", str(tmp_path / "b"))
     assert done.returncode == 2
     assert "max_cells" in done.stdout
+
+
+def test_controlled_population_task_context_binds_bundle_cell_and_stage(
+        tmp_path, monkeypatch):
+    """A controlled task can run only from its validated frozen probe cell."""
+    profile = yaml.safe_load((ROOT / "CODE/leo_sim/profiles/"
+                              "t1_population_region_cost_smoke.yaml"
+                              ).read_text(encoding="utf-8"))
+    profile["scenario"]["name"] = "t1-population-region-cli-test"
+    profile_path = tmp_path / "t1-population-region-cli-test.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False),
+                            encoding="utf-8")
+
+    contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
+    contract.setdefault("statistics", {})["dev_seeds"] = [7]
+    contract["b_round"]["scenarios"] = [{
+        "id": "probe-cli", "profile": str(profile_path),
+        "status": "READY", "seeds": [7],
+        "tasks": ["network_alignment"],
+        "task_seeds": {"network_alignment": [7]},
+    }]
+    contract_path = tmp_path / "contract-cost-probe.yaml"
+    contract_path.write_text(yaml.safe_dump(contract, allow_unicode=True),
+                             encoding="utf-8")
+    bundle_dir = tmp_path / "bundle-cost-probe"
+    bundle = t1_suite.compile_bundle(contract_path, bundle_dir)
+    cell_id = "b-probe-cli-network-seed-7"
+    cell = next(c for c in bundle["cells"] if c["cell_id"] == cell_id)
+    assert cell["seed"] == 7
+
+    # Freeze the single compiled cell's actual trace/profile binding in the
+    # stage authorization. The test edits only this temporary contract/bundle.
+    contract["design_readiness"] = {
+        "status": "COST_PROBE_READY",
+        "runtime_gate_implemented": True,
+        "runtime_authorization": {
+            "stage": "cost_probe", "tier": "b_dev",
+            "cell_ids": [cell_id], "max_selected_cells": 1,
+            "expected_simulator_calls": 4, "max_simulator_calls": 4,
+            "allow_append": False, "task": "network_alignment", "seed": 7,
+            "execution_chain_sha256": bundle["execution_chain"][
+                "combined_sha256"],
+            "cell_input_sha256": {
+                cell_id: t1_suite._cell_input_sha256(cell["input"])},
+        },
+    }
+    contract_path.write_text(yaml.safe_dump(contract, allow_unicode=True),
+                             encoding="utf-8")
+    bundle["contract_sha256"] = t1_suite._sha256_file(contract_path)
+    bundle["bundle_fingerprint"] = t1_suite._bundle_fingerprint(bundle)
+    t1_suite._write_json(bundle_dir / "bundle.json", bundle)
+
+    result_path = (tmp_path / "run" / "cells" / cell_id / "result.json")
+    context = t1_suite._suite_task_runtime_context(
+        bundle_dir, bundle, "b_dev", cell_id, [cell_id], False, result_path)
+    call_ledger = (tmp_path / "simulator-calls.jsonl").resolve()
+    call_ledger.write_text("", encoding="utf-8")
+    context.update({
+        "launch_nonce": "d" * 64,
+        "launch_ledger_path": str((tmp_path / "suite-launch-test.json").resolve()),
+        "simulator_call_ledger_path": str(call_ledger),
+        "max_simulator_calls": 4,
+        "expires_at": time.time() + 300.0,
+    })
+    t1_suite._write_suite_launch_ledger(context)
+    monkeypatch.setenv(t1_tasks._SUITE_RUNTIME_CONTEXT_ENV,
+                       json.dumps(context, sort_keys=True))
+    monkeypatch.setenv("T1_SUITE_LAUNCH_NONCE", context["launch_nonce"])
+    monkeypatch.setenv("T1_SIM_CALL_LEDGER", str(call_ledger))
+    monkeypatch.setenv("T1_SIM_CALL_CONTEXT", cell_id)
+    compiled_profile = Path(cell["args"][cell["args"].index("--config") + 1])
+    raw_args = [*cell["args"], "--out", str(result_path)]
+    # A real compiled network cell carries its seed in its profile and cell
+    # metadata; it does not have a synthetic --seed CLI flag.
+    t1_tasks._validate_suite_runtime_context(
+        argparse.Namespace(config=compiled_profile, out=result_path), raw_args)
+
+    for override in (
+            ["--arms", "stale,now,candidate"],
+            ["--compute-servers", "8"],
+            ["--service-s", "0.5"]):
+        with pytest.raises(t1_tasks.TaskError, match="argv differs"):
+            t1_tasks._validate_suite_runtime_context(
+                argparse.Namespace(config=compiled_profile, out=result_path),
+                [*cell["args"], *override, "--out", str(result_path)])
+
+    changed = dict(context)
+    changed["cell_id"] = "another-cell"
+    monkeypatch.setenv(t1_tasks._SUITE_RUNTIME_CONTEXT_ENV,
+                       json.dumps(changed, sort_keys=True))
+    with pytest.raises(t1_tasks.TaskError, match="selection is malformed"):
+        t1_tasks._validate_suite_runtime_context(
+            argparse.Namespace(config=compiled_profile, out=result_path), raw_args)
+
+    # Editing the bound profile after compile (including a seed change) fails
+    # before design/trace loading, even with the old context still present.
+    monkeypatch.setenv(t1_tasks._SUITE_RUNTIME_CONTEXT_ENV,
+                       json.dumps(context, sort_keys=True))
+    resolved_profile = compiled_profile
+    changed_profile = yaml.safe_load(resolved_profile.read_text(
+        encoding="utf-8"))
+    changed_profile["scenario"]["seed"] = 8
+    resolved_profile.write_text(yaml.safe_dump(changed_profile,
+                                               sort_keys=False),
+                                encoding="utf-8")
+    with pytest.raises(t1_tasks.TaskError, match="bundle validation failed"):
+        t1_tasks._validate_suite_runtime_context(
+            argparse.Namespace(config=resolved_profile, out=result_path),
+            raw_args)
 
 
 def test_development_matrix_expands_branches_benchmarks_and_task_seeds(tmp_path):
@@ -361,7 +1027,8 @@ def test_a_failed_smoke_gate_stops_the_remaining_tier_and_is_terminal(
     assert len(cell_ids) >= 2
     calls = []
 
-    def fake_execute(cell, out_root, budgets):
+    def fake_execute(cell, out_root, budgets, *, runtime_context=None):
+        assert runtime_context is None
         calls.append(cell["cell_id"])
         cell_dir = Path(out_root) / "cells" / cell["cell_id"]
         cell_dir.mkdir(parents=True)
@@ -404,7 +1071,8 @@ def test_b_dev_pilot_can_continue_only_under_the_same_bundle_identity(
     cell_ids = bundle["tiers"]["b_dev"]
     assert len(cell_ids) >= 2
 
-    def fake_execute(cell, out_root, budgets):
+    def fake_execute(cell, out_root, budgets, *, runtime_context=None):
+        assert runtime_context is None
         calls = t1_suite.estimate_bundle_cost({"cells": [cell]})[
             "simulator_calls"]
         cell_dir = Path(out_root) / "cells" / cell["cell_id"]
@@ -551,6 +1219,39 @@ def test_a_cell_whose_predicate_fails_is_not_reported_ok(tmp_path):
     assert record["status"] == "predicate_failed"
     assert "cache hits" in record["predicate_verdict"]["reason"]
     assert record["predicate_verdict"]["checks"]
+
+
+def test_common_horizon_predicate_requires_explicit_tie_disclosure():
+    import CODE.experiment_platform.t1_suite as suite
+
+    names = ["mean_eta_offset", "median_eta_offset", "p25_offset",
+             "p50_offset", "p75_offset"]
+    selection = {
+        "status": "selected", "candidate": "mean_eta_offset",
+        "candidate_order": names,
+        "tied_candidates": ["mean_eta_offset"],
+        "selected_by_tie_break": False, "tie_tolerance": 1e-12,
+    }
+    result = {
+        "status": "ok", "failed_units": 0, "task": "branch_alignment",
+        "document": {
+            "deadline": {"deadline_s": 30.0},
+            "common_horizon_calibration": {
+                "status": "projected", "cross_arm_leakage": False,
+                "candidate_definitions": {name: {} for name in names},
+                "selection": selection,
+            }
+        },
+    }
+    predicate = {"kind": "t1_task", "require": {
+        "require_task": "branch_alignment",
+        "require_common_horizon_audit": True}}
+
+    assert suite.check_predicate(result, predicate)["passed"] is True
+    result["document"]["common_horizon_calibration"]["selection"] = {
+        k: v for k, v in selection.items() if k not in (
+            "tied_candidates", "selected_by_tie_break", "tie_tolerance")}
+    assert suite.check_predicate(result, predicate)["passed"] is False
 
 
 def test_the_dev_tier_runs_with_behaviour_predicates(tmp_path):

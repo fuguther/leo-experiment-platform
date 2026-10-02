@@ -1,11 +1,16 @@
 # WP-T1-COMPLETE — 状态账本
 
-> 计划书：`docs/superpowers/plans/2026-09-27-t1-complete-implementation.md`
-> 交付：`REPORT.md`（含"第二轮复审返工 S1–S7"节）；判据：`criteria.json`；语义合同：`contract.yaml`。
-- 主控集中复核（2026-10-01）：回执、预算和有限错误排序已独立核实；证据交付通过，实验仍为 `REWORK_REQUIRED`。目的下传候选评分、尾部访问约束及无决策 OD 的等待原因须先闭合；详情见 REPORT 的“主控集中复核”，未开始第三次试跑。
-> **执行位置硬规则（AGENTS.md）**：所有实验只在 VM 上跑；本机只做代码/测试/只读复核。
+> 计划：`docs/superpowers/plans/2026-09-27-t1-complete-implementation.md` 顶部当前节。交付：`REPORT.md` 当前准备复核段；机器判据：`criteria.json`；旧合同：`contract_dev_c.yaml`（失效，禁止运行）。
+> **执行边界：** 用户已授权连续实施代码、反例/回归、最多51个新增开发calls及独立≤100 VM分钟DDQN训练包；旧B费用继续计入。根已单独批准本合同绑定的唯一seed7低负载四臂成本探针，允许提交推送、发布及最多4 calls；须先完成clean release/runtime/input/run身份验真，不扩成主矩阵或训练。FORMAL_RUN、seed1001+和main合并不在授权内。
 
-## 当前工作包 B 状态（2026-10-01；第二 pilot 失败后停止）
+## 当前研究与工程状态（2026-10-02；DESIGN_READY=true，PROBE_CODE_READY=true，COST_PROBE_READY=false，RELEASE_READY=false）
+
+- 根接受的范围仅为seed7原生人口低负载四臂成本探针代码子图和语义输入；授权提交/推送任务分支、immutable release和唯一新run，最多4个kernel calls，不append/resume/隐藏重试，不启动主矩阵或训练。FORMAL_RUN、seed1001+和main合并不在此范围。
+- 持久合同`contract_dev_cost_probe.yaml` SHA-256 `6b02bf9014ae2423f99b08d6951594aa87d57d5675f1857847c27b9bbf62a505`含根限域授权；唯一cell `b-bounded_population_cost_smoke-network-seed-7`、四臂、4 calls，执行链SHA `a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633`，cell input SHA `70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905`。根compile-only核对validate=true及280/14、5Mbps/12000bit/N1/1ms、research D=4/物理TTL独立、窗口正确。
+- 根独立核验原始五因果反例+stage门30 passed，相关ETA/四臂/receipt/control/trace/config/population 164 passed。新增合同测试要求删授权副本仍拒绝，持久授权合同只能放行精确单cell/4-call scope；此前REQUEST_CHANGES与251 passed/4 failed中断事实保留。
+- B历史8 calls/109.071837305s继续计入60/3600上限；本段更新时本轮VM calls=0。提交、push、release、VM依赖/GPW/实际bundle及run身份验真完成后才可把COST_PROBE_READY记为通过。整体CODE_READY、CORE_COST、MODEL、DDQN_COST、FULL_COST和完整RELEASE均false。
+
+## 历史工作包 B 状态（2026-10-01；第二 pilot 失败后停止）
 
 - **运行身份与回传。** 第二 pilot 使用 release `ffedada9274e7db1fdb5ea548d13ce4920c9815b-8e624431c26c54ea52efc795fa0cc72b5d484e32708bb1a4ff5f535959753a74`，源码 commit `ffedada9274e7db1fdb5ea548d13ce4920c9815b`，artifact SHA-256 `ae6c9845ffa2b64fe56c30c34b351f197b84382075e527fc3518c26b6280fa7d`。唯一新 run `wp-b-dev-20261001-02` 已结束 `failed` / exit 3，状态 `SMOKE_FAILED`；不可变回执 pullback 已 `VERIFIED`，证据 URI `evidence://t1/wp-b-dev-20261001-02`。canonical receipt SHA `23399d84caa975b252e6a325d85be67834e1c9bd4699ded37dbcc49e224090cd`，receipt 文件 SHA `374ec812050c35721e29adc8e20f1eaec7bf7ec859cede72dc1584aebea43bd3`，manifest SHA `03b76ef8b2a816cc87d9cf22b0472f8110fa8e9f016832c89fb3c888d7c92c44`，archive SHA `8724bb437e33ca91aff9a7b46ea298f35e59ceecfd65e954d2a256f6ff1d3c48`；46 个回传文件。先前 run `wp-b-dev-20261001-01` 的 receipt/result 均按旧身份保留。
 - **实际执行矩阵。** B tier 共 8 格/52 静态调用上界；本 run 仅启动第一格 `b-steady_multi_od_negative_control_b-network-seed-7`，任务 cell 自身 `ok`，但该格的 negative-control 正交付 smoke 未通过。其余 7 格、48 次静态调用未启动；没有试跑或续跑竞争 seed/模式/分支格。剩余 4 格/18 次本来只在 pilot 过门后 append，本次不得追加。

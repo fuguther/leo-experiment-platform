@@ -24,10 +24,13 @@ from pathlib import Path
 from . import config, grid, population, rng
 
 TRACE_SCHEMA = "leo-sim-trace/v1"
+TRACE_SCHEMA_V2 = "leo-sim-trace/v2"
 TRACE_MANIFEST_SCHEMA_V1 = "leo-sim-trace-manifest/v1"
-TRACE_MANIFEST_SCHEMA = "leo-sim-trace-manifest/v2"
+TRACE_MANIFEST_SCHEMA_V2 = "leo-sim-trace-manifest/v2"
+TRACE_MANIFEST_SCHEMA = "leo-sim-trace-manifest/v3"
 TRACE_PROVENANCE_SCHEMA_V1 = "leo-sim-trace-provenance/v1"
-TRACE_PROVENANCE_SCHEMA = "leo-sim-trace-provenance/v2"
+TRACE_PROVENANCE_SCHEMA_V2 = "leo-sim-trace-provenance/v2"
+TRACE_PROVENANCE_SCHEMA = "leo-sim-trace-provenance/v3"
 PACKET_ID_CONTRACT = (
     "synthetic: sequential 1..N in emission order; "
     "csv: source packet_id preserved verbatim")
@@ -39,14 +42,22 @@ class TraceError(ValueError):
     pass
 
 
-def _format_time(value: float) -> str:
-    """Canonical, byte-reproducible trace time representation."""
+def _format_time(value: float, *, roundtrip: bool = False) -> str:
+    """Canonical trace time representation.
+
+    Legacy traces retain their frozen six-decimal encoding.  Research-D
+    traces use Python's shortest float64 round-trip spelling so a generated
+    time just below a half-open emission boundary cannot be rounded onto the
+    excluded endpoint.
+    """
+    if roundtrip:
+        return repr(float(value))
     text = f"{float(value):.{TIME_DECIMALS}f}".rstrip("0").rstrip(".")
     return text or "0"
 
 
-def _serialized_time(value: float) -> float:
-    return float(_format_time(value))
+def _serialized_time(value: float, *, roundtrip: bool = False) -> float:
+    return float(_format_time(value, roundtrip=roundtrip))
 
 
 def validate_packet_rows(rows: list[dict], horizon_s: float,
@@ -71,6 +82,7 @@ def validate_packet_rows(rows: list[dict], horizon_s: float,
             pid, t = r["packet_id"], r["emit_time_s"]
             s, d = r["src_grid_id"], r["dst_grid_id"]
             bits, dl = r["bits"], r["deadline_at_s"]
+            research_dl = r.get("research_deadline_at_s")
         except (KeyError, TypeError) as exc:
             raise TraceError(f"trace row {i}: missing field {exc}")
         if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
@@ -97,6 +109,17 @@ def validate_packet_rows(rows: list[dict], horizon_s: float,
             if dl < t:
                 raise TraceError(
                     f"trace row {i}: deadline {dl} earlier than emit_time {t}")
+        if research_dl is not None:
+            if (not isinstance(research_dl, (int, float))
+                    or isinstance(research_dl, bool)
+                    or not math.isfinite(research_dl)):
+                raise TraceError(
+                    f"trace row {i}: research deadline not finite: "
+                    f"{research_dl!r}")
+            if research_dl < t:
+                raise TraceError(
+                    f"trace row {i}: research deadline {research_dl} earlier "
+                    f"than emit_time {t}")
         key = (float(t), pid)
         if prev_key is not None and key < prev_key:
             raise TraceError(
@@ -300,7 +323,8 @@ def _dst_choices(gen, mode, endpoints, i, t, dm, mlab_weights=None):
 
 
 def _rate_multiplier(mode, t, src_lon, dm):
-    if mode in ("burst", "mlab") and dm["burst_start_s"] is not None:
+    if mode in ("burst", "mlab", "population_gravity") \
+            and dm["burst_start_s"] is not None:
         start, dur = dm["burst_start_s"], dm["burst_duration_s"]
         if start <= t < start + dur:
             return dm["burst_multiplier"]
@@ -900,6 +924,7 @@ def materialization_report(resolved: dict, rows: list[dict],
     sc, dm, ep = cfg["scenario"], cfg["demand"], cfg["endpoints"]
     mode = dm["mode"]
     duration = float(sc["duration_s"])
+    emission_start = float(dm["emission_start_s"])
     emission_end = (duration if dm["emission_end_s"] is None
                     else float(dm["emission_end_s"]))
     declared_bits = int(dm["packet_bits"])
@@ -923,6 +948,8 @@ def materialization_report(resolved: dict, rows: list[dict],
     sources = {row["src_grid_id"] for row in rows}
     destinations = {row["dst_grid_id"] for row in rows}
 
+    strict_half_open = (dm["research_deadline_s"] is not None or any(
+        row.get("research_deadline_at_s") is not None for row in rows))
     report: dict = {
         "schema": "leo-sim-trace-materialization/v1",
         "mode": mode,
@@ -934,11 +961,19 @@ def materialization_report(resolved: dict, rows: list[dict],
             "declaration_applies": mode != "csv",
         },
         "emission": {
+            "emission_start_s": emission_start,
             "emission_end_s": emission_end,
             "first_emit_s": times[0] if times else None,
             "last_emit_s": times[-1] if times else None,
+            "packets_before_emission_start": sum(
+                1 for value in times if value < emission_start),
             "packets_after_emission_end": sum(
-                1 for value in times if value > emission_end),
+                1 for value in times
+                if (value >= emission_end if strict_half_open
+                    else value > emission_end)),
+            "interval": ("[emission_start_s, emission_end_s)"
+                         if strict_half_open
+                         else "[emission_start_s, emission_end_s]"),
         },
         "endpoints": {
             "distinct_sources": len(sources),
@@ -958,7 +993,11 @@ def materialization_report(resolved: dict, rows: list[dict],
     if report["emission"]["packets_after_emission_end"]:
         problems.append(
             f"{report['emission']['packets_after_emission_end']} packet(s) "
-            f"emitted after the emission window ends at {emission_end}")
+            f"outside the emission window ending at {emission_end}")
+    if report["emission"]["packets_before_emission_start"]:
+        problems.append(
+            f"{report['emission']['packets_before_emission_start']} packet(s) "
+            f"emitted before the emission window starts at {emission_start}")
     if mode != "csv" and set(bits) - {declared_bits}:
         problems.append(
             f"emitted packet sizes {sorted(set(bits))} do not match the "
@@ -975,7 +1014,8 @@ def materialization_report(resolved: dict, rows: list[dict],
                 f"emitted {label} cell(s) {outside} are outside the resolved "
                 "endpoint set")
 
-    if mode in ("burst", "mlab") and dm["burst_start_s"] is not None:
+    if mode in ("burst", "mlab", "population_gravity") \
+            and dm["burst_start_s"] is not None:
         start = float(dm["burst_start_s"])
         window_end = start + float(dm["burst_duration_s"])
         inside = [row for row in rows if start <= float(row["emit_time_s"]) < window_end]
@@ -1074,11 +1114,13 @@ def compile_trace(resolved: dict, out_dir: str,
     sc, dm, ep = cfg["scenario"], cfg["demand"], cfg["endpoints"]
     mode = dm["mode"]
     duration = float(sc["duration_s"])
+    emission_start = float(dm["emission_start_s"])
     emission_end = (duration if dm["emission_end_s"] is None
                     else float(dm["emission_end_s"]))
     drain_s = duration - emission_end
     bits_per_pkt = int(dm["packet_bits"])
     deadline = dm["deadline_s"]
+    research_deadline = dm["research_deadline_s"]
     out = Path(out_dir)
     if out.is_symlink():
         raise TraceError(f"output directory may not be a symbolic link: {out}")
@@ -1116,6 +1158,9 @@ def compile_trace(resolved: dict, out_dir: str,
             if missing:
                 raise TraceError(f"csv missing columns {sorted(missing)}")
             seen_ids: set[int] = set()
+            research_column = "research_deadline_at_s" in (reader.fieldnames or [])
+            strict_half_open = (research_deadline is not None
+                                or research_column)
             for row in reader:
                 src_id = row["packet_id"]
                 # packet identity contract: source packet_id values are kept
@@ -1138,7 +1183,9 @@ def compile_trace(resolved: dict, out_dir: str,
                     raise TraceError(
                         f"csv row {src_id}: emit_time_s must be a number: "
                         f"{row['emit_time_s']!r}")
-                if not math.isfinite(t) or t < 0.0 or t > emission_end:
+                if (not math.isfinite(t) or t < 0.0
+                        or (t >= emission_end if strict_half_open
+                            else t > emission_end)):
                     # out-of-horizon records are never silently dropped; an
                     # explicitly approved separate filtering stage would be
                     # required to drop demand, and none exists
@@ -1181,7 +1228,23 @@ def compile_trace(resolved: dict, out_dir: str,
                         raise TraceError(
                             f"csv row {src_id}: invalid deadline {dl_raw!r}")
                 dl = dl_raw  # validated, preserved verbatim (immutable input)
-                rows.append((pid_val, t, s, d, bits_val, dl))
+                research_raw = (row.get("research_deadline_at_s") or "").strip()
+                if research_raw != "":
+                    try:
+                        research_value = float(research_raw)
+                    except (TypeError, ValueError):
+                        raise TraceError(
+                            f"csv row {src_id}: invalid research deadline "
+                            f"{research_raw!r}")
+                    if not math.isfinite(research_value) or research_value < t:
+                        raise TraceError(
+                            f"csv row {src_id}: invalid research deadline "
+                            f"{research_raw!r}")
+                    research_dl = research_raw
+                else:
+                    research_dl = ("" if research_deadline is None else
+                                   repr(t + float(research_deadline)))
+                rows.append((pid_val, t, s, d, bits_val, dl, research_dl))
         rows.sort(key=lambda r: (r[1], r[0]))  # emission order; ids preserved
         # sparse endpoints come straight from the CSV's active cells;
         # endpoints.sites is not required in csv mode
@@ -1191,7 +1254,9 @@ def compile_trace(resolved: dict, out_dir: str,
         population_table = None
         if mode == "population_gravity":
             population_table = population.load_population_regions(
-                dm["population_path"], ep["aggregation_deg"])
+                dm["population_path"], ep["aggregation_deg"],
+                lat_bounds_deg=ep["region_lat_bounds_deg"],
+                lon_bounds_deg=ep["region_lon_bounds_deg"])
             endpoints = [
                 {"name": region.grid_id, "lat": region.lat, "lon": region.lon,
                  "weight": region.population, "agg_grid_id": region.grid_id}
@@ -1270,7 +1335,8 @@ def compile_trace(resolved: dict, out_dir: str,
                 continue
             # thinning with max multiplier keeps diurnal/burst deterministic
             max_mult = 1.0
-            if mode in ("burst", "mlab") and dm["burst_start_s"] is not None:
+            if mode in ("burst", "mlab", "population_gravity") \
+                    and dm["burst_start_s"] is not None:
                 max_mult = max(1.0, dm["burst_multiplier"])
             elif mode == "diurnal":
                 max_mult = 1.0 + abs(dm["diurnal_amplitude"])
@@ -1278,10 +1344,11 @@ def compile_trace(resolved: dict, out_dir: str,
                     and dm["temporal_model"] == "local_diurnal_cosine":
                 # same envelope legacy diurnal uses: 1 + |amplitude|
                 max_mult = 1.0 + abs(dm["diurnal_amplitude"])
-            t = 0.0
+            t = emission_start
             while True:
                 t += float(gen.exponential(1.0 / (base_rate * max_mult)))
-                if t > emission_end:
+                if (t >= emission_end if research_deadline is not None
+                        else t > emission_end):
                     break
                 if gen.random() > _rate_multiplier(mode, t, e["lon"], dm) / max_mult:
                     continue
@@ -1292,9 +1359,11 @@ def compile_trace(resolved: dict, out_dir: str,
                 else:
                     dst = _dst_choices(gen, mode, endpoints, i, t, dm,
                                        mlab_weights)
-                dl = f"{t + deadline:.6f}" if deadline is not None else ""
+                dl = repr(t + float(deadline)) if deadline is not None else ""
+                research_dl = (repr(t + float(research_deadline))
+                               if research_deadline is not None else "")
                 candidate = (pid, t, e["agg_grid_id"], dst["agg_grid_id"],
-                             bits_per_pkt, dl)
+                             bits_per_pkt, dl, research_dl)
                 master_rows.append(candidate)
                 # every fully generated candidate receives exactly one
                 # independent nested_filter draw (generation order); kept
@@ -1327,18 +1396,28 @@ def compile_trace(resolved: dict, out_dir: str,
             f"({max_packets}); tighten the demand config instead of generating "
             f"an unbounded trace")
 
+    include_research_deadline = research_deadline is not None or any(
+        research_dl not in (None, "")
+        for *_, research_dl in rows)
+
     # Validate the exact serialized values, not higher-precision in-memory
     # values.  This guarantees compile success implies load_trace success.
     serialized_rows = [
-        (pid, _serialized_time(t), s, d, bits,
-         (_serialized_time(float(dl)) if dl != "" else ""))
-        for pid, t, s, d, bits, dl in rows
+        (pid, _serialized_time(t, roundtrip=include_research_deadline), s, d, bits,
+         (_serialized_time(float(dl), roundtrip=include_research_deadline)
+          if dl != "" else ""),
+         (_serialized_time(float(research_dl),
+                           roundtrip=include_research_deadline)
+          if research_dl not in (None, "") else ""))
+        for pid, t, s, d, bits, dl, research_dl in rows
     ]
     packet_rows = [
         {"packet_id": pid, "emit_time_s": float(t), "src_grid_id": s,
          "dst_grid_id": d, "bits": int(bits),
-         "deadline_at_s": (float(dl) if dl != "" else None)}
-        for pid, t, s, d, bits, dl in serialized_rows
+         "deadline_at_s": (float(dl) if dl != "" else None),
+         "research_deadline_at_s": (
+             float(research_dl) if research_dl != "" else None)}
+        for pid, t, s, d, bits, dl, research_dl in serialized_rows
     ]
     validate_packet_rows(packet_rows, horizon_s=duration,
                          max_packets=max_packets)
@@ -1366,10 +1445,19 @@ def compile_trace(resolved: dict, out_dir: str,
     trace_path = out / "trace.csv"
     with open(trace_path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh, lineterminator="\n")
-        w.writerow(["packet_id", "emit_time_s", "src_grid_id", "dst_grid_id", "bits", "deadline_at_s"])
-        for pid, t, s, d, bits, dl in serialized_rows:
-            w.writerow([pid, _format_time(t), s, d, bits,
-                        (_format_time(dl) if dl != "" else "")])
+        columns = ["packet_id", "emit_time_s", "src_grid_id", "dst_grid_id",
+                   "bits", "deadline_at_s"]
+        if include_research_deadline:
+            columns.append("research_deadline_at_s")
+        w.writerow(columns)
+        for pid, t, s, d, bits, dl, research_dl in serialized_rows:
+            row = [pid, _format_time(t, roundtrip=include_research_deadline),
+                   s, d, bits,
+                   (_format_time(dl, roundtrip=include_research_deadline)
+                    if dl != "" else "")]
+            if include_research_deadline:
+                row.append(_format_time(research_dl, roundtrip=True))
+            w.writerow(row)
     trace_sha256 = hashlib.sha256(trace_path.read_bytes()).hexdigest()
 
     offered_bits = sum(r[4] for r in rows)
@@ -1386,6 +1474,7 @@ def compile_trace(resolved: dict, out_dir: str,
         "units": {
             "emit_time": "seconds_since_run_start",
             "deadline": "seconds_since_run_start_or_empty",
+            "research_deadline": "seconds_since_run_start_or_empty",
             "coordinates": "degrees_wgs84",
             "bits": "bits",
         },
@@ -1413,8 +1502,9 @@ def compile_trace(resolved: dict, out_dir: str,
                 None if mode == "csv" else float(dm["offered_mbps"])
             ),
             "realized_offered_mbps": (
-                float(offered_bits) / emission_end / 1_000_000.0
-                if emission_end > 0 else 0.0
+                float(offered_bits) / (emission_end - emission_start)
+                / 1_000_000.0
+                if emission_end > emission_start else 0.0
             ),
             "horizon_s": duration,
             "packet_bits": bits_per_pkt,
@@ -1427,7 +1517,7 @@ def compile_trace(resolved: dict, out_dir: str,
                 "start_s": float(dm["burst_start_s"]),
                 "duration_s": float(dm["burst_duration_s"]),
                 "multiplier": float(dm["burst_multiplier"]),
-            } if mode in ("burst", "mlab")
+            } if mode in ("burst", "mlab", "population_gravity")
             and dm["burst_start_s"] is not None else None),
             # legacy mode:diurnal keeps its historical two-key value
             # exactly; only the new population-local-time combination uses
@@ -1458,7 +1548,8 @@ def compile_trace(resolved: dict, out_dir: str,
 
     manifest = {
         "schema": TRACE_MANIFEST_SCHEMA,
-        "trace_schema": TRACE_SCHEMA,
+        "trace_schema": (TRACE_SCHEMA_V2 if include_research_deadline
+                         else TRACE_SCHEMA),
         "trace_sha256": trace_sha256,
         "trace_identity_sha256": config.trace_identity_sha256(resolved, input_hash),
         "config_version": resolved["version"],
@@ -1503,6 +1594,13 @@ def compile_trace(resolved: dict, out_dir: str,
                 "aggregation_deg": population_table.aggregation_deg,
                 "total_population": population_table.total_population,
                 "candidate_regions": len(population_table.regions),
+                "region_center_filter": (
+                    None if ep["region_lat_bounds_deg"] is None else {
+                        "latitude_deg": list(ep["region_lat_bounds_deg"]),
+                        "longitude_deg": list(ep["region_lon_bounds_deg"]),
+                        "intervals": "half_open",
+                        "selection": "aggregate_cell_center",
+                    }),
                 "source_population_exponent": dm[
                     "source_population_exponent"],
                 "destination_population_exponent": dm[
@@ -1557,7 +1655,13 @@ def load_trace(path: str, horizon_s: float | None = None,
     rows = []
     with open(path, newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
-        if set(reader.fieldnames or []) != {"packet_id", "emit_time_s", "src_grid_id", "dst_grid_id", "bits", "deadline_at_s"}:
+        legacy_columns = {
+            "packet_id", "emit_time_s", "src_grid_id", "dst_grid_id",
+            "bits", "deadline_at_s",
+        }
+        research_columns = legacy_columns | {"research_deadline_at_s"}
+        columns = set(reader.fieldnames or [])
+        if columns not in (legacy_columns, research_columns):
             raise TraceError(f"trace columns mismatch in {path}")
         for i, r in enumerate(reader):
             try:
@@ -1574,6 +1678,16 @@ def load_trace(path: str, horizon_s: float | None = None,
                     dl = float(dl_raw)
                 except (TypeError, ValueError):
                     raise TraceError(f"trace row {i}: unparsable deadline {dl_raw!r}")
+            research_raw = r.get("research_deadline_at_s")
+            if research_raw in (None, ""):
+                research_dl = None
+            else:
+                try:
+                    research_dl = float(research_raw)
+                except (TypeError, ValueError):
+                    raise TraceError(
+                        f"trace row {i}: unparsable research deadline "
+                        f"{research_raw!r}")
             rows.append({
                 "packet_id": pid,
                 "emit_time_s": t,
@@ -1581,6 +1695,7 @@ def load_trace(path: str, horizon_s: float | None = None,
                 "dst_grid_id": r["dst_grid_id"],
                 "bits": bits,
                 "deadline_at_s": dl,
+                "research_deadline_at_s": research_dl,
             })
     validate_packet_rows(
         rows,

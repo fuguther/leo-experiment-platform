@@ -269,7 +269,11 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
     }
     manifest_schema = manifest.get("schema")
     is_v1 = manifest_schema == trace_mod.TRACE_MANIFEST_SCHEMA_V1
-    is_v2 = manifest_schema == trace_mod.TRACE_MANIFEST_SCHEMA
+    is_v3 = manifest_schema == trace_mod.TRACE_MANIFEST_SCHEMA
+    is_v2 = manifest_schema in {
+        trace_mod.TRACE_MANIFEST_SCHEMA_V2,
+        trace_mod.TRACE_MANIFEST_SCHEMA,
+    }
     if is_v2:
         base_keys |= {"simulation_horizon_s", "emission_end_s", "drain_s"}
     proxy_keys = {"not_calibrated_user_demand", "provenance_note"}
@@ -286,13 +290,22 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
             f"missing={sorted(expected_keys - set(manifest))}")
     if not (is_v1 or is_v2):
         errors.append("manifest schema mismatch")
-    if manifest.get("trace_schema") != trace_mod.TRACE_SCHEMA:
+    trace_schema = manifest.get("trace_schema")
+    if trace_schema not in {
+            trace_mod.TRACE_SCHEMA, trace_mod.TRACE_SCHEMA_V2}:
         errors.append("manifest trace schema mismatch")
+    if (resolved_cfg is not None
+            and resolved_cfg["demand"].get("research_deadline_s") is not None
+            and trace_schema != trace_mod.TRACE_SCHEMA_V2):
+        errors.append(
+            "configured research deadline requires trace schema v2")
     if manifest.get("packet_id_contract") != trace_mod.PACKET_ID_CONTRACT:
         errors.append("manifest packet_id_contract mismatch")
     provenance_contract = manifest.get("provenance_contract")
-    provenance_schema = (trace_mod.TRACE_PROVENANCE_SCHEMA
-                         if is_v2 else trace_mod.TRACE_PROVENANCE_SCHEMA_V1)
+    provenance_schema = (
+        trace_mod.TRACE_PROVENANCE_SCHEMA if is_v3 else
+        trace_mod.TRACE_PROVENANCE_SCHEMA_V2 if is_v2 else
+        trace_mod.TRACE_PROVENANCE_SCHEMA_V1)
     provenance_keys = {
         "schema", "source", "units", "od_mapping", "offered_load",
         "traffic_transform", "measurement_summary"}
@@ -307,8 +320,10 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
         if not isinstance(source, dict) or set(source) != {"type", "path", "sha256"}:
             errors.append("manifest provenance source keys mismatch")
         units = provenance_contract.get("units")
-        if not isinstance(units, dict) or set(units) != {
-                "emit_time", "deadline", "coordinates", "bits"}:
+        expected_units = {"emit_time", "deadline", "coordinates", "bits"}
+        if is_v3:
+            expected_units.add("research_deadline")
+        if not isinstance(units, dict) or set(units) != expected_units:
             errors.append("manifest provenance units keys mismatch")
         od_mapping = provenance_contract.get("od_mapping")
         if not isinstance(od_mapping, dict) or set(od_mapping) != {
@@ -406,7 +421,9 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
             "destination_population_exponent", "distance_exponent",
             "distance_floor_km",
         }
-        if not isinstance(pop, dict) or set(pop) != expected_pop_keys:
+        if (not isinstance(pop, dict)
+                or set(pop) not in (expected_pop_keys,
+                                    expected_pop_keys | {"region_center_filter"})):
             errors.append("population manifest metadata keys mismatch")
         else:
             if pop.get("source_sha256") != input_sha:
@@ -430,6 +447,20 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
             if not _is_nonneg_int(pop.get("candidate_regions")) \
                     or pop.get("candidate_regions", 0) < 2:
                 errors.append("population candidate_regions must be >= 2")
+            lat_bounds = resolved_cfg["endpoints"]["region_lat_bounds_deg"]
+            expected_filter = (None if lat_bounds is None else {
+                "latitude_deg": list(lat_bounds),
+                "longitude_deg": list(
+                    resolved_cfg["endpoints"]["region_lon_bounds_deg"]),
+                "intervals": "half_open",
+                "selection": "aggregate_cell_center",
+            })
+            if lat_bounds is not None and pop.get(
+                    "region_center_filter") != expected_filter:
+                errors.append("population region filter missing or mismatched")
+            if "region_center_filter" in pop and pop.get(
+                    "region_center_filter") != expected_filter:
+                errors.append("population region_center_filter mismatch")
     if isinstance(provenance_contract, dict):
         source = provenance_contract.get("source", {})
         units = provenance_contract.get("units", {})
@@ -445,10 +476,16 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
         }.get(mode, "synthetic_generator")
         if source.get("type") != expected_source_type:
             errors.append("provenance source type mismatch")
-        if units != {
-                "emit_time": "seconds_since_run_start",
-                "deadline": "seconds_since_run_start_or_empty",
-                "coordinates": "degrees_wgs84", "bits": "bits"}:
+        expected_unit_values = {
+            "emit_time": "seconds_since_run_start",
+            "deadline": "seconds_since_run_start_or_empty",
+            "coordinates": "degrees_wgs84",
+            "bits": "bits",
+        }
+        if is_v3:
+            expected_unit_values["research_deadline"] = (
+                "seconds_since_run_start_or_empty")
+        if units != expected_unit_values:
             errors.append("provenance units mismatch")
         if od_mapping.get("grid_deg") != resolved_cfg["endpoints"]["grid_deg"] \
                 or od_mapping.get("aggregation_deg") != resolved_cfg["endpoints"]["aggregation_deg"]:
@@ -461,6 +498,8 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
                 resolved_cfg["scenario"]["duration_s"]
                 if expected_emission_for_rate is None
                 else expected_emission_for_rate)
+            expected_emission_for_rate -= float(
+                resolved_cfg["demand"]["emission_start_s"])
             expected_realized = (float(manifest.get("offered_bits", 0))
                                  / float(expected_emission_for_rate)
                                  / 1_000_000.0)
@@ -540,7 +579,7 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
         elif measurement_summary is not None:
             errors.append("non-M-Lab manifest must not contain measurement_summary")
         expected_burst = None
-        if mode in {"burst", "mlab"} \
+        if mode in {"burst", "mlab", "population_gravity"} \
                 and resolved_cfg["demand"]["burst_start_s"] is not None:
             expected_burst = {
                 "start_s": float(resolved_cfg["demand"]["burst_start_s"]),
@@ -1478,8 +1517,10 @@ def _verify_receipt_dir_impl(out_dir: str, *,
         metrics_contract = METRICS_V2_SCHEMA
         if receipt.get("congestion_metrics_contract") != metrics_contract:
             errors.append("v5 congestion_metrics_contract must be v2")
-        if receipt.get("trace_manifest_contract") != trace_mod.TRACE_MANIFEST_SCHEMA:
-            errors.append("v5 trace_manifest_contract must be manifest/v2")
+        if receipt.get("trace_manifest_contract") not in {
+                trace_mod.TRACE_MANIFEST_SCHEMA_V2,
+                trace_mod.TRACE_MANIFEST_SCHEMA}:
+            errors.append("v5 trace_manifest_contract must be manifest/v2 or v3")
         if receipt.get("trace_identity_contract") not in {
                 config_mod.TRACE_IDENTITY_VERSION_V2,
                 config_mod.TRACE_IDENTITY_VERSION}:
@@ -1490,8 +1531,10 @@ def _verify_receipt_dir_impl(out_dir: str, *,
         metrics_contract = METRICS_V2_SCHEMA
         if receipt.get("congestion_metrics_contract") != metrics_contract:
             errors.append("v6 congestion_metrics_contract must be v2")
-        if receipt.get("trace_manifest_contract") != trace_mod.TRACE_MANIFEST_SCHEMA:
-            errors.append("v6 trace_manifest_contract must be manifest/v2")
+        if receipt.get("trace_manifest_contract") not in {
+                trace_mod.TRACE_MANIFEST_SCHEMA_V2,
+                trace_mod.TRACE_MANIFEST_SCHEMA}:
+            errors.append("v6 trace_manifest_contract must be manifest/v2 or v3")
         if receipt.get("trace_identity_contract") not in {
                 config_mod.TRACE_IDENTITY_VERSION_V2,
                 config_mod.TRACE_IDENTITY_VERSION}:
@@ -1615,12 +1658,55 @@ def _verify_receipt_dir_impl(out_dir: str, *,
             errors.append(
                 f"{_family_label(receipt_schema)} receipt raw resolved config "
                 "must include emission_end_s")
-        if legacy_contract and not has_emission:
+        v2_identity_contract = (
+            receipt_schema in RECEIPT_SCHEMAS_V5_FAMILY
+            and receipt.get("trace_identity_contract")
+            == config_mod.TRACE_IDENTITY_VERSION_V2)
+        if (legacy_contract or v2_identity_contract):
+            # Old resolved configs predate the optional demand defaults below.
+            # Normalize only for current semantic validation; the artifact
+            # hash and identity reconstruction continue to use the untouched
+            # raw_resolved_cfg bytes/object.
             resolved_cfg = json.loads(json.dumps(raw_resolved_cfg))
-            resolved_cfg.setdefault("demand", {})["emission_end_s"] = None
+            demand = resolved_cfg.setdefault("demand", {})
+            if legacy_contract and not has_emission:
+                demand["emission_end_s"] = None
+            for field in config_mod.V2_REMOVED_DEMAND_FIELDS:
+                if field not in demand:
+                    demand[field] = config_mod.DEFAULTS["demand"][field]
+        else:
+            # An old identity/v2 artifact can be deliberately relabelled v3
+            # to test that the persisted contract is authoritative. Normalize
+            # removed demand defaults for safe semantic/manifest checks; the
+            # identity builder still receives this normalized config and must
+            # then reject the old stored v2 digest under a v3 contract.
+            demand = resolved_cfg.setdefault("demand", {})
+            missing_v2_fields = [field for field in
+                                 config_mod.V2_REMOVED_DEMAND_FIELDS
+                                 if field not in demand]
+            if missing_v2_fields:
+                resolved_cfg = json.loads(json.dumps(resolved_cfg))
+                demand = resolved_cfg.setdefault("demand", {})
+                for field in missing_v2_fields:
+                    demand[field] = config_mod.DEFAULTS["demand"][field]
         try:
             validated = config_mod.resolve_config(resolved_cfg)
-            if validated["config"] != resolved_cfg:
+            normalized_for_compare = json.loads(json.dumps(
+                validated["config"]))
+            raw_demand = (resolved_cfg.get("demand")
+                          if isinstance(resolved_cfg, dict) else None)
+            if isinstance(raw_demand, dict):
+                for field in config_mod.V2_REMOVED_DEMAND_FIELDS:
+                    if field not in raw_demand:
+                        normalized_for_compare.get("demand", {}).pop(
+                            field, None)
+            raw_cp = (resolved_cfg.get("control_plane")
+                      if isinstance(resolved_cfg, dict) else None)
+            if (isinstance(raw_cp, dict)
+                    and "advertisement_protocol_version" not in raw_cp):
+                normalized_for_compare.get("control_plane", {}).pop(
+                    "advertisement_protocol_version", None)
+            if normalized_for_compare != resolved_cfg:
                 raise ValueError("artifact is not a complete resolved config")
             if resolved_version != validated["version"]:
                 raise ValueError("resolved config schema version mismatch")
@@ -1647,14 +1733,24 @@ def _verify_receipt_dir_impl(out_dir: str, *,
                     trace_list,
                     horizon_s=float(emission_horizon),
                     max_packets=int(resolved_cfg["execution"]["max_packets"]))
+                if (manifest is not None
+                        and manifest.get("trace_schema")
+                        == trace_mod.TRACE_SCHEMA
+                        and any(r.get("research_deadline_at_s") is not None
+                                for r in trace_list)):
+                    errors.append(
+                        "trace schema v1 cannot carry research deadlines")
             except Exception as exc:
                 errors.append(f"trace violates resolved config: {exc}")
     if manifest is not None:
         if receipt_schema in RECEIPT_SCHEMAS_V5_FAMILY \
-                and manifest.get("schema") != trace_mod.TRACE_MANIFEST_SCHEMA:
+                and manifest.get("schema") not in {
+                    trace_mod.TRACE_MANIFEST_SCHEMA_V2,
+                    trace_mod.TRACE_MANIFEST_SCHEMA,
+                }:
             errors.append(
                 f"{_family_label(receipt_schema)} receipt requires trace "
-                "manifest contract v2")
+                "manifest contract v2 or v3")
         if receipt_schema in {LEGACY_RECEIPT_SCHEMA, LEGACY_RECEIPT_SCHEMA_V4} \
                 and manifest.get("schema") != trace_mod.TRACE_MANIFEST_SCHEMA_V1:
             errors.append("legacy receipt requires trace manifest contract v1")
@@ -1830,21 +1926,59 @@ def _verify_receipt_dir_impl(out_dir: str, *,
         c_counts = {f: 0 for f in fates.CONTROL_FATES}
         valid_ci = {}
         for iid, pair in ci.items():
-            if not (isinstance(pair, list) and len(pair) == 3
+            if not (isinstance(pair, list) and len(pair) in (3, 4)
                     and isinstance(pair[0], str)
                     and isinstance(pair[1], int) and not isinstance(pair[1], bool)
                     and pair[1] > 0):
                 errors.append(f"control_instances[{iid}] must be "
-                              "[fate, positive int bits, received_at|None]")
+                              "[fate, positive int bits, received_at|None, "
+                              "optional wire_cost]")
                 continue
-            fate, bits, received_at = pair
+            fate, bits, received_at = pair[:3]
             if resolved_cfg is not None:
-                expected = (resolved_cfg.get("control_plane") or {}).get(
-                    "packet_bits")
-                if expected is not None and bits != expected:
+                cp = resolved_cfg.get("control_plane") or {}
+                base_bits = cp.get("packet_bits")
+                protocol = cp.get("advertisement_protocol_version", 1)
+                if protocol == 2:
+                    wire = pair[3] if len(pair) == 4 else None
+                    if not isinstance(wire, dict):
+                        errors.append(
+                            f"control_instances[{iid}] packet_bits require a "
+                            "protocol-v2 wire_cost descriptor")
+                    else:
+                        isl_count = wire.get("isl_resource_records")
+                        gsl_count = wire.get("gsl_resource_records")
+                        if (wire.get("schema") != "leo-control-ad-wire/v2"
+                                or wire.get("base_packet_bits") != base_bits
+                                or wire.get("isl_record_bits") != 192
+                                or wire.get("gsl_record_bits") != 200
+                                or wire.get("processing_fields_bits") != 416
+                                or not _is_nonneg_int(isl_count)
+                                or isl_count > len(
+                                    (resolved_cfg.get("links") or {}).get(
+                                        "isl_dirs", ()))
+                                or not _is_nonneg_int(gsl_count)
+                                or gsl_count > int(cp.get("max_advertised_gsl_records",
+                                                         100_000))):
+                            errors.append(
+                                f"control_instances[{iid}] wire_cost descriptor "
+                                "is invalid for resolved packet_bits/schema")
+                        else:
+                            expected = (int(base_bits)
+                                        + int(isl_count) * 192
+                                        + int(gsl_count) * 200 + 416)
+                            if bits != expected:
+                                errors.append(
+                                    f"control_instances[{iid}] packet_bits "
+                                    f"{bits} != recomputed wire cost {expected}")
+                elif len(pair) == 4:
                     errors.append(
-                        f"control_instances[{iid}] bits {bits} != resolved "
-                        f"control_plane.packet_bits {expected}")
+                        f"control_instances[{iid}] wire_cost descriptor is "
+                        "not permitted by legacy advertisement protocol")
+                elif base_bits is not None and bits != base_bits:
+                    errors.append(
+                        f"control_instances[{iid}] packet_bits {bits} != "
+                        f"resolved control_plane.packet_bits {base_bits}")
             if not (received_at is None or _is_nonneg_num(received_at)):
                 errors.append(f"control_instances[{iid}] received_at must be "
                               "None or a finite non-negative number")

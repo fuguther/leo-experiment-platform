@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import copy
+import inspect
+from pathlib import Path
 
 import pytest
+import yaml
 
 from CODE.experiment_platform import scripted_scenarios, t1_tasks
 from CODE.leo_sim import config as config_mod
@@ -31,6 +34,64 @@ def _row(decision_id, legal, *, kind="forward", chosen="E", t=1.0, **extra):
            "observation_at_start": {"legal_directions": list(legal)}}
     row.update(extra)
     return row
+
+
+def test_controlled_population_profile_cli_refuses_without_suite_context(
+        tmp_path, monkeypatch, capsys):
+    root = Path(__file__).resolve().parents[3]
+    profile = yaml.safe_load((root / "CODE/leo_sim/profiles/"
+                              "t1_population_region_cost_smoke.yaml"
+                              ).read_text(encoding="utf-8"))
+    # The profile's native-population structure must trigger the guard even
+    # after a caller changes the scenario label.
+    profile["scenario"]["name"] = "renamed-generic-label"
+    profile_path = tmp_path / "renamed-profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False),
+                            encoding="utf-8")
+    output = tmp_path / "must-not-exist.json"
+    monkeypatch.delenv("T1_SUITE_RUNTIME_CONTEXT", raising=False)
+    monkeypatch.setattr(
+        t1_tasks, "design",
+        lambda *args, **kwargs: pytest.fail("design/trace must not run"))
+
+    status = t1_tasks.main([
+        "--task", "network_alignment", "--config", str(profile_path),
+        "--out", str(output),
+    ])
+
+    assert status == 2
+    assert "requires a validated suite stage context" in capsys.readouterr().out
+    assert not output.exists()
+
+
+def test_controlled_network_checks_call_budget_before_every_kernel_call(
+        monkeypatch):
+    assert "simulator_call_guard" in inspect.signature(
+        t1_tasks.network_alignment).parameters, (
+            "controlled task has no per-simulator-call budget hook")
+    resolved, rows, geometry, source = _scenario()
+    authorized = []
+    called = []
+
+    def guard(arm):
+        authorized.append(arm)
+        if len(authorized) > 2:
+            raise t1_tasks.TaskError("simulator-call budget exhausted")
+
+    def fake_kernel(*_args, **kwargs):
+        called.append(kwargs)
+        raise RuntimeError("fixture stops before simulation")
+
+    monkeypatch.setattr(t1_tasks.kernel, "run_simulation", fake_kernel)
+    document = t1_tasks.network_alignment(
+        resolved, rows, geometry, source,
+        simulator_call_guard=guard)
+
+    assert authorized == list(t1_tasks.NETWORK_ARMS)
+    assert len(called) == 2
+    assert document["status"] == "ALL_ARMS_FAILED"
+    assert all("budget exhausted" in failure["reason"]
+               for failure in document["failures"][2:])
 
 
 # ------------------------------------------------------ branch eligibility
@@ -144,6 +205,36 @@ def test_routing_audit_log_keeps_four_way_decisions_and_attempts():
     assert log["attempt_records"][0]["reason"] == "temporarily_unavailable"
 
 
+def test_routing_audit_normalizes_real_frozen_no_info_holds_and_reads_legacy():
+    mask = {
+        "schema": "leo-sim-four-direction-mask/v1",
+        "direction_order": ["N", "E", "S", "W"],
+        "final_legal_mask": {d: False for d in ("N", "E", "S", "W")},
+    }
+    no_info = {
+        "milestone": "frozen_inferred_hold", "at": 2.0,
+        "pid": 17, "decision_id": 8, "sat": 0, "status": "no_info",
+        "reason": "observation_inferred_hold", "obs_mode": "frozen",
+        "observation_at_start": {
+            "routing_status": "no_info", "four_direction_audit": mask,
+            "candidate_resources": {},
+        },
+    }
+    legacy = {"milestone": "decision_attempt", "at": 3.0,
+              "pid": 18, "decision_id": 9, "action": "hold",
+              "reason": "legacy_hold"}
+    log = t1_tasks._routing_audit_log([], [no_info, legacy])
+    assert log["attempt_record_count"] == 2
+    normalized, compatible = log["attempt_records"]
+    assert normalized["milestone"] == "decision_attempt"
+    assert normalized["source_milestone"] == "frozen_inferred_hold"
+    assert normalized["route_status"] == "no_info"
+    assert normalized["attempt_outcome"] == "held"
+    assert normalized["four_direction_audit"] == mask
+    assert compatible["milestone"] == "decision_attempt"
+    assert compatible["reason"] == "legacy_hold"
+
+
 # ---------------------------------------------------------- the sampler
 def test_the_sampler_takes_an_even_stride_over_eligible_ids():
     eligible = [{"decision_id": i} for i in range(10, 34)]
@@ -170,6 +261,99 @@ def test_the_sampler_cannot_see_outcomes():
     assert (t1_tasks.sample_branches(plain, max_branches=12)["decisions"]
             == t1_tasks.sample_branches(decorated,
                                         max_branches=12)["decisions"])
+
+
+def test_common_horizon_calibration_selects_only_complete_same_sample_candidates():
+    branch_rows = [
+        {"decision_id": 7, "common_horizon_candidates": [
+            {"candidate": "mean_eta_offset", "valid": True,
+             "fully_scored": True, "loss": 0.40,
+             "sample_digest": "same-observation", "outcome_digest": "same-outcomes"},
+            {"candidate": "p50_offset", "valid": True,
+             "fully_scored": True, "loss": 0.30,
+             "sample_digest": "same-observation", "outcome_digest": "same-outcomes"},
+        ]},
+        {"decision_id": 9, "common_horizon_candidates": [
+            {"candidate": "mean_eta_offset", "valid": True,
+             "fully_scored": True, "loss": 0.40,
+             "sample_digest": "same-observation", "outcome_digest": "same-outcomes"},
+            {"candidate": "p50_offset", "valid": False,
+             "fully_scored": False, "loss": None,
+             "sample_digest": "same-observation", "outcome_digest": "same-outcomes"},
+        ]},
+    ]
+
+    selected = t1_tasks.select_common_horizon_candidate(
+        branch_rows, ["mean_eta_offset", "p50_offset"], [7, 9])
+
+    assert selected["status"] == "selected"
+    assert selected["candidate"] == "mean_eta_offset"
+    assert selected["selection_rule"].startswith(
+        "lowest mean normalized branch loss")
+    assert selected["candidates"]["p50_offset"]["status"] == "ineligible"
+    assert selected["tied_candidates"] == ["mean_eta_offset"]
+    assert selected["selected_by_tie_break"] is False
+
+
+def test_common_horizon_calibration_ties_follow_frozen_candidate_order():
+    branch_rows = [{"decision_id": 4, "common_horizon_candidates": [
+        {"candidate": name, "valid": True, "fully_scored": True,
+         "loss": 0.25, "sample_digest": "s", "outcome_digest": "o"}
+        for name in ("mean_eta_offset", "median_eta_offset")]}]
+
+    selected = t1_tasks.select_common_horizon_candidate(
+        branch_rows, ["mean_eta_offset", "median_eta_offset"], [4])
+
+    assert selected["candidate"] == "mean_eta_offset"
+    assert selected["tied_candidates"] == [
+        "mean_eta_offset", "median_eta_offset"]
+    assert selected["selected_by_tie_break"] is True
+    assert selected["tie_tolerance"] == 1e-12
+
+
+def test_branch_block_projects_and_selects_common_candidate_on_one_seed(monkeypatch):
+    resolved, rows, geometry, source = _scenario()
+    decisions = [{
+        "decision_id": 4, "kind": "forward", "t_decision_start": 5.0,
+        "t": 5.1, "chosen": "E", "candidates": ["E", "W"],
+        "observation_at_start": {
+            "legal_directions": ["E", "W"],
+            "candidate_resources": {"E": {"peer": 1}, "W": {"peer": 2}},
+            "time_alignment": {"query_targets": {"E": 6.0, "W": 8.0}},
+        },
+    }]
+    monkeypatch.setattr(t1_tasks, "_baseline_decisions",
+                        lambda *_args, **_kwargs: decisions)
+
+    def fake_compare(*_args, common_horizon_candidates=None, **_kwargs):
+        names = list(common_horizon_candidates)
+        candidate_rows = [{
+            "candidate": name, "valid": True, "fully_scored": True,
+            "loss": 0.1 if name == "p50_offset" else 0.4,
+            "sample_digest": "frozen-observation",
+            "outcome_digest": "frozen-branch-outcomes",
+        } for name in names]
+        return {
+            "arms": {"candidate": {"loss": 0.3, "regret": 0.2,
+                                      "chosen": "E", "ranking": ["E", "W"],
+                                      "scores": {}, "fallback_directions": [],
+                                      "missing_directions": []}},
+            "candidates": {}, "counts": {}, "oracle": {},
+            "identity": {"sources": {}},
+            "common_horizon_candidates": candidate_rows,
+        }
+
+    monkeypatch.setattr(t1_tasks.tac, "compare", fake_compare)
+    document = t1_tasks.branch_alignment_block(
+        resolved, rows, geometry, deadline_s=30.0, source=source,
+        max_branches=1, calibrate_common_horizon=True)
+
+    calibration = document["common_horizon_calibration"]
+    assert calibration["status"] == "projected"
+    assert calibration["development_seed"] == resolved["config"]["scenario"]["seed"]
+    assert calibration["selection"]["candidate"] == "p50_offset"
+    assert calibration["cross_arm_leakage"] is False
+    assert calibration["offset_candidate_count"] == 2
 
 
 # -------------------------------------------------- merging into a block
@@ -326,13 +510,26 @@ def test_an_unbounded_pool_still_records_start_and_finish_events():
 
 def test_the_frozen_horizon_moves_the_real_query_instant():
     resolved, rows, geometry, source = _scenario()
+    cfg = copy.deepcopy(resolved["config"])
+    cfg["control_plane"]["advertisement_protocol_version"] = 2
+    cfg["control_plane"]["enabled"] = True
+    cfg["control_plane"]["advertise_interval_s"] = 0.2
+    resolved = config_mod.resolve_config(cfg)
     targets = []
     for horizon in (0.5, 2.0):
         local = _ta_on(resolved, common_rule="fixed_horizon",
                        common_horizon_s=horizon, arm="common")
         document = t1_tasks.network_alignment(local, rows, geometry, source,
                                               arms=("common",))
-        targets.append(document["arms"][0]["time_alignment_audit"][
+        arm = document["arms"][0]
+        records = arm["routing_audit_log"]["decision_records"]
+        valid_history = any(
+            any(int(count) > 0 for count in
+                ((record.get("observation_at_start") or {}).get(
+                    "time_alignment") or {}).get("history_samples", {}).values())
+            for record in records)
+        assert valid_history, "comparison needs received resource history"
+        targets.append(arm["time_alignment_audit"][
             "distinct_query_targets"])
     assert targets[0] and targets[1]
     assert targets[0] != targets[1], \

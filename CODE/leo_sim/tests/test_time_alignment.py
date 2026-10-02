@@ -51,6 +51,21 @@ def test_projection_keeps_source_timestamp():
     assert p.snapshot_at == 1.2
 
 
+def test_physical_resource_generation_never_shares_predictor_history():
+    old = ta.ResourceKey(2, "E", "isl", generation=4)
+    current = ta.ResourceKey(2, "E", "isl", generation=9)
+    history = (
+        ta.StateSample(old, 0.0, 0.1, 1_000_000.0, 8_000.0),
+        ta.StateSample(old, 1.0, 1.1, 2_000_000.0, 8_000.0),
+        ta.StateSample(current, 1.0, 1.1, 100.0, 8_000.0),
+        ta.StateSample(current, 2.0, 2.1, 200.0, 8_000.0),
+    )
+    prediction = ta.predict_resource(
+        history, snapshot_at=2.1, target_at=3.0, resource=current)
+    assert prediction.predicted_bits == pytest.approx(300.0)
+    assert prediction.resource == current
+
+
 def test_a_constant_resource_predicts_the_same_at_three_instants():
     r = ta.ResourceKey(3, "S", "isl")
     h = (ta.StateSample(r, 0.0, 0.1, 500.0, 1000.0),
@@ -153,6 +168,22 @@ def test_missing_candidates_share_one_fallback_ordering():
     assert scored.ranking == ("N", "E")
 
 
+def test_unknown_fallback_preserves_visible_min_hop_order():
+    snap = _snapshot(legal_directions=("E", "N"), peer_process_s={})
+    scored = ta.plan_decision(snap).scored
+    assert scored.fallback_directions == ("E", "N")
+    assert scored.ranking == ("E", "N")
+
+
+def test_common_excludes_unknown_eta_and_marks_insufficient_sample():
+    snap = _snapshot(legal_directions=("E", "N"), peer_process_s={"N": 0.0},
+                     arm="common", common_horizon_s=None)
+    assert ta.resolve_common_horizon(snap) is None
+    scored = ta.plan_decision(snap).scored
+    assert scored.ranking == ("E", "N")
+    assert all("NO_STRONG_COMMON" in item.missing for item in scored.scores)
+
+
 def test_tie_break_is_arm_independent():
     rankings = {}
     for arm in ta.ARMS:
@@ -197,6 +228,33 @@ def test_async_point_has_one_bin_and_async_window_has_four():
     assert window.expires_at == 11.0
 
 
+def test_explicit_schedule_target_changes_per_bin_prediction_and_ranking():
+    north = ta.ResourceKey(2, "N", "isl")
+    east = ta.ResourceKey(3, "E", "isl")
+    history = (
+        ta.StateSample(north, 0.0, 0.1, 0.0, 1000.0),
+        ta.StateSample(north, 1.0, 1.05, 100.0, 1000.0),
+        ta.StateSample(east, 0.0, 0.1, 300.0, 1000.0),
+        ta.StateSample(east, 1.0, 1.05, 200.0, 1000.0),
+    )
+    snap = _snapshot(
+        snapshot_at=1.1, history=history,
+        resources={"N": north, "E": east},
+        resource_service_rate_bps={"N": 1000.0, "E": 1000.0},
+        local_egress_in_service_s={"N": 0.0, "E": 0.0},
+        max_resource_queue_bits=10_000.0,
+    )
+    early = ta.score_snapshot_at(snap, 1.2)
+    late = ta.score_snapshot_at(snap, 2.0)
+    assert early.ranking == ("N", "E")
+    assert late.ranking == ("E", "N")
+
+    schedule = ta.build_schedule(
+        snap, install_estimate=1.1, window_s=1.0, bins=2)
+    assert [entry.query_target_at for entry in schedule.entries] == [1.35, 1.85]
+    assert schedule.entries[0].ranking != schedule.entries[1].ranking
+
+
 def test_bin_selection_uses_the_actual_install_instant():
     snap = _snapshot()
     window = ta.build_schedule(snap, install_estimate=10.0, window_s=1.0, bins=4)
@@ -207,14 +265,14 @@ def test_bin_selection_uses_the_actual_install_instant():
 
 def test_lookup_schedule_filters_legality_and_loops_without_rescoring():
     snap = _snapshot()
-    window = ta.build_schedule(snap, install_estimate=0.0, window_s=1.0, bins=1)
-    hit = ta.lookup_schedule(window, 0.5, legal=("N", "E"), path=())
+    window = ta.build_schedule(snap, install_estimate=1.2, window_s=1.0, bins=1)
+    hit = ta.lookup_schedule(window, 1.7, legal=("N", "E"), path=())
     assert hit["action"] == window.entries[0].ranking[0]
     assert hit["fallback"] is False
-    looped = ta.lookup_schedule(window, 0.5, legal=("N", "E"),
+    looped = ta.lookup_schedule(window, 1.7, legal=("N", "E"),
                                 path=(window.entries[0].ranking[0],))
     assert looped["action"] != window.entries[0].ranking[0]
-    none_legal = ta.lookup_schedule(window, 0.5, legal=(), path=())
+    none_legal = ta.lookup_schedule(window, 1.7, legal=(), path=())
     assert none_legal["action"] is None and none_legal["fallback"] is True
     expired = ta.lookup_schedule(window, 99.0, legal=("N",), path=())
     assert expired["state"] == "expired"

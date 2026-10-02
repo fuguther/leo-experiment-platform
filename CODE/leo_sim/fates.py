@@ -121,11 +121,13 @@ class ControlFateLedger:
         self._fates: dict[int, str] = {}
         self._bits: dict[int, int] = {}
         self._received: dict[int, float | None] = {}
+        self._wire_cost: dict[int, dict | None] = {}
 
-    def register(self, iid: int, bits: int) -> None:
+    def register(self, iid: int, bits: int, wire_cost: dict | None = None) -> None:
         if iid in self._offered:
             raise FateError(f"duplicate control packet instance {iid}")
         self._offered[iid] = bits
+        self._wire_cost[iid] = (None if wire_cost is None else dict(wire_cost))
 
     def record(self, iid: int, fate: str, bits: int,
                received_at: float | None = None) -> None:
@@ -189,8 +191,12 @@ class ControlFateLedger:
         """Exact per-instance [fate, bits, received_at] export for the run
         ledger artifact (received_at is None for instances that never
         arrived)."""
-        return {iid: [self._fates[iid], self._bits[iid], self._received[iid]]
-                for iid in self._fates}
+        return {
+            iid: ([self._fates[iid], self._bits[iid], self._received[iid]]
+                  if self._wire_cost.get(iid) is None else
+                  [self._fates[iid], self._bits[iid], self._received[iid],
+                   dict(self._wire_cost[iid])])
+            for iid in self._fates}
 
     def fate_counts(self) -> dict[str, int]:
         counts = {f: 0 for f in CONTROL_FATES}

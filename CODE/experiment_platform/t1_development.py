@@ -1100,6 +1100,9 @@ def execute(contract_path: Path, out_dir: Path, *, run_id=None,
     if out_dir.exists():
         raise RuntimeError(f"development output directory exists: {out_dir}")
     contract = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+    readiness = t1_suite.require_runtime_ready_contract(
+        contract, source=str(contract_path))
+    runtime_stage = readiness.get("status") if readiness else None
     if contract.get("not_formal") is not True:
         raise RuntimeError("development wrapper requires not_formal: true")
     if contract.get("not_training") is not True:
@@ -1145,9 +1148,41 @@ def execute(contract_path: Path, out_dir: Path, *, run_id=None,
         json.dumps(cost, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8")
 
+    run_dir = out_dir / "b_dev"
+    if runtime_stage == "COST_PROBE_READY":
+        authorization = readiness["runtime_authorization"]
+        probe_ids = list(authorization["cell_ids"])
+        probe_run = t1_suite.run_bundle(
+            bundle_dir, "b_dev", run_dir, cell_ids=probe_ids,
+            append=False, stop_on_failure=True)
+        probe_accounting = probe_run.get("simulator_call_accounting") or {}
+        summary = {
+            "schema": "t1-development-pipeline/v1",
+            "tier": "b_dev",
+            "runtime_stage": runtime_stage,
+            "not_formal": True,
+            "not_training": True,
+            "release_identity": {"run_id": run_id,
+                                 "release_id": release_id},
+            "contract_sha256": bundle["contract_sha256"],
+            "execution_chain_sha256": bundle["execution_chain"][
+                "combined_sha256"],
+            "bundle_fingerprint": bundle["bundle_fingerprint"],
+            "simulator_call_estimate": cost["simulator_calls"],
+            "authorized_probe_cell_ids": probe_ids,
+            "probe_run_status": probe_run.get("status"),
+            "probe_run_counts": probe_run.get("counts"),
+            "simulator_call_accounting": probe_accounting,
+            "simulator_wall_s": probe_accounting.get("simulator_wall_s"),
+            "pending_cell_ids": probe_run.get("pending_cell_ids"),
+        }
+        (out_dir / "pipeline-summary.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        return summary
+
     _validate_a0_smoke_cell(contract, b_dev_cells)
 
-    run_dir = out_dir / "b_dev"
     pilot_ids = [str(value) for value in contract.get("pilot_cell_ids", [])]
     pilot_gate = None
     if pilot_ids:

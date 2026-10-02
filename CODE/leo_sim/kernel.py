@@ -54,6 +54,7 @@ import simpy
 
 from . import (control, fates, grid as gridmod, learning as _learning, metrics,
                model, q0, link_budget)
+from . import deadline_objective as _deadline_objective
 from . import async_routing as _async
 from . import inference as _inference
 from . import outage, rng as rngmod, routing
@@ -74,11 +75,13 @@ class CapExceeded(KernelError):
 class DataPacket:
     __slots__ = ("pid", "src", "dst", "bits", "deadline", "emitted_at", "path",
                  "assigned_sat", "learning_state", "learning_action",
-                 "learning_reward", "isl_enqueued_at", "holding_until",
+                 "learning_reward", "learning_episode_closed",
+                 "research_deadline_at", "isl_enqueued_at", "holding_until",
                  "metric_queue_id", "metric_prop_id", "metric_ingress_at",
                  "decision_id")
 
-    def __init__(self, pid, src, dst, bits, deadline, emitted_at):
+    def __init__(self, pid, src, dst, bits, deadline, emitted_at,
+                 research_deadline_at=None):
         self.pid = pid
         self.src = src
         self.dst = dst
@@ -90,6 +93,8 @@ class DataPacket:
         self.learning_state = None
         self.learning_action = None
         self.learning_reward = None
+        self.learning_episode_closed = False
+        self.research_deadline_at = research_deadline_at
         # enqueue time on the current ISL egress queue; the realized queue
         # wait (service start minus this) feeds the M1 queue reward
         self.isl_enqueued_at = None
@@ -227,6 +232,12 @@ class SatelliteHoldingQueue:
         return expired
 
 
+CONTROL_AD_WIRE_SCHEMA_V2 = "leo-control-ad-wire/v2"
+CONTROL_AD_ISL_RECORD_BITS_V2 = 3 * 64
+CONTROL_AD_GSL_RECORD_BITS_V2 = 3 * 64 + 8
+CONTROL_AD_PROCESSING_BITS_V2 = 416
+
+
 class ControlPacket:
     """A real control-plane packet (the task contract: origin, sequence,
     generated_at, received_at, ttl, remaining_hops, payload_bits,
@@ -240,10 +251,11 @@ class ControlPacket:
     """
 
     __slots__ = ("iid", "origin", "seq", "generated_at", "_received_at",
-                 "ttl_s", "remaining_hops", "payload_bits", "payload")
+                 "ttl_s", "remaining_hops", "payload_bits", "payload",
+                 "wire_cost")
 
     def __init__(self, iid, origin, seq, generated_at, ttl_s, remaining_hops,
-                 bits, payload):
+                 bits, payload, wire_cost=None):
         if not isinstance(generated_at, (int, float)) \
                 or isinstance(generated_at, bool) \
                 or not math.isfinite(generated_at) or generated_at < 0:
@@ -265,6 +277,7 @@ class ControlPacket:
         self.remaining_hops = remaining_hops
         self.payload_bits = bits
         self.payload = payload
+        self.wire_cost = (None if wire_cost is None else dict(wire_cost))
 
     @property
     def bits(self) -> int:
@@ -1308,6 +1321,10 @@ class Kernel:
         # BEFORE a decision_id exists, so queueing cost is attributable even
         # for requests that never become a committed decision.
         self._compute_job_seq = 0
+        # Request-local service lengths let an online pool snapshot account
+        # for queued jobs without reading their eventual measured wait.
+        self._compute_service_by_request = {}
+        self._query_service_by_request = {}
         # T1-COMPUTE-DELAY observation semantics (protocol doc 4.1/4.4):
         #   "refresh" (default) -- the deferred decision re-reads env.now and
         #       the live state when it lands.  That is a *delayed re-observation*
@@ -2954,11 +2971,12 @@ class Kernel:
                 # raw queue reward remains available through the diagnostic
                 # helper, while the training objective cannot profit from
                 # extra hops.
-                pkt.learning_reward = _learning.forward_reward(
-                    t0 - pkt.isl_enqueued_at,
-                    self.cfg_learning["reward_w1"],
-                    self.cfg_learning["reward_beta"],
-                    self.cfg_learning["forward_step_penalty"])
+                if self.cfg_learning["reward"] == "queue":
+                    pkt.learning_reward = _learning.forward_reward(
+                        t0 - pkt.isl_enqueued_at,
+                        self.cfg_learning["reward_w1"],
+                        self.cfg_learning["reward_beta"],
+                        self.cfg_learning["forward_step_penalty"])
                 pkt.isl_enqueued_at = None
             fail_t, fail_kind = end, None
             if self.cfg_links["geometry_loss"]:
@@ -3029,10 +3047,21 @@ class Kernel:
             # (that would re-open the A3 preposition/ads/obs leak)
             ep = self._ensure_endpoint(cell)
             self._count_data_packet()
-            pkt = DataPacket(r["packet_id"], r["src_grid_id"], r["dst_grid_id"],
-                             r["bits"], r["deadline_at_s"], self.env.now)
+            research_deadline_at = r.get("research_deadline_at_s")
+            if (research_deadline_at is None
+                    and self.cfg_dm["research_deadline_s"] is not None):
+                research_deadline_at = (
+                    self.env.now + float(self.cfg_dm["research_deadline_s"]))
+            pkt = DataPacket(
+                r["packet_id"], r["src_grid_id"], r["dst_grid_id"],
+                r["bits"], r["deadline_at_s"], self.env.now,
+                research_deadline_at=research_deadline_at)
             self._metric_packet_emitted(pkt)
             self.ledger.register(pkt.pid, pkt.bits)
+            if (self.learner is not None
+                    and self.cfg_learning["reward"] == "deadline_loss_v1"
+                    and pkt.research_deadline_at is not None):
+                self.env.process(self._research_deadline_watch(pkt))
             now = self.env.now
             if pkt.deadline is not None and now > pkt.deadline:
                 self._fail(pkt, "DATA_DEADLINE_EXPIRED")
@@ -3316,9 +3345,11 @@ class Kernel:
         # metrics are bound to the CURRENT peer identity: after a rematch an
         # old advertisement must read as "unknown" for the new edge, never be
         # reinterpreted as the new peer's metric (D2 review M2)
-        isl_bits = {d: {"peer": link.peer,
-                        "value": link.data_bits + link.ctrl_bits}
-                    for d, link in self.isls[sat].items()}
+        isl_bits = {
+            d: self._isl_resource_state_advertisement(link, self.env.now)
+            for d, link in self.isls[sat].items()}
+        protocol_version = int(self.cfg_cp.get(
+            "advertisement_protocol_version", 1))
         isl_prop = {
             d: {"peer": link.peer,
                 "value": model.propagation_delay_s(
@@ -3333,13 +3364,99 @@ class Kernel:
             {c: (ep.lat, ep.lon) for c, ep in self.endpoints.items()},
             isl_bits, isl_prop, len(self.slots[sat]),
             self.cfg_access["slots_per_satellite"])
+        snap["processing_resources"] = {
+            "schema": "leo-peer-processing/v1",
+            "measurement_at": float(self.env.now),
+            "compute": self._processing_pool_advertisement(
+                self._compute_pool[sat] if self.compute_servers > 0 else None,
+                self.compute_delay_s, float(self.env.now),
+                self._compute_service_by_request,
+                servers=self.compute_servers),
+            "query": self._processing_pool_advertisement(
+                self._query_pool[sat] if self._query_pool is not None else None,
+                self._query_delay_s, float(self.env.now),
+                self._query_service_by_request,
+                servers=1 if self._query_pool is not None else 0),
+        }
         snap["serve_cells"] = serve
+        downlink_resources = {}
+        for cell in serve:
+            ep = self.endpoints[cell]
+            server = self.downlinks[sat]
+            queue_known = True
+            work_bits = float(server.queued_bits)
+            current = server.current
+            if current is not None:
+                if server._svc is None or server._svc_phase == "waiting_for_link":
+                    work_bits += float(current.bits)
+                elif server._svc_phase == "transmitting" \
+                        and server._tx_started_at is not None \
+                        and self.rate_model == "constant" \
+                        and self.dl_rate_bps > 0:
+                    remaining_s = max(
+                        0.0, float(current.bits) / self.dl_rate_bps
+                        - (float(self.env.now) - float(server._tx_started_at)))
+                    work_bits += remaining_s * self.dl_rate_bps
+                else:
+                    # A changing MCS rate has no certified residual-work
+                    # estimate in this advertisement; missing stays missing.
+                    queue_known = False
+            rate = self._link_rate("downlink", self.env.now, sat, ep=ep)
+            propagation = model.propagation_delay_s(
+                self.geometry.slant_range_km(sat, ep.lat, ep.lon, self.env.now))
+            association = ep.links.get(sat)
+            active = association is not None and association.state == "active"
+            available = bool(
+                active and self.geometry.gsl_available(
+                    sat, ep.lat, ep.lon, self.env.now) and rate > 0)
+            downlink_resources[str(cell)] = {
+                "queue_bits": float(work_bits) if queue_known else None,
+                "rate_bps": float(rate) if rate > 0 else None,
+                "propagation_s": float(propagation),
+                "available": available,
+                "queue_scope": "satellite_shared_drr",
+                "queue_semantics": (
+                    "all_waiting_bits_plus_active_residual_work_proxy"),
+            }
+        snap["downlink_resources"] = downlink_resources
+        if protocol_version >= 2:
+            resource_telemetry_bits = (
+                CONTROL_AD_ISL_RECORD_BITS_V2 * len(isl_bits)
+                + CONTROL_AD_GSL_RECORD_BITS_V2 * len(downlink_resources)
+                + CONTROL_AD_PROCESSING_BITS_V2)
+            wire_cost = {
+                "schema": CONTROL_AD_WIRE_SCHEMA_V2,
+                "base_packet_bits": int(self.cfg_cp["packet_bits"]),
+                "isl_resource_records": len(isl_bits),
+                "gsl_resource_records": len(downlink_resources),
+                "isl_record_bits": CONTROL_AD_ISL_RECORD_BITS_V2,
+                "gsl_record_bits": CONTROL_AD_GSL_RECORD_BITS_V2,
+                "processing_fields_bits": CONTROL_AD_PROCESSING_BITS_V2,
+            }
+        else:
+            # V1 retains the historical base-only packet. Remove fields that
+            # do not exist on its wire so they cannot silently affect routing.
+            resource_telemetry_bits = 0
+            wire_cost = None
+            snap["isl_queue_bits"] = {
+                d: {"peer": record["peer"], "value": record["value"]}
+                for d, record in isl_bits.items()}
+            snap.pop("downlink_resources", None)
+            snap.pop("processing_resources", None)
+        advertisement_bits = (int(self.cfg_cp["packet_bits"])
+                              + resource_telemetry_bits)
         self.mech["control_snapshots"] += 1
         self._ctrl_audit("ctrl_advert_generated", origin=int(sat),
                          seq=int(self.ctrl_seq), hops=0,
                          vis_k=self.cfg_cp["vis_k"],
+                         packet_bits=advertisement_bits,
+                         advertisement_protocol_version=protocol_version,
+                         wire_cost=wire_cost,
+                         base_packet_bits=int(self.cfg_cp["packet_bits"]),
+                         resource_telemetry_bits=resource_telemetry_bits,
                          ttl_s=self.cfg_cp["ttl_s"],
                          serve_cells=list(serve),
+                         downlink_resources=downlink_resources,
                          children=list(self.control_children[sat][sat]))
         # the origin never accepts its own advertisement back, however long
         # it loops: its own (origin, seq) keys are pre-seeded as seen
@@ -3350,14 +3467,160 @@ class Kernel:
             pkt = ControlPacket(
                 self.ctrl_iid, sat, self.ctrl_seq, self.env.now,
                 self.cfg_cp["ttl_s"], self.cfg_cp["vis_k"],
-                self.cfg_cp["packet_bits"], snap)
-            self.ctrl_ledger.register(pkt.iid, pkt.bits)
+                advertisement_bits, snap, wire_cost=wire_cost)
+            self.ctrl_ledger.register(pkt.iid, pkt.bits, wire_cost=wire_cost)
             self.mech["control_registered"] += 1
             if not link.room(pkt.bits):
                 self.ctrl_ledger.record(pkt.iid, "QUEUE_OVERFLOW", pkt.bits)
                 continue
             self.mech["control_entered_queue"] += 1
             link.put_ctrl(pkt)
+
+    def _isl_resource_state_advertisement(self, link: ISLLink,
+                                          now: float) -> dict:
+        """Return legal, source-measured state for one directed ISL resource.
+
+        ``value`` remains the queued data+control bits used by the existing
+        hop router. ``work_ahead_bits_proxy`` additionally includes the active
+        packet's remaining bits. The residual subtracts service already
+        delivered at the rate sampled when this transmission actually began;
+        the separately advertised ``rate_bps`` is the request-time estimate
+        for future service. This matches the simulator's per-transmission
+        fixed-rate service interval, but remains a proxy for future arrivals
+        and waiting time. An active service without a recorded start rate stays
+        unknown rather than becoming zero.
+        """
+        queued_bits = int(link.data_bits + link.ctrl_bits)
+        try:
+            rate = float(self._link_rate("isl", float(now), link.sat,
+                                         peer=link.peer))
+            if not math.isfinite(rate) or rate < 0.0:
+                rate = None
+        except Exception:
+            rate = None
+        current = link.current
+        if current is None:
+            active_bits = 0.0
+        elif link._svc_phase == "transmitting":
+            service_rate = getattr(link, "_service_rate_bps", None)
+            if (not isinstance(service_rate, (int, float))
+                    or isinstance(service_rate, bool)
+                    or not math.isfinite(float(service_rate))
+                    or service_rate <= 0.0
+                    or link._tx_started_at is None):
+                active_bits = None
+            else:
+                elapsed = max(0.0, float(now) - float(link._tx_started_at))
+                active_bits = max(
+                    0.0, float(current.bits) - elapsed * float(service_rate))
+        else:
+            # The active head has not begun physical serialization (for
+            # example, it waits for a link window), so its full bit count is
+            # known work ahead even though its service time is not.
+            active_bits = float(current.bits)
+        work_ahead = (None if active_bits is None else
+                      float(queued_bits) + float(active_bits))
+        return {
+            "peer": int(link.peer),
+            "value": queued_bits,
+            "generation": int(link.gen),
+            "rate_bps": rate,
+            "work_ahead_bits_proxy": work_ahead,
+        }
+
+    @staticmethod
+    def _processing_pool_advertisement(pool, service_s: float, now: float,
+                                       service_by_request: dict,
+                                       *, servers: int) -> dict:
+        """Fixed-shape, request-time advertisement of known FIFO work.
+
+        A one-server FIFO pool can publish exact known residual-plus-queued
+        service under the explicit no-future-arrivals assumption.  Multi-server
+        assignment is not serialized by this schema and is therefore marked
+        unknown instead of collapsed to an unjustified average.
+        """
+        result = {"servers": int(servers), "service_s": float(service_s),
+                  "queued": 0, "active": 0, "work_ahead_s": None,
+                  "method": "unknown"}
+        if not math.isfinite(float(service_s)) or float(service_s) < 0:
+            return result
+        if servers == 0:
+            result.update(queued=0, active=0, work_ahead_s=0.0,
+                          method="unbounded_no_wait")
+            return result
+        if pool is None:
+            return result
+        result["queued"] = len(pool.queue)
+        result["active"] = len(pool.users)
+        if int(servers) != 1:
+            result["method"] = "multi_server_projection_not_encoded"
+            return result
+        work = 0.0
+        for request in list(pool.users):
+            started = getattr(request, "usage_since", None)
+            duration = service_by_request.get(id(request))
+            if started is None or duration is None:
+                return result
+            work += max(0.0, float(duration) -
+                        max(0.0, float(now) - float(started)))
+        for request in list(pool.queue):
+            duration = service_by_request.get(id(request))
+            if duration is None:
+                return result
+            work += max(0.0, float(duration))
+        result.update(work_ahead_s=float(work), method="single_server_fifo")
+        return result
+
+    def _project_advertised_peer_processing(self, record: dict,
+                                            peer_arrival_at: float):
+        """Estimate peer compute/query delay from one received ad only.
+
+        Work measured at generation time drains while the packet is in flight
+        and while earlier local/peer services run.  No peer live pool or
+        realized future wait is read.  Unknown/multi-server telemetry remains
+        unknown so the common scorer uses its shared fallback.
+        """
+        processing = record.get("advertised_processing")
+        measured_at = record.get("generated_at")
+        if (not isinstance(processing, dict)
+                or not isinstance(measured_at, (int, float))
+                or isinstance(measured_at, bool)
+                or not math.isfinite(float(measured_at))
+                or float(measured_at) < 0):
+            return None
+        compute = processing.get("compute") or {}
+        query = processing.get("query") or {}
+
+        def field(pool, name):
+            value = pool.get(name)
+            return (float(value) if isinstance(value, (int, float))
+                    and not isinstance(value, bool)
+                    and math.isfinite(float(value)) and float(value) >= 0
+                    else None)
+
+        compute_service = field(compute, "service_s")
+        compute_work = field(compute, "work_ahead_s")
+        compute_servers = compute.get("servers")
+        query_service = field(query, "service_s")
+        query_work = field(query, "work_ahead_s")
+        query_servers = query.get("servers")
+        if (compute_service is None or compute_work is None
+                or query_service is None or query_work is None
+                or compute_servers not in (0, 1) or query_servers not in (0, 1)):
+            return None
+        if self.exec_mode in ("precomputed", "async_point", "async_window"):
+            compute_service = 0.0
+        elif self.exec_mode == "per_flow":
+            # Cache presence on the peer is not part of this advertisement.
+            return None
+        since_measurement = max(0.0, float(peer_arrival_at) -
+                                float(measured_at))
+        compute_wait = (0.0 if compute_servers == 0 else
+                        max(0.0, compute_work - since_measurement))
+        compute_done_elapsed = since_measurement + compute_wait + compute_service
+        query_wait = (0.0 if query_servers == 0 else
+                      max(0.0, query_work - compute_done_elapsed))
+        return float(compute_wait + compute_service + query_wait + query_service)
 
     def _ctrl_arrive_after_prop(self, pkt: ControlPacket, from_sat: int, sat: int, prop: float):
         yield self.env.timeout(prop)
@@ -3388,7 +3651,10 @@ class Kernel:
         self._ctrl_audit("ctrl_advert_arrived", origin=int(pkt.origin),
                          seq=int(pkt.seq), sat=int(sat), hops=int(hops),
                          remaining_hops=int(pkt.remaining_hops),
-                         serve_cells=sorted(pkt.payload.get("serve_cells", ())))
+                         serve_cells=sorted(pkt.payload.get("serve_cells", ())),
+                         downlink_resources=dict(
+                             pkt.payload.get("downlink_resources") or {}),
+                         payload_fields=sorted(pkt.payload))
         entry = control.CacheEntry(pkt.origin, pkt.payload, pkt.generated_at,
                                    pkt.received_at, pkt.ttl_s, hops=hops)
         self.caches[sat].put(entry)
@@ -3405,8 +3671,10 @@ class Kernel:
                 self.ctrl_iid += 1
                 fwd = ControlPacket(
                     self.ctrl_iid, pkt.origin, pkt.seq, pkt.generated_at,
-                    pkt.ttl_s, pkt.remaining_hops - 1, pkt.bits, pkt.payload)
-                self.ctrl_ledger.register(fwd.iid, fwd.bits)
+                    pkt.ttl_s, pkt.remaining_hops - 1, pkt.bits, pkt.payload,
+                    wire_cost=pkt.wire_cost)
+                self.ctrl_ledger.register(fwd.iid, fwd.bits,
+                                          wire_cost=fwd.wire_cost)
                 self.mech["control_registered"] += 1
                 self._ctrl_audit("ctrl_advert_relayed", origin=int(pkt.origin),
                                  seq=int(pkt.seq), sat=int(sat),
@@ -3657,6 +3925,59 @@ class Kernel:
         pkt.learning_reward = None
         self._learning_open.discard(pkt)
 
+    def _finish_deadline_transition(self, pkt: DataPacket, outcome: str, *,
+                                    next_state=None, next_mask=None) -> bool:
+        """Settle one transition under the packet research-D objective.
+
+        This closes the learning episode only; it never changes physical
+        packet fate, queue membership, or later forwarding. ``research_D`` is
+        the duration between emission and the absolute per-packet boundary.
+        """
+        if self.learner is None or pkt.learning_episode_closed:
+            return False
+        if pkt.research_deadline_at is None:
+            raise KernelError(
+                "deadline_loss_v1 packet has no research deadline "
+                f"(pid={pkt.pid})")
+        deadline_s = float(pkt.research_deadline_at) - float(pkt.emitted_at)
+        delay = (float(self.env.now) - float(pkt.emitted_at)
+                 if outcome == "delivered" else None)
+        transition = _deadline_objective.deadline_loss_v1(
+            deadline_s=deadline_s, outcome=outcome,
+            e2e_delay_s=delay, gamma=float(self.cfg_learning["gamma"]),
+            episode_closed=False)
+        if transition is not None and pkt.learning_state is not None:
+            if next_state is None:
+                next_state = np.zeros(
+                    _learning.CONTRACT_DIMS[self.cfg_rt["contract"]])
+            if next_mask is None:
+                next_mask = {action: False for action in _learning.ACTIONS}
+            self.learner.remember(
+                pkt.learning_state, pkt.learning_action, transition.reward,
+                next_state, next_mask, transition.terminal)
+        if transition is None or transition.terminal:
+            pkt.learning_episode_closed = True
+        pkt.learning_state = None
+        pkt.learning_action = None
+        pkt.learning_reward = None
+        self._learning_open.discard(pkt)
+        if transition is not None and transition.terminal \
+                and self.timeline_sink is not None:
+            self._timeline(
+                "learning_episode_closed", pkt, pkt.decision_id,
+                reason=outcome, research_deadline_at_s=float(
+                    pkt.research_deadline_at), reward=float(transition.reward))
+        return transition is not None
+
+    def _research_deadline_watch(self, pkt: DataPacket):
+        """Close a deadline-loss learner episode at D while physics continues."""
+        target = float(pkt.research_deadline_at)
+        delay = max(0.0, target - float(self.env.now))
+        if delay:
+            yield self.env.timeout(delay)
+        if not pkt.learning_episode_closed:
+            self._finish_deadline_transition(pkt, "deadline_expired")
+
     def _close_learning_at_stop(self) -> None:
         """Explicitly discard every learning transition still open at the
         stop time (packets pending re-decision, queued on an ISL/downlink,
@@ -3706,6 +4027,21 @@ class Kernel:
             # of them.  The adapter owns the call counter, so the artifact can
             # prove the model -- not the scorer -- produced the action.
             return self.fixed_policy.choose(state, mask, self.env.now)
+        if self.cfg_learning["reward"] == "deadline_loss_v1":
+            if pkt.learning_episode_closed:
+                # Physical routing continues after research D, but this
+                # packet cannot create more replay transitions.
+                return self.learner.choose(state, mask, self.env.now)
+            if pkt.learning_state is not None:
+                self._finish_deadline_transition(
+                    pkt, "intermediate", next_state=state,
+                    next_mask=mask)
+            action = self.learner.choose(state, mask, self.env.now)
+            pkt.learning_state = state
+            pkt.learning_action = action
+            pkt.learning_reward = None
+            self._learning_open.add(pkt)
+            return action
         if pkt.learning_state is not None and pkt.learning_reward is None:
             # The only action allowed to be open without a settled reward is
             # deliver: its arrival reward exists only at real delivery. A
@@ -3779,6 +4115,9 @@ class Kernel:
                 self._observed_cache_entries(sat, now).items()):
             payload = entry.payload if isinstance(entry.payload, dict) else {}
             advertised = {}
+            generations = {}
+            rates = {}
+            work_ahead = {}
             for direction, record in (payload.get("isl_queue_bits")
                                       or {}).items():
                 if not isinstance(record, dict):
@@ -3789,7 +4128,26 @@ class Kernel:
                 if record.get("peer") != self.topo.get(int(origin), {}).get(
                         direction):
                     continue
-                advertised[direction] = int(record["value"])
+                value = record.get("value")
+                if (isinstance(value, (int, float))
+                        and not isinstance(value, bool)
+                        and math.isfinite(float(value)) and value >= 0.0):
+                    advertised[direction] = int(value)
+                generation = record.get("generation")
+                if (isinstance(generation, int)
+                        and not isinstance(generation, bool)
+                        and generation >= 0):
+                    generations[direction] = int(generation)
+                rate = record.get("rate_bps")
+                if (isinstance(rate, (int, float))
+                        and not isinstance(rate, bool)
+                        and math.isfinite(float(rate)) and rate >= 0.0):
+                    rates[direction] = float(rate)
+                bits = record.get("work_ahead_bits_proxy")
+                if (isinstance(bits, (int, float))
+                        and not isinstance(bits, bool)
+                        and math.isfinite(float(bits)) and bits >= 0.0):
+                    work_ahead[direction] = float(bits)
             neighbours[str(origin)] = {
                 "origin": int(origin),
                 "measurement": "control_cache_advertisement",
@@ -3798,6 +4156,9 @@ class Kernel:
                 "age_s": float(max(0.0, entry.aoi(now))),
                 "hops": int(entry.hops),
                 "advertised_isl_queue_bits": advertised,
+                "advertised_isl_generation": generations,
+                "advertised_isl_rate_bps": rates,
+                "advertised_isl_work_ahead_bits_proxy": work_ahead,
                 "advertised_serve_cells": sorted(
                     payload.get("serve_cells", ())),
                 # T1-P3: what actually arrived from this origin, in arrival
@@ -3848,17 +4209,72 @@ class Kernel:
                 continue
             payload = entry.payload if isinstance(entry.payload, dict) else {}
             advertised = {}
+            generations = {}
+            rates = {}
+            work_ahead = {}
             for direction, record in (payload.get("isl_queue_bits")
                                       or {}).items():
                 if not isinstance(record, dict):
                     continue
                 if record.get("peer") != self.topo.get(origin, {}).get(direction):
                     continue
-                advertised[direction] = int(record["value"])
+                value = record.get("value")
+                if (isinstance(value, (int, float))
+                        and not isinstance(value, bool)
+                        and math.isfinite(float(value)) and value >= 0.0):
+                    advertised[direction] = int(value)
+                generation = record.get("generation")
+                if (isinstance(generation, int)
+                        and not isinstance(generation, bool)
+                        and generation >= 0):
+                    generations[direction] = int(generation)
+                rate = record.get("rate_bps")
+                if (isinstance(rate, (int, float))
+                        and not isinstance(rate, bool)
+                        and math.isfinite(float(rate)) and rate >= 0.0):
+                    rates[direction] = float(rate)
+                bits = record.get("work_ahead_bits_proxy")
+                if (isinstance(bits, (int, float))
+                        and not isinstance(bits, bool)
+                        and math.isfinite(float(bits)) and bits >= 0.0):
+                    work_ahead[direction] = float(bits)
+            downlink = {}
+            for cell, record in (payload.get("downlink_resources") or {}).items():
+                if not isinstance(record, dict):
+                    continue
+                bits = record.get("queue_bits")
+                rate = record.get("rate_bps")
+                if (isinstance(bits, (int, float))
+                        and not isinstance(bits, bool)
+                        and math.isfinite(float(bits)) and bits >= 0):
+                    downlink[str(cell)] = {
+                        "queue_bits": float(bits),
+                        "rate_bps": (float(rate) if isinstance(rate, (int, float))
+                                     and not isinstance(rate, bool)
+                                     and math.isfinite(float(rate)) and rate > 0
+                                     else None),
+                        "propagation_s": (
+                            float(record["propagation_s"])
+                            if isinstance(record.get("propagation_s"), (int, float))
+                            and not isinstance(record.get("propagation_s"), bool)
+                            and math.isfinite(float(record["propagation_s"]))
+                            and record["propagation_s"] >= 0 else None),
+                        "available": record.get("available") is True,
+                        "queue_scope": record.get("queue_scope"),
+                        "queue_semantics": record.get("queue_semantics"),
+                    }
             out.append({
                 "generated_at": float(entry.generated_at),
                 "received_at": float(entry.received_at),
                 "advertised_isl_queue_bits": advertised,
+                "advertised_isl_generation": generations,
+                "advertised_isl_rate_bps": rates,
+                "advertised_isl_work_ahead_bits_proxy": work_ahead,
+                "advertised_processing": (
+                    payload.get("processing_resources")
+                    if isinstance(payload.get("processing_resources"), dict)
+                    else None),
+                "advertised_downlink_resources": downlink,
             })
         return out
 
@@ -4079,6 +4495,7 @@ class Kernel:
             pool = self._compute_pool[sat]
             busy = pool.count
             slot = pool.request()
+            self._compute_service_by_request[id(slot)] = float(ticket.service_s)
             yield slot
             started = float(self.env.now)
             wait = started - requested
@@ -4094,6 +4511,7 @@ class Kernel:
                 started_at=started, finished_at=finished, wait_s=wait,
                 service_s=finished - started)
             pool.release(slot)
+            self._compute_service_by_request.pop(id(slot), None)
         else:
             yield self.env.timeout(ticket.service_s)
             finished = float(self.env.now)
@@ -4155,48 +4573,152 @@ class Kernel:
         prop = {}
         peer_process = {}
         remaining = {}
-        node_process = float(self.cfg_ex["node_process_delay_s"])
-        for direction in sorted(cands):
+        resource_rate = {}
+        terminal_prop = {}
+        resource_available = {}
+        local_in_service = {}
+        # Preserve the already-computed legal/min-hop baseline order for the
+        # shared unknown-information fallback; scoring may reorder only when
+        # the required observations are complete.
+        for direction in cands:
             cr = cand_map.get(str(direction))
-            if not isinstance(cr, dict) or cr.get("status") != "ok":
+            if not isinstance(cr, dict) or cr.get("status") not in (
+                    "ok", "delivered_downlink"):
                 legal.append(direction)
                 continue
             legal.append(direction)
-            key = _ta.ResourceKey(int(cr["peer"]), str(cr["egress_direction"]),
-                                  "isl")
+            if cr.get("status") == "delivered_downlink":
+                key = _ta.ResourceKey(int(cr["peer"]), str(target_dst),
+                                      _ta.KIND_DOWNLINK)
+                resource_rate[direction] = cr.get("downlink_rate_bps")
+                terminal_prop[direction] = cr.get(
+                    "downlink_propagation_s")
+                resource_available[direction] = cr.get("downlink_available")
+            else:
+                key = _ta.ResourceKey(int(cr["peer"]),
+                                      str(cr["egress_direction"]), "isl",
+                                      generation=int(cr["egress_generation"]))
+                resource_rate[direction] = cr.get("isl_rate_bps")
             resources[direction] = key
-            rate[direction] = cr.get("isl_rate_bps")
+            rate[direction] = cr.get(
+                "candidate_isl_rate_bps", cr.get("isl_rate_bps"))
             prop[direction] = cr.get("propagation_s")
-            peer_process[direction] = node_process
+            # The peer term is known only when a legal, received processing
+            # advertisement supports an estimate at the packet's projected
+            # arrival.  A configured node delay is not evidence about this
+            # particular peer's queue and must not turn an unobserved term
+            # into a falsely complete ETA (including protocol-v1 history).
+            peer_process[direction] = None
             remaining[direction] = cr.get("remaining_prop_s")
+            # Local first-hop work continues while this request is in compute
+            # and query service.  Keep its residual work separate from the
+            # candidate target resource, which may be an ISL or terminal GSL.
+            link = self.isls[int(sat)].get(str(direction))
+            if link is not None:
+                local_in_service[str(direction)] = self._isl_in_service_s(
+                    link, now)
             for rec in self._advertisement_history(sat, int(cr["peer"]), now,
                                                    force=True):
-                advertised_bits = (rec.get("advertised_isl_queue_bits")
-                                   or {}).get(cr["egress_direction"])
+                if key.kind == _ta.KIND_DOWNLINK:
+                    terminal = (rec.get("advertised_downlink_resources")
+                                or {}).get(str(target_dst))
+                    advertised_bits = (None if terminal is None
+                                       else terminal.get("queue_bits"))
+                    sample_rate = (None if terminal is None
+                                   else terminal.get("rate_bps"))
+                else:
+                    resource_direction = str(cr["egress_direction"])
+                    generation = (rec.get("advertised_isl_generation")
+                                  or {}).get(resource_direction)
+                    if generation != key.generation:
+                        continue
+                    advertised_bits = (
+                        rec.get("advertised_isl_work_ahead_bits_proxy")
+                        or {}).get(resource_direction)
+                    sample_rate = (rec.get("advertised_isl_rate_bps")
+                                   or {}).get(resource_direction)
                 if advertised_bits is None:
                     continue
                 history.append(_ta.StateSample(
                     key, float(rec["generated_at"]), float(rec["received_at"]),
                     float(advertised_bits),
-                    None if cr.get("isl_rate_bps") is None
-                    else float(cr["isl_rate_bps"])))
+                    None if sample_rate is None else float(sample_rate)))
         def _finite_pairs(values):
             return {d: float(v) for d, v in values.items()
                     if v is not None and isinstance(v, (int, float))
                     and not isinstance(v, bool) and math.isfinite(float(v))}
         scope = "scope:|%s|%s|default" % (sat, target_dst)
-        compute_state = self._compute_state_now(int(sat))
+        # Frozen per-packet/per-flow-miss decisions request compute now, then
+        # query after compute. Refresh scoring runs after both services; table
+        # lookups never add a fictitious per-packet compute interval.
+        include_compute = (self.obs_mode == "frozen"
+                           and not self.async_mode
+                           and self.exec_mode != "precomputed")
+        compute_state = (self._compute_state_now(int(sat))
+                         if include_compute else
+                         {"wait_estimate_s": 0.0, "service_s": 0.0,
+                          "method": "no_foreground_compute_before_snapshot"})
+        compute_elapsed = (compute_state["wait_estimate_s"]
+                           + compute_state["service_s"])
+        query_state = self._query_state_at(int(sat), now, compute_elapsed)
+        # For an ISL action, the packet reaches the peer only after the local
+        # compute/query, local FIFO work, packet serialization, and propagation
+        # intervals.  Estimate the peer's later decision delay only from the
+        # latest actually-received processing advertisement.  In particular,
+        # never inspect the peer's live SimPy pools here.
+        for direction in cands:
+            cr = cand_map.get(str(direction))
+            if (not isinstance(cr, dict)
+                    or cr.get("status") not in ("ok", "delivered_downlink")
+                    or int(cr.get("peer", sat)) == int(sat)):
+                continue
+            rate_local = cr.get("candidate_isl_rate_bps", cr.get("isl_rate_bps"))
+            prop_local = cr.get("propagation_s")
+            queued_local = own_q.get(direction, 0.0)
+            residual_local = local_in_service.get(str(direction))
+            if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                       and math.isfinite(float(v)) for v in
+                       (rate_local, prop_local, queued_local)) \
+                    or float(rate_local) <= 0 or residual_local is None:
+                peer_process[direction] = None
+                continue
+            source_compute_query = (float(compute_state["wait_estimate_s"])
+                                    + float(compute_state["service_s"])
+                                    + float(query_state["wait_s"])
+                                    + float(query_state["service_s"]))
+            local_wait = max(
+                0.0, float(queued_local) / float(rate_local)
+                + float(residual_local) - source_compute_query)
+            peer_arrival_at = (float(now) + source_compute_query + local_wait
+                               + target_bits / float(rate_local)
+                               + float(prop_local))
+            rows = self._advertisement_history(
+                int(sat), int(cr["peer"]), float(now), force=True)
+            if not rows:
+                peer_process[direction] = None
+                continue
+            record = rows[-1]
+            projected = self._project_advertised_peer_processing(
+                record, peer_arrival_at)
+            if projected is not None:
+                peer_process[direction] = projected
         return _ta.make_snapshot(
             satellite=int(sat), snapshot_at=float(now), history=tuple(history),
             legal_directions=tuple(legal), resources=resources,
             egress_queue_bits=_finite_pairs(
                 {d: own_q.get(d, 0.0) for d in resources}),
+            local_egress_in_service_s=_finite_pairs(local_in_service),
             link_rate_bps=_finite_pairs(rate),
             link_propagation_s=_finite_pairs(prop),
             peer_process_s=_finite_pairs(peer_process),
             remaining_prop_s=_finite_pairs(remaining),
+            resource_service_rate_bps=_finite_pairs(resource_rate),
+            terminal_propagation_s=_finite_pairs(terminal_prop),
+            resource_available=resource_available,
             compute_wait_s=float(compute_state["wait_estimate_s"]),
             compute_service_s=float(compute_state["service_s"]),
+            query_wait_s=float(query_state["wait_s"]),
+            query_service_s=float(query_state["service_s"]),
             pkt_bits=target_bits,
             arm=arm, predictor=str(self.cfg_ta["predictor"]),
             history_limit=int(self.cfg_ta["history_limit"]),
@@ -4210,7 +4732,8 @@ class Kernel:
         return _ta.resolve_common_horizon(probe, rule)
 
     def _time_aligned_order(self, pkt: DataPacket, sat: int, now: float,
-                            cands: list, own_q: dict, frozen_hit=None):
+                            cands: list, own_q: dict, frozen_hit=None,
+                            query_charge=None):
         """Reorder the legal forward candidates with the shared scorer.
 
         Returns (ordered_candidates, audit).  With time_alignment disabled the
@@ -4238,7 +4761,8 @@ class Kernel:
                     "schema": "leo-sim-execution-mode-at-start/v1",
                     "enabled": True, "execution_mode": "per_flow",
                     "cache_hit": True, "stored_at": hit["stored_at"],
-                    "query": dict(self._query_charge),
+                    "query": dict(query_charge if query_charge is not None
+                                  else self._query_charge),
                     "expires_at": hit["expires_at"],
                     "ttl_s": float(self.cfg_ta["per_flow_ttl_s"]),
                     "applied_order": list(order),
@@ -4250,7 +4774,8 @@ class Kernel:
                                "wait does not convert it into a miss)"
                                if frozen_hit is not None else ""),
                 }
-            order, audit = self._score_order(pkt, sat, now, cands, own_q)
+            order, audit = self._score_order(
+                pkt, sat, now, cands, own_q, query_charge=query_charge)
             self._store_flow_cache(pkt, sat, now, order)
             if audit is not None:
                 audit["execution_mode"] = "per_flow"
@@ -4278,9 +4803,11 @@ class Kernel:
                 "source": "precomputed topology table + received "
                           "advertisements; per-decision scoring skipped",
             }
-        return self._score_order(pkt, sat, now, cands, own_q)
+        return self._score_order(pkt, sat, now, cands, own_q,
+                                 query_charge=query_charge)
 
-    def _score_order(self, pkt, sat: int, now: float, cands: list, own_q: dict):
+    def _score_order(self, pkt, sat: int, now: float, cands: list, own_q: dict,
+                     query_charge=None):
         """The full per-packet scoring path (observation -> prediction ->
         scoring -> ranking).  Returns (order, audit)."""
         arm = str(self.cfg_ta["arm"])
@@ -4324,6 +4851,9 @@ class Kernel:
             "predictor": probe.predictor,
             "common_rule": rule,
             "common_horizon_s": horizon,
+            "common_horizon_status": (
+                "fixed_configured" if rule == "fixed_horizon" else
+                ("NO_STRONG_COMMON" if horizon is None else "finite_eta_median")),
             "query_delay_s": probe.query_delay_s,
             "snapshot_at": probe.snapshot_at,
             "compute_state": self._compute_state_now(int(sat)),
@@ -4363,11 +4893,44 @@ class Kernel:
                 } for s in scored.scores},
             "execution_mode": self.exec_mode,
             "cache_hit": None,
-            "query": dict(self._query_charge),
+            "query": dict(query_charge if query_charge is not None
+                          else self._query_charge),
             "source": "leo_sim.kernel online snapshot (received advertisements "
                       "and local state only)",
         }
         return order, audit
+
+    @staticmethod
+    def _pool_wait_for_new_request(pool, service_s: float, now: float,
+                                   service_by_request=None) -> tuple[float, int]:
+        """Project the known FIFO work ahead of one new request.
+
+        This uses only currently active starts, the current Resource queue and
+        configured service lengths. It assumes no future arrivals and never
+        reads the wait this new request later realizes.
+        """
+        service_s = max(0.0, float(service_s))
+        servers = int(pool.capacity)
+        if servers <= 0:
+            return 0.0, 0
+        known = service_by_request or {}
+        available = [0.0] * servers
+        active = list(pool.users)
+        for i, request in enumerate(active):
+            started = getattr(request, "usage_since", None)
+            if started is None:
+                remaining = service_s
+            else:
+                remaining = max(0.0, known.get(id(request), service_s)
+                                - (float(now) - float(started)))
+            available[i] = remaining
+        # Assign already-waiting jobs in FIFO order to the next free server.
+        # SimPy Resource.queue is an ordered list of ungranted requests.
+        for request in list(pool.queue):
+            server = min(range(servers), key=lambda idx: available[idx])
+            duration = max(0.0, float(known.get(id(request), service_s)))
+            available[server] += duration
+        return min(available), len(pool.queue)
 
     def _compute_state_now(self, sat: int) -> dict:
         """The compute-pool state KNOWN AT THIS INSTANT.
@@ -4382,12 +4945,68 @@ class Kernel:
             return {"servers": 0, "busy": 0, "service_s": service,
                     "wait_estimate_s": 0.0,
                     "method": "unbounded_pool_no_wait"}
-        busy = self._compute_pool[sat].count
-        pending = max(0, busy + 1 - self.compute_servers)
+        pool = self._compute_pool[sat]
+        busy = pool.count
+        wait, queued = self._pool_wait_for_new_request(
+            pool, service, float(self.env.now),
+            self._compute_service_by_request)
         return {"servers": self.compute_servers, "busy": int(busy),
+                "queued": int(queued),
                 "service_s": service,
-                "wait_estimate_s": float(pending) * service,
-                "method": "fifo_pending_tasks_times_service"}
+                "wait_estimate_s": float(wait),
+                "method": "fifo_remaining_service_plus_waiters"}
+
+    def _query_state_at(self, sat: int, now: float,
+                        arrival_delay_s: float = 0.0) -> dict:
+        """Estimate a query arriving after known compute time.
+
+        Existing query jobs drain during the compute interval. Future query
+        arrivals are unknown and excluded; actual wait is logged separately.
+        """
+        if self._query_pool is None or self._query_delay_s <= 0:
+            return {"servers": 0, "busy": 0, "queued": 0,
+                    "wait_s": 0.0, "service_s": 0.0,
+                    "method": "no_query_service"}
+        pool = self._query_pool[sat]
+        wait_now, queued = self._pool_wait_for_new_request(
+            pool, self._query_delay_s, now,
+            self._query_service_by_request)
+        wait_at_arrival = max(0.0, wait_now - max(0.0, arrival_delay_s))
+        return {"servers": int(pool.capacity), "busy": int(pool.count),
+                "queued": int(queued), "wait_s": float(wait_at_arrival),
+                "service_s": float(self._query_delay_s),
+                "method": "known_fifo_work_no_future_arrivals"}
+
+    @staticmethod
+    def _isl_in_service_s(link, now: float) -> float:
+        """Remaining active PHY service using the rate frozen at service start.
+
+        The simulator samples a rate when a transmission begins and schedules
+        that packet's completion from the sampled rate.  A later MCS sample is
+        for future transmissions; using it to reconstruct this packet's
+        residual would invent work progress.  Missing start metadata is
+        unknown, not zero.
+        """
+        if link.current is None:
+            return 0.0
+        if link._svc_phase == "transmitting":
+            rate = getattr(link, "_service_rate_bps", None)
+            started_at = getattr(link, "_tx_started_at", None)
+            if (not isinstance(rate, (int, float))
+                    or isinstance(rate, bool)
+                    or not math.isfinite(float(rate)) or rate <= 0.0
+                    or started_at is None):
+                return None
+            return max(0.0, float(link.current.bits) / float(rate)
+                       - (float(now) - float(started_at)))
+        try:
+            rate = float(link.k._link_rate(
+                "isl", now, link.sat, peer=link.peer))
+        except Exception:
+            return None
+        if not math.isfinite(rate) or rate <= 0.0:
+            return None
+        return float(link.current.bits) / rate
 
     def _candidate_resource_map(self, pkt, sat: int, now: float,
                                 considered: list, force: bool = False,
@@ -4409,6 +5028,8 @@ class Kernel:
         target_dst = pkt.dst if dst is None else dst
         serving = routing.destinations_in_cache(
             self.caches[sat], target_dst, now, max_cache_hops=cache_hops)
+        forbidden_nodes = set(getattr(pkt, "path", ()) or ())
+        safe_serving = [s for s in serving if s not in forbidden_nodes]
         entries = self._observed_cache_entries(sat, now)
         out: dict = {}
         for direction in considered:
@@ -4417,6 +5038,19 @@ class Kernel:
             if peer is None:
                 out[str(direction)] = {
                     "status": "missing", "reason": "direction_has_no_peer"}
+                continue
+            try:
+                candidate_isl_rate = float(
+                    self._link_rate("isl", now, sat, peer=peer))
+            except Exception:
+                candidate_isl_rate = None
+            if peer in forbidden_nodes:
+                out[str(direction)] = {
+                    "status": "missing", "reason": "candidate_peer_already_visited",
+                    "peer": int(peer), "measurement": None,
+                    "isl_rate_bps": float(self.isl_rate_bps),
+                    "candidate_isl_rate_bps": candidate_isl_rate,
+                }
                 continue
             entry = entries.get(peer)
             advertised_q: dict = {}
@@ -4429,7 +5063,11 @@ class Kernel:
                         continue
                     if record.get("peer") != self.topo.get(peer, {}).get(d):
                         continue
-                    advertised_q[d] = int(record["value"])
+                    value = record.get("value")
+                    if isinstance(value, (int, float)) and not isinstance(
+                            value, bool) and math.isfinite(float(value)) \
+                            and value >= 0:
+                        advertised_q[d] = int(value)
             measurement = None if entry is None else {
                 "generated_at": float(entry.generated_at),
                 "received_at": float(entry.received_at),
@@ -4441,12 +5079,28 @@ class Kernel:
             except Exception:  # geometry may not describe this edge
                 propagation = None
             if peer in serving:
+                payload = (entry.payload if entry is not None
+                           and isinstance(entry.payload, dict) else {})
+                terminal = ((payload.get("downlink_resources") or {})
+                            .get(str(target_dst), {}))
+                downlink_rate = terminal.get("rate_bps")
+                downlink_prop = terminal.get("propagation_s")
+                downlink_bits = terminal.get("queue_bits")
                 out[str(direction)] = {
                     "status": "delivered_downlink", "peer": int(peer),
                     "egress_direction": None, "kind": "downlink",
                     "measurement": measurement,
                     "isl_rate_bps": float(self.isl_rate_bps),
+                    "candidate_isl_rate_bps": candidate_isl_rate,
                     "propagation_s": propagation,
+                    "downlink_queue_bits": downlink_bits,
+                    "downlink_rate_bps": downlink_rate,
+                    "downlink_propagation_s": downlink_prop,
+                    "downlink_available": terminal.get("available"),
+                    "downlink_queue_scope": terminal.get("queue_scope"),
+                    "downlink_queue_semantics": terminal.get(
+                        "queue_semantics"),
+                    "remaining_prop_s": 0.0,
                 }
                 continue
             if not self.topo.get(peer):
@@ -4454,6 +5108,7 @@ class Kernel:
                     "status": "missing", "reason": "peer_has_no_isl_egress",
                     "peer": int(peer), "measurement": measurement,
                     "isl_rate_bps": float(self.isl_rate_bps),
+                    "candidate_isl_rate_bps": candidate_isl_rate,
                     "propagation_s": propagation}
                 continue
             cands, route_status = routing.choose_next_hop(
@@ -4469,16 +5124,54 @@ class Kernel:
                     (lambda prop_s: link_budget.mcs_rate_bps(
                         prop_s * model.C_KM_S, self.rf_isl, self.mcs_table))
                     if self.rate_model == "mcs" else None),
-                cache_hops=cache_hops)
+                cache_hops=cache_hops,
+                forbidden_nodes=forbidden_nodes)
             if route_status != "ok" or not cands:
                 out[str(direction)] = {
                     "status": "missing",
                     "reason": "peer_route_%s" % route_status,
                     "peer": int(peer), "measurement": measurement,
                     "isl_rate_bps": float(self.isl_rate_bps),
+                    "candidate_isl_rate_bps": candidate_isl_rate,
                     "propagation_s": propagation}
                 continue
             egress = cands[0]
+            peer_payload = (entry.payload if entry is not None
+                            and isinstance(entry.payload, dict) else {})
+            egress_record = ((peer_payload.get("isl_queue_bits") or {})
+                             .get(egress))
+            egress_peer = self.topo.get(peer, {}).get(egress)
+            if (not isinstance(egress_record, dict)
+                    or egress_record.get("peer") != egress_peer
+                    or isinstance(egress_record.get("generation"), bool)
+                    or not isinstance(egress_record.get("generation"), int)
+                    or egress_record.get("generation") < 0):
+                out[str(direction)] = {
+                    "status": "missing",
+                    "reason": "target_egress_identity_unavailable",
+                    "peer": int(peer), "measurement": measurement,
+                    "egress_direction": str(egress),
+                    "egress_peer": (None if egress_peer is None
+                                    else int(egress_peer)),
+                    "isl_rate_bps": None,
+                    "candidate_isl_rate_bps": candidate_isl_rate,
+                    "propagation_s": propagation,
+                }
+                continue
+            raw_target_rate = egress_record.get("rate_bps")
+            target_rate = None
+            if (isinstance(raw_target_rate, (int, float))
+                    and not isinstance(raw_target_rate, bool)
+                    and math.isfinite(float(raw_target_rate))
+                    and raw_target_rate > 0.0):
+                target_rate = float(raw_target_rate)
+            raw_work_ahead = egress_record.get("work_ahead_bits_proxy")
+            target_work_ahead = None
+            if (isinstance(raw_work_ahead, (int, float))
+                    and not isinstance(raw_work_ahead, bool)
+                    and math.isfinite(float(raw_work_ahead))
+                    and raw_work_ahead >= 0.0):
+                target_work_ahead = float(raw_work_ahead)
             # fixed visible-topology remaining propagation cost: remaining
             # hop count from the peer to its nearest VISIBLE serving node, at
             # a representative per-hop propagation (the known link value).
@@ -4486,15 +5179,16 @@ class Kernel:
             # ranking without favouring any arm.
             remaining_hops = None
             try:
+                safe_reverse = routing.without_nodes(
+                    self._routing_reverse_adj, forbidden_nodes)
                 hops_map = routing._multi_source_bfs(
-                    self._routing_reverse_adj, serving)
+                    safe_reverse, safe_serving)
                 remaining_hops = hops_map.get(peer)
             except Exception:
                 remaining_hops = None
             remaining_prop = (
                 None if (remaining_hops is None or propagation is None)
                 else float(remaining_hops) * float(propagation))
-            egress_peer = self.topo.get(peer, {}).get(egress)
             out[str(direction)] = {
                 "status": "ok", "peer": int(peer),
                 "egress_direction": egress,
@@ -4503,15 +5197,19 @@ class Kernel:
                 "kind": "isl",
                 "advertised_queue_bits": advertised_q.get(egress),
                 "advertised_queue_known": egress in advertised_q,
+                "egress_generation": int(egress_record["generation"]),
+                "work_ahead_bits_proxy": target_work_ahead,
                 "measurement": measurement,
-                "isl_rate_bps": float(self.isl_rate_bps),
+                "isl_rate_bps": target_rate,
+                "candidate_isl_rate_bps": candidate_isl_rate,
                 "propagation_s": propagation,
                 "remaining_hops": remaining_hops,
                 "remaining_prop_s": remaining_prop,
                 "rule": "visible_topology_shortest_remaining_path",
                 "remaining_prop_basis": (
-                    "remaining hop count from the peer to its nearest visible "
-                    "serving node times the known per-hop link propagation"),
+                    "path-constrained remaining hop count from this candidate "
+                    "peer to its nearest received serving advertisement, times "
+                    "the known per-hop link propagation"),
             }
         return out
 
@@ -5054,7 +5752,7 @@ class Kernel:
         requested = float(self.env.now)
         # frozen: the observation and the inference happen NOW, before the
         # timeout; only the legality check and the commit happen after it.
-        self._reset_query_charge()
+        query_charge = self._new_query_charge()
         if not self._packet_compute_required(pkt, sat, requested):
             # A TABLE LOOKUP IS NOT A COMPUTATION.  precomputed, async_point and
             # async_window read an installed table, and a per-flow cache hit
@@ -5069,9 +5767,13 @@ class Kernel:
             # full scoring run that nobody paid for (review S3).
             frozen_hit = (self._per_flow_hit(pkt, sat, requested)
                           if self.exec_mode == "per_flow" else None)
-            yield from self._query_service(pkt, sat, requested)
+            query_requested = float(self.env.now)
+            yield from self._query_service(
+                pkt, sat, query_requested, query_charge,
+                decision_requested_at=requested)
             self._decide(pkt, sat, decision_started_at=requested,
-                         observation=None, frozen_flow_hit=frozen_hit)
+                         observation=None, frozen_flow_hit=frozen_hit,
+                         query_charge=query_charge)
             return
         observation = (self._observe_preferred_action(pkt, sat)
                        if self.obs_mode == "frozen" else None)
@@ -5086,6 +5788,8 @@ class Kernel:
             pool = self._compute_pool[sat]
             busy = pool.count
             slot = pool.request()
+            self._compute_service_by_request[id(slot)] = float(
+                self.compute_delay_s)
             yield slot
             started = float(self.env.now)
             wait = started - requested
@@ -5102,6 +5806,7 @@ class Kernel:
             # release at the finish instant: the next queued request can start
             # here, and a completion event always precedes anything it triggers
             pool.release(slot)
+            self._compute_service_by_request.pop(id(slot), None)
         else:
             started = requested
             self._emit_compute_wait(pkt, sat, job_id, 0.0, 0, requested)
@@ -5114,15 +5819,18 @@ class Kernel:
                 "compute_finish", pkt, sat, job_id, requested_at=requested,
                 started_at=started, finished_at=finished,
                 wait_s=0.0, service_s=finished - started)
-        yield from self._query_service(pkt, sat, requested)
+        query_requested = float(self.env.now)
+        yield from self._query_service(
+            pkt, sat, query_requested, query_charge,
+            decision_requested_at=requested)
         # the frozen observation (and its audit) was built BEFORE the query, so
         # the charge is attached now, in place, rather than left at zero
         if observation is not None:
             audit = (observation.get("observation") or {}).get("time_alignment")
             if isinstance(audit, dict):
-                audit["query"] = dict(self._query_charge)
+                audit["query"] = dict(query_charge)
         self._decide(pkt, sat, decision_started_at=requested,
-                     observation=observation)
+                     observation=observation, query_charge=query_charge)
 
     def _async_milestone(self, milestone: str, sat: int, job_id: int,
                          **extra) -> None:
@@ -5135,20 +5843,21 @@ class Kernel:
         row.update(extra)
         self.timeline_sink.append(row)
 
-    def _reset_query_charge(self) -> None:
-        self._query_charge = {"requests": 0, "wait_s": 0.0, "service_s": 0.0,
-                              "servers": 1 if self._query_pool else 0}
+    def _new_query_charge(self) -> dict:
+        return {"requests": 0, "wait_s": 0.0, "service_s": 0.0,
+                "servers": 1 if self._query_pool else 0}
 
-    def _query_milestone(self, milestone: str, pkt, sat: int, **extra) -> None:
+    def _query_milestone(self, milestone: str, pkt, sat: int,
+                         charge: dict, **extra) -> None:
         # requests are counted once per query in _query_service; start/finish
         # are two rows of the SAME query
         if "wait_s" in extra:
-            self._query_charge["wait_s"] += float(extra["wait_s"])
+            charge["wait_s"] += float(extra["wait_s"])
             self._query_totals["total_wait_s"] += float(extra["wait_s"])
             self._query_totals["max_wait_s"] = max(
                 self._query_totals["max_wait_s"], float(extra["wait_s"]))
         if "service_s" in extra:
-            self._query_charge["service_s"] += float(extra["service_s"])
+            charge["service_s"] += float(extra["service_s"])
             self._query_totals["total_service_s"] += float(extra["service_s"])
         if self.timeline_sink is not None:
             row = {"milestone": milestone, "at": float(self.env.now),
@@ -5158,7 +5867,8 @@ class Kernel:
             row.update(extra)
             self.timeline_sink.append(row)
 
-    def _query_service(self, pkt, sat: int, requested: float):
+    def _query_service(self, pkt, sat: int, requested: float, charge: dict,
+                       *, decision_requested_at: float | None = None):
         """Consume the shared per-satellite query service.
 
         Yields until the answer is available and returns (wait_s, service_s).
@@ -5169,22 +5879,25 @@ class Kernel:
             return 0.0, 0.0
         pool = self._query_pool[sat]
         busy = pool.count
-        self._query_charge["requests"] += 1
+        charge["requests"] += 1
         self._query_totals["requests"] += 1
         slot = pool.request()
+        self._query_service_by_request[id(slot)] = float(self._query_delay_s)
         yield slot
         started = float(self.env.now)
         wait = max(0.0, started - requested)
-        self._query_milestone("query_start", pkt, sat, requested_at=requested,
-                              started_at=started, wait_s=wait,
-                              servers_busy=int(busy),
-                              queueing=bool(wait > 0.0))
+        self._query_milestone(
+            "query_start", pkt, sat, charge, requested_at=requested,
+            decision_requested_at=decision_requested_at,
+            started_at=started, wait_s=wait, servers_busy=int(busy),
+            queueing=bool(wait > 0.0))
         yield self.env.timeout(self._query_delay_s)
         finished = float(self.env.now)
-        self._query_milestone("query_finish", pkt, sat,
+        self._query_milestone("query_finish", pkt, sat, charge,
                               started_at=started, finished_at=finished,
                               wait_s=0.0, service_s=finished - started)
         pool.release(slot)
+        self._query_service_by_request.pop(id(slot), None)
         return wait, finished - started
 
     def _packet_compute_required(self, pkt, sat: int, requested: float) -> bool:
@@ -5574,7 +6287,7 @@ class Kernel:
     def _decide(self, pkt: DataPacket, sat: int,
                 decision_started_at: float | None = None,
                 observation: dict | None = None,
-                frozen_flow_hit=None) -> None:
+                frozen_flow_hit=None, query_charge=None) -> None:
         if observation is not None:
             self._decide_from_frozen_observation(
                 pkt, sat, observation, decision_started_at)
@@ -5742,7 +6455,8 @@ class Kernel:
         # filters below and the commit rules are unchanged, so the four arms
         # differ ONLY in the ordering they feed the same pipeline.
         cands, ta_audit = self._time_aligned_order(
-            pkt, sat, now, cands, own_q, frozen_hit=frozen_flow_hit)
+            pkt, sat, now, cands, own_q, frozen_hit=frozen_flow_hit,
+            query_charge=query_charge)
         unavailable = False
         rate_blocked = False
         recover_at = float("inf")
@@ -5954,14 +6668,19 @@ class Kernel:
         if pkt.deadline is not None and now >= pkt.deadline:
             self._fail(pkt, "DATA_DEADLINE_EXPIRED")
             return
-        self._finish_learning_transition(
-            pkt, np.zeros(_learning.CONTRACT_DIMS[self.cfg_rt["contract"]]),
-            {a: False for a in _learning.ACTIONS}, True,
-            # the arrival reward (legacy ArriveReward,
-            # ANALYSIS/REWARD-DIFF-20260816.md) exists only here, at real
-            # delivery — never at the deliver decision
-            terminal_reward=float(self.cfg_learning["arrive_reward"]),
-        )
+        if self.cfg_learning["reward"] == "deadline_loss_v1":
+            if (pkt.research_deadline_at is not None
+                    and now >= float(pkt.research_deadline_at)):
+                self._finish_deadline_transition(pkt, "deadline_expired")
+            else:
+                self._finish_deadline_transition(pkt, "delivered")
+        else:
+            self._finish_learning_transition(
+                pkt, np.zeros(_learning.CONTRACT_DIMS[self.cfg_rt["contract"]]),
+                {a: False for a in _learning.ACTIONS}, True,
+                # The legacy arrival reward exists only at real delivery.
+                terminal_reward=float(self.cfg_learning["arrive_reward"]),
+            )
         self.ledger.record(pkt.pid, "DELIVERED", pkt.bits)
         self.deliveries[pkt.pid] = {"delivered_at": now, "path": list(pkt.path)}
         self._metric_delivered(pkt)
@@ -5992,14 +6711,18 @@ class Kernel:
             # mid-service failure (geometry/GE/deadline/retire) must not
             # erase that realized reward: keep it, and settle 0 only when no
             # reward was realized yet (failure before service start).
-            self._finish_learning_transition(
-                pkt,
-                np.zeros(_learning.CONTRACT_DIMS[self.cfg_rt["contract"]]),
-                {a: False for a in _learning.ACTIONS}, True,
-                terminal_reward=(None
-                                 if pkt.learning_reward is not None
-                                 else 0.0),
-            )
+            if self.cfg_learning["reward"] == "deadline_loss_v1":
+                self._finish_deadline_transition(pkt, "failed")
+            else:
+                self._finish_learning_transition(
+                    pkt,
+                    np.zeros(_learning.CONTRACT_DIMS[
+                        self.cfg_rt["contract"]]),
+                    {a: False for a in _learning.ACTIONS}, True,
+                    terminal_reward=(None
+                                     if pkt.learning_reward is not None
+                                     else 0.0),
+                )
             self.ledger.record(pkt.pid, fate, pkt.bits)
             self._log("fate", pid=pkt.pid, fate=fate)
 

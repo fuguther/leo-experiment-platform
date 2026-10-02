@@ -168,7 +168,7 @@ def _default_pop_table(candidates=3, sha=None):
 def pop_loader(monkeypatch):
     table = _default_pop_table()
     monkeypatch.setattr(population, "load_population_regions",
-                        lambda path, aggregation_deg: table)
+                        lambda path, aggregation_deg, **kwargs: table)
     return table
 
 

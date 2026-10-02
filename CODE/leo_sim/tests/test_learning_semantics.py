@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -175,6 +176,90 @@ def test_open_learning_transitions_are_discarded_visibly_at_stop():
     # the accounting identity a receipt can check
     assert mc["learning_decisions"] == (
         mc["learning_transitions"] + mc["learning_discarded_at_stop"])
+
+
+def test_research_deadline_closes_learning_but_packet_keeps_delivering():
+    """Research D is a learning/loss boundary, not the physical TTL.
+
+    The direct-GSL packet is still in downlink service when D=1.5 s closes its
+    DDQN episode. It must be delivered later under the same physical kernel,
+    with exactly one terminal learning transition.
+    """
+    cfg = make_cfg({
+        "scenario": {"duration_s": 4.0, "num_satellites": 1,
+                     "num_planes": 1},
+        "demand": {"research_deadline_s": 1.5, "deadline_s": None},
+        "access": {"uplink_rate_mbps": 8.0,
+                   "downlink_rate_mbps": 8.0},
+        "control_plane": {"enabled": True, "vis_k": 0},
+        "routing": {"policy": "hop", "learning_enabled": True},
+        "learning": {"algorithm": "qlearning", "reward": "deadline_loss_v1",
+                     "gamma": 1.0},
+    })
+    geo = _HandoverGeometry(1, visible=lambda *_: True)
+    packet = row(1, 0.0, A, B, bits=8_000_000)
+    packet["research_deadline_at_s"] = 1.5
+    k = kernel.Kernel(cfg, [packet], geometry=geo, timeline_sink=[])
+    learner = _StubLearner()
+    k.learner = learner
+
+    result = k.run()
+
+    assert result["fates"][1] == "DELIVERED"
+    assert result["deliveries"][1]["delivered_at"] > 1.5
+    assert learner.records == [("deliver", -1.0, True)]
+    closures = [row for row in k.timeline_sink
+                if row.get("milestone") == "learning_episode_closed"
+                and row.get("pid") == 1]
+    assert len(closures) == 1
+    assert closures[0]["reason"] == "deadline_expired"
+
+
+def test_population_cost_profile_packet_physics_continues_after_research_d():
+    """The actual non-learning cost profile keeps physical TTL separate from D."""
+    profile = Path(__file__).resolve().parents[1] / "profiles" / \
+        "t1_population_region_cost_smoke.yaml"
+    loaded = config.load_config_file(str(profile))
+    study_cfg = loaded["config"]
+    study_cfg["scenario"].update({
+        "duration_s": 9.0,
+        "num_satellites": 1,
+        "num_planes": 1,
+    })
+    study_cfg["demand"].update({
+        "emission_start_s": 2.0,
+        "emission_end_s": 4.0,
+    })
+    study_cfg["access"].update({
+        "uplink_rate_mbps": 8.0,
+        "downlink_rate_mbps": 8.0,
+        "uplink_queue_bits": 6_000_000_000,
+        "downlink_queue_bits": 6_000_000_000,
+        "holding_queue_bits": 6_000_000_000,
+        "acquisition_delay_s": 0.0,
+    })
+    study_cfg["execution"]["available_capacity_interval_s"] = None
+    cfg = config.resolve_config(study_cfg)
+    assert cfg["config"]["learning"]["algorithm"] == "none"
+    assert cfg["config"]["demand"]["research_deadline_s"] == 4.0
+    assert cfg["config"]["demand"]["deadline_s"] is None
+
+    geo = _HandoverGeometry(1, visible=lambda *_: True)
+    packet = row(1, 2.0, A, B, bits=5_000_000_000)
+    packet["research_deadline_at_s"] = 6.0
+    result = kernel.run_simulation(cfg, [packet], geometry=geo)
+
+    assert result["fates"][1] == "DELIVERED"
+    assert result["deliveries"][1]["delivered_at"] > 6.0
+
+
+def test_population_cost_profile_separates_research_d_from_physical_ttl():
+    profile = Path(__file__).resolve().parents[1] / "profiles" / \
+        "t1_population_region_cost_smoke.yaml"
+    resolved = config.load_config_file(str(profile))
+    demand = resolved["config"]["demand"]
+    assert demand["research_deadline_s"] == 4.0
+    assert demand["deadline_s"] is None
 
 
 # ------------------------------- 3. training path bound to config, TF pinned

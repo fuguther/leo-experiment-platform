@@ -149,8 +149,16 @@ def _capture_online_decision(resolved, rows, geometry):
     """
     captured = {}
     real = kernel.Kernel._time_aligned_order
+    real_build = kernel.Kernel._build_ta_snapshot
+    built_snapshots = []
+
+    def build_spy(self, *args, **kwargs):
+        snapshot = real_build(self, *args, **kwargs)
+        built_snapshots.append(snapshot)
+        return snapshot
 
     def spy(self, pkt, sat, now, cands, own_q):
+        built_snapshots.clear()
         result = real(self, pkt, sat, now, cands, own_q)
         audit = (result[1] if isinstance(result, tuple) and len(result) > 1
                  else None)
@@ -162,20 +170,26 @@ def _capture_online_decision(resolved, rows, geometry):
         # is the bug this check exists to catch).
         if not captured and cands and isinstance(audit, dict):
             captured.update(
-                kern=self, pkt=pkt, sat=sat, now=float(now),
+                kern=self, pkt=copy.deepcopy(pkt),
+                packet_path_at_capture=list(getattr(pkt, "path", ()) or ()),
+                sat=sat, now=float(now),
                 cands=list(cands), own_q=dict(own_q), audit=audit,
+                online_snapshot=(built_snapshots[-1]
+                                 if built_snapshots else None),
                 caches_frozen=copy.deepcopy(self.caches),
                 compute_state={s: self._compute_state_now(s)
                                for s in range(self.num_sats)})
         return result
 
     kernel.Kernel._time_aligned_order = spy
+    kernel.Kernel._build_ta_snapshot = build_spy
     try:
         kern = kernel.Kernel(resolved, rows, geometry=geometry,
                              decision_sink=[], timeline_sink=[])
         kern.run()
     finally:
         kernel.Kernel._time_aligned_order = real
+        kernel.Kernel._build_ta_snapshot = real_build
     if not captured:
         raise BenchmarkError("the fixture produced no online decision")
     captured["arm"] = str(kern.cfg_ta["arm"])
@@ -188,13 +202,18 @@ def _with_frozen_inputs(kern, captured, fn):
     instant: same received advertisements, same pool occupancy."""
     saved_caches = kern.caches
     saved_state = kern._compute_state_now
+    saved_isl_state = kern._isl_in_service_s
     kern.caches = captured["caches_frozen"]
     kern._compute_state_now = lambda sat: dict(captured["compute_state"][sat])
+    frozen_service = ({} if captured.get("online_snapshot") is None else
+                      dict(captured["online_snapshot"].local_egress_in_service_s))
+    kern._isl_in_service_s = lambda link, now: frozen_service.get(link.dir, 0.0)
     try:
         return fn()
     finally:
         kern.caches = saved_caches
         kern._compute_state_now = saved_state
+        kern._isl_in_service_s = saved_isl_state
 
 
 def online_observation_build(captured, arm, capture=None):

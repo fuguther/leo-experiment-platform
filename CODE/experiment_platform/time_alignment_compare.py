@@ -549,7 +549,8 @@ def _pairs_from(values):
 
 
 def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
-                   compute_wait, compute_service, provenance=()):
+                   compute_wait, compute_service, provenance=(),
+                   common_rule=None):
     """Turn the kernel observation record into an online snapshot.
 
     Only fields the kernel wrote at t0 are read.  A candidate whose target
@@ -576,7 +577,10 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
     prop = {}
     peer_process = {}
     remaining = {}
-    downlink = {}
+    resource_rate = {}
+    terminal_prop = {}
+    resource_available = {}
+    target_dst = row.get("dst")
     # the legal forward set is the DECISION legal set, not every direction the
     # candidate map resolved; a direction the decision could not take must not
     # enter the comparison
@@ -589,8 +593,33 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
             legal.append(direction)  # unresolved: scored as missing
             continue
         if cr.get("status") == "delivered_downlink":
-            downlink[direction] = {"peer": cr.get("peer"),
-                                   "kind": "downlink"}
+            legal.append(direction)
+            if target_dst is None or cr.get("peer") is None:
+                continue
+            key = ta.ResourceKey(int(cr["peer"]), str(target_dst),
+                                 ta.KIND_DOWNLINK)
+            resources[direction] = key
+            rate[direction] = cr.get(
+                "candidate_isl_rate_bps", cr.get("isl_rate_bps"))
+            prop[direction] = cr.get("propagation_s")
+            peer_process[direction] = node_process
+            remaining[direction] = 0.0
+            resource_rate[direction] = cr.get("downlink_rate_bps")
+            terminal_prop[direction] = cr.get("downlink_propagation_s")
+            resource_available[direction] = cr.get("downlink_available")
+            records = ((obs.get("neighbours") or {}).get(str(cr["peer"]))
+                       or {}).get("advertised_history") or []
+            for rec in records:
+                terminal = ((rec.get("advertised_downlink_resources") or {})
+                            .get(str(target_dst)))
+                bits = None if terminal is None else terminal.get("queue_bits")
+                if bits is None:
+                    continue
+                sample_rate = terminal.get("rate_bps")
+                history.append(ta.StateSample(
+                    key, float(rec["generated_at"]),
+                    float(rec["received_at"]), float(bits),
+                    None if sample_rate is None else float(sample_rate)))
             continue
         if cr.get("status") != "ok":
             legal.append(direction)  # stays in the set, scored as missing
@@ -599,7 +628,8 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
         key = ta.ResourceKey(int(cr["peer"]), str(cr["egress_direction"]),
                              "isl")
         resources[direction] = key
-        rate[direction] = cr.get("isl_rate_bps")
+        rate[direction] = cr.get(
+            "candidate_isl_rate_bps", cr.get("isl_rate_bps"))
         prop[direction] = cr.get("propagation_s")
         peer_process[direction] = node_process
         remaining[direction] = cr.get("remaining_prop_s")
@@ -649,13 +679,16 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
         link_propagation_s=_pairs_from(prop),
         peer_process_s=_pairs_from(peer_process),
         remaining_prop_s=_pairs_from(remaining),
+        resource_service_rate_bps=_pairs_from(resource_rate),
+        terminal_propagation_s=_pairs_from(terminal_prop),
+        resource_available=resource_available,
         compute_wait_s=compute_wait, compute_service_s=compute_service,
         pkt_bits=pkt_bits,
         max_resource_queue_bits=None,
         arm=arm, predictor=str(cfg_ta["predictor"]),
         history_limit=int(cfg_ta["history_limit"]),
         common_horizon_s=common_horizon_s,
-        common_rule=str(cfg_ta["common_rule"]),
+        common_rule=str(common_rule or cfg_ta["common_rule"]),
         query_delay_s=float(cfg_ta["query_delay_s"]),
         provenance=tuple(provenance))
 
@@ -679,6 +712,83 @@ def _common_horizon(probe_snapshot, rule):
     if len(offsets) % 2:
         return float(offsets[mid])
     return float(0.5 * (offsets[mid - 1] + offsets[mid]))
+
+
+def score_common_horizon_candidates(probe, resolved, target, pkt_bits,
+                                    candidate_specs, losses, per_candidate):
+    """Score predeclared shared-query rules on one frozen branch sample.
+
+    The five candidate horizons reuse this target's exact t0 observation and
+    the exact same independently replayed per-direction outcome table.  Only
+    the common query instant/rule changes; no branch is rerun per horizon.
+    """
+    observation_digest = _rows_digest(
+        target.get("observation_at_start") or {})
+    outcome_digest = _rows_digest({
+        direction: {"valid": bool(item.get("valid")),
+                    "loss": item.get("loss"),
+                    "censored": item.get("censored")}
+        for direction, item in sorted(per_candidate.items())})
+    result = []
+    execution = resolved["config"]["execution"]
+    for name, spec in candidate_specs.items():
+        spec = dict(spec)
+        kind = spec.get("kind")
+        if kind == "fixed_horizon":
+            rule = "fixed_horizon"
+            horizon = float(spec["common_horizon_s"])
+        elif kind == "rule" and spec.get("common_rule") in (
+                "mean_eta", "median_eta"):
+            rule = str(spec["common_rule"])
+            horizon = _common_horizon(probe, rule)
+        else:
+            raise CompareError(
+                f"invalid common-horizon candidate {name!r}: {spec!r}")
+        snapshot = build_snapshot(
+            target, resolved, "common", horizon, pkt_bits, 0.0,
+            float(execution["compute_delay_s"]),
+            provenance=("common-calibration:" + str(name),),
+            common_rule=rule)
+        scored = ta.score_snapshot_at(snapshot)
+        by_direction = scored.by_direction()
+        chosen = scored.ranking[0] if scored.ranking else None
+        picked_loss = losses.get(chosen) if chosen is not None else None
+        all_actions_scored = (
+            set(by_direction) == set(snapshot.legal_directions)
+            and all(math.isfinite(float(score.total_s))
+                    and not score.fallback and not score.missing
+                    for score in by_direction.values()))
+        all_outcomes_valid = all(
+            direction in per_candidate
+            and per_candidate[direction].get("valid")
+            and not per_candidate[direction].get("censored")
+            and isinstance(per_candidate[direction].get("loss"), (int, float))
+            and math.isfinite(float(per_candidate[direction]["loss"]))
+            for direction in snapshot.legal_directions)
+        fully_scored = bool(all_actions_scored and all_outcomes_valid
+                            and picked_loss is not None)
+        result.append({
+            "candidate": str(name), "candidate_spec": spec,
+            "common_rule": rule, "common_horizon_s": horizon,
+            "query_at": snapshot.snapshot_at + horizon,
+            "ranking": list(scored.ranking),
+            "chosen": chosen,
+            "loss": picked_loss,
+            "valid": fully_scored,
+            "fully_scored": fully_scored,
+            "fallback_directions": list(scored.fallback_directions),
+            "missing_directions": list(scored.missing_directions),
+            "scores": {score.direction: {
+                "total_s": (None if not math.isfinite(float(score.total_s))
+                            else float(score.total_s)),
+                "terms": dict(score.terms),
+                "missing": list(score.missing),
+                "fallback": bool(score.fallback),
+            } for score in scored.scores},
+            "sample_digest": observation_digest,
+            "outcome_digest": outcome_digest,
+        })
+    return result
 
 
 # ---------------------------------------------------------------- driving
@@ -883,7 +993,8 @@ def arm_view(scored, detail, label, role, losses, best):
 
 
 def compare(resolved, rows, geometry, decision_id, deadline_s, source,
-            frozen_deadline=None, run_kind="dev", capture_replay=False):
+            frozen_deadline=None, run_kind="dev", capture_replay=False,
+            common_horizon_candidates=None):
     branch, target = _branch(resolved, rows, geometry, decision_id)
     decision_id = int(target["decision_id"])
     if target.get("kind") != "forward":
@@ -1049,6 +1160,11 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source,
             "regret": (None if picked_loss is None or best is None
                        else picked_loss - best),
         }
+    common_candidate_scores = []
+    if common_horizon_candidates:
+        common_candidate_scores = score_common_horizon_candidates(
+            probe, resolved, target, pkt_bits, common_horizon_candidates,
+            losses, per_candidate)
     oracle = {
         "arm": "oracle",
         "chosen": (None if not losses else min(losses, key=losses.get)),
@@ -1215,6 +1331,7 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source,
                 for direction, item in per_candidate.items()},
         } if capture_replay else {"captured": False}),
         "arms": arms,
+        "common_horizon_candidates": common_candidate_scores,
         "ideal_arms": ideal_arms,
         "eta_queue_2x2": decomposition,
         "eta_queue_2x2_meaning": decomposition_meta,

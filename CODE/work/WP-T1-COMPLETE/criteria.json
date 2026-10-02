@@ -2135,5 +2135,802 @@
    "third_pilot_started": false,
    "formal_run": false
   }
+ },
+ "c_round": {
+  "status": "ROOT_ACCEPTED_PROBE_SCOPE_RELEASE_RUNTIME_PENDING",
+  "preparation_base_commit": "c164048c952cbfd6deb49210d5b3e039b7dcd62e",
+  "worktree_branch": "codex/20260930-t1-experiment-a",
+  "current_authority": {
+   "manual_path": "/Users/lge/Desktop/topic/平台与实验计划审计-20260927/实验执行手册.md",
+   "manual_sha256": "3c1bb9bf3f11da997cdc564b9431adcd5f16aac3d29084c3e545b272bb8536a7",
+   "implementation_plan": "docs/superpowers/plans/2026-09-27-t1-complete-implementation.md",
+   "report_current_section": "CODE/work/WP-T1-COMPLETE/REPORT.md",
+   "root_status": "STATUS.md",
+   "work_package_status": "CODE/work/WP-T1-COMPLETE/STATUS.md",
+   "implementation_plan_sha256": "4a22217c173d7ee21e3db468fae8e6412e5a6098374ad7367bebe2916f2500c8"
+  },
+  "readiness": {
+   "design_ready": true,
+   "code_ready": false,
+   "cost_ready": false,
+   "model_ready_for_ddqn_extension": false,
+   "release_ready": false,
+   "runtime_gate_implemented": true,
+   "old_contract_readiness": false,
+   "current_action": "ROOT_ACCEPTED_PROBE_CODE_AND_INPUT; CLEAN_PUSH_IMMUTABLE_RELEASE_RUNTIME_AND_RUN_ID_PENDING; MAIN_AND_TRAINING_NOT_READY",
+   "cost_probe_ready": false,
+   "core_cost_ready": false,
+   "ddqn_cost_ready": false,
+   "full_cost_ready": false,
+   "probe_code_ready": true
+  },
+  "superseded_contract": {
+   "path": "CODE/work/WP-T1-COMPLETE/contract_dev_c.yaml",
+   "sha256": "9fdf46d900d9029fa4432948cc98e682a9f1da636c47290538e08d6f5aedf005",
+   "validity": "INVALID_SUPERSEDED_NOT_RELEASE_READY; old fixed-site/24-satellite scenario and compile/call expansion are historical only"
+  },
+  "cost_probe_contract_candidate": {
+   "path": "CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml",
+   "sha256": "6b02bf9014ae2423f99b08d6951594aa87d57d5675f1857847c27b9bbf62a505",
+   "status": "ROOT_SCOPE_AUTHORIZED; pending clean release/runtime/run verification",
+   "profile_path": "CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml",
+   "profile_sha256": "31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518",
+   "population_path": "CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif",
+   "population_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+   "advertisement_protocol_version": 2,
+   "planned_cell_id": "b-bounded_population_cost_smoke-network-seed-7",
+   "compiled_trace_bundle_cell_identity": "temporary compile-only bundle/profile checked; no native trace, persistent bundle, receipt, or VM run retained"
+  },
+  "scenario_candidate": {
+   "reference_profile": "CODE/leo_sim/profiles/population_global_1deg_diagnostic.yaml",
+   "profile_sha256": "05e1904cea297a7448bfb4c18bfd936ad5a60f70c06c3c23053af62f504f4efb",
+   "reference_status": "study engineering reference, not official global freeze or measurement",
+   "cost_smoke_profile": "CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml",
+   "cost_smoke_profile_sha256": "31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518",
+   "advertisement_protocol_version": 2,
+   "persistent_cost_probe_contract": "CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml",
+   "persistent_cost_probe_contract_readiness": "ROOT_SCOPE_AUTHORIZED; exact cell authorization present; execution awaits clean immutable release and verified VM runtime/run identity",
+   "population_input_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+   "region_lat_half_open_deg": [
+    5,
+    50
+   ],
+   "region_lon_half_open_deg": [
+    65,
+    140
+   ],
+   "population_input": "CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif",
+   "population_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+   "static_aggregate_deg": 1,
+   "positive_cells": 2310,
+   "population_sum": 3984792155,
+   "static_od_distance_probability_ge_2000km": 0.1978591556,
+   "static_od_distance_probability_ge_3000km": 0.1039825175,
+   "calculation_boundary": "static raster/gravity integral only; not trace, visibility, route, multihop, or competition evidence",
+   "packet_assumption_bytes": 1500,
+   "base_offered_mbps": 5,
+   "peak_multiplier": 2,
+   "peak_duration_s": 1,
+   "emission_window_s": [
+    2,
+    4
+   ],
+   "expected_offered_mbit": 15,
+   "expected_packets_approx": 1250,
+   "deadline_s": 4,
+   "observation_stop_s": 8,
+   "static_aggregation": "sum each 1-degree cell's 4x4 finite positive 15-arcminute population counts directly; no area weighting",
+   "population_sum_unrounded": 3984792155.1563754,
+   "population_sum_display_rounded_to_person": 3984792155,
+   "low_competition_smoke": {
+    "base_offered_mbps": 5,
+    "control_prewarm_s": [
+     0,
+     2
+    ],
+    "emission_window_s": [
+     2,
+     4
+    ],
+    "peak_window_s": [
+     2.5,
+     3.5
+    ],
+    "peak_multiplier": 2,
+    "deadline_from_generation_s": 4,
+    "observation_stop_s": 8,
+    "expected_offered_mbit": 15,
+    "expected_packets_approx": 1250,
+    "status": "low-competition/cost smoke only; does not guarantee contention; prewarm counts toward VM wall time"
+   },
+   "cost_smoke_protocol": {
+    "advertisement_protocol_version": 2,
+    "profile_sha256": "31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518",
+    "wire_cost_schema": "leo-control-ad-wire/v2",
+    "status": "explicit in the actual smoke profile and covered by a regression test; not only a test-fixture override"
+   },
+   "main_competitive_load": {
+    "nominal_port_coefficient": "u_e=sum_od p_od*I(e in predeclared shortest simple path)/C_e, units 1/Mbps",
+    "base_rate_rule_mbps": "R=0.6/max_e(u_e)",
+    "peak_rate_mbps": "2R",
+    "status": "COST_UNVERIFIED; the prior static candidate is tied to earlier cost-smoke bytes, not the current exact profile identity; current main load/profile is not frozen",
+    "prior_static_candidate_profile_sha256": "c7c55d5b7d7f781e0d0d690e2b39c5b58de53c809cefc12dedb318eb6b9d38ec",
+    "prior_static_candidate_artifact_sha256": "6665a03fb2e44244ce42d25ef214c87d6db4435aa6a57bad6d7f378c78bee6fe",
+    "prior_static_candidate_R_mbps": 6283.447102910832,
+    "prior_static_candidate_peak_2R_mbps": 12566.894205821663,
+    "prior_static_candidate_path_table_sha256": "0c1da61cb8adf4e95b3b3ce8a36bb5e9960d4e7b33eb689879f9c6f78eabd48f",
+    "prior_static_candidate_direct_mass": 0.3187147985183468,
+    "prior_static_candidate_routed_mass": 0.7281078666026826,
+    "prior_static_candidate_unroutable_mass": 0.2718921333972977,
+    "prior_static_candidate_bottleneck_port": "228:W:208",
+    "prior_static_candidate_min_positive_capacity_port": "0:E:20",
+    "prior_static_candidate_min_positive_capacity_mbps": 594.152,
+    "interpretation": "static-calculator fields do not include advertisement protocol; parameter-equivalent candidate only, never relabel the historical artifact as a byte-exact current-profile result",
+    "reference_geometry_s": 2
+   },
+   "time_semantics": "t=0..2s control prewarm; listed business times relative to end of prewarm; prewarm counts toward VM wall time",
+   "static_gravity_algorithm": "P(src) proportional to population; P(dst|src) proportional to population/max(great-circle distance,100 km)^1.25; exclude same cell and conditionally normalize.",
+   "static_r_rule_algorithm": "At a declared geometry snapshot, independently select one source uplink and one destination downlink satellite per region among positive finite service rates by highest elevation, ties by satellite ID; then shortest simple ISL path over finite positive directed ports, ties by peer satellite ID then N/E/S/W; direct-downlink ODs contribute zero; report unreachable OD mass without renormalizing.",
+   "arrival_process": "piecewise nonhomogeneous Poisson; rates=segment bit/s /12000; no local-diurnal multiplier; all offered retained or compilation rejected",
+   "entity_limit": "must recompute from complete initialization and actual kernel resource accounting; do not inherit max_entities=2000"
+  },
+  "research_contract_candidate": {
+   "primary_method": "deterministic destination-oriented queue-delay rule",
+   "primary_estimand": "per-seed mean_loss(common)-mean_loss(candidate) over all offered packets",
+   "reference": "shortest-visible-path-constrained destination backpressure heuristic: select minimum total remaining-hop candidates within native legal mask, then mu*(Q_n^d*H_n^d-Q_m^d*H_m^d); virtual destination backlog; physical FIFO/DRR retained; not classic BP/full Han reproduction; no stability claim",
+   "ddqn": "required extension this round; one real trained frozen model across four arms; primary deterministic study may proceed first; missing extension keeps whole round PARTIAL",
+   "evaluation_seeds": [
+    11,
+    23,
+    42
+   ],
+   "claim_boundary": "development descriptive only; no confirmatory/general/equivalence claim",
+   "candidate_score_seconds": "J=t_entry-t0+W_r(t_entry)+S_p,r+B_after_r; each segment once; four arms only change queried state time for W; unknown is not zero",
+   "common_rule": "HF type 7 p25/median/mean/p75 over >=2 finite ETA candidates under final legal mask; insufficient coverage is NO_STRONG_COMMON/shared fallback; development tie priority median>mean>p25>p75",
+   "resource_epoch_contract": "physical resource generation differs from global topology recomputation version; preserve same-entity histories across unchanged ticks, reject cross-peer/resource history; valid old measurement is not automatically missing"
+  },
+  "budget_candidate": {
+   "historical_b_calls": 8,
+   "historical_b_simulator_s": 109.071837305,
+   "batch_calls_limit": 60,
+   "batch_simulator_s_limit": 3600,
+   "remaining_calls_max": 52,
+   "remaining_simulator_s_max": 3490.928162695,
+   "planned_new_calls_max": 51,
+   "after_historical_calls_if_full": 59,
+   "unallocated_calls": 1,
+   "wall_clock_verified": false,
+   "training_cap_separate": {
+    "training_seeds": [
+     301,
+     307,
+     311
+    ],
+    "transitions_per_seed_max": 20000,
+    "optimizer_updates_per_seed_max": 5000,
+    "epsilon": "global cumulative mature packet transitions, 1.0 to 0.05 linearly over first 15000; then 0.05",
+    "validation_seed": 313,
+    "validation_vm_minutes_max": 10,
+    "training_vm_minutes_per_seed_max": 30,
+    "candidate_models_max": 3,
+    "validation_rule": "same independent trace, once per candidate; select lowest all-offered mean loss, ties by training seed",
+    "total_vm_minutes_max": 100,
+    "authorization": "user authorized within the stated 100 VM-minute cap; separate from simulation calls; execution still requires implementation/model/cost gates and root review; no convergence claim"
+   },
+   "arithmetic_average_budget_seconds_per_call": 68.4495718175,
+   "average_is_cost_projection": false,
+   "cost_probe": {
+    "status": "ROOT_SCOPE_AUTHORIZED; release/runtime/run verification pending",
+    "allowed_scope": "only seed-7 low-competition four-arm cell",
+    "calls": 4,
+    "requires_new_allowlisted_contract": "contract_dev_cost_probe.yaml",
+    "requires_clean_immutable_release_and_unique_run_id": true
+   },
+   "staged_gates": {
+    "COST_PROBE_READY": false,
+    "CORE_COST_READY": false,
+    "DDQN_COST_READY": false,
+    "FULL_COST_READY": false,
+    "RELEASE_READY": false
+   },
+   "cost_rule": "do not extrapolate first-cell wall time to 51 calls; CORE_COST_READY requires receipt plus conservative scope*candidate*bin*operation/mode/fallback upper bounds and cumulative ledger checks",
+   "matrix_candidate": {
+    "low_competition_four_arm": 4,
+    "seed7_common_rules_four_arm": 4,
+    "deterministic_primary_four_arm_seeds_11_23_42": 12,
+    "five_modes_recorded": 15,
+    "five_modes_max_new_calls_after_exact_identity_reuse": 12,
+    "destination_queue_pressure_reference_seeds_11_23_42": 3,
+    "same_snapshot_replays_from_existing_capture_only": 4,
+    "ddqn_four_arm_seeds_11_23_42": 12,
+    "total_max_calls": 51,
+    "wall_time_estimate": "none; call expansion only"
+   }
+  },
+  "implementation_pending": [
+   "native population region filtering and frozen dynamic demand trace with source/hash provenance and future-leakage tests",
+   "static u_e calculation and R-based full-load profile only after budget/capacity recalc; no truncation or load reduction",
+   "bounded_linear predictor, FIFO compute/query/local-egress forward estimate, named-resource identity/epoch, predicted and actual entry/start/completion error",
+   "arm-specific query time wired to actual deterministic action; common HF type-7 coverage/fallback and fixed tie rules",
+   "destination commodity advertisements and Qhat=Q*H queue-pressure reference with signal-cost accounting; retain FIFO/DRR and no classical BP claim",
+   "async target-time scoring, five-mode action ownership/reuse and complete costs",
+   "DDQN exact deadline reward/transition and frozen observation contract, true checkpoint provenance, model action ownership, separate actual VM cost",
+   "new probe-only contract/suite allowlist with staged cost gates; probe receipt and conservative total-scope cost upper bounds before any core matrix",
+   "full-network competition gates, offered-population deadlines/censoring, paired seed results, prediction/mapping error diagnosis and log-derived replay"
+  ],
+  "checkpoint_search": {
+   "searched": [
+    "task worktree CODE including hidden/ignored entries",
+    "canonical checkout CODE including hidden/ignored entries",
+    "workspace code/document paths and checkpoint extensions"
+   ],
+   "not_searched": [
+    "/data",
+    "T1 VM model directories",
+    "user external model storage"
+   ],
+   "result": "no real trained checkpoint found in audited scope; A6 test_weights and forward probe are not training evidence"
+  },
+  "review_scope": {
+   "current_read_only_subaudits": [
+    "macro/native input and admission",
+    "meso queues/resource advertisements and algorithm interfaces"
+   ],
+   "prior_bounded_review": "async target-time scoring path",
+   "independent_numerical_reproduction": "static population count and distance probability only; not simulation or research results",
+   "parent_review": "root independently checked source/input hashes, static regional population/gravity integrals, four-arm causal contract, reward/labels, phase gates, call arithmetic and current documentation consistency"
+  },
+  "this_preparation": {
+   "document_only": true,
+   "edited_paths_this_turn": [
+    "/Users/lge/Desktop/topic/平台与实验计划审计-20260927/实验执行手册.md",
+    "docs/superpowers/plans/2026-09-27-t1-complete-implementation.md",
+    "CODE/work/WP-T1-COMPLETE/REPORT.md",
+    "CODE/work/WP-T1-COMPLETE/criteria.json",
+    "STATUS.md",
+    "CODE/work/WP-T1-COMPLETE/STATUS.md"
+   ],
+   "runtime_source_changed": false,
+   "profile_changed": false,
+   "simulation_or_training_started": false,
+   "vm_calls_started": 0,
+   "tests_run_this_preparation": false,
+   "handbook_current_bytes_origin": "Luna candidate plus root final reviewed amendments; final bytes/hash verified; earlier uncertain partial-write origin does not serve as evidence",
+   "historical_quota_stop_is_current": false
+  },
+  "superseded_template_record": {
+   "status": "INVALID_SUPERSEDED_NO_RELEASE",
+   "preparation_base_commit": "c164048c952cbfd6deb49210d5b3e039b7dcd62e",
+   "worktree_branch": "codex/20260930-t1-experiment-a",
+   "contract": {
+    "path": "CODE/work/WP-T1-COMPLETE/contract_dev_c.yaml",
+    "campaign_stage": "INVALIDATED_PENDING_NATIVE_REGION_AND_TRAINED_DDQN_DESIGN",
+    "sha256": "9fdf46d900d9029fa4432948cc98e682a9f1da636c47290538e08d6f5aedf005",
+    "validity": "SUPERSEDED_INVALID_NOT_RUNNABLE; all nested C0/C1 scenario parameters and call counts are historical only",
+    "c1_matrix_predeclared_before_c0": true
+   },
+   "static_compile": {
+    "status": "historical_compile_for_superseded_template_only",
+    "applicable_to_current_design": false,
+    "container_cell_count": 35,
+    "c0_b_dev_cell_ids": [
+     "b-steady_multi_od_repair_negative-network-seed-7",
+     "b-temporal_multi_od_calibration_c-branch-seed-7"
+    ],
+    "c0_simulator_call_budget": 10,
+    "bundle_fingerprint": "9e3638220029728d415d7c1a062451474ccbd43ad13218411d27579c38049bfe"
+   },
+   "repair_scope": {
+    "destination_downlink_terminal_resource": "uses received service/queue/rate/availability advertisements and local GSL service parameters; distinct from ISL rate",
+    "unknown_state": "kept unknown and handled by identical conservative fallback across all four arms; not filled with zero and no forced destination action",
+    "tail_path": "excludes packet-visited satellites; no legal tail remains unknown/unreachable",
+    "hold_attempt_audit": "normalizes actual no-info/hold attempts with legacy event alias compatibility and source_milestone",
+    "advertisement_visibility": "vis_k=4 applies to whole advertisement: destination service plus queue/rate/availability; all arms share scope and control bytes are costed",
+    "online_truth_policy": "no peer truth or future values in online decisions"
+   },
+   "local_verification": {
+    "core_time_eta_routing_control_hold_tests": {
+     "passed": 101
+    },
+    "benchmark_decision_tests": {
+     "passed": 17
+    },
+    "suite_contract_calibration_smoke_aggregation_tests": {
+     "passed": 5,
+     "deselected": 34
+    },
+    "diff_check": "passed"
+   },
+   "uncompleted_verification": {
+    "full_test_t1_suite": "interrupted after 708.49s with 38 passed at the last expensive five-candidate loss-column test; not a full-suite pass",
+    "vm_positive_delivery_gate": "not yet run",
+    "vm_calls": 0
+   },
+   "packet_scale_and_time_ratios": {
+    "old_b_packet_bits": 1000000,
+    "old_b_packet_bytes": 125000,
+    "old_b_isl_rate_mbps": 5.0,
+    "old_b_low_total_pps": 3,
+    "old_b_low_total_mbps": 3.0,
+    "old_b_peak_total_pps": 10,
+    "old_b_peak_total_mbps": 10.0,
+    "c_packet_bits": 12000,
+    "c_packet_bytes_assumption": 1500,
+    "c_isl_rate_mbps": 5.0,
+    "c_data_packet_serialization_s": 0.0024,
+    "c_low_decay_total_pps": 252,
+    "c_low_decay_total_mbps": 3.024,
+    "c_peak_total_pps": 832,
+    "c_peak_total_mbps": 9.984,
+    "nominal_offered_to_one_isl_ratio_low_peak": [
+     0.6048,
+     1.9968
+    ],
+    "compute_servers_per_satellite": 1,
+    "compute_service_s": 0.001,
+    "resource_query_service_s": 1e-06,
+    "advertisement_packet_bits": 8000,
+    "advertisement_serialization_s_at_5mbps": 0.0016,
+    "advertisement_interval_s": 2.0,
+    "advertisement_ttl_s": 10.0,
+    "advertisement_vis_k": 4,
+    "topology_recompute_s": 5.0,
+    "emission_window_s": [
+     0.0,
+     8.0
+    ],
+    "deadline_s": 30.0,
+    "population_window_s": [
+     5.0,
+     8.0
+    ],
+    "observation_stop_s": 40.0,
+    "packet_serialization_time_scale_change_factor": 83.3333333,
+    "interpretation": "absolute link rate and geometric propagation are held; compute/query/control and propagation relative to packet serialization change; not real-rate calibration or dynamic equivalence",
+    "link_rate_model": "constant",
+    "configured_gsl_uplink_rate_mbps": 1000.0,
+    "configured_gsl_downlink_rate_mbps": 1000.0,
+    "configured_rate_source": "simulation profile assumption, not measured or flight calibrated",
+    "control_origin_snapshot_generation_rate_hz": 12.0,
+    "control_forwarded_packet_rate_source": "recompute from actual runtime hop/transmission events",
+    "vm_host_timing_measurement_status": "pending VM pullback; separate from simulator service-time assumptions"
+   },
+   "c1_predeclared_design": {
+    "status": "matrix_frozen; exact common rule and C0 result hashes pending",
+    "b_dev_cells": 9,
+    "simulator_call_budget": 41,
+    "groups": {
+     "normalized_negative_control": {
+      "cells": 1,
+      "calls": 4,
+      "seed": 7
+     },
+     "competitive_branch_explanation": {
+      "cells": 1,
+      "calls": 6,
+      "seed": 11,
+      "max_branches": 1
+     },
+     "competitive_four_arm_network": {
+      "cells": 3,
+      "calls": 12,
+      "seeds": [
+       11,
+       23,
+       42
+      ]
+     },
+     "competitive_five_execution_modes": {
+      "cells": 3,
+      "calls": 15,
+      "seeds": [
+       11,
+       23,
+       42
+      ],
+      "modes": [
+       "per_packet",
+       "per_flow",
+       "precomputed",
+       "async_point",
+       "async_window"
+      ]
+     },
+     "advertisement_interval_one_factor": {
+      "cells": 1,
+      "calls": 4,
+      "seed": 11,
+      "reference_interval_s": 2.0,
+      "changed_interval_s": 1.0,
+      "only_factor": "control_plane.advertise_interval_s"
+     }
+    },
+    "pilot_cell_ids": [
+     "b-steady_multi_od_negative_control_c-network-seed-7",
+     "b-temporal_multi_od_competitive_c-branch-seed-11",
+     "b-temporal_multi_od_competitive_c-network-seed-11",
+     "b-temporal_multi_od_competitive_c-execution-modes-seed-11"
+    ],
+    "evaluation_seeds_forbidden_for_horizon_selection": [
+     11,
+     23,
+     42
+    ],
+    "normalized_packet_workload": {
+     "packet_bits": 12000,
+     "packet_bytes_assumption": 1500,
+     "peak_offered_pps": 832,
+     "peak_offered_mbps": 9.984,
+     "isl_rate_mbps": 5.0,
+     "gsl_downlink_rate_mbps": 1000.0,
+     "link_rate_model": "constant",
+     "topology_recompute_s": 5.0,
+     "emission_window_s": [
+      0.0,
+      8.0
+     ],
+     "deadline_s": 30.0,
+     "population_window_s": [
+      5.0,
+      8.0
+     ],
+     "observation_stop_s": 40.0,
+     "advertisement_vis_k": 4,
+     "advertisement_scope": "whole advertisement: destination service plus queue/rate/availability",
+     "origin_snapshot_generation_rate_hz": 12.0
+    }
+   },
+   "budget": {
+    "historical_b_actual_calls": 8,
+    "historical_b_actual_simulator_wall_s": 109.071837305,
+    "c0_reserved_calls": 10,
+    "c0_reserved_simulator_wall_s": 600.0,
+    "c1_reserved_calls": 41,
+    "c1_reserved_simulator_wall_s": 2890.928162695,
+    "total_new_reserved_calls": 51,
+    "b_calls_after_if_complete": 59,
+    "b_calls_limit": 60,
+    "total_new_reserved_simulator_wall_s": 3490.928162695,
+    "b_wall_after_if_complete_s": 3600.0,
+    "b_wall_limit_s": 3600.0,
+    "per_cell_wall_s": 120,
+    "max_concurrency": 1,
+    "a_plus_b_previous_accounting_s": 1170.071837305,
+    "combined_limit_s": 7200.0
+   },
+   "runs": {
+    "c0": {
+     "planned_run_id": "wp-t1-c-dev-20261001-01",
+     "status": "NOT_STARTED",
+     "release_id": null
+    },
+    "c1": {
+     "planned_run_id": "wp-t1-c-dev-20261001-02",
+     "status": "BLOCKED_ON_VERIFIED_C0_AND_FROZEN_COMMON_RULE",
+     "release_id": null
+    }
+   },
+   "limits": [
+    "C0 old-packet repair smoke changes code and whole-advertisement vis_k scope together, so it is not a single-variable causal comparison with WP-B.",
+    "1500-byte size is an explicit assumption without a measured workload packet-size distribution.",
+    "C0 seed-7 horizon calibration is one development sample; tie/no-candidate fallback does not establish a uniquely strong comparator.",
+    "Evaluation seeds are descriptive; no significance, generality, equivalence, satellite-flight or DDQN claim.",
+    "No result or cost from C0 and C1 exists until verified VM pullback."
+   ],
+   "current_phase": "DESIGN_REWRITTEN_IMPLEMENTATION_PENDING",
+   "design_revision": {
+    "date": "2026-10-01",
+    "status": "INVALID_SUPERSEDED_NOT_RELEASE_READY",
+    "contract_sha256": "9fdf46d900d9029fa4432948cc98e682a9f1da636c47290538e08d6f5aedf005",
+    "manual_sha256": "76ff614481943247f835fdce57002b94f8b8e3b8aeaa2e21c864ef3bbb443f61",
+    "previous_contract_compile_not_current_evidence": true,
+    "c_vm_actual_calls": 0,
+    "preflight_audit": {
+     "status": "BLOCKED_ON_REDESIGN_AND_TRAINED_CHECKPOINT_PROVENANCE",
+     "current_activity": "bounded_read_only_prelaunch_review; no C release or run started",
+     "old_fixed_site_contract_valid": false,
+     "native_region_filter_and_dynamic_business_input_verified": false,
+     "arm_specific_prediction_reaches_model_action_input": false,
+     "async_window_target_time_changes_score": false,
+     "eta_queue_and_query_timing_complete": false,
+     "trained_ddqn_checkpoint_found_in_audited_code_workspaces": false,
+     "training_provenance_verified": false,
+     "reward_and_training_review": {
+      "date": "2026-10-02",
+      "status": "DESIGN_PROPOSED_IMPLEMENTATION_AND_FREEZE_PENDING",
+      "legacy_queue_reward_matches_primary_loss": false,
+      "training_frozen_request_observation_supported": false,
+      "deadline_objective_settlement_and_truncation_contract_implemented": false,
+      "study_training_budget_and_cumulative_exploration_frozen": false,
+      "exported_model_metadata_binds_reward_objective_version": false,
+      "recommended_objective": "finite-deadline packet return R=-L; nonterminal reward=0; gamma=1; optional exact elapsed-time decomposition",
+      "ddqn_required_this_round": true,
+      "ddqn_as_sole_primary_conclusion_method_frozen": false,
+      "review": "Luna Max read-only reward/transition audit; root verified current source; no training, simulation or code edits",
+      "arithmetic_examples_are_research_results": false
+     },
+     "checkpoint_search_scope": [
+      "task worktree CODE, including hidden and ignored files",
+      "canonical checkout CODE, including hidden and ignored files",
+      "workspace-wide filename/extension listing under /Users/lge/Desktop/topic"
+     ],
+     "not_searched": [
+      "/data",
+      "T1 VM model directories",
+      "user external model storage"
+     ],
+     "A6_test_weights_are_not_a_trained_policy": true,
+     "runtime_readiness_guard_implemented_in_suite": true,
+     "contract_readiness": false,
+     "independent_read_only_review": "one same-model reviewer checked common-arm semantics and async schedule path; no writes or runs",
+     "simulation_calls_started_this_turn": 0
+    },
+    "design": [
+     "network loss primary",
+     "offered [1,8) population shared across arms and modes",
+     "three calibration phases / >=2 ODs independent seed7",
+     "four nonduplicate common rules",
+     "full-network admission distinct from replay counts",
+     "concurrency duration",
+     "no confirmation claim from three seeds",
+     "actual-call budget before run"
+    ],
+    "implementation_pending": [
+     "verify final upgraded full constellation/topology/access parameters",
+     "native population region filter and frozen dynamic demand transform",
+     "compatible real trained DDQN checkpoint and arm-specific input/action ownership",
+     "loss-aligned reward and actual deadline settlement; packet-age input; frozen training/evaluation transition semantics",
+     "independent training budget, cumulative exploration, input separation and objective-bound model provenance",
+     "ETA/query/queue timing semantics and async bin target scoring",
+     "five-mode model reuse/action ownership/full inference cost",
+     "new actual call expansion and budget; old 48-call sketch is invalid"
+    ],
+    "next": "Keep publish/run paused until the native-region design and trained-checkpoint source/provenance are resolved; training requires its own authorized design and budget",
+    "prior_executor_state": "usage_limit_stopped_historically",
+    "quota_stop_is_current_status": false
+   }
+  },
+  "training_contract_candidate": {
+   "terminal_reward": "before D: successful downlink -T/D, irreversible physical drop -1; otherwise -1 at D; exactly one mutually exclusive settlement; nonterminal 0, gamma1; physical fate continues after D; administrative stop is censored",
+   "network": "MLP 64x64 ReLU; Adam lr=1e-3; batch 64; replay 50000; target sync every 500 optimizer updates",
+   "epsilon": "global cumulative mature packet transitions: linear 1.0 to 0.05 through transition 15000, then fixed 0.05",
+   "seeds": {
+    "training": [
+     301,
+     307,
+     311
+    ],
+    "validation": [
+     313
+    ],
+    "evaluation": [
+     11,
+     23,
+     42
+    ]
+   },
+   "selection": "at most 3 candidates, each evaluated once on same independent validation trace; minimum all-offered mean loss, ties by training seed",
+   "arm_randomization": "four query rules equiprobable during training; arm name excluded from input",
+   "observation_contract": {
+    "packet_age_and_remaining_deadline": "seconds/D, clipped [0,1]",
+    "logit_slot_order": [
+     "deliver",
+     "N",
+     "S",
+     "E",
+     "W"
+    ],
+    "per_slot_time_features": "t_entry-t0,W,S,B_after,J in seconds/D clipped [0,10]",
+    "per_slot_queue": "queue bits / queue capacity clipped [0,1]",
+    "per_slot_rate": "rate / configured reference rate clipped [0,1]",
+    "per_slot_hops": "remaining hops / 280 clipped [0,1]",
+    "masks": "legal bit; one missing bit per numeric feature; resource identity/epoch valid bit",
+    "missing_values": "numeric placeholder 0 must always have missing=1; no arm label input"
+   },
+   "budget": {
+    "total_vm_minutes_max": 100,
+    "authorization": "user authorized the finite package up to 100 VM minutes; execution remains subject to true learner/provenance and VM cost gates; separate from simulation calls; no adequacy claim"
+   },
+   "common_rule_source": "freeze from independent seed7 common calibration before training; no evaluation-seed selection"
+  },
+  "root_preparation_review": {
+   "date": "2026-10-02",
+   "decision": "DESIGN_READY",
+   "scope": "bounded research protocol and ordered implementation; not code/run/model readiness",
+   "source_python_files_checked": 207,
+   "source_python_files_changed": 0,
+   "static_region_cells": 2310,
+   "static_population_sum": 3984792155.1563754,
+   "static_od_p_ge_2000km": 0.19785915559452902,
+   "static_od_p_ge_3000km": 0.10398251750859451,
+   "new_kernel_calls": 0,
+   "training_started": false,
+   "required_ddqn_extension": true,
+   "visualization_spec": "manual section 5.1; extend existing replay_html.py",
+   "closed_design_findings": [
+    "BP definitions unified and uncontended direct-downlink sanity specified",
+    "probe/main cost gates separated",
+    "control prewarm, Poisson process and static load-selection rule explicit",
+    "predictor/common/fallback and no-overlap score explicit",
+    "reward settlement, training budget and action labels explicit",
+    "all-offered outcomes, independent loops and visual truth bounds explicit",
+    "resource generations and topology ticks separated so predictor history does not silently collapse to one sample"
+   ],
+   "runtime_readiness": false,
+   "closing_static_checks": {
+    "git_diff_check": "passed",
+    "json_yaml": "passed",
+    "source_hashes": "207 unchanged; no new Python files",
+    "manual_and_plan_reference_hashes": "matched in report and both status entries",
+    "old_invalid_contract": "unchanged and invalid",
+    "maintenance": {
+     "errors": 0,
+     "warnings": 1,
+     "tracked_files": 588,
+     "worktrees": 8,
+     "deployment_index_records": 15,
+     "dirty_entries_preserved": 24,
+     "local_receipts_verified": 0,
+     "warning_scope": "external backup media and dependency lock not checked; no overall cleanliness claim"
+    }
+   }
+  },
+  "execution_authorization": {
+   "date": "2026-10-02",
+   "scope": "continuous implementation, tests, bounded development matrix up to 51 new calls, and DDQN training package up to 100 VM minutes",
+   "historical_b_budget": "8 calls/109.071837305 seconds remain charged against 60 calls/3600 seconds; at most 52 calls/3490.928162695 seconds remain",
+   "stage_gates_waived": false,
+   "root_review_required_before_vm_simulation_training_or_release": true,
+   "not_authorized": [
+    "FORMAL_RUN",
+    "seed1001_and_later",
+    "merge_main"
+   ],
+   "current_manual_sha256": "3c1bb9bf3f11da997cdc564b9431adcd5f16aac3d29084c3e545b272bb8536a7",
+   "current_plan_sha256": "4a22217c173d7ee21e3db468fae8e6412e5a6098374ad7367bebe2916f2500c8"
+  },
+  "this_execution": {
+   "phase": "ROOT_ACCEPTED_PROBE_SCOPE; COMMIT_PUSH_RELEASE_RUNTIME_AND_RUN_PENDING",
+   "source_changes_started_this_round": true,
+   "tests_run_this_round": true,
+   "vm_calls_this_round": 0,
+   "training_started": false,
+   "release_started": false,
+   "existing_dirty_assets": "protected and continued from root-provided starting diff/backup"
+  },
+  "probe_closure_candidate": {
+   "scope": "ROOT_ACCEPTED_PROBE_CODE_AND_INPUT; only the authorized seed7 native-population low-load four-arm cell may proceed after release/runtime gates; overall CODE_READY remains false",
+   "execution_chain": {
+    "discovery": "CODE/experiment_platform/artifact_identity.execution_chain_paths() over CODE/leo_sim and CODE/experiment_platform production Python files; tests and caches excluded",
+    "path_count": 70,
+    "combined_sha256": "a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633",
+    "missing_paths": 0,
+    "identity_scope": "current dirty source candidate only; not a release identity"
+   },
+   "test_log": "/private/tmp/t1-root-accepted-probe-targeted-20261002.log",
+   "test_log_sha256": "465d82109db3df61b3c2923f68ee9bfc3a7bfdcc9954cb719c0af784524c5a0f",
+   "root_request_changes_repair": {
+    "prior_root_decision": "REQUEST_CHANGES; retain as historical review fact",
+    "prior_original_counterexample": "test_peer_resource_entry_includes_peer_decision_or_is_explicitly_unknown under protocol v1: ETA=0.5049366409519815, actual downlink queue entry=0.6049376409519815, unknown=[]; raw file was 1 failed/4 passed",
+    "prior_broader_regression": "251 passed/4 failed; actively interrupted after 623.52 seconds, not a full pass; failures: test_peer_resource_entry_includes_peer_decision_or_is_explicitly_unknown, test_the_frozen_horizon_moves_the_real_query_instant, test_a_failed_smoke_gate_stops_the_remaining_tier_and_is_terminal, test_b_dev_pilot_can_continue_only_under_the_same_bundle_identity",
+    "prior_compile_failure": "root compile observed 0.5 Mbps, 1000000 bits, 2 compute servers and 0.0001 s because scenario parameters were empty and DEFAULT_EXPERIMENT_PARAMETERS overrode the study profile; persistent contract now declares the required values explicitly",
+    "repairs": [
+     "protocol-v1 without a received legal peer-processing advertisement now remains unknown and uses shared fallback; v2 received-ad positive case retained",
+     "persistent contract compile-only test confirms 280/14, region, research D separate from physical TTL, time windows, protocol v2, GPW digest, 5 Mbps, 12000 bits, N=1, compute=1 ms, four arms and four simulator calls",
+     "native-population predicate requires source/hash/ground endpoint identity, full offered count equality and exact fate partition; it does not require six synthetic ODs",
+     "input digest separates actual filesystem paths from content identity while binding normalized argv, task, cell seed and resolved profile seed; runtime recalculates current bytes and argv",
+     "horizon regression now requires valid received history under protocol v2; two legacy fake_execute callbacks explicitly accept and assert runtime_context=None"
+    ],
+    "latest_targeted_result": "30 passed in 18.64 seconds; added exact authorized-contract positive scope and missing-authorization negative copy",
+    "latest_targeted_log_sha256": "465d82109db3df61b3c2923f68ee9bfc3a7bfdcc9954cb719c0af784524c5a0f",
+    "binding_examples": "same content under two bundle/source roots accepted; changed --window-end or population bytes rejected",
+    "root_rereview": "accepted exact probe code/input scope; release/runtime/run validation still pending",
+    "vm_calls": 0,
+    "all_readiness_gates": false
+   },
+   "test_groups": [
+    {
+     "command": "python3 -m pytest -q CODE/leo_sim/tests/test_learning_semantics.py CODE/leo_sim/tests/test_eta_terms.py CODE/leo_sim/tests/test_time_alignment.py CODE/leo_sim/tests/test_time_alignment_online.py CODE/leo_sim/tests/test_dynamic_topology.py",
+     "result": "81 passed"
+    },
+    {
+     "command": "python3 -m pytest -q CODE/experiment_platform/tests/test_t1_development_primary_gate.py CODE/experiment_platform/tests/test_t1_tasks.py CODE/experiment_platform/tests/test_t1_suite.py::test_runtime_readiness_fails_closed_for_plan_old_contract_and_probe_scope CODE/experiment_platform/tests/test_t1_suite.py::test_retired_c_campaign_contract_is_explicitly_not_runnable CODE/experiment_platform/tests/test_t1_suite.py::test_controlled_population_task_context_binds_bundle_cell_and_stage",
+     "result": "49 passed"
+    },
+    {
+     "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -p no:cacheprovider CODE/leo_sim/tests/test_receipt.py CODE/leo_sim/tests/test_control.py CODE/leo_sim/tests/test_time_alignment_online.py CODE/leo_sim/tests/test_time_alignment.py CODE/leo_sim/tests/test_eta_terms.py CODE/leo_sim/tests/test_probe_causal_review.py CODE/leo_sim/tests/test_trace.py -q",
+     "result": "137 passed in 20.82s; log=/private/tmp/t1-probe-request-changes-final-20261002.log"
+    },
+    {
+     "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -p no:cacheprovider CODE/leo_sim/tests/test_trace.py::test_population_gravity_profile_trace_bytes_regression CODE/leo_sim/tests/test_trace.py::test_uncompiled_new_scene_fields_do_not_change_trace_bytes CODE/leo_sim/tests/test_config.py CODE/leo_sim/tests/test_population.py -q",
+     "result": "37 passed in 1.32s; same log"
+    },
+    {
+     "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -p no:cacheprovider CODE/experiment_platform/tests/test_t1_tasks.py::test_controlled_population_profile_cli_refuses_without_suite_context CODE/experiment_platform/tests/test_t1_tasks.py::test_controlled_network_checks_call_budget_before_every_kernel_call CODE/experiment_platform/tests/test_t1_suite.py::test_cell_input_binding_hashes_profile_and_population_path CODE/experiment_platform/tests/test_t1_suite.py::test_suite_launch_ledger_rejects_missing_wrong_reused_and_expired CODE/experiment_platform/tests/test_t1_suite.py::test_suite_launch_ledger_checks_remaining_calls_before_each_call CODE/experiment_platform/tests/test_t1_suite.py::test_execute_cell_issues_one_bounded_launch_without_running_simulation CODE/experiment_platform/tests/test_t1_suite.py::test_controlled_population_task_context_binds_bundle_cell_and_stage CODE/experiment_platform/tests/test_t1_suite.py::test_unreviewed_dev_cost_probe_candidate_without_authorization_is_not_runnable -q",
+     "result": "8 passed in 1.26s; same log"
+    }
+   ],
+   "counterexample_nodes": {
+    "generation_history": "CODE/leo_sim/tests/test_dynamic_topology.py::test_isl_generation_and_received_history_survive_only_same_resource_ticks",
+    "causal_eta_receipt_and_trace": "CODE/leo_sim/tests/test_probe_causal_review.py (target service once; start-rate residual; peer processing known/unknown; query interval and per-decision charge; current protocol-v2 profile; CODE/leo_sim/tests/test_receipt.py v2 payload recompute/tamper rejection plus historical v2 receipt)",
+    "post_D_physical_delivery": [
+     "CODE/leo_sim/tests/test_learning_semantics.py::test_research_deadline_closes_learning_but_packet_keeps_delivering",
+     "CODE/leo_sim/tests/test_learning_semantics.py::test_population_cost_profile_separates_research_d_from_physical_ttl"
+    ],
+    "compute_throttle_and_control": "CODE/leo_sim/tests/test_time_alignment_online.py::test_compute_fifo_throttles_two_od_flows_before_fast_shared_isl",
+    "stage_guard_and_direct_cli": [
+     "CODE/experiment_platform/tests/test_t1_suite.py::test_controlled_population_task_context_binds_bundle_cell_and_stage",
+     "CODE/experiment_platform/tests/test_t1_tasks.py::test_controlled_population_profile_cli_refuses_without_suite_context",
+     "CODE/experiment_platform/tests/test_t1_development_primary_gate.py::test_cost_probe_gate_requires_one_exact_seed7_four_arm_cell"
+    ]
+   },
+   "local_kernel_throttle_observation": "12,000-bit packet over 594.152 Mbps ISL serializes in about 20.20 us; N=1 with 1 ms compute separates two same-port data admissions by 1 ms. With default ads enabled, fixture accounts 16,384 control bits on that port; no sustained/data backlog is demonstrated.",
+   "open_probe_dependencies": {
+    "pre_probe_required": [
+     "no actual native-region research trace has been compiled; after root review, bind its complete offered population, profile and raster inputs, source execution-chain SHA, bundle/cell/input SHA, effective seed 7 and four arms to a clean immutable release and unique run identity",
+     "persistent contract authorization is root-approved and exact; clean immutable release, remote input/runtime verification, fresh run identity and single-use launch context are not yet available",
+     "derive and verify a conservative entity/memory safety bound from the materialized full trace and kernel resource accounting; do not truncate the offered population"
+    ],
+    "post_probe_evidence": [
+     "actual full-trace admission, all-offered population/fates, positive-delivery smoke and VM cost receipt are not available before the first run",
+     "no VM probe, receipt, or actual runtime cost evidence exists"
+    ],
+    "before_main_matrix": [
+     "static main-load R, per-port capacity and entity/memory bound are not computed or frozen",
+     "conservative scope-wide deterministic/mode/model cost upper bounds remain open"
+    ]
+   },
+   "binding_workflow": {
+    "preliminary_compile": "compile/validate the authorized contract from actual profile/raster bytes and normalized argv; retain the verified semantic cell input digest",
+    "contract_freeze": "root-approved contract binds only the stable cell digest and production-source-chain digest; recompile and require the input digest to remain identical",
+    "release": "commit the final code and contract cleanly, then publish the immutable full-SHA release; no release ID or absolute compile path is written into the contract",
+    "vm_bundle": "compile from the immutable release on VM, revalidate actual profile/raster/cell content identity, then use the suite one-use nonce and call ledger; VM bundle/run/receipt identity is generated there and not backfilled into tracked contract",
+    "cycle_boundary": "execution-chain digest covers production Python file content/path set, not the Git commit, release ID, or contract; contract cell digest excludes materialization roots"
+   },
+   "readiness": {
+    "runtime_gate_implemented_candidate": true,
+    "code_ready": false,
+    "cost_probe_ready": false,
+    "release_ready": false,
+    "vm_calls": 0,
+    "training_started": false
+   }
+  },
+  "root_probe_acceptance": {
+   "date": "2026-10-02",
+   "scope": "seed7 native population low-load network_alignment, four arms only",
+   "verdict": "PROBE_CODE_AND_SEMANTIC_INPUT_ACCEPTED; RELEASE/RUNTIME_NOT_YET_VERIFIED",
+   "execution_chain_sha256": "a296d85827243f89b51eafeada4cf938132d2df65d596998c0e5e526607ec633",
+   "production_files": 70,
+   "changed_file_manifest_sha256": "bf1a259c54970f52f773af770958c3e6f7d7a214f62a6ad76b8300fd89f61105",
+   "independent_tests": {
+    "causal_and_stage_gate": 30,
+    "related_eta_alignment_receipt_control_trace_config_population": 164
+   },
+   "original_five_counterexamples": "unchanged original protocol-v1 input independently rerun: 5 passed; v1 missing processing stays unknown with fallback",
+   "compile_only": {
+    "actual_parameters": {
+     "satellites": 280,
+     "planes": 14,
+     "offered_mbps": 5.0,
+     "packet_bits": 12000,
+     "compute_servers": 1,
+     "compute_delay_s": 0.001,
+     "physical_ttl": null,
+     "research_D_s": 4,
+     "window": [
+      2,
+      8
+     ]
+    },
+    "native_predicate": true,
+    "call_count": 4,
+    "cell_input_sha256": "70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905"
+   },
+   "execution_authorized_if": "same production source and reviewed inputs; only after clean pushed full SHA, immutable release/runtime verification, fresh run ID; no append/resume/other cell",
+   "principle_changes": false,
+   "new_vm_calls_at_review": 0,
+   "research_claims": []
+  }
  }
 }

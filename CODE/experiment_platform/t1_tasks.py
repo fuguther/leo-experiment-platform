@@ -39,6 +39,7 @@ import json
 import math
 import os
 import statistics
+import sys
 import tempfile
 from pathlib import Path
 
@@ -69,6 +70,158 @@ EXECUTION_MODES = execution_compare.MODES
 
 class TaskError(RuntimeError):
     pass
+
+
+_SUITE_RUNTIME_CONTEXT_ENV = "T1_SUITE_RUNTIME_CONTEXT"
+
+
+def _is_controlled_population_region_profile(config_path):
+    """Recognize native population inputs from their effective structure.
+
+    A scenario label is descriptive and caller-controlled, so it cannot decide
+    whether the population-input runtime gate applies.
+    """
+    try:
+        resolved = config_mod.load_config_file(str(config_path))
+    except (config_mod.ConfigError, FileNotFoundError):
+        return False
+    demand = resolved.get("config", {}).get("demand") or {}
+    return (demand.get("mode") == "population_gravity"
+            and isinstance(demand.get("population_path"), str)
+            and bool(demand["population_path"].strip()))
+
+
+def _validate_suite_runtime_context(args, raw_args):
+    """Re-validate the suite's stage, bundle, cell, input and exact argv.
+
+    This is deliberately scoped to the native population-region profile. The
+    generic task API and historical profiles retain their existing behavior.
+    """
+    from CODE.experiment_platform import t1_suite
+
+    raw = os.environ.get(_SUITE_RUNTIME_CONTEXT_ENV)
+    if not raw:
+        raise TaskError(
+            "controlled population-region profile requires a validated "
+            "suite stage context")
+    try:
+        context = json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise TaskError("suite stage context is not valid JSON") from exc
+    required = {
+        "schema", "bundle_dir", "bundle_fingerprint", "contract_path",
+        "contract_sha256", "tier", "cell_id", "selected_cell_ids",
+        "append", "result_path", "launch_nonce", "launch_ledger_path",
+        "simulator_call_ledger_path", "max_simulator_calls", "expires_at",
+    }
+    if not isinstance(context, dict) or set(context) != required:
+        raise TaskError("suite stage context has missing or unknown fields")
+    if context["schema"] != "t1-suite-task-runtime-context/v1":
+        raise TaskError("suite stage context schema is unsupported")
+
+    bundle_dir = Path(str(context["bundle_dir"]))
+    if bundle_dir.is_symlink() or not bundle_dir.is_dir():
+        raise TaskError("suite stage context bundle directory is unavailable")
+    try:
+        validation = t1_suite.validate_bundle(bundle_dir)
+        bundle = json.loads((bundle_dir / "bundle.json").read_text(
+            encoding="utf-8"))
+        contract = t1_suite._require_bundle_contract_runtime_ready(bundle)
+        readiness = t1_suite.require_runtime_ready_contract(
+            contract, source=str(bundle.get("contract_path")))
+    except (OSError, ValueError, t1_suite.SuiteError) as exc:
+        raise TaskError(f"suite stage context validation failed: {exc}") from exc
+    if validation.get("valid") is not True:
+        raise TaskError("suite stage context bundle did not validate")
+    if readiness is None:
+        raise TaskError("controlled profile requires declared stage readiness")
+    if (str(bundle_dir.resolve()) != context["bundle_dir"]
+            or bundle.get("bundle_fingerprint")
+            != context["bundle_fingerprint"]
+            or bundle.get("contract_path") != context["contract_path"]
+            or bundle.get("contract_sha256") != context["contract_sha256"]):
+        raise TaskError("suite stage context identity differs from bundle")
+
+    cell_id = context["cell_id"]
+    tier = context["tier"]
+    selected_ids = context["selected_cell_ids"]
+    if (not isinstance(cell_id, str) or not isinstance(tier, str)
+            or not isinstance(selected_ids, list)
+            or not all(isinstance(value, str) for value in selected_ids)
+            or len(selected_ids) != len(set(selected_ids))
+            or cell_id not in selected_ids
+            or not isinstance(context["append"], bool)):
+        raise TaskError("suite stage context cell selection is malformed")
+    cells = {cell.get("cell_id"): cell
+             for cell in bundle.get("cells", [])}
+    cell = cells.get(cell_id)
+    if (cell is None or cell.get("driver")
+            != "CODE.experiment_platform.t1_tasks"
+            or cell_id not in (bundle.get("tiers") or {}).get(tier, [])):
+        raise TaskError("suite stage context does not name an executable cell")
+
+    try:
+        launch_identity = t1_suite._suite_launch_identity(context)
+    except t1_suite.SuiteError as exc:
+        raise TaskError(f"suite launch context is malformed: {exc}") from exc
+    if (os.environ.get("T1_SUITE_LAUNCH_NONCE")
+            != launch_identity["launch_nonce"]
+            or str(Path(os.environ.get("T1_SIM_CALL_LEDGER", "")).resolve())
+            != launch_identity["simulator_call_ledger_path"]
+            or os.environ.get("T1_SIM_CALL_CONTEXT") != cell_id):
+        raise TaskError("suite launch ledger environment identity differs")
+    expected_calls = t1_suite._estimated_calls_for_cells([cell])
+    if launch_identity["max_simulator_calls"] != expected_calls:
+        raise TaskError("suite launch call budget differs from the compiled cell")
+    cell_args = list(cell.get("args") or [])
+    try:
+        config_index = cell_args.index("--config")
+        cell_config_path = Path(cell_args[config_index + 1]).resolve()
+    except (ValueError, IndexError):
+        raise TaskError("suite stage context cell has no config profile")
+    if args.config is None or Path(args.config).resolve() != cell_config_path:
+        raise TaskError("suite stage context profile differs from its cell")
+
+    # The suite appends exactly one --out argument. Strip only that pair, then
+    # require every task/mode/arm/seed/override flag to match the compiled cell.
+    stripped = []
+    out_values = []
+    index = 0
+    values = list(raw_args)
+    while index < len(values):
+        value = values[index]
+        if value == "--out":
+            if index + 1 >= len(values):
+                raise TaskError("suite task argv has an incomplete --out")
+            out_values.append(values[index + 1])
+            index += 2
+        else:
+            stripped.append(value)
+            index += 1
+    if len(out_values) != 1 or stripped != list(cell.get("args") or []):
+        raise TaskError("suite task argv differs from the compiled cell")
+    result_path = Path(str(context["result_path"])).resolve()
+    if (Path(args.out).resolve() != result_path
+            or result_path.parts[-3:] != ("cells", cell_id, "result.json")):
+        raise TaskError("suite task result path differs from its cell context")
+
+    if readiness.get("status") == "COST_PROBE_READY":
+        try:
+            estimate = t1_suite.estimate_bundle_cost({"cells": [cell]})[
+                "simulator_calls"]
+            t1_suite.enforce_runtime_stage(
+                contract, bundle, tier=tier,
+                selected_cell_ids=selected_ids, append=context["append"],
+                cells=cells, estimated_calls=estimate,
+                bundle_root=bundle_dir,
+                source_root=t1_suite.REPO_ROOT)
+        except t1_suite.SuiteError as exc:
+            raise TaskError(f"suite stage allowlist rejected task: {exc}") from exc
+    try:
+        t1_suite._validate_suite_launch_ledger(context)
+    except t1_suite.SuiteError as exc:
+        raise TaskError(f"suite launch ledger rejected task: {exc}") from exc
+    return context
 
 
 def _canonical(payload):
@@ -250,6 +403,87 @@ def project_horizons(offsets):
     }
 
 
+def select_common_horizon_candidate(branch_rows, candidate_names,
+                                    sampled_decisions):
+    """Select a common-future rule on one independent development block.
+
+    Every candidate must score every pre-sampled branch using the same
+    observation and the same per-direction counterfactual outcome table.
+    Candidate order is the predeclared tie-break.  This selector deliberately
+    has no access to evaluation seeds or network-arm outcomes.
+    """
+    names = [str(name) for name in candidate_names]
+    expected = [int(decision_id) for decision_id in sampled_decisions]
+    by_decision = {int(row["decision_id"]): row for row in branch_rows
+                   if row.get("decision_id") is not None}
+    summaries = {}
+    for name in names:
+        values, reasons = [], []
+        for decision_id in expected:
+            branch = by_decision.get(decision_id)
+            if branch is None:
+                reasons.append(f"missing sampled decision {decision_id}")
+                continue
+            items = {str(item.get("candidate")): item
+                     for item in branch.get("common_horizon_candidates") or []}
+            item = items.get(name)
+            if item is None:
+                reasons.append(f"candidate missing at decision {decision_id}")
+                continue
+            digest_pair = {(entry.get("sample_digest"),
+                            entry.get("outcome_digest"))
+                           for entry in items.values()}
+            if (len(digest_pair) != 1 or None in next(iter(digest_pair), ())):
+                reasons.append(
+                    f"candidate comparisons do not share one frozen sample at decision {decision_id}")
+                continue
+            loss = item.get("loss")
+            if (not item.get("valid") or not item.get("fully_scored")
+                    or not isinstance(loss, (int, float))
+                    or isinstance(loss, bool) or not math.isfinite(float(loss))):
+                reasons.append(f"incomplete candidate score at decision {decision_id}")
+                continue
+            values.append(float(loss))
+        complete = bool(expected) and len(values) == len(expected) and not reasons
+        summaries[name] = {
+            "status": "eligible" if complete else "ineligible",
+            "mean_normalized_branch_loss": (
+                statistics.fmean(values) if complete and values else None),
+            "sampled_decisions": list(expected),
+            "observed_decisions": len(values),
+            "reasons": reasons,
+        }
+    eligible = [(summaries[name]["mean_normalized_branch_loss"], index, name)
+                for index, name in enumerate(names)
+                if summaries[name]["status"] == "eligible"]
+    if not eligible:
+        return {
+            "status": "NO_STRONG_COMMON",
+            "candidate": None,
+            "selection_rule": "lowest mean normalized branch loss over all sampled decisions; ties follow frozen candidate order",
+            "candidate_order": names,
+            "tied_candidates": [],
+            "selected_by_tie_break": False,
+            "tie_tolerance": 1e-12,
+            "candidates": summaries,
+        }
+    loss = min(item[0] for item in eligible)
+    tied = [name for value, _index, name in eligible
+            if math.isclose(value, loss, rel_tol=0.0, abs_tol=1e-12)]
+    selected = tied[0]
+    return {
+        "status": "selected",
+        "candidate": selected,
+        "mean_normalized_branch_loss": loss,
+        "selection_rule": "lowest mean normalized branch loss over all sampled decisions; ties follow frozen candidate order",
+        "candidate_order": names,
+        "tied_candidates": tied,
+        "selected_by_tie_break": len(tied) > 1,
+        "tie_tolerance": 1e-12,
+        "candidates": summaries,
+    }
+
+
 def _arm_actions(arms):
     """What each online arm actually DID at one branch, verbatim.
 
@@ -307,7 +541,10 @@ def _resource_target_evidence(value):
     status = value.get("status")
     fields = {key: value.get(key) for key in (
         "status", "kind", "peer", "egress_direction", "egress_peer",
-        "isl_rate_bps")}
+        "isl_rate_bps", "candidate_isl_rate_bps",
+        "downlink_rate_bps", "downlink_propagation_s",
+        "downlink_available", "downlink_queue_scope",
+        "downlink_queue_semantics", "downlink_queue_bits")}
     if status == "ok":
         fields["resource_valid"] = (
             value.get("kind") == "isl"
@@ -332,7 +569,25 @@ def _resource_target_evidence(value):
             and isinstance(value.get("isl_rate_bps"), (int, float))
             and not isinstance(value.get("isl_rate_bps"), bool)
             and math.isfinite(float(value.get("isl_rate_bps")))
-            and float(value.get("isl_rate_bps")) > 0)
+            and float(value.get("isl_rate_bps")) > 0
+            and isinstance(value.get("candidate_isl_rate_bps"), (int, float))
+            and not isinstance(value.get("candidate_isl_rate_bps"), bool)
+            and math.isfinite(float(value.get("candidate_isl_rate_bps")))
+            and float(value.get("candidate_isl_rate_bps")) > 0
+            and isinstance(value.get("downlink_rate_bps"), (int, float))
+            and not isinstance(value.get("downlink_rate_bps"), bool)
+            and math.isfinite(float(value.get("downlink_rate_bps")))
+            and float(value.get("downlink_rate_bps")) > 0
+            and isinstance(value.get("downlink_propagation_s"), (int, float))
+            and not isinstance(value.get("downlink_propagation_s"), bool)
+            and math.isfinite(float(value.get("downlink_propagation_s")))
+            and float(value.get("downlink_propagation_s")) >= 0
+            and value.get("downlink_available") is True
+            and value.get("downlink_queue_scope") == "satellite_shared_drr"
+            and isinstance(value.get("downlink_queue_bits"), (int, float))
+            and not isinstance(value.get("downlink_queue_bits"), bool)
+            and math.isfinite(float(value.get("downlink_queue_bits")))
+            and float(value.get("downlink_queue_bits")) >= 0)
     else:
         fields["resource_valid"] = False
     return fields
@@ -438,8 +693,39 @@ def _routing_audit_log(sink, timeline):
             },
             "estimate_at_start": row.get("estimate_at_start"),
         })
-    attempts = [dict(row) for row in timeline
-                if row.get("milestone") == "decision_attempt"]
+    attempt_aliases = {
+        "decision_attempt": "decision_attempt",
+        "frozen_inferred_hold": "decision_attempt",
+        "commit_rejected": "decision_attempt",
+    }
+    attempts = []
+    for row in timeline:
+        source = row.get("milestone")
+        canonical = attempt_aliases.get(source)
+        if canonical is None:
+            continue
+        attempt = dict(row)
+        attempt["milestone"] = canonical
+        attempt["source_milestone"] = row.get("source_milestone", source)
+        observation = row.get("observation_at_start") or {}
+        attempt["route_status"] = (row.get("route_status")
+                                   or row.get("status")
+                                   or observation.get("routing_status"))
+        if source == "frozen_inferred_hold":
+            attempt["attempt_outcome"] = "held"
+            attempt.setdefault("action", "hold")
+        elif source == "commit_rejected":
+            attempt["attempt_outcome"] = "rejected"
+        else:
+            action = row.get("action")
+            attempt["attempt_outcome"] = (
+                "held" if action == "hold" else
+                "failed" if action == "fail" else "attempted")
+        if not isinstance(attempt.get("four_direction_audit"), dict):
+            nested_audit = observation.get("four_direction_audit")
+            if isinstance(nested_audit, dict):
+                attempt["four_direction_audit"] = nested_audit
+        attempts.append(attempt)
     return {
         "schema": "t1-routing-audit-log/v1",
         "decision_records": decisions,
@@ -450,6 +736,57 @@ def _routing_audit_log(sink, timeline):
     }
 
 
+def _control_advertisement_audit(timeline, *, vis_k, packet_bits,
+                                 enabled):
+    """Compact audit of generated and actually installed whole snapshots."""
+    if not enabled:
+        return {"enabled": False, "vis_k": int(vis_k),
+                "packet_bits_per_hop": int(packet_bits),
+                "reason": "control audit was not requested"}
+    events = [row for row in timeline
+              if row.get("audit") == "control_plane"]
+    generated = [row for row in events
+                 if row.get("milestone") == "ctrl_advert_generated"]
+    arrivals = [row for row in events
+                if row.get("milestone") == "ctrl_advert_arrived"]
+    by_origin = {}
+    for row in arrivals:
+        origin = str(row.get("origin"))
+        bucket = by_origin.setdefault(origin, {
+            "installed_satellites": set(), "max_hops": 0,
+            "service_advertisement_installs": 0,
+            "downlink_resource_installs": 0,
+        })
+        if row.get("sat") is not None:
+            bucket["installed_satellites"].add(int(row["sat"]))
+        bucket["max_hops"] = max(bucket["max_hops"],
+                                 int(row.get("hops") or 0))
+        if row.get("serve_cells"):
+            bucket["service_advertisement_installs"] += 1
+        if row.get("downlink_resources"):
+            bucket["downlink_resource_installs"] += 1
+    compact = {}
+    for origin, bucket in sorted(by_origin.items()):
+        compact[origin] = {
+            "installed_satellites": sorted(bucket["installed_satellites"]),
+            "max_hops": bucket["max_hops"],
+            "service_advertisement_installs":
+                bucket["service_advertisement_installs"],
+            "downlink_resource_installs": bucket["downlink_resource_installs"],
+        }
+    return {
+        "enabled": True,
+        "vis_k": int(vis_k),
+        "packet_bits_per_hop": int(packet_bits),
+        "advertisement_scope": "all fields in one snapshot share this hop limit",
+        "generated_snapshots": len(generated),
+        "accepted_arrivals": len(arrivals),
+        "unique_origin_satellite_installs": sum(
+            len(value["installed_satellites"]) for value in compact.values()),
+        "max_observed_hops": max(
+            (value["max_hops"] for value in compact.values()), default=0),
+        "by_origin": compact,
+    }
 def _fallback_reason_counts(action_log):
     """Count WHY decisions fell back, keyed by the candidate term missing.
 
@@ -467,7 +804,8 @@ def _fallback_reason_counts(action_log):
 
 def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
                            max_branches=DEFAULT_MAX_BRANCHES, window=None,
-                           capture_replay=False):
+                           capture_replay=False,
+                           calibrate_common_horizon=False):
     """Several branches of ONE baseline trajectory, merged into one block.
 
     The unit of replication is the BLOCK (scenario x trace x seed), not the
@@ -487,6 +825,22 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
     eligible, rejected = eligible_branches(decision_rows, window=window)
     sample = sample_branches(eligible, max_branches=max_branches)
     by_id = {item["decision_id"]: item for item in eligible}
+    horizon_projection = None
+    horizon_candidates = None
+    horizon_offset_source = None
+    if calibrate_common_horizon:
+        horizon_offset_source = candidate_eta_offsets(decision_rows,
+                                                      window=window)
+        if horizon_offset_source["offsets"]:
+            horizon_projection = project_horizons(
+                horizon_offset_source["offsets"])
+            horizon_candidates = {
+                name: horizon_projection[name]
+                for name in ("mean_eta_offset", "median_eta_offset",
+                             "p25_offset", "p50_offset", "p75_offset")}
+        else:
+            horizon_projection = {"status": "NO_CANDIDATE_ETA_OFFSETS"}
+            horizon_candidates = {}
     branches, failures = [], []
     capture_id = None
     if capture_replay:
@@ -510,7 +864,9 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
         try:
             document = tac.compare(resolved, rows, geometry, decision_id,
                                    deadline_s, source,
-                                   capture_replay=(decision_id == capture_id))
+                                   capture_replay=(decision_id == capture_id),
+                                   common_horizon_candidates=(
+                                       horizon_candidates or None))
         except Exception as exc:          # noqa: BLE001 - recorded, not lost
             failures.append({"decision_id": decision_id,
                              "reason": f"{type(exc).__name__}: {exc}"})
@@ -547,6 +903,8 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
             "arm_actions": _arm_actions(arms),
             "candidate_outcomes": _candidate_outcomes(
                 document.get("candidates") or {}),
+            "common_horizon_candidates": document.get(
+                "common_horizon_candidates") or [],
             "resource_pressure": resource_pressure,
             "resource_pressure_observed": any(
                 value["observed"] for value in resource_pressure.values()),
@@ -559,7 +917,8 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
         config=resolved, trace_digest=source.get("trace_sha256"),
         driver_paths=artifact_identity.execution_chain_paths(),
         extra={"task": "branch_alignment", "decision_ids": sample["decisions"],
-               "max_branches": int(max_branches)})
+               "max_branches": int(max_branches),
+               "calibrate_common_horizon": bool(calibrate_common_horizon)})
     document = {
         "schema": SCHEMA_BRANCH_BLOCK,
         "identity": identity,
@@ -586,6 +945,32 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
                                 "the future of the unchosen actions is "
                                 "never consulted"},
         "branches": branches,
+        "common_horizon_calibration": (
+            {
+                "status": ("projected" if horizon_offset_source["offsets"]
+                           else "NO_CANDIDATE_ETA_OFFSETS"),
+                "development_seed": int(resolved["config"]["scenario"]["seed"]),
+                "offset_source": horizon_offset_source["rule"],
+                "offset_decision_count": horizon_offset_source["decisions"],
+                "offset_candidate_count": horizon_offset_source["candidates"],
+                "offset_values_sha256": _rows_digest(
+                    horizon_offset_source["offsets"]),
+                "candidate_definitions": horizon_projection,
+                "selection": select_common_horizon_candidate(
+                    branches, list(horizon_candidates or {}),
+                    sample["decisions"]),
+                "sampled_decision_ids": list(sample["decisions"]),
+                "branch_evidence_sha256": _rows_digest([
+                    {"decision_id": row["decision_id"],
+                     "common_horizon_candidates": row.get(
+                         "common_horizon_candidates") or []}
+                    for row in branches]),
+                "selection_scope": (
+                    "independent development baseline seed only; all horizon "
+                    "candidates share each frozen t0 observation and the same "
+                    "per-direction independently replayed outcome table"),
+                "cross_arm_leakage": False,
+            } if calibrate_common_horizon else {"status": "not_requested"}),
         "explanation_replay": explanation_replay,
         "explanation_selection": {
             "rule": "first sampled forward decision with at least two legal directions and a named peer resource for every legal direction; selection uses no outcome fields",
@@ -730,7 +1115,7 @@ def _compute_cost(timeline, resolved):
 
 
 def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
-             source=None, capture_replay=False):
+             source=None, capture_replay=False, simulator_call_guard=None):
     """One full-network run under ONE online arm.
 
     The four arms start from the SAME input trace and the SAME initial
@@ -747,8 +1132,11 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
     cfg["time_alignment"]["arm"] = arm
     local = config_mod.resolve_config(cfg)
     sink, timeline = [], []
+    if simulator_call_guard is not None:
+        simulator_call_guard(arm)
     result = kernel.run_simulation(local, rows, geometry=geometry,
-                                   decision_sink=sink, timeline_sink=timeline)
+                                   decision_sink=sink, timeline_sink=timeline,
+                                   control_audit=True)
     e2e = execution_compare._e2e(result["deliveries"],
                                  result["packet_events"])
     forwards = [r for r in sink if r.get("kind") == "forward"]
@@ -864,6 +1252,10 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
         "compute": _compute_cost(timeline, local),
         "control": {"bits": dict(result["control"]["bits"]),
                     "counters": dict(result["control"]["counters"])},
+        "control_advertisement_audit": _control_advertisement_audit(
+            timeline, vis_k=local["config"]["control_plane"]["vis_k"],
+            packet_bits=local["config"]["control_plane"]["packet_bits"],
+            enabled=True),
         "query_service": result["execution_mode"]["query_service"],
         "congestion_metrics": congestion_metrics,
         "mechanisms": result["mechanisms"],
@@ -894,7 +1286,8 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
 
 def network_alignment(resolved, rows, geometry, source,
                      arms=NETWORK_ARMS, overrides=None, *, deadline_s=None,
-                     window=None, capture_replay=False):
+                     window=None, capture_replay=False,
+                     simulator_call_guard=None):
     """The FOUR online arms, each running the WHOLE network to the horizon."""
     if overrides:
         cfg = copy.deepcopy(resolved["config"])
@@ -912,7 +1305,8 @@ def network_alignment(resolved, rows, geometry, source,
             arm_rows.append(_arm_row(
                 resolved, rows, geometry, arm, deadline_s=deadline_s,
                 window=window, source=source,
-                capture_replay=capture_replay))
+                capture_replay=capture_replay,
+                simulator_call_guard=simulator_call_guard))
         except Exception as exc:      # noqa: BLE001 - recorded, not lost
             failures.append({"arm": arm,
                              "reason": f"{type(exc).__name__}: {exc}"})
@@ -965,7 +1359,9 @@ def network_alignment(resolved, rows, geometry, source,
 # ------------------------------------------------------- the task dispatcher
 def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
              max_branches=DEFAULT_MAX_BRANCHES, window=None, modes=None,
-             overrides=None, arms=NETWORK_ARMS, capture_replay=False):
+             overrides=None, arms=NETWORK_ARMS, capture_replay=False,
+             calibrate_common_horizon=False,
+             simulator_call_guard=None):
     """One entry point for the three task types.
 
     The suite only ever calls this, so budget enforcement, failure
@@ -978,12 +1374,14 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
         driver = branch_alignment_block(
             resolved, rows, geometry, deadline_s=deadline_s, source=source,
             max_branches=max_branches, window=window,
-            capture_replay=capture_replay)
+            capture_replay=capture_replay,
+            calibrate_common_horizon=calibrate_common_horizon)
     elif task == "network_alignment":
         driver = network_alignment(resolved, rows, geometry, source,
                                    arms=arms, overrides=overrides,
                                    deadline_s=deadline_s, window=window,
-                                   capture_replay=capture_replay)
+                                   capture_replay=capture_replay,
+                                   simulator_call_guard=simulator_call_guard)
     else:
         driver = execution_compare.compare(
             resolved, rows, geometry, source,
@@ -1070,6 +1468,32 @@ def design(config_path=None, scenario=None, root=None, overrides=None):
               "trace_sha256": digest, "rows": len(rows),
               "overrides": dict(overrides or {})}
     demand = resolved["config"].get("demand") or {}
+    if demand.get("mode") == "population_gravity":
+        population_path = Path(str(demand.get("population_path") or ""))
+        if not population_path.is_absolute():
+            population_path = artifact_identity.REPO_ROOT / population_path
+        mapped_rows = [
+            row for row in rows
+            if isinstance(row.get("src_grid_id"), str)
+            and row.get("src_grid_id")
+            and isinstance(row.get("dst_grid_id"), str)
+            and row.get("dst_grid_id")
+        ]
+        endpoint_pairs = {(row["src_grid_id"], row["dst_grid_id"])
+                          for row in mapped_rows}
+        source["native_population"] = {
+            "mode": "population_gravity",
+            "population_source": str(demand.get("population_path")),
+            "population_sha256": (
+                hashlib.sha256(population_path.read_bytes()).hexdigest()
+                if population_path.is_file() else None),
+            "all_rows_have_ground_grid_ids": len(mapped_rows) == len(rows),
+            "source_grid_count": len({row["src_grid_id"]
+                                       for row in mapped_rows}),
+            "destination_grid_count": len({row["dst_grid_id"]
+                                            for row in mapped_rows}),
+            "directed_od_count": len(endpoint_pairs),
+        }
     if demand.get("mode") == "csv" and demand.get("csv_path"):
         input_path = Path(demand["csv_path"])
         summary_path = input_path.with_suffix(".workload.json")
@@ -1177,10 +1601,26 @@ def main(argv=None) -> int:
     parser.add_argument("--update-interval-s", type=float, default=None)
     parser.add_argument("--window-bins", type=int, default=None)
     parser.add_argument("--common-horizon-s", type=float, default=None)
-    args = parser.parse_args(argv)
+    parser.add_argument("--calibrate-common-horizon", action="store_true",
+                        help="project and compare predeclared common-future candidates on this development block")
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(raw_args)
     if bool(args.config) == bool(args.scenario):
         print("T1TASKS REFUSED: give exactly one of --config or --scenario")
         return 2
+    suite_runtime_context = None
+    if (args.config is not None
+            and _is_controlled_population_region_profile(args.config)):
+        if args.task != "network_alignment":
+            print("T1TASKS REFUSED: controlled native-population input only "
+                  "supports its network_alignment suite cell")
+            return 2
+        try:
+            suite_runtime_context = _validate_suite_runtime_context(
+                args, raw_args)
+        except TaskError as exc:
+            print(f"T1TASKS REFUSED: {exc}")
+            return 2
     overrides = {}
     if args.compute_servers is not None:
         overrides.setdefault("execution", {})[
@@ -1209,7 +1649,29 @@ def main(argv=None) -> int:
             print("T1TASKS REFUSED: give both --window-start and --window-end")
             return 2
         window = (float(args.window_start), float(args.window_end))
+    suite_launch_claimed = False
+    call_guard = None
+    exit_code = 0
     try:
+        if suite_runtime_context is not None:
+            from CODE.experiment_platform import t1_suite
+            try:
+                t1_suite._claim_suite_launch_ledger(suite_runtime_context)
+            except t1_suite.SuiteError as exc:
+                raise TaskError(f"suite launch ledger claim failed: {exc}") from exc
+            suite_launch_claimed = True
+
+            def call_guard(arm):
+                if arm not in NETWORK_ARMS:
+                    raise TaskError(
+                        f"controlled suite cell requested unknown arm {arm!r}")
+                try:
+                    t1_suite._reserve_suite_simulator_call(
+                        suite_runtime_context)
+                except t1_suite.SuiteError as exc:
+                    raise TaskError(
+                        f"suite launch call reservation failed: {exc}") from exc
+
         resolved, rows, geometry, source = design(
             args.config, args.scenario, args.root, overrides)
         document = run_task(
@@ -1220,11 +1682,23 @@ def main(argv=None) -> int:
                    if args.modes else None),
             arms=(tuple(a.strip() for a in str(args.arms).split(",") if a.strip())
                   if args.arms else NETWORK_ARMS),
-            capture_replay=args.capture_replay)
+            capture_replay=args.capture_replay,
+            calibrate_common_horizon=args.calibrate_common_horizon,
+            simulator_call_guard=call_guard)
         publish(document, args.out)
     except TaskError as exc:
         print(f"T1TASKS REFUSED: {exc}")
-        return 2
+        exit_code = 2
+    finally:
+        if suite_launch_claimed:
+            from CODE.experiment_platform import t1_suite
+            try:
+                t1_suite._close_suite_launch_ledger(suite_runtime_context)
+            except t1_suite.SuiteError as exc:
+                print(f"T1TASKS REFUSED: suite launch close failed: {exc}")
+                exit_code = 2
+    if exit_code:
+        return exit_code
     print(json.dumps({"status": document["status"], "task": document["task"],
                       "out": str(args.out),
                       "failed_units": document["failed_units"]},

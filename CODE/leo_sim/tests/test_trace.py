@@ -66,6 +66,89 @@ def test_compile_trace_byte_reproducible(tmp_path):
     assert m1["time_range_s"][1] <= 5.0
 
 
+def test_research_deadline_uses_trace_v2_without_changing_legacy_trace_bytes(
+        tmp_path):
+    cfg = _cfg(demand={"research_deadline_s": 4.0, "deadline_s": None})
+    manifest = trace.compile_trace(cfg, str(tmp_path / "research-d"))
+    trace_path = tmp_path / "research-d" / "trace.csv"
+    with trace_path.open(newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        assert "research_deadline_at_s" in reader.fieldnames
+        rows = list(reader)
+    assert rows
+    assert all(
+        float(item["research_deadline_at_s"])
+        == pytest.approx(float(item["emit_time_s"]) + 4.0)
+        for item in rows)
+    assert manifest["trace_schema"] == trace.TRACE_SCHEMA_V2
+    assert manifest["provenance_contract"]["units"]["research_deadline"] \
+        == "seconds_since_run_start_or_empty"
+    assert receipt._validate_manifest(
+        manifest, cfg["config"], cfg["version"]) == []
+
+
+def test_research_trace_preserves_float_near_half_open_emission_end(
+        tmp_path):
+    source = tmp_path / "near_end.csv"
+    source.write_text(
+        "packet_id,emit_time_s,src_lat,src_lon,dst_lat,dst_lon,bits\n"
+        "1,3.9999998,0,0,0,10,12000\n", encoding="utf-8")
+    cfg = _cfg(
+        scenario={"duration_s": 5.0},
+        demand={"mode": "csv", "csv_path": str(source),
+                "emission_start_s": 2.0, "emission_end_s": 4.0,
+                "research_deadline_s": 4.0, "deadline_s": None})
+    manifest = trace.compile_trace(cfg, str(tmp_path / "compiled-near-end"))
+    trace_path = tmp_path / "compiled-near-end" / "trace.csv"
+    rows = trace.load_trace(str(trace_path), horizon_s=5.0, max_packets=100)
+    assert len(rows) == 1
+    assert rows[0]["emit_time_s"] == pytest.approx(3.9999998, abs=0.0)
+    assert rows[0]["emit_time_s"] < 4.0
+    assert manifest["time_range_s"][1] < 4.0
+
+
+def test_research_generator_treats_exact_emission_end_as_excluded(
+        tmp_path, monkeypatch):
+    class BoundaryGenerator:
+        def exponential(self, _scale):
+            return 2.0
+
+        def random(self):
+            return 0.0
+
+        def integers(self, _high):
+            return 0
+
+    generator = BoundaryGenerator()
+    monkeypatch.setattr(
+        trace.rng, "streams",
+        lambda _seed: {"demand": generator})
+    cfg = _cfg(
+        scenario={"duration_s": 5.0},
+        demand={"mode": "uniform", "emission_start_s": 2.0,
+                "emission_end_s": 4.0, "research_deadline_s": 4.0})
+    trace.compile_trace(cfg, str(tmp_path / "compiled-boundary"))
+    rows = trace.load_trace(
+        str(tmp_path / "compiled-boundary" / "trace.csv"),
+        horizon_s=5.0, max_packets=100)
+    assert rows == []
+
+
+def test_research_csv_rejects_exact_emission_end_instead_of_losing_row(
+        tmp_path):
+    source = tmp_path / "at_end.csv"
+    source.write_text(
+        "packet_id,emit_time_s,src_lat,src_lon,dst_lat,dst_lon,bits\n"
+        "1,4.0,0,0,0,10,12000\n", encoding="utf-8")
+    cfg = _cfg(
+        scenario={"duration_s": 5.0},
+        demand={"mode": "csv", "csv_path": str(source),
+                "emission_start_s": 2.0, "emission_end_s": 4.0,
+                "research_deadline_s": 4.0, "deadline_s": None})
+    with pytest.raises(trace.TraceError, match="outside emission window"):
+        trace.compile_trace(cfg, str(tmp_path / "compiled-at-end"))
+
+
 def test_emission_end_defaults_to_simulation_horizon(tmp_path):
     cfg = _cfg()
     assert cfg["config"]["demand"]["emission_end_s"] is None
@@ -143,6 +226,7 @@ def test_receipt_manifest_v2_fields_are_strict_and_v1_remains_legacy(tmp_path):
     for field in ("simulation_horizon_s", "emission_end_s", "drain_s"):
         legacy["provenance_contract"].pop(field)
     legacy["provenance_contract"]["schema"] = trace.TRACE_PROVENANCE_SCHEMA_V1
+    legacy["provenance_contract"]["units"].pop("research_deadline")
     legacy["trace_identity_sha256"] = config.legacy_trace_identity_sha256(
         cfg, manifest["input_sha256"])
     assert receipt._validate_manifest(
@@ -351,7 +435,7 @@ def test_population_gravity_uses_population_for_sources_and_destinations(
         source_shape=(720, 1440), source_resolution_deg=(0.25, 0.25),
         aggregation_deg=5.0, total_population=111.0)
     monkeypatch.setattr(population, "load_population_regions",
-                        lambda path, aggregation_deg: table)
+                        lambda path, aggregation_deg, **kwargs: table)
     cfg = config.resolve_config({
         "scenario": {"duration_s": 100.0, "seed": 11},
         "endpoints": {"aggregation_deg": 5.0},
@@ -392,7 +476,7 @@ def test_population_gravity_trace_is_byte_reproducible(tmp_path, monkeypatch):
         source_shape=(720, 1440), source_resolution_deg=(0.25, 0.25),
         aggregation_deg=5.0, total_population=3.0)
     monkeypatch.setattr(population, "load_population_regions",
-                        lambda path, aggregation_deg: table)
+                        lambda path, aggregation_deg, **kwargs: table)
     cfg = config.resolve_config({
         "scenario": {"duration_s": 5.0, "seed": 3},
         "endpoints": {"aggregation_deg": 5.0},
@@ -404,6 +488,44 @@ def test_population_gravity_trace_is_byte_reproducible(tmp_path, monkeypatch):
     assert (tmp_path / "one" / "trace.csv").read_bytes() == (
         tmp_path / "two" / "trace.csv").read_bytes()
     assert m1["trace_identity_sha256"] == m2["trace_identity_sha256"]
+
+
+def test_regional_population_trace_respects_two_second_warmup_and_burst(
+        tmp_path, monkeypatch):
+    table = population.PopulationTable(
+        regions=(
+            population.PopulationRegion("G1:10:10", 10.5, 10.5, 1.0),
+            population.PopulationRegion("G1:10:11", 10.5, 11.5, 2.0),
+            population.PopulationRegion("G1:11:10", 11.5, 10.5, 3.0),
+        ), source_path="CODE/population_map/fake.tif",
+        source_sha256="d" * 64, source_shape=(720, 1440),
+        source_resolution_deg=(0.25, 0.25), aggregation_deg=1.0,
+        total_population=6.0)
+    captured = {}
+
+    def loader(path, aggregation_deg, **kwargs):
+        captured.update(kwargs)
+        return table
+
+    monkeypatch.setattr(population, "load_population_regions", loader)
+    profile = (Path(__file__).resolve().parents[1] / "profiles"
+               / "t1_population_region_cost_smoke.yaml")
+    raw = config.load_config_file(str(profile))["config"]
+    raw["scenario"]["seed"] = 11
+    resolved = config.resolve_config(raw)
+    manifest = trace.compile_trace(resolved, str(tmp_path / "regional"))
+    rows = trace.load_trace(str(tmp_path / "regional" / "trace.csv"),
+                            horizon_s=8.0, max_packets=4096)
+    assert rows
+    assert min(row["emit_time_s"] for row in rows) >= 2.0
+    assert max(row["emit_time_s"] for row in rows) < 4.0
+    assert captured == {"lat_bounds_deg": [5.0, 50.0],
+                        "lon_bounds_deg": [65.0, 140.0]}
+    contract = manifest["provenance_contract"]
+    assert contract["traffic_transform"]["burst"] == {
+        "start_s": 2.5, "duration_s": 1.0, "multiplier": 2.0}
+    assert contract["offered_load"]["realized_offered_mbps"] == pytest.approx(
+        manifest["offered_bits"] / 2.0 / 1_000_000.0)
 
 
 # -------------------------------------------------------- Task 1 regression:
@@ -478,7 +600,7 @@ def _fake_pop_table(*populations):
 def _population_cfg(monkeypatch, **demand):
     table = _fake_pop_table(10.0, 3.0, 1.0)
     monkeypatch.setattr(population, "load_population_regions",
-                        lambda path, aggregation_deg: table)
+                        lambda path, aggregation_deg, **kwargs: table)
     base = {
         "scenario": {"duration_s": 50.0, "seed": 7},
         "endpoints": {"aggregation_deg": 5.0},

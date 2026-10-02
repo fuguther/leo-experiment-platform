@@ -86,6 +86,8 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
     "endpoints": {
         "grid_deg": (int, float),
         "aggregation_deg": (int, float),
+        "region_lat_bounds_deg": (list, type(None)),
+        "region_lon_bounds_deg": (list, type(None)),
         "sites": list,  # list of {name, lat, lon, demand_weight}
         # Explicit opt-in for deterministic endpoint selection from the
         # repository M-Lab measurement snapshot. Existing named-site
@@ -96,8 +98,12 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
     "demand": {
         "mode": str,  # uniform|gravity|hotspot|burst|diurnal|csv|mlab
         "offered_mbps": (int, float),
+        "emission_start_s": (int, float),
         "emission_end_s": (int, float, type(None)),
         "packet_bits": int,
+        # Research/evaluation D never implies physical packet expiry; only
+        # deadline_s is the native hard TTL.
+        "research_deadline_s": (int, float, type(None)),
         "deadline_s": (int, float, type(None)),
         "csv_path": (str, type(None)),
         "population_path": (str, type(None)),
@@ -163,6 +169,7 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "ttl_s": (int, float),
         "advertise_interval_s": (int, float),
         "packet_bits": int,
+        "advertisement_protocol_version": int,
         "priority": str,  # nonpreemptive_priority (only supported mode)
     },
     "routing": {
@@ -194,7 +201,7 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "batch_size": int,
         "replay_size": int,
         "target_update_interval": int,
-        "reward": str,  # queue (corrected queue reward) — the ONLY v1 reward
+        "reward": str,  # legacy queue | deadline_loss_v1
         "reward_w1": (int, float),  # M1 queue reward weight (legacy w1=20)
         "reward_beta": (int, float),  # M1 decay rate s^-1 (legacy _M1_BETA=200)
         "forward_step_penalty": (int, float),  # non-positive hop cost; must dominate reward_w1
@@ -328,6 +335,8 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "endpoints": {
         "grid_deg": 0.25,
         "aggregation_deg": 1.0,
+        "region_lat_bounds_deg": None,
+        "region_lon_bounds_deg": None,
         "sites": [],
         "mlab_auto": False,
         # Bound sparse ground-side entities while retaining many measured OD
@@ -337,8 +346,10 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "demand": {
         "mode": "uniform",
         "offered_mbps": 1.0,
+        "emission_start_s": 0.0,
         "emission_end_s": None,
         "packet_bits": 8_000_000,
+        "research_deadline_s": None,
         "deadline_s": None,
         "csv_path": None,
         "population_path": None,
@@ -422,6 +433,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "ttl_s": 10.0,
         "advertise_interval_s": 1.0,
         "packet_bits": 8_000,
+        "advertisement_protocol_version": 1,
         "priority": "nonpreemptive_priority",
     },
     "routing": {"policy": "hop", "max_hops": 16, "learning_enabled": False,
@@ -593,6 +605,30 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(
             "endpoints.mlab_auto requires endpoints.sites to be empty; "
             "choose automatic or explicit measurement endpoints")
+    region_lat = ep["region_lat_bounds_deg"]
+    region_lon = ep["region_lon_bounds_deg"]
+    if (region_lat is None) != (region_lon is None):
+        raise ConfigError(
+            "endpoints.region_lat_bounds_deg and region_lon_bounds_deg "
+            "must be supplied together")
+    if region_lat is not None:
+        if dm["mode"] != "population_gravity":
+            raise ConfigError(
+                "endpoint region bounds are only valid with "
+                "demand.mode=population_gravity")
+        for bounds, label, lower, upper in (
+                (region_lat, "latitude", -90.0, 90.0),
+                (region_lon, "longitude", -180.0, 180.0)):
+            if not isinstance(bounds, list) or len(bounds) != 2:
+                raise ConfigError(f"endpoint region {label} bounds must be a pair")
+            if any(not isinstance(v, (int, float)) or isinstance(v, bool)
+                   or not math.isfinite(v) for v in bounds):
+                raise ConfigError(
+                    f"endpoint region {label} bounds must be finite numbers")
+            if not lower <= bounds[0] < bounds[1] <= upper:
+                raise ConfigError(
+                    f"endpoint region {label} bounds must be ordered within "
+                    f"[{lower}, {upper}]")
     # grid IDs are only stable if cells tile the sphere evenly: both degrees
     # must divide 180/360 exactly, and aggregation must be an exact multiple
     # of the fine grid
@@ -638,10 +674,21 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
     if dm["offered_mbps"] <= 0:
         raise ConfigError("demand.offered_mbps must be > 0")
     emission_end = dm["emission_end_s"]
+    emission_start = dm["emission_start_s"]
+    if not isinstance(emission_start, (int, float)) \
+            or isinstance(emission_start, bool) \
+            or not math.isfinite(float(emission_start)) \
+            or emission_start < 0:
+        raise ConfigError("demand.emission_start_s must be finite and >= 0")
     if emission_end is not None and not (0 < emission_end <= sc["duration_s"]):
         raise ConfigError(
             "demand.emission_end_s must be finite, > 0 and <= "
             "scenario.duration_s")
+    emitted_until = (float(sc["duration_s"]) if emission_end is None
+                     else float(emission_end))
+    if emission_start >= emitted_until:
+        raise ConfigError(
+            "demand.emission_start_s must be before the emission end")
     if dm["packet_bits"] <= 0:
         raise ConfigError("demand.packet_bits must be > 0")
     if dm["mode"] == "csv" and not dm["csv_path"]:
@@ -656,7 +703,8 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         dm["burst_start_s"] is not None
         or dm["burst_duration_s"] is not None
     )
-    if burst_declared and dm["mode"] not in {"burst", "mlab"}:
+    if burst_declared and dm["mode"] not in {
+            "burst", "mlab", "population_gravity"}:
         # The transform exists ONLY in _rate_multiplier() for mode in
         # {burst, mlab} (trace.py:302-307).  Declaring the window under any
         # other mode used to resolve happily and then be silently dropped:
@@ -668,8 +716,8 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(
             "demand.burst_start_s/burst_duration_s are declared but "
             f"demand.mode={dm['mode']} never applies the burst transform; "
-            "the window would be silently dropped. Use demand.mode=burst or "
-            "demand.mode=mlab, or remove the burst window")
+            "the window would be silently dropped. Use a supported demand "
+            "mode, or remove the burst window")
     # The multiplier alone is the other half of the same hole: a config that
     # sets burst_multiplier but declares no window under a mode that never
     # applies the transform used to resolve happily with the value kept in the
@@ -678,7 +726,7 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
     # or not the author asked for it; a non-default value is a claim that
     # something will use it.
     default_multiplier = DEFAULTS["demand"]["burst_multiplier"]
-    if dm["mode"] not in {"burst", "mlab"} \
+    if dm["mode"] not in {"burst", "mlab", "population_gravity"} \
             and dm["burst_multiplier"] != default_multiplier:
         raise ConfigError(
             f"demand.burst_multiplier={dm['burst_multiplier']} is declared but "
@@ -686,7 +734,7 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             "the value would be silently ignored. Use demand.mode=burst or "
             f"demand.mode=mlab, or leave burst_multiplier at its default "
             f"({default_multiplier})")
-    if dm["mode"] in {"burst", "mlab"} and (
+    if dm["mode"] in {"burst", "mlab", "population_gravity"} and (
             dm["mode"] == "burst" or burst_declared):
         if dm["burst_start_s"] is None or dm["burst_duration_s"] is None:
             raise ConfigError(
@@ -702,19 +750,27 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         # manifest still declared a burst.  Measured 2026-09-25:
         # emission_end_s=20 with the window at [30, 40) gave 100 packets,
         # 0 inside the window, and realized offered load == target 40 Mbps.
-        emitted_until = (float(sc["duration_s"])
-                         if dm["emission_end_s"] is None
-                         else float(dm["emission_end_s"]))
         window_end = dm["burst_start_s"] + dm["burst_duration_s"]
-        if window_end > emitted_until:
+        if dm["burst_start_s"] < emission_start or window_end > emitted_until:
             raise ConfigError(
                 "burst window [burst_start_s, burst_start_s+burst_duration_s) "
                 f"= [{dm['burst_start_s']}, {window_end}) must lie inside the "
-                f"emission window [0, {emitted_until}] "
+                f"emission window [{emission_start}, {emitted_until}] "
                 "(demand.emission_end_s, or scenario.duration_s when unset); "
                 "a window that extends past it is only partially applied")
+        if dm["mode"] == "population_gravity" \
+                and dm["temporal_model"] == "local_diurnal_cosine":
+            raise ConfigError(
+                "population_gravity cannot combine its burst window with "
+                "local_diurnal_cosine in the same demand profile")
     if dm["deadline_s"] is not None and dm["deadline_s"] <= 0:
         raise ConfigError("demand.deadline_s must be > 0 when set")
+    if dm["research_deadline_s"] is not None and (
+            isinstance(dm["research_deadline_s"], bool)
+            or not math.isfinite(dm["research_deadline_s"])
+            or dm["research_deadline_s"] <= 0):
+        raise ConfigError(
+            "demand.research_deadline_s must be finite and > 0 when set")
     if dm["gravity_alpha"] <= 0 or dm["gravity_d_floor_km"] <= 0:
         raise ConfigError("gravity parameters must be > 0")
     if not 0 < dm["hotspot_fraction"] <= 1 or not 0 <= dm["hotspot_concentration"] <= 1:
@@ -848,6 +904,9 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError("control_plane.vis_k must be >= 0")
     if cp["ttl_s"] <= 0 or cp["advertise_interval_s"] <= 0 or cp["packet_bits"] < 1:
         raise ConfigError("control_plane ttl/advertise_interval/packet_bits invalid")
+    if cp["advertisement_protocol_version"] not in (1, 2):
+        raise ConfigError(
+            "control_plane.advertisement_protocol_version must be 1 or 2")
     if cp["priority"] != "nonpreemptive_priority":
         raise ConfigError("only nonpreemptive_priority control is supported")
     if rt["policy"] not in VALID_POLICIES:
@@ -962,12 +1021,16 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
                                     or lr["checkpoint_sha256"] is not None
                                     or lr["checkpoint_metadata_sha256"] is not None):
         raise ConfigError("learning.mode=train does not load a checkpoint")
-    if lr["reward"] != "queue":
-        # v1 keeps exactly one reward: the corrected queue reward (M1/M2
-        # semantics absorbed). distance/linear rewards are plan-excluded dead
-        # entry points and are rejected, not parked "for later".
-        raise ConfigError("learning.reward must be 'queue' (corrected queue reward); "
-                          "distance/linear rewards are excluded from v1")
+    if lr["reward"] not in {"queue", "deadline_loss_v1"}:
+        raise ConfigError("learning.reward must be 'queue' or 'deadline_loss_v1'")
+    if lr["reward"] == "deadline_loss_v1":
+        if dm["research_deadline_s"] is None:
+            raise ConfigError(
+                "learning.reward=deadline_loss_v1 requires "
+                "demand.research_deadline_s")
+        if lr["gamma"] != 1.0:
+            raise ConfigError(
+                "learning.reward=deadline_loss_v1 requires learning.gamma=1.0")
     if lr["reward_w1"] <= 0:
         raise ConfigError("learning.reward_w1 must be > 0")
     if lr["reward_beta"] <= 0:
@@ -1133,7 +1196,8 @@ def _validate_time_alignment(ta: Mapping[str, Any],
             f"{sorted(VALID_ASYNC_TRIGGERS)}, got {ar['trigger']!r}")
 
 
-# The five demand fields defaulted since identity/v2 (Task 1 global scene
+# The demand fields defaulted since identity/v2 (Task 1 global scene and
+# research-deadline contract)
 # contract).  The frozen v2 builder removes exactly these after config
 # resolution so an old v2 receipt can be reconstructed byte-for-byte.
 V2_REMOVED_DEMAND_FIELDS = (
@@ -1142,6 +1206,9 @@ V2_REMOVED_DEMAND_FIELDS = (
     "population_destination_sampler",
     "destination_rejection_max_draws",
     "nested_master_offered_mbps",
+    # Added after the frozen v2 trace identity; this must not alter
+    # reconstruction of pre-research-D receipts.
+    "research_deadline_s",
 )
 
 
@@ -1152,6 +1219,16 @@ def _trace_identity_payload(resolved: dict, identity_version: str,
     emission_end = demand.pop("emission_end_s")
     if emission_end is None:
         emission_end = c["scenario"]["duration_s"]
+    # Preserve the historical trace identity for configs using the new
+    # default (start=0, no regional filter). Non-default values remain bound
+    # into the identity because they change the generated endpoint/demand set.
+    if demand.get("emission_start_s") == 0:
+        demand.pop("emission_start_s")
+    endpoints = copy.deepcopy(c["endpoints"])
+    if endpoints.get("region_lat_bounds_deg") is None \
+            and endpoints.get("region_lon_bounds_deg") is None:
+        endpoints.pop("region_lat_bounds_deg", None)
+        endpoints.pop("region_lon_bounds_deg", None)
     for field in removed_demand_fields:
         demand.pop(field, None)
     return {
@@ -1159,7 +1236,7 @@ def _trace_identity_payload(resolved: dict, identity_version: str,
         "config_version": resolved["version"],
         "scenario": {"emission_end_s": emission_end,
                      "seed": c["scenario"]["seed"]},
-        "endpoints": c["endpoints"],
+        "endpoints": endpoints,
         "demand": demand,
         "execution": {"max_packets": c["execution"]["max_packets"]},
     }
@@ -1168,7 +1245,7 @@ def _trace_identity_payload(resolved: dict, identity_version: str,
 def trace_identity_payload_v2(resolved: dict) -> dict:
     """Frozen identity/v2 builder.
 
-    Removes the five demand fields defaulted by the Task 1 global scene
+    Removes the demand fields defaulted after the frozen v2 identity
     contract after config resolution, so a v2 receipt compiled before those
     fields existed still reconstructs byte-for-byte."""
     return _trace_identity_payload(
@@ -1198,6 +1275,10 @@ def legacy_trace_identity_payload(resolved: dict) -> dict:
     c = resolved["config"]
     demand = copy.deepcopy(c["demand"])
     demand.pop("emission_end_s", None)
+    # These optional demand fields were added after the frozen v1/v2
+    # identities. Their defaults must not change reconstruction of old runs.
+    for field in V2_REMOVED_DEMAND_FIELDS:
+        demand.pop(field, None)
     return {
         "identity_version": TRACE_IDENTITY_VERSION_V1,
         "config_version": resolved["version"],
