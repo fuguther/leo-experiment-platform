@@ -1,6 +1,6 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: ROOT_ACCEPTED_LAST_WINDOW_CERTIFIED_PREFILTER_SMOKE_ONLY
-purpose: unchanged_science_four_arm_cost_smoke_with_certified_gsl_zero_prefilter
+campaign_stage: ROOT_AUTHORIZED_SMALL_REGION_FLOW_COST_PILOT
+purpose: small_region_four_arm_low_cost_smoke_with_same_population_trace_pipeline
 not_formal: true
 not_training: true
 frozen_at_sha: null
@@ -18,39 +18,50 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 7496221896d56a72ca90a693fce0071a5cb830c68a83443b781287bb541e4025
+    execution_chain_sha256: 5c2aa5d07da33aca398818952e1e2e8cca33b81be0c95a90cc98de1ef9e13ae0
     cell_input_sha256:
-      b-bounded_population_cost_smoke-network-seed-7: e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715
+      b-bounded_population_cost_smoke-network-seed-7: 1d094b1e948d54bf064e7f0ba40b460af825da590d95b32c321e4bcf9e605b81
   release_ready: false
-  reason: One final unchanged-science four-arm cost smoke after root exact raw-window
-    comparison on 280 satellites/50 endpoints/3 intervals and eight targeted tests.
-    Deadline 16:10 Beijing, cell cap reduced to 300s to fit remaining window. No benefit/main/model/formal
-    claims or authorization.
+  reason: User explicitly authorized a smaller constellation and regional native traffic
+    for tonight. Root independently verified four distinct physically available positive-capacity
+    neighbors and continuous ground coverage. Only the declared seed7 low-load four-arm
+    cell with full replay is authorized here; pressure workload requires separate
+    bound contract and cost review. No formal/training/main authorization.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
-  profile_sha256: 31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518
+  profile_sha256: c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 7496221896d56a72ca90a693fce0071a5cb830c68a83443b781287bb541e4025
+  source_execution_chain_sha256: 5c2aa5d07da33aca398818952e1e2e8cca33b81be0c95a90cc98de1ef9e13ae0
   compiled_trace_sha256: null
   bundle_sha256: null
   cell_input_sha256:
-    b-bounded_population_cost_smoke-network-seed-7: e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715
+    b-bounded_population_cost_smoke-network-seed-7: 1d094b1e948d54bf064e7f0ba40b460af825da590d95b32c321e4bcf9e605b81
 scenario:
-  reference_geometry: current complete 280-satellite, 14-plane engineering profile
+  reference_geometry: selected 96-satellite, 12-plane small-study engineering geometry
   reference_is_global_platform_freeze: false
-  satellite_count: 280
-  plane_count: 14
+  satellite_count: 96
+  plane_count: 12
+  altitude_km: 800.0
+  inclination_deg: 53.0
+  minimum_elevation_deg: 10.0
+  maximum_isl_km: 6000.0
+  geometry_epoch_s: 0.0
   region_lat_half_open_deg:
-  - 5.0
-  - 50.0
+  - 20.0
+  - 30.0
   region_lon_half_open_deg:
-  - 65.0
-  - 140.0
+  - 100.0
+  - 110.0
   region_filter_stage: before_endpoint_and_demand_sampling
   endpoints: native_population_grid_cells
   routes: full_constellation_and_native_four_direction_topology
+  static_population_endpoints: 99
+  static_population_sum: 196654223.5615387
+  static_geometry_scope: t=2..8s integer instants; all 96 satellites had four distinct
+    positive-capacity physical neighbors and all 99 endpoints had GSL coverage; not
+    a trace, access-slot, or simulation result
   population_input_is_measurement: false
 statistics:
   deadline:
@@ -74,6 +85,7 @@ b_round:
     - now
     - common
     - candidate
+    replay_seed: 7
     parameters:
       demand.offered_mbps: 5.0
       demand.packet_bits: 12000
@@ -104,8 +116,42 @@ workload:
   observation_stop_s: 8.0
   administrative_censoring_is_not_failure: true
   offered_population_policy: retain_all_or_reject_compilation
-  purpose: low-competition and end-to-end cost smoke only
+  purpose: low-cost end-to-end smoke; no contention claim without full log admission
   competition_claim: none_without_full_network_log_admission
+  replay_capture_seed: 7
+  replay_capture_scope: retain full real event streams for all four arms in this network
+    cell; no extra simulation call
+  predeclared_competitive_candidate:
+    status: NOT_IN_CURRENT_ALLOWLIST; requires successful low-cost smoke and root
+      review
+    rule: choose base rate so the t2 static probability mass through the most-shared
+      directed ISL edge reaches one 1ms compute-server service rate during the 2x
+      peak
+    most_shared_directed_edge:
+    - 17
+    - 18
+    static_edge_od_probability_mass: 0.16725820482690482
+    static_edge_capacity_mbps: 245.1215
+    base_offered_mbps: 35.87267964647467
+    peak_multiplier: 2.0
+    peak_offered_mbps: 71.74535929294935
+    peak_expected_packets_per_s_all_sources: 5978.779941079112
+    peak_expected_packets_per_s_on_reference_edge: 1000.0
+    expected_packets_for_2s_base_plus_1s_2x_peak: 8968.169911618668
+    interpretation: static engineering workload candidate only; actual shared-resource
+      competition requires VM-log admission
+  packet_and_entity_caps:
+    max_packets: 20000
+    expected_candidate_packets: 8968.169911618668
+    raw_payload_upper_bound_at_cap_bytes: 30000000
+    memory_note: payload bytes are a lower-bound arithmetic only; trace/object metadata
+      and process RSS are not measured; cap violation rejects compilation/runtime
+      and never truncates packets
+    max_entities: 10000
+    base_entity_estimate: 579
+    base_entity_breakdown: 96 satellites + at most 384 directed ISL links + 99 lazy
+      ground endpoints
+    dynamic_entity_margin: 9421
 cell_allowlist:
   tier: b_dev
   cell_ids:
@@ -129,7 +175,8 @@ cell_allowlist:
   - '8.0'
   - --arms
   - stale,now,common,candidate
-  exact_bundle_cell_input_hash_after_compile: e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715
+  - --capture-replay
+  exact_bundle_cell_input_hash_after_compile: 1d094b1e948d54bf064e7f0ba40b460af825da590d95b32c321e4bcf9e605b81
 budget:
   batch_limit_calls: 60
   batch_limit_simulator_wall_s: 3600.0

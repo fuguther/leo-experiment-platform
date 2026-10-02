@@ -1,23 +1,22 @@
 config_version: leo-sim-config/v1
-# Bounded cost-probe input.  This is a study profile based on the existing
-# complete 280 x 14 diagnostic geometry/access profile; it is not a claim that
-# the platform has globally frozen these engineering parameters.
+# Bounded small-region cost-probe input. Geometry, access and load values are
+# explicit study engineering assumptions, not measured constellation data.
 scenario:
-  name: t1-population-region-cost-smoke
+  name: t1-population-small-region-cost-smoke
   duration_s: 8.0
   time_step_s: 0.1
-  num_satellites: 280
-  num_planes: 14
-  altitude_km: 600.0
-  inclination_deg: 98.6
-  min_elevation_deg: 25.0
+  num_satellites: 96
+  num_planes: 12
+  altitude_km: 800.0
+  inclination_deg: 53.0
+  min_elevation_deg: 10.0
   geometry_epoch_s: 0.0
   seed: 7
 endpoints:
   grid_deg: 0.25
   aggregation_deg: 1.0
-  region_lat_bounds_deg: [5.0, 50.0]
-  region_lon_bounds_deg: [65.0, 140.0]
+  region_lat_bounds_deg: [20.0, 30.0]
+  region_lon_bounds_deg: [100.0, 110.0]
 demand:
   mode: population_gravity
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
@@ -74,7 +73,10 @@ execution:
   decision_observation_mode: frozen
   max_events: 20000000
   max_entities: 10000
-  max_packets: 4096
+  # 20,000 is a fail-closed trace/runtime cap, not a target or truncation
+  # limit. The predeclared competitive candidate has 8,968 expected packets;
+  # a realization above the cap must be rejected, never clipped.
+  max_packets: 20000
   available_capacity_interval_s: 1.0
 time_alignment:
   enabled: true
@@ -83,5 +85,5 @@ time_alignment:
   common_rule: median_eta
   query_delay_s: 0.000001
 outputs:
-  out_dir: leo_sim_out/t1-population-region-cost-smoke
+  out_dir: leo_sim_out/t1-population-small-region-cost-smoke
   plotting: false

@@ -159,6 +159,74 @@ def test_root_authorized_persistent_contract_allows_only_exact_four_call_cell(
             t1_suite.enforce_runtime_stage(contract, bundle, **request)
 
 
+def test_cost_probe_replay_requires_exact_predeclared_seed_and_cell_predicate(
+        tmp_path):
+    cell_id = "b-native-low-cost-network-seed-7"
+    profile = yaml.safe_load((ROOT / "CODE/leo_sim/profiles/"
+                              "t1_population_region_cost_smoke.yaml"
+                              ).read_text(encoding="utf-8"))
+    profile["scenario"]["seed"] = 7
+    profile_path = tmp_path / "profile-seed-7.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False),
+                            encoding="utf-8")
+    cell = {
+        "cell_id": cell_id,
+        "group": "b_round",
+        "driver": "CODE.experiment_platform.t1_tasks",
+        "args": ["--task", "network_alignment", "--config",
+                 str(profile_path), "--deadline-s", "4.0",
+                 "--window-start", "2.0", "--window-end", "8.0",
+                 "--arms", "stale,now,common,candidate",
+                 "--capture-replay"],
+        "seed": 7,
+        "predicate": {"kind": "t1_task", "require": {
+            "require_full_replay": True}},
+    }
+    cell["input"] = t1_suite._cell_input_binding(
+        cell, bundle_root=tmp_path, source_root=ROOT)
+    cell_sha = t1_suite._cell_input_sha256(cell["input"])
+    auth = {
+        "stage": "cost_probe", "tier": "b_dev",
+        "cell_ids": [cell_id], "max_selected_cells": 1,
+        "expected_simulator_calls": 4, "max_simulator_calls": 4,
+        "allow_append": False, "task": "network_alignment", "seed": 7,
+        "execution_chain_sha256": "c" * 64,
+        "cell_input_sha256": {cell_id: cell_sha},
+    }
+    contract = {
+        "design_readiness": {"status": "COST_PROBE_READY",
+                             "runtime_gate_implemented": True,
+                             "runtime_authorization": auth},
+        "b_round": {"scenarios": [{"id": "native-low-cost",
+                                    "replay_seed": 7}]},
+    }
+    bundle = {"execution_chain": {"combined_sha256": "c" * 64}}
+    frozen = {
+        "tier": "b_dev", "selected_cell_ids": [cell_id],
+        "append": False, "cells": {cell_id: cell},
+        "estimated_calls": 4, "bundle_root": tmp_path,
+        "source_root": ROOT,
+    }
+    t1_suite.enforce_runtime_stage(contract, bundle, **frozen)
+
+    no_seed = yaml.safe_load(yaml.safe_dump(contract))
+    no_seed["b_round"]["scenarios"][0].pop("replay_seed")
+    wrong_seed = yaml.safe_load(yaml.safe_dump(contract))
+    wrong_seed["b_round"]["scenarios"][0]["replay_seed"] = 11
+    missing_capture = yaml.safe_load(yaml.safe_dump(cell))
+    missing_capture["args"].remove("--capture-replay")
+    missing_capture["predicate"]["require"]["require_full_replay"] = False
+    missing_predicate = yaml.safe_load(yaml.safe_dump(cell))
+    missing_predicate["predicate"]["require"]["require_full_replay"] = False
+    for bad_contract, bad_cell in (
+            (no_seed, cell), (wrong_seed, cell),
+            (contract, missing_capture), (contract, missing_predicate)):
+        request = dict(frozen, cells={cell_id: bad_cell})
+        with pytest.raises(t1_suite.SuiteError, match="replay flag"):
+            t1_suite.enforce_runtime_stage(
+                bad_contract, bundle, **request)
+
+
 def test_persistent_cost_probe_compile_preserves_native_profile_parameters(
         tmp_path, monkeypatch):
     input_identity = yaml.safe_load(Path(DEV_COST_PROBE_CONTRACT).read_text(
@@ -175,11 +243,15 @@ def test_persistent_cost_probe_compile_preserves_native_profile_parameters(
                 if row["cell_id"] == cell_id)
     config_path = Path(cell["args"][cell["args"].index("--config") + 1])
     resolved = t1_tasks.config_mod.load_config_file(str(config_path))["config"]
-    assert resolved["scenario"]["num_satellites"] == 280
-    assert resolved["scenario"]["num_planes"] == 14
+    assert resolved["scenario"]["num_satellites"] == 96
+    assert resolved["scenario"]["num_planes"] == 12
+    assert resolved["scenario"]["altitude_km"] == 800.0
+    assert resolved["scenario"]["inclination_deg"] == 53.0
+    assert resolved["scenario"]["min_elevation_deg"] == 10.0
+    assert resolved["links"]["max_isl_km"] == 6000.0
     assert resolved["scenario"]["seed"] == 7
-    assert resolved["endpoints"]["region_lat_bounds_deg"] == [5.0, 50.0]
-    assert resolved["endpoints"]["region_lon_bounds_deg"] == [65.0, 140.0]
+    assert resolved["endpoints"]["region_lat_bounds_deg"] == [20.0, 30.0]
+    assert resolved["endpoints"]["region_lon_bounds_deg"] == [100.0, 110.0]
     assert resolved["scenario"]["duration_s"] == 8.0
     assert resolved["demand"]["mode"] == "population_gravity"
     assert resolved["demand"]["offered_mbps"] == 5.0
@@ -195,11 +267,14 @@ def test_persistent_cost_probe_compile_preserves_native_profile_parameters(
     assert resolved["execution"]["compute_servers_per_satellite"] == 1
     assert resolved["execution"]["compute_delay_s"] == 0.001
     assert resolved["control_plane"]["advertisement_protocol_version"] == 2
+    assert resolved["execution"]["max_packets"] == 20000
     assert cell["seed"] == 7
     assert cell["predicate"]["require"]["arms"] == [
         "stale", "now", "common", "candidate"]
     assert cell["predicate"]["require"][
         "require_native_population_trace"] is True
+    assert cell["predicate"]["require"]["require_full_replay"] is True
+    assert "--capture-replay" in cell["args"]
     contract = yaml.safe_load(Path(DEV_COST_PROBE_CONTRACT).read_text(
         encoding="utf-8"))
     population_sha = contract["input_identity"]["population_sha256"]

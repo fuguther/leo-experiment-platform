@@ -227,14 +227,22 @@ def enforce_runtime_stage(contract, bundle, *, tier, selected_cell_ids,
         raise SuiteError("cost-probe allowlisted cell has the wrong driver/group")
     args = cell.get("args") or []
     allowed_flags = {"--task", "--config", "--deadline-s",
-                     "--window-start", "--window-end", "--arms"}
+                     "--window-start", "--window-end", "--arms",
+                     "--capture-replay"}
+    boolean_flags = {"--capture-replay"}
     options = {}
     index = 0
     while index < len(args):
         flag = args[index]
         if (not isinstance(flag, str) or not flag.startswith("--")
-                or flag not in allowed_flags or index + 1 >= len(args)
-                or flag in options):
+                or flag not in allowed_flags or flag in options):
+            raise SuiteError(
+                "cost-probe cell contains an unapproved task override")
+        if flag in boolean_flags:
+            options[flag] = True
+            index += 1
+            continue
+        if index + 1 >= len(args):
             raise SuiteError(
                 "cost-probe cell contains an unapproved task override")
         options[flag] = args[index + 1]
@@ -261,6 +269,26 @@ def enforce_runtime_stage(contract, bundle, *, tier, selected_cell_ids,
                 t1_tasks.NETWORK_ARMS):
         raise SuiteError(
             "cost-probe arms differ from the frozen four-arm order")
+    # Full event replay is permitted only when the contract names this exact
+    # seed and the generated cell predicate independently requires it. This
+    # keeps the optional event stream inside the same immutable cell identity.
+    matching_specs = [
+        spec for spec in ((contract.get("b_round") or {}).get(
+            "scenarios") or [])
+        if f"b-{spec.get('id')}-network-seed-{auth['seed']}" == cell_id
+    ]
+    if len(matching_specs) > 1:
+        raise SuiteError("cost-probe replay scenario is ambiguous")
+    predeclared_replay = bool(
+        matching_specs
+        and matching_specs[0].get("replay_seed") == auth["seed"])
+    cell_require = ((cell.get("predicate") or {}).get("require") or {})
+    if (options.get("--capture-replay", False) != predeclared_replay
+            or cell_require.get("require_full_replay", False)
+            is not predeclared_replay):
+        raise SuiteError(
+            "cost-probe replay flag, seed declaration, and cell predicate "
+            "must agree")
     # Re-resolve the current argv and the materialized bytes in this bundle.
     # Hashing the recorded binding alone would let an edited argv reuse its old
     # digest, while hashing absolute paths would make the same release differ

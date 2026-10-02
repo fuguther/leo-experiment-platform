@@ -3238,5 +3238,55 @@
       "FULL_COST_READY": false,
       "RELEASE_READY": false
     }
+  },
+  "small_region_pilot_20261002": {
+    "status": "ROOT_ACCEPTED_BOUND_CONTRACT; VM_NOT_STARTED",
+    "user_authorization": "explicitly smaller constellation and regional native traffic for tonight report",
+    "geometry": {
+      "satellites": 96,
+      "planes": 12,
+      "altitude_km": 800,
+      "inclination_deg": 53,
+      "min_elevation_deg": 10,
+      "max_isl_km": 6000
+    },
+    "region_half_open": {
+      "latitude": [
+        20,
+        30
+      ],
+      "longitude": [
+        100,
+        110
+      ]
+    },
+    "positive_population_endpoints": 99,
+    "population_count_sum": 196654223.5615387,
+    "static_path_probability": {
+      "direct_gsl": 0.673216490635537,
+      "two_or_more_isl": 0.3267835093644633,
+      "unreachable": 0
+    },
+    "static_is_not_network_evidence": true,
+    "independent_static_checks": "every satellite four distinct physical positive-MCS neighbors at 0/2/3/4/6/8; all 100 ground-grid centers have a continuously visible selected link from2 to8",
+    "execution_chain_sha256": "5c2aa5d07da33aca398818952e1e2e8cca33b81be0c95a90cc98de1ef9e13ae0",
+    "cell_input_sha256": "1d094b1e948d54bf064e7f0ba40b460af825da590d95b32c321e4bcf9e605b81",
+    "contract_sha256": "b92de4021299e7ebdf64f933243e410756ecfbe956d1b1596ef42171683e2b80",
+    "compile_validate_enforce": "PASS",
+    "allowed_first_workpoint": {
+      "seed": 7,
+      "base_mbps": 5,
+      "maximum_calls": 4,
+      "maximum_cell_wall_s": 300,
+      "full_replay": true
+    },
+    "predeclared_pressure_not_yet_authorized": {
+      "base_mbps": 35.87267964647467,
+      "expected_packets": 8968.169911618668,
+      "reason": "static shared-edge peak expectation equals 1000 requests/s; not observed contention"
+    },
+    "ddqn_training_started": 0,
+    "formal_run": false,
+    "main_merge": false
   }
 }
