@@ -1,15 +1,15 @@
 # WP-T1-COMPLETE — 状态账本
 
 > 计划：`docs/superpowers/plans/2026-09-27-t1-complete-implementation.md` 顶部当前节。交付：`REPORT.md` 当前准备复核段；机器判据：`criteria.json`；旧合同：`contract_dev_c.yaml`（失效，禁止运行）。
-> **当前执行边界：** 用户已授权开发工作和预算范围；此次只完成已接受的 seed7 四臂低负载 smoke（最多4个kernel calls、单cell 120秒），不启动主矩阵、训练或formal。旧 `contract_dev_c.yaml` 仍无效并拒绝运行。
+> **当前执行边界：** 根当前仅授权一次 seed7 单kernel cProfile诊断（profile最多30秒、cell上限45秒、最多1 call），由根发布和运行。主矩阵、训练、formal未授权；旧 `contract_dev_c.yaml` 继续无效。
 
 ## 当前研究与工程状态（2026-10-02；DESIGN_READY=true；PROBE_CODE_READY=true；COST_PROBE_READY=false；整体CODE/COST/MODEL/RELEASE仍false）
 
-- 最近的 cProfile 诊断是单次 kernel 工程诊断，不是研究结果。run `t1-population-cprofile-20261002-01` 使用 release `922fcb07be15f380edb41f9ca66532847b72fbd5-fe0ec7b54f6d1529928a3c38e10e6b0acc766bb8ba8f7c1ea49fd3d9b71b2159`、artifact SHA `e4e29b4f11f5445a2259a89135c987200704354594264392602b77043a73d25d`、commit `922fcb07be15f380edb41f9ca66532847b72fbd5`、70文件链 `6d46bdb9d20096a777e81300d4fc52a41edafd092c35e475079779783ad7815d`。receipt `524fd43a84021c536220ac21c63e4ceedf7ca0a50b6f53abf99cfafa54af990d`、manifest `09a445755138ac8c61544b975d3f84e355ab76b1573539cfab5502a8a6cff9d0`、pstats `b2b39344145028f8324fbd7158e17bc01e592ef30c8e04474e2edaa9fbcb70c6` 已核验；30秒主动停止，ledger 1 begin/1 fail，30.00007159 VM秒，无研究result。
-- pstats 将约29.97秒定位到 topology 初始化及重复全星跨轨匹配。根接受当前精确时刻/方向/公开几何参数签名的单项缓存优化，不量化时刻、不更改匹配算法或物理参数；280×14全星等价性及参数/时间/方向失效已测。
-- 根已接受 smoke 输入并完成合同绑定：`contract_dev_cost_probe.yaml` SHA `8f582cf33cd4659e2e3348b9fceb29cf4801dec7f824ae185fbc37d6e84cee30`，70文件执行链 `13f15cd93dd191b2fccf87c3bab21a956a40e3ae1e451301f9178a9e5a1bccc9`，cell input `e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715`（科学输入与 cProfile run 相同）。compile 26 cells、validate=true；运行 enforce 仅允许 seed7 四臂一个cell、最多4次调用。当前本地修改尚未提交推送，未发布、未启动 smoke；需先提交干净身份。
-- 定向代码证据：改前12星反例中全局匹配调用12次（预期1）；修后本机 `test_model.py` 15 passed、`test_dynamic_topology.py` 9 passed、3项 routing topology tests passed、原始5条因果反例 passed。根另独立核验缓存匹配与原算法一致。不是竞争准入或研究结论。
-- 账本不清零：B+C累计11 calls/258.292653414秒；本批剩49 calls/3341.707346586秒，C余48 calls。失败及主动诊断停止均计账。旧失败run不复用，不append/resume。
+- 最新 cache smoke `t1-population-matching-cache-smoke-20261002-01`：release `270e95d6404ade9bb03239c0ff5e11146d72406d-b829029d393601144969499cb3c21c7a9e180801c76e0a279232761dfff9b95f`，receipt `46b4a29fa04907aadc477f693051c8860b2cb5106449616a3fcb97f9895a85d0`，manifest `d7cdb11eb9f6dc2f44ae1c86ae9da7d404b3930496a32a36b23e8e45f96277be`，已回传核验。1次kernel call记录1281包，116.563399685 VM秒后超时，0 ended、无result；不是四臂结果或成功smoke，旧run不复用。
+- 前一 cProfile run 的manifest SHA为 `7a811e0b02b4a14f6ff3045db62234c30570cc01f3d89f5518ce617a4b4ee6bc`，receipt SHA `524fd43a84021c536220ac21c63e4ceedf7ca0a50b6f53abf99cfafa54af990d`、pstats SHA `b2b39344145028f8324fbd7158e17bc01e592ef30c8e04474e2edaa9fbcb70c6`；profile在30秒主动停止，定位到topology初始化重复匹配。
+- 根重新绑定单次诊断合同 SHA `8b476af17a56b7fad192ef67a79f2e09c0ad0af860b3357081b0903a70233100`，70文件链 `13f15cd93dd191b2fccf87c3bab21a956a40e3ae1e451301f9178a9e5a1bccc9`，cell input `e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715`。授权1 call、profile 30秒、cell 45秒；compile/validate/enforce已通过。该诊断由根执行，尚无新run结果。
+- 累计B+C 12 calls/374.856053099秒；批次余48 calls/3225.143946901秒，C余47 calls。`COST_PROBE_READY=false`；缓存代码通过定向等价测试不等于运行提速或研究结论。
+
 ## 历史工作包 B 状态（2026-10-01；第二 pilot 失败后停止）
 
 - **运行身份与回传。** 第二 pilot 使用 release `ffedada9274e7db1fdb5ea548d13ce4920c9815b-8e624431c26c54ea52efc795fa0cc72b5d484e32708bb1a4ff5f535959753a74`，源码 commit `ffedada9274e7db1fdb5ea548d13ce4920c9815b`，artifact SHA-256 `ae6c9845ffa2b64fe56c30c34b351f197b84382075e527fc3518c26b6280fa7d`。唯一新 run `wp-b-dev-20261001-02` 已结束 `failed` / exit 3，状态 `SMOKE_FAILED`；不可变回执 pullback 已 `VERIFIED`，证据 URI `evidence://t1/wp-b-dev-20261001-02`。canonical receipt SHA `23399d84caa975b252e6a325d85be67834e1c9bd4699ded37dbcc49e224090cd`，receipt 文件 SHA `374ec812050c35721e29adc8e20f1eaec7bf7ec859cede72dc1584aebea43bd3`，manifest SHA `03b76ef8b2a816cc87d9cf22b0472f8110fa8e9f016832c89fb3c888d7c92c44`，archive SHA `8724bb437e33ca91aff9a7b46ea298f35e59ceecfd65e954d2a256f6ff1d3c48`；46 个回传文件。先前 run `wp-b-dev-20261001-01` 的 receipt/result 均按旧身份保留。

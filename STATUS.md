@@ -2,14 +2,12 @@
 
 本文是仓库级当前状态入口；工作包内 STATUS 只记录各自范围。具体版本以完整 Git commit、release-id 和 run-id 为准。
 
-## 当前研究与工程状态（2026-10-02；DESIGN_READY=true；PROBE_CODE_READY=true；COST_PROBE_READY=false；完整CODE/COST/MODEL/RELEASE仍false）
+## 当前研究与工程状态（2026-10-02；DESIGN_READY=true；PROBE_CODE_READY=true；COST_PROBE_READY=false；整体CODE/COST/MODEL/RELEASE仍false）
 
-- 最近一次已接受运行是 seed7 单 kernel 的 CPU cProfile 诊断，非研究结果：release `922fcb07be15f380edb41f9ca66532847b72fbd5-fe0ec7b54f6d1529928a3c38e10e6b0acc766bb8ba8f7c1ea49fd3d9b71b2159`，artifact SHA `e4e29b4f11f5445a2259a89135c987200704354594264392602b77043a73d25d`，源码 commit `922fcb07be15f380edb41f9ca66532847b72fbd5`，70 文件链 `6d46bdb9d20096a777e81300d4fc52a41edafd092c35e475079779783ad7815d`。run `t1-population-cprofile-20261002-01` receipt SHA `524fd43a84021c536220ac21c63e4ceedf7ca0a50b6f53abf99cfafa54af990d`、manifest SHA `09a445755138ac8c61544b975d3f84e355ab76b1573539cfab5502a8a6cff9d0` 已由根独立核验。30 秒主动诊断结束，child returncode 3、ledger 1 begin/1 fail、30.00007159 VM 秒、无研究 result；pstats SHA `b2b39344145028f8324fbd7158e17bc01e592ef30c8e04474e2edaa9fbcb70c6`。
-- pstats 显示约 29.97 秒耗在 topology 初始化；同一时刻的全星跨轨匹配原先按每颗卫星重复计算。根已接受 `Constellation` 内按精确 `(t, dirs, 几何参数)` 缓存；参数变化失效，不量化时间、不改变匹配算法，也不改自定义 geometry provider。
-- 根已绑定下一项有限 smoke：合同 `contract_dev_cost_probe.yaml` SHA-256 `8f582cf33cd4659e2e3348b9fceb29cf4801dec7f824ae185fbc37d6e84cee30`，70文件链 `13f15cd93dd191b2fccf87c3bab21a956a40e3ae1e451301f9178a9e5a1bccc9`，cell input SHA `e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715`（与已完成cProfile诊断的科学输入相同）。compile 26 cells、validate=true；运行allowlist仅seed7四臂、4 calls，单cell 120秒。该候选尚未提交、发布或运行；COST_PROBE_READY仍false。
-- 定向验证：改前12星调用计数反例失败（12次，预期1次）；改后 `test_model.py` 15 passed（含280星/14轨全方向、精确时间/方向、公开参数变更和实例隔离对照），`test_dynamic_topology.py` 9 passed，routing拓扑3 passed，原始因果反例5 passed。根另独立核验缓存等价性。以上不是成本/竞争或研究结果。
-- 预算不清零：B+C累计11 calls/258.292653414秒；已用 C 3 calls，批次剩49 calls/3341.707346586秒，C余48 calls。失败与主动停止均计账。旧失败run不复用、不append/resume；主矩阵、训练、formal未获本次smoke授权。
-- 研究边界和完整执行合同见权威手册；动态 run 身份及状态以本文件与工作包 STATUS/criteria 当前段为准。训练、主矩阵、竞争负载变更和 formal 未获本轮诊断授权；旧 `contract_dev_c.yaml` 继续拒绝运行。
+- 最新 smoke `t1-population-matching-cache-smoke-20261002-01` 绑定 release `270e95d6404ade9bb03239c0ff5e11146d72406d-b829029d393601144969499cb3c21c7a9e180801c76e0a279232761dfff9b95f`（artifact SHA `467bc180dde57ef8ff98876eb9bc3db4d56b713906ec81517421f98a7dcc330e`），receipt `46b4a29fa04907aadc477f693051c8860b2cb5106449616a3fcb97f9895a85d`、manifest `d7cdb11eb9f6dc2f44ae1c86ae9da7d404b3930496a32a36b23e8e45f96277be` 已回传核验。该cell启动1次、记录1281包、116.563399685 VM秒后在120秒墙钟门限超时，0 ended、无result；不得称四臂成功、正交付smoke或缓存已获运行提速。
+- 前一 cProfile 诊断 `t1-population-cprofile-20261002-01` 的准确 manifest SHA 为 `7a811e0b02b4a14f6ff3045db62234c30570cc01f3d89f5518ce617a4b4ee6bc`（纠正旧STATUS误记）；receipt `524fd43a84021c536220ac21c63e4ceedf7ca0a50b6f53abf99cfafa54af990d`、pstats `b2b39344145028f8324fbd7158e17bc01e592ef30c8e04474e2edaa9fbcb70c6`。其30秒profile指向topology初始化重复跨轨匹配；本轮缓存只改复用，不改拓扑算法或参数。
+- 根已授权一次后续 seed7 单kernel cProfile诊断：合同 SHA `8b476af17a56b7fad192ef67a79f2e09c0ad0af860b3357081b0903a70233100`，执行链 `13f15cd93dd191b2fccf87c3bab21a956a40e3ae1e451301f9178a9e5a1bccc9`，cell input `e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715`；30秒profile/45秒cell上限/1 call，compile、validate与运行enforce已通过。下一次运行由根负责；本地不启动。
+- 账本不清零：B+C累计12 calls/374.856053099秒；本批剩48 calls/3225.143946901秒，C余47 calls。两次超时及主动停止均计账；旧run不复用、不append/resume。主矩阵、训练和formal不在当前授权内。
 
 ## 历史工作包 B（2026-10-01；第二次结构调整 pilot 已运行并因 smoke 失败停止）
 
