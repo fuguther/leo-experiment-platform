@@ -2137,7 +2137,7 @@
     }
   },
   "c_round": {
-    "status": "ROOT_ACCEPTED_EQUIVALENT_CAPACITY_OPTIMIZATIONS; FOUR_ARM_600S_COST_SMOKE_PENDING",
+    "status": "CAPACITY_SMOKE_TIMEOUT; ROOT_ACCEPTED_ONE_CALL_CPROFILE_DIAGNOSTIC_PENDING",
     "preparation_base_commit": "c164048c952cbfd6deb49210d5b3e039b7dcd62e",
     "worktree_branch": "codex/20260930-t1-experiment-a",
     "current_authority": {
@@ -2148,7 +2148,7 @@
       "root_status": "STATUS.md",
       "work_package_status": "CODE/work/WP-T1-COMPLETE/STATUS.md",
       "implementation_plan_sha256": "805ecd169e1366c51e76239eed4347cf88ab30e87409a2d604b9a43df950337e",
-      "current_action": "ROOT_ACCEPTED_SEED7_LOW_COST_FOUR_ARM_COST_SMOKE; max4 calls; 600s cell cap; root executes official path"
+      "current_action": "ROOT_ACCEPTED_SINGLE_SEED7_CPROFILE_DIAGNOSTIC_AFTER_600S_SMOKE_TIMEOUT; one call; 30s profile/45s cell; root executes"
     },
     "readiness": {
       "design_ready": true,
@@ -2158,7 +2158,7 @@
       "release_ready": false,
       "runtime_gate_implemented": true,
       "old_contract_readiness": false,
-      "current_action": "ROOT_ACCEPTED_SEED7_LOW_COST_FOUR_ARM_COST_SMOKE; max4 calls; 600s cell cap; root executes official path",
+      "current_action": "ROOT_ACCEPTED_SINGLE_SEED7_CPROFILE_DIAGNOSTIC_AFTER_600S_SMOKE_TIMEOUT; one call; 30s profile/45s cell; root executes",
       "cost_probe_ready": false,
       "core_cost_ready": false,
       "ddqn_cost_ready": false,
@@ -2172,8 +2172,8 @@
     },
     "cost_probe_contract_candidate": {
       "path": "CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml",
-      "sha256": "a5602e361a70a1fd4ef6e74386bb79e52ad623b11e91dcbdfa7fa8d114c94bcf",
-      "status": "ROOT_BOUND_AND_COMPILE_VALIDATE_ENFORCE_PASSED; up to4 calls; 600s cell; official cost smoke pending",
+      "sha256": "e2d604374ef13b24e40ce4d2784685bfb2c07ab77810908df3d3d7640211e943",
+      "status": "ROOT_BOUND_COMPILE_VALIDATE_ENFORCE_PASSED; one-call 30s cProfile/45s cell diagnostic pending",
       "profile_path": "CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml",
       "profile_sha256": "31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518",
       "population_path": "CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif",
@@ -2192,7 +2192,7 @@
       "cost_smoke_profile_sha256": "31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518",
       "advertisement_protocol_version": 2,
       "persistent_cost_probe_contract": "CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml",
-      "persistent_cost_probe_contract_readiness": "root-bound contract compiles, validates, and enforces the allowlist; up to4-call/600s-cell low-cost smoke pending; COST_PROBE_READY remains false",
+      "persistent_cost_probe_contract_readiness": "600s capacity smoke timed out in first cell without result; root bound and validated a separate one-call cProfile diagnostic; COST_PROBE_READY remains false",
       "population_input_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
       "region_lat_half_open_deg": [
         5,
@@ -3150,7 +3150,7 @@
       }
     },
     "root_capacity_review": {
-      "verdict": "ROOT_ACCEPTED_EQUIVALENT_LOCAL_OPTIMIZATIONS; COST_SMOKE_PENDING",
+      "verdict": "ACCEPTED_EQUIVALENT_LOCAL_OPTIMIZATIONS; 600S_COST_SMOKE_TIMEOUT; FOLLOWUP_CPROFILE_PENDING",
       "execution_chain_sha256": "1a651ac04149cf1b00f7510a6a7468404a8c64d10dbd1a94062d737fdfae920e",
       "contract_sha256": "a5602e361a70a1fd4ef6e74386bb79e52ad623b11e91dcbdfa7fa8d114c94bcf",
       "cell_input_sha256": "e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715",
@@ -3160,8 +3160,27 @@
       "known_failures": "two legacy receipt-conversion nodes reproduce with old functions: manifest provenance units keys mismatch; receipt units mismatch",
       "latest_profile": "t1-population-cached-cprofile-20261002-01; receipt 8c0937d67904f3ba9ca3e5fd035fb73c6a856e001bfbfdf7c20506c29ffcb0ec; manifest 36cc2ec46427f68b76d9ab636bcaefc869b33dc2f90725939295c6c217cf4c2b; pstats d6c8f72c8a5719a7807eca711fa85df5f102b0c4b9afcf81a4a48157d7aa93b8; 1 call/30.208035662s/child 3/no research result; capacity sampling is the observed hotspot",
       "budget": "B+C 13 calls/405.064088761s; C remaining 46 calls; batch remaining 47 calls/3194.935911239s",
-      "authorized_next_step": "root official seed7 four-arm low-cost cost smoke; max4 calls, 600s per cell",
-      "readiness": "DESIGN_READY and PROBE_CODE_READY true; COST_PROBE_READY, CODE_READY, CORE_COST_READY, MODEL_READY, FULL_COST_READY and RELEASE_READY false"
+      "authorized_next_step": "root official one-call cProfile; 30s profile; 45s cell; same scientific input",
+      "readiness": "DESIGN_READY and PROBE_CODE_READY true; COST_PROBE_READY, CODE_READY, CORE_COST_READY, MODEL_READY, FULL_COST_READY and RELEASE_READY false",
+      "followup_contract_sha256": "e2d604374ef13b24e40ce4d2784685bfb2c07ab77810908df3d3d7640211e943",
+      "latest_smoke": {
+        "run_id": "t1-population-capacity-cache-smoke-20261002-01",
+        "release_id": "f6b06e7c3968c8d4f9e0f3db452b07b7a2aa5aec-6ec7660d6639cc9267d5a4769ab1adc405aa517b1178619abe8450886c346706",
+        "receipt_sha256": "4aa771c78ec36df1432070f915dbb14b62e55385352390560c5c503f310c0dcb",
+        "manifest_sha256": "b68c5395e6edb473f90bb8ca2642732c1ad6ea0fea6efc5d95647b155a46bd77",
+        "calls": 1,
+        "simulator_wall_s": 599.314139534,
+        "calls_ended": 0,
+        "result": "absent; first cell timeout",
+        "pullback": "independently verified 24 files"
+      },
+      "budget_after_smoke": {
+        "cumulative_calls_b_plus_c": 14,
+        "cumulative_simulator_s_b_plus_c": 1004.378228295,
+        "c_calls_remaining": 45,
+        "batch_calls_remaining": 46,
+        "batch_simulator_s_remaining": 2595.621771705
+      }
     }
   }
 }

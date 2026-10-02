@@ -1,6 +1,6 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: ROOT_ACCEPTED_EXACT_CAPACITY_OPTIMIZATION_COST_SMOKE_ONLY
-purpose: four_arm_native_population_cost_smoke_after_equivalent_capacity_optimization
+campaign_stage: ROOT_ACCEPTED_CAPACITY_OPTIMIZED_CPROFILE_DIAGNOSTIC_ONLY
+purpose: single_kernel_profile_after_600s_smoke_timeout
 not_formal: true
 not_training: true
 frozen_at_sha: null
@@ -21,12 +21,15 @@ design_readiness:
     execution_chain_sha256: 1a651ac04149cf1b00f7510a6a7468404a8c64d10dbd1a94062d737fdfae920e
     cell_input_sha256:
       b-bounded_population_cost_smoke-network-seed-7: e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715
+    diagnostic:
+      mode: first_kernel_call_cprofile
+      max_simulator_calls: 1
+      maximum_cell_wall_s: 45
+      profile_duration_s: 30
   release_ready: false
-  reason: Root accepts only one unchanged-science seed7 four-arm cost smoke after
-    exact RF cache and certified invisible capacity shortcut comparisons. Whole four-call
-    cell wall cap is 600s within remaining approved 3194.94s batch budget; this cap
-    change is disclosed and is not evidence of a speedup. No main matrix, training,
-    formal or benefit claim.
+  reason: One bounded profile of unchanged latest source after one call exceeded 600s
+    smoke cap; no further blind timeout extension, scientific parameter search, main
+    matrix, training or benefit claim.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: 31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518
@@ -136,16 +139,17 @@ budget:
   batch_limit_simulator_wall_s: 3600.0
   historical_b_calls: 8
   historical_b_simulator_wall_s: 109.071837305
-  remaining_calls_before_probe: 47
-  remaining_simulator_wall_s_before_probe: 3194.935911239
-  probe_calls_reserved: 4
-  probe_wall_s_upper_bound: 600.0
+  remaining_calls_before_probe: 46
+  remaining_simulator_wall_s_before_probe: 2595.621771705
+  probe_calls_reserved: 1
+  probe_wall_s_upper_bound: 45.0
   actual_calls_and_wall_time_are_authoritative: true
   failed_timeout_and_replay_calls_count: true
-  prior_c_calls: 5
-  prior_c_simulator_wall_s: 295.992251456
+  prior_c_calls: 6
+  prior_c_simulator_wall_s: 895.30639099
   nominal_task_calls: 4
-  remaining_new_c_calls_before_probe: 46
+  remaining_new_c_calls_before_diagnostic: 45
+  diagnostic_actual_call_cap: 1
 post_probe_gate:
   status: COST_UNVERIFIED
   required_evidence:

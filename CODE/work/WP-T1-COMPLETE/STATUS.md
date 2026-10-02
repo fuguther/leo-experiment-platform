@@ -1,14 +1,15 @@
 # WP-T1-COMPLETE — 状态账本
 
 > 计划：`docs/superpowers/plans/2026-09-27-t1-complete-implementation.md` 顶部当前节。交付：`REPORT.md` 当前准备复核段；机器判据：`criteria.json`；旧合同：`contract_dev_c.yaml`（失效，禁止运行）。
-> **当前执行边界：** 根已审核本轮两项等价优化并绑定低成本合同；待根官方执行最多4 calls、单cell 600秒的 seed7 四臂 smoke。主矩阵、训练、formal未授权；旧 `contract_dev_c.yaml` 继续无效。
+> **当前执行边界：** 600秒容量smoke首臂超时且无result；根已绑定新的单次cProfile诊断合同（1 call、30秒profile/45秒cell）并负责官方运行。主矩阵、训练、formal未授权；旧 `contract_dev_c.yaml` 继续无效。
 
 ## 当前研究与工程状态（2026-10-02；DESIGN_READY=true；PROBE_CODE_READY=true；COST_PROBE_READY=false；整体CODE/CORE_COST/MODEL/FULL_COST/RELEASE仍PARTIAL）
 
-- 最新有效 profile 证据：`t1-population-cached-cprofile-20261002-01`，1 call/30.208035662 VM秒，child exit 3、无研究结果；receipt `8c0937d67904f3ba9ca3e5fd035fb73c6a856e001bfbfdf7c20506c29ffcb0ec`，manifest `36cc2ec46427f68b76d9ab636bcaefc869b33dc2f90725939295c6c217cf4c2b`，pstats `d6c8f72c8a5719a7807eca711fa85df5f102b0c4b9afcf81a4a48157d7aa93b8`；热点为容量采样/MCS阈值计算，不据cumtime推整体倍数。
-- 两项等价优化已根审接受：有界RF/table阈值缓存；认证整段不可见时跳过阈值工作。定向测试及原5因果反例通过；两项legacy receipt单测已由根用旧函数复现，未归因于本改动。
-- 根已将当前合同 `a5602e361a70a1fd4ef6e74386bb79e52ad623b11e91dcbdfa7fa8d114c94bcf` 绑定执行链 `1a651ac04149cf1b00f7510a6a7468404a8c64d10dbd1a94062d737fdfae920e`、同一科学输入 `e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715`；compile/validate/enforce通过。仅待根官方启动最多4-call、每cell 600秒的低成本四臂smoke；主矩阵、训练、formal未授权。
-- 账本不清零：B+C累计13 calls/405.064088761秒；C余46 calls，批次余47 calls/3194.935911239秒。容量smoke尚未运行，不能称成本门通过或运行提速。
+- 600秒成本smoke `t1-population-capacity-cache-smoke-20261002-01` 已回传并核验24文件：1 call/599.314139534 VM秒，0 ended、无result；receipt `4aa771c78ec36df1432070f915dbb14b62e55385352390560c5c503f310c0dcb`，manifest `b68c5395e6edb473f90bb8ca2642732c1ad6ea0fea6efc5d95647b155a46bd77`。这是首臂超时，非四臂结果或成本门通过。
+- 最近 cProfile `t1-population-cached-cprofile-20261002-01` 的 receipt `8c0937d67904f3ba9ca3e5fd035fb73c6a856e001bfbfdf7c20506c29ffcb0ec`、manifest `36cc2ec46427f68b76d9ab636bcaefc869b33dc2f90725939295c6c217cf4c2b`、pstats `d6c8f72c8a5719a7807eca711fa85df5f102b0c4b9afcf81a4a48157d7aa93b8`；profile显示容量采样/MCS阈值是热点，不据cumtime推整体加速。
+- 有界阈值缓存与认证不可见区间捷径已根审接受；定向与原5因果反例通过。两项legacy receipt失败已由根用旧函数复现。
+- 根已重绑合同 `e2d604374ef13b24e40ce4d2784685bfb2c07ab77810908df3d3d7640211e943`，执行链 `1a651ac04149cf1b00f7510a6a7468404a8c64d10dbd1a94062d737fdfae920e`、科学输入 `e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715` 不变；compile/validate/enforce已通过。仅授权根官方再做1 call、30秒cProfile/45秒cell诊断；主矩阵、训练、formal未授权。
+- 账本不清零：B+C累计14 calls/1004.378228295秒；C余45 calls，批次余46 calls/2595.621771705秒。诊断待执行；所有研究与完整就绪门仍关闭。
 
 ## 历史工作包 B 状态（2026-10-01；第二 pilot 失败后停止）
 
