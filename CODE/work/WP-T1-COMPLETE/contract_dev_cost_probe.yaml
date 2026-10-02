@@ -1,6 +1,6 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: ROOT_ACCEPTED_30S_CPROFILE_DIAGNOSTIC_ONLY
-purpose: single_kernel_cprofile_diagnosis_not_research_results
+campaign_stage: ROOT_ACCEPTED_EQUIVALENT_MATCH_CACHE_COST_SMOKE_ONLY
+purpose: four_arm_native_population_cost_smoke_after_exact_matching_cache
 not_formal: true
 not_training: true
 frozen_at_sha: null
@@ -18,26 +18,20 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 6d46bdb9d20096a777e81300d4fc52a41edafd092c35e475079779783ad7815d
+    execution_chain_sha256: 13f15cd93dd191b2fccf87c3bab21a956a40e3ae1e451301f9178a9e5a1bccc9
     cell_input_sha256:
       b-bounded_population_cost_smoke-network-seed-7: e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715
-    diagnostic:
-      mode: first_kernel_call_cprofile
-      max_simulator_calls: 1
-      maximum_cell_wall_s: 45
-      profile_duration_s: 30
   release_ready: false
-  reason: Root accepts one new cProfile-only kernel diagnostic (30 seconds active
-    profile, 45 seconds hard cell cap). Scientific inputs are unchanged; raw process
-    exit and valid pstats are retained. No partial four-arm research output, main
-    matrix, training, resume or formal run is authorized by this contract.
+  reason: Root independently accepts only one new seed7 four-arm cost smoke after
+    exact-key global matching cache equivalence checks. No cProfile timer, main matrix,
+    training, formal run or research benefit claim.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: 31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 6d46bdb9d20096a777e81300d4fc52a41edafd092c35e475079779783ad7815d
+  source_execution_chain_sha256: 13f15cd93dd191b2fccf87c3bab21a956a40e3ae1e451301f9178a9e5a1bccc9
   compiled_trace_sha256: null
   bundle_sha256: null
   cell_input_sha256:
@@ -140,17 +134,16 @@ budget:
   batch_limit_simulator_wall_s: 3600.0
   historical_b_calls: 8
   historical_b_simulator_wall_s: 109.071837305
-  remaining_calls_before_probe: 50
-  remaining_simulator_wall_s_before_probe: 3371.707418176
-  probe_calls_reserved: 1
-  probe_wall_s_upper_bound: 45.0
+  remaining_calls_before_probe: 49
+  remaining_simulator_wall_s_before_probe: 3341.707346586
+  probe_calls_reserved: 4
+  probe_wall_s_upper_bound: 120.0
   actual_calls_and_wall_time_are_authoritative: true
   failed_timeout_and_replay_calls_count: true
-  prior_c_calls: 2
-  prior_c_simulator_wall_s: 119.220744519
-  remaining_new_c_calls_before_diagnostic: 49
+  prior_c_calls: 3
+  prior_c_simulator_wall_s: 149.220816109
   nominal_task_calls: 4
-  diagnostic_actual_call_cap: 1
+  remaining_new_c_calls_before_probe: 48
 post_probe_gate:
   status: COST_UNVERIFIED
   required_evidence:

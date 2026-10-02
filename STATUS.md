@@ -2,16 +2,14 @@
 
 本文是仓库级当前状态入口；工作包内 STATUS 只记录各自范围。具体版本以完整 Git commit、release-id 和 run-id 为准。
 
-## 当前研究与工程状态（2026-10-02；DESIGN_READY=true，PROBE_CODE_READY=true，COST_PROBE_READY=false，RELEASE_READY=false）
+## 当前研究与工程状态（2026-10-02；DESIGN_READY=true；PROBE_CODE_READY=true；COST_PROBE_READY=false；完整CODE/COST/MODEL/RELEASE仍false）
 
-- 用户2026-10-02已授权连续实施代码、反例/回归、有界开发矩阵（最多51新calls，历史B8次继续计账）及独立DDQN训练包（最多100 VM分钟）。根已独立接受仅限seed7原生人口低负载四臂成本探针的代码与语义输入，授权提交推送、不可变release及唯一新run；不扩为主矩阵/训练/formal或改研究参数。研究定义见权威手册与顺序计划；当前执行身份、哈希和门状态以工作包STATUS及criteria当前段为准。正式确认、seed1001+或main合并不在授权内。
-- 主线是同一确定性目的时延规则的四臂闭环，仅查询状态时刻不同；参照是最短可见路径约束的目的背压启发式（目的Q×H、FIFO/DRR保留，无经典稳定性保证）。真实训练DDQN是本轮必交扩展，可后于主实验推进，未完成则整轮PARTIAL。
-- 保留280颗卫星/14轨道面的工程参考，仅过滤地面人口区域。根独立复算2310个正人口格及人口/OD距离概率；这些是静态输入证据，不能证明已形成竞争场景。首探针profile `CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml` SHA-256 `31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518`，广告协议明确为v2；GPW SHA-256 `c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a`。低竞争5Mbps只验流程/成本。已有静态R候选绑定较早profile字节SHA `c7c55d5b7d7f781e0d0d690e2b39c5b58de53c809cefc12dedb318eb6b9d38ec`，R=6283.447102910832Mbps；计算器不读广告协议字段，故仅称静态参数等价候选，不改旧工件身份、不证明trace竞争、未获COST_READY。
-- 预热0–2s、业务2–4s、峰窗2.5–3.5s、观察至8s、每包D=4s；分段Poisson及全体offered身份冻结。每跳守合法历史、独立计算/查询/资源时间，缓存/建表不读未来。误差和四层回放规格见手册。
-- 根已接受`PROBE_CODE_READY=true`的有限代码子图，包括共享的人口快照定位修复，不等同整体`CODE_READY`。持久合同 `CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml` SHA-256 `bb8910902ac366f9b4a9e1ae0716c2cf39e9c8a91151878d6cb54cf082e2e8ff` 绑定唯一seed7四臂cell、4 calls、70文件执行链`dd26e1e7f9fc509765f41546d01a60838b1edc7837796a572bad2e6e4ab04cb3`和cell输入`70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905`。旧`contract_dev_c.yaml`保持无效并拒绝。唯一获准probe release `1e43abb8bb41806109f9ac957f46fae3eb19500e-9610b24373845f86c098c0267b0059b3ceef55fb8a01496a9bb94abe77a61150`已运行唯一run `t1-population-snapshot-cost-20261002-01`；pullback为`VERIFIED`，但唯一cell在120秒墙钟上限超时，未产出结果或正交付smoke，`COST_PROBE_READY=false`，不得续跑或扩展。完整代码、核心/总成本、模型和完整release门仍false。
-- 预算不清零：B历史8 calls/109.071837305s；本次C启动1个实际kernel call后超时，累计9/60 calls、225.146221433/3600s，剩51 calls/3374.853778567s。四臂4-call静态估计不是实际调用数。DDQN训练上限100 VM分钟独立另计，已获范围授权但尚未启动，不代表训练充分或收敛。
-- 根独立复核人口快照适配的60项相关测试通过，70文件链与实际合同compile/validate均通过，cell摘要未变；本机本轮10项授权、cold-release快照和原生trace定位测试通过（1.41秒）。前一候选REQUEST_CHANGES及`251 passed/4 failed`主动中断事实保留；历史137/37/8不覆盖该失败，也不是研究运行。
-- 当前完整70文件生产源码链SHA-256为`dd26e1e7f9fc509765f41546d01a60838b1edc7837796a572bad2e6e4ab04cb3`。源码提交`1e43abb8bb41806109f9ac957f46fae3eb19500e`已推送；release artifact SHA-256 `3a30929c2855a0f67fabdc6e08f3a643bd221e3742c67fd503d746faa20b8b20`。run receipt canonical SHA `0e452549b922b2e99548f138e4fadae0eb2ad989f0b6da69ce1e6faf48270737`，manifest SHA `c657b9b96ab5c9ca80048b1e38101750627e817aba16969e64ed447791f195d4`，archive SHA `bb69be2de7d445633985568e04cfdcee94be72a20b29eb7d188211b282534005`；GPW快照SHA与合同一致。receipt身份通过不等于cell成功。CORE_COST/MODEL/DDQN_COST/FULL_COST和完整RELEASE仍false。
+- 最近一次已接受运行是 seed7 单 kernel 的 CPU cProfile 诊断，非研究结果：release `922fcb07be15f380edb41f9ca66532847b72fbd5-fe0ec7b54f6d1529928a3c38e10e6b0acc766bb8ba8f7c1ea49fd3d9b71b2159`，artifact SHA `e4e29b4f11f5445a2259a89135c987200704354594264392602b77043a73d25d`，源码 commit `922fcb07be15f380edb41f9ca66532847b72fbd5`，70 文件链 `6d46bdb9d20096a777e81300d4fc52a41edafd092c35e475079779783ad7815d`。run `t1-population-cprofile-20261002-01` receipt SHA `524fd43a84021c536220ac21c63e4ceedf7ca0a50b6f53abf99cfafa54af990d`、manifest SHA `09a445755138ac8c61544b975d3f84e355ab76b1573539cfab5502a8a6cff9d0` 已由根独立核验。30 秒主动诊断结束，child returncode 3、ledger 1 begin/1 fail、30.00007159 VM 秒、无研究 result；pstats SHA `b2b39344145028f8324fbd7158e17bc01e592ef30c8e04474e2edaa9fbcb70c6`。
+- pstats 显示约 29.97 秒耗在 topology 初始化；同一时刻的全星跨轨匹配原先按每颗卫星重复计算。根已接受 `Constellation` 内按精确 `(t, dirs, 几何参数)` 缓存；参数变化失效，不量化时间、不改变匹配算法，也不改自定义 geometry provider。
+- 根已绑定下一项有限 smoke：合同 `contract_dev_cost_probe.yaml` SHA-256 `8f582cf33cd4659e2e3348b9fceb29cf4801dec7f824ae185fbc37d6e84cee30`，70文件链 `13f15cd93dd191b2fccf87c3bab21a956a40e3ae1e451301f9178a9e5a1bccc9`，cell input SHA `e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715`（与已完成cProfile诊断的科学输入相同）。compile 26 cells、validate=true；运行allowlist仅seed7四臂、4 calls，单cell 120秒。该候选尚未提交、发布或运行；COST_PROBE_READY仍false。
+- 定向验证：改前12星调用计数反例失败（12次，预期1次）；改后 `test_model.py` 15 passed（含280星/14轨全方向、精确时间/方向、公开参数变更和实例隔离对照），`test_dynamic_topology.py` 9 passed，routing拓扑3 passed，原始因果反例5 passed。根另独立核验缓存等价性。以上不是成本/竞争或研究结果。
+- 预算不清零：B+C累计11 calls/258.292653414秒；已用 C 3 calls，批次剩49 calls/3341.707346586秒，C余48 calls。失败与主动停止均计账。旧失败run不复用、不append/resume；主矩阵、训练、formal未获本次smoke授权。
+- 研究边界和完整执行合同见权威手册；动态 run 身份及状态以本文件与工作包 STATUS/criteria 当前段为准。训练、主矩阵、竞争负载变更和 formal 未获本轮诊断授权；旧 `contract_dev_c.yaml` 继续拒绝运行。
 
 ## 历史工作包 B（2026-10-01；第二次结构调整 pilot 已运行并因 smoke 失败停止）
 

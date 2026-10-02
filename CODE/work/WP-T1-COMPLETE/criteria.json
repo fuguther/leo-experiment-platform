@@ -2137,7 +2137,7 @@
     }
   },
   "c_round": {
-    "status": "AUTHORIZED_PROBE_FAILED_TIMEOUT_PULLED_BACK; STOP_AFTER_SINGLE_RUN",
+    "status": "ROOT_ACCEPTED_EQUIVALENT_TOPOLOGY_CACHE; FOUR_ARM_LOW_COST_SMOKE_AUTHORIZED_PENDING_RELEASE",
     "preparation_base_commit": "c164048c952cbfd6deb49210d5b3e039b7dcd62e",
     "worktree_branch": "codex/20260930-t1-experiment-a",
     "current_authority": {
@@ -2147,7 +2147,8 @@
       "report_current_section": "CODE/work/WP-T1-COMPLETE/REPORT.md",
       "root_status": "STATUS.md",
       "work_package_status": "CODE/work/WP-T1-COMPLETE/STATUS.md",
-      "implementation_plan_sha256": "805ecd169e1366c51e76239eed4347cf88ab30e87409a2d604b9a43df950337e"
+      "implementation_plan_sha256": "805ecd169e1366c51e76239eed4347cf88ab30e87409a2d604b9a43df950337e",
+      "current_action": "ROOT_ACCEPTED_SINGLE_SEED7_FOUR_ARM_LOW_COST_SMOKE; max4calls; one cell; 120s; no training/formal"
     },
     "readiness": {
       "design_ready": true,
@@ -2171,15 +2172,17 @@
     },
     "cost_probe_contract_candidate": {
       "path": "CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml",
-      "sha256": "bb8910902ac366f9b4a9e1ae0716c2cf39e9c8a91151878d6cb54cf082e2e8ff",
-      "status": "ROOT_SCOPE_AUTHORIZED; exact run attempted once and timed out; pullback VERIFIED; no result or positive-delivery smoke",
+      "sha256": "8f582cf33cd4659e2e3348b9fceb29cf4801dec7f824ae185fbc37d6e84cee30",
+      "status": "ROOT_ACCEPTED_FOUR_CALL_SEED7_LOW_COST_SMOKE; compile 26 cells; validate true; runtime enforce allowlist 4 calls; not yet released or run",
       "profile_path": "CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml",
       "profile_sha256": "31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518",
       "population_path": "CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif",
       "population_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
       "advertisement_protocol_version": 2,
       "planned_cell_id": "b-bounded_population_cost_smoke-network-seed-7",
-      "compiled_trace_bundle_cell_identity": "immutable release VM bundle validated; runtime bundle fingerprint f0591f071d865fb7d7deb80c8a88fc0365a0e21a2ca421051be4de5933c7362a8; one native-population cell attempted; no result artifact"
+      "compiled_trace_bundle_cell_identity": "fresh compile validated; authorized four-arm seed7 cell not yet run; scientific input digest matches completed cProfile diagnostic",
+      "execution_chain_sha256": "13f15cd93dd191b2fccf87c3bab21a956a40e3ae1e451301f9178a9e5a1bccc9",
+      "cell_input_sha256": "e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715"
     },
     "scenario_candidate": {
       "reference_profile": "CODE/leo_sim/profiles/population_global_1deg_diagnostic.yaml",
@@ -2189,7 +2192,7 @@
       "cost_smoke_profile_sha256": "31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518",
       "advertisement_protocol_version": 2,
       "persistent_cost_probe_contract": "CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml",
-      "persistent_cost_probe_contract_readiness": "authorized and executed once; VM bundle/input identity verified; cell timed out, so COST_PROBE_READY remains false and no retry is allowed under this authorization",
+      "persistent_cost_probe_contract_readiness": "root accepted a new exact four-call seed7 smoke identity after equivalent-cache review; compile/validate/runtime enforce pass; awaiting clean commit, immutable release and unique run",
       "population_input_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
       "region_lat_half_open_deg": [
         5,
@@ -3043,7 +3046,7 @@
       }
     },
     "root_cprofile_diagnostic_review": {
-      "status": "ROOT_ACCEPTED_SINGLE_CPROFILE_DIAGNOSTIC_ONLY",
+      "status": "COMPLETED_ONE_CALL_CPROFILE_DIAGNOSTIC; NO_RESEARCH_RESULT",
       "chain": "6d46bdb9d20096a777e81300d4fc52a41edafd092c35e475079779783ad7815d",
       "production_files": 70,
       "cell_input_sha256": "e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715",
@@ -3064,7 +3067,57 @@
         "sim_wall_s": 228.292581824,
         "c_new_calls_left": 49
       },
-      "deadline_beijing": "2026-10-02 16:10"
+      "deadline_beijing": "2026-10-02 16:10",
+      "run": {
+        "run_id": "t1-population-cprofile-20261002-01",
+        "release_id": "922fcb07be15f380edb41f9ca66532847b72fbd5-fe0ec7b54f6d1529928a3c38e10e6b0acc766bb8ba8f7c1ea49fd3d9b71b2159",
+        "source_commit": "922fcb07be15f380edb41f9ca66532847b72fbd5",
+        "receipt_sha256": "524fd43a84021c536220ac21c63e4ceedf7ca0a50b6f53abf99cfafa54af990d",
+        "manifest_sha256": "09a445755138ac8c61544b975d3f84e355ab76b1573539cfab5502a8a6cff9d0",
+        "pstats_sha256": "b2b39344145028f8324fbd7158e17bc01e592ef30c8e04474e2edaa9fbcb70c6",
+        "child_returncode": 3,
+        "ledger": {
+          "begin": 1,
+          "fail": 1,
+          "sim_wall_s": 30.00007159
+        },
+        "result": "absent; diagnostic stop is not a four-arm or research result",
+        "profile_observation": "Kernel.__init__ about 29.9997s; build_topology about 29.9696s; neighbors_at 261 calls led to _cross_plane_matching 261 calls and 3,642,988 ecef/subpoint calls",
+        "release_artifact_sha256": "e4e29b4f11f5445a2259a89135c987200704354594264392602b77043a73d25d"
+      },
+      "budget_after": {
+        "batch_calls_used": 11,
+        "batch_simulator_wall_s_used": 258.292653414,
+        "batch_calls_remaining": 49,
+        "c_new_calls_remaining": 48,
+        "batch_simulator_wall_s_remaining": 3341.707346586
+      }
+    },
+    "root_constellation_matching_cache_review": {
+      "verdict": "ACCEPTED_EQUIVALENT_SINGLE_CACHE_CHANGE; FOUR_ARM_LOW_COST_SMOKE_AUTHORIZED",
+      "execution_chain_sha256": "13f15cd93dd191b2fccf87c3bab21a956a40e3ae1e451301f9178a9e5a1bccc9",
+      "production_files": 70,
+      "changed_production_paths": [
+        "CODE/leo_sim/model.py"
+      ],
+      "cache_scope": "per Constellation instance; exact t and dirs tuple plus public geometry dependency signature; one-entry replacement on any key/config change",
+      "algorithm_or_parameter_changes": false,
+      "test_evidence": {
+        "pre_fix_counterexample": "12-satellite fixture called global matching 12 times; expected once",
+        "local": {
+          "test_model": "15 passed",
+          "test_dynamic_topology": "9 passed",
+          "routing_topology": "3 passed",
+          "original_causal_counterexamples": "5 passed"
+        },
+        "independent_reference": "root compared all 280 satellites and directions at t=0, 2, nextafter(2), and 8 against prior matching behavior; outputs identical"
+      },
+      "contract_sha256": "8f582cf33cd4659e2e3348b9fceb29cf4801dec7f824ae185fbc37d6e84cee30",
+      "cell_input_sha256": "e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715",
+      "authorized_scope": "one seed7 low-cost four-arm cell; max4 calls; 120s cell; no append/resume, training or formal",
+      "execution_state": "not committed, not released, not run; root will conduct VM smoke after clean push",
+      "cost_probe_ready": false,
+      "new_vm_calls_at_review": 0
     }
   }
 }
