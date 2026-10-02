@@ -19,6 +19,221 @@ from CODE.leo_sim import config as config_mod
 PROFILE = "CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml"
 
 
+def test_publish_atomically_writes_compact_json_without_changing_content(
+        tmp_path, monkeypatch):
+    document = {
+        "schema": "network-alignment/v1",
+        "status": "ok",
+        "trace": {"region": "华东区域", "path": ["地面", "星间", "下传"]},
+        "arms": [
+            {
+                "arm": "candidate",
+                "scope": {"offered": 2, "ids": [101, 102]},
+                "network_outcome": {
+                    "packet_outcomes": [
+                        {"pid": 101, "fate": "DELIVERED", "latency_s": 0.25},
+                        {"pid": 102, "fate": "IN_SYSTEM_AT_STOP", "latency_s": None},
+                    ],
+                    "replay": {"events": [{"kind": "转发", "at_s": 0.125}]},
+                },
+            },
+        ],
+    }
+    output = tmp_path / "cells" / "cell-1" / "result.json"
+    output.parent.mkdir(parents=True)
+    real_replace = t1_tasks.os.replace
+    replace_checks = []
+
+    def check_complete_temp_then_replace(source, destination):
+        assert Path(destination) == output
+        assert not output.exists()
+        temporary = Path(source)
+        raw = temporary.read_text(encoding="utf-8")
+        expected = json.dumps(document, ensure_ascii=False, sort_keys=True,
+                              separators=(",", ":")) + "\n"
+        assert raw == expected
+        assert json.loads(raw) == document
+        replace_checks.append((temporary, len(raw.encode("utf-8"))))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(t1_tasks.os, "replace", check_complete_temp_then_replace)
+
+    t1_tasks.publish(document, output)
+
+    assert output.read_text(encoding="utf-8") == json.dumps(
+        document, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":")) + "\n"
+    assert "华东区域".encode("utf-8") in output.read_bytes()
+    assert json.loads(output.read_text(encoding="utf-8")) == document
+    assert len(replace_checks) == 1
+    assert not replace_checks[0][0].exists()
+    assert not list(output.parent.glob(".result.json.*.tmp"))
+
+
+def _network_document_for_summary():
+    arms = []
+    for index, name in enumerate(t1_tasks.NETWORK_ARMS):
+        packet_rows = [
+            {"packet_id": 1, "fate": "DELIVERED", "loss": 0.5},
+            {"packet_id": 2, "fate": "IN_SYSTEM_AT_STOP", "loss": None},
+        ]
+        arms.append({
+            "arm": name,
+            "config_sha256": f"config-{index}",
+            "resolved_arm": name,
+            "seed": 7,
+            "predictor": "bounded_linear",
+            "scope": {"packets_in_trace": 2, "decision_requests": 3},
+            "outcome": {"offered": 2, "delivered": 1,
+                        "deadline_primary_loss": 0.75},
+            "network_outcome": {
+                "counts": {"offered": 2, "delivered": 1},
+                "packet_outcomes": packet_rows,
+                "packet_outcomes_sha256": f"packet-hash-{index}",
+            },
+            "total_cost": {"wall_s": 12.5, "query_s": 0.1},
+            "outcome_document": {
+                "packet_outcomes_sha256": f"packet-hash-{index}",
+                "row_count": 2,
+                "rows": [["loss", 0.75], ["delivered", 1]],
+            },
+            "time_alignment_audit": {
+                "decisions_with_state_time_audit": 3,
+                "action_log_truncated": False,
+            },
+            "action_log": {"count": 3, "limit": 5000,
+                           "truncated": False,
+                           "rule": "one record per forward decision, in decision order",
+                           "records": [{"huge": "x"}]},
+            "routing_audit_log": {
+                "schema": "t1-routing-audit-log/v1",
+                "decision_records": [{"huge": "x"}],
+                "decision_record_count": 3,
+                "attempt_records": [{"huge": "x"}],
+                "attempt_record_count": 1,
+            },
+            "compute": {"total_jobs": 8},
+            "control": {"bits": {"generated": 10}},
+            "query_service": {"requests": 3},
+            "replay": {"captured": True, "arm": name,
+                       "decision_rows": [{"huge": "x"}]},
+        })
+    driver = {
+        "schema": "network-alignment/v1",
+        "identity": {"trace_sha256": "trace-hash", "seed": 7},
+        "source": {"trace_sha256": "trace-hash", "rows_digest": "rows-hash"},
+        "replay_capture": {"requested": True, "captured_arms": list(t1_tasks.NETWORK_ARMS)},
+        "deadline": {"deadline_s": 4.0, "population_window_s": [2.0, 4.0]},
+        "fairness": {"same_trace": True, "same_seed": 7,
+                     "arms_differ_only_in": "query instant"},
+        "arms": arms,
+        "failures": [],
+        "status": "ok",
+        "units": {"e2e": "seconds"},
+        "limits": ["one seed; descriptive only"],
+    }
+    return {
+        "schema": "t1-task/v1", "task": "network_alignment",
+        "status": "ok", "failed_units": 0,
+        "driver_schema": driver["schema"],
+        "identity": driver["identity"], "document": driver,
+        "limits": ["full result required"],
+    }
+
+
+def test_network_summary_keeps_all_packet_metrics_without_mutating_full_result():
+    document = _network_document_for_summary()
+    original = copy.deepcopy(document)
+
+    summary = t1_tasks.network_summary_document(document)
+
+    assert document == original
+    assert summary["completeness"] == "aggregate_metrics_only; full replay is separate"
+    assert summary["full_replay_required_for_cell_success"] is True
+    assert summary["identity"] == document["identity"]
+    assert summary["source"] == document["document"]["source"]
+    assert summary["fairness"] == document["document"]["fairness"]
+    assert summary["deadline"] == document["document"]["deadline"]
+    assert len(summary["arms"]) == len(t1_tasks.NETWORK_ARMS)
+    for source_arm, summary_arm in zip(document["document"]["arms"],
+                                       summary["arms"]):
+        assert summary_arm["arm"] == source_arm["arm"]
+        assert summary_arm["config_sha256"] == source_arm["config_sha256"]
+        assert summary_arm["total_cost"] == source_arm["total_cost"]
+        assert summary_arm["network_outcome"]["packet_outcomes"] == \
+            source_arm["network_outcome"]["packet_outcomes"]
+        assert summary_arm["outcome_document"] == source_arm["outcome_document"]
+        assert summary_arm["action_log"] == {
+            "count": 3, "limit": 5000, "truncated": False,
+            "rule": "one record per forward decision, in decision order"}
+        assert summary_arm["routing_audit_log"]["decision_record_count"] == 3
+        assert summary_arm["routing_audit_log"]["attempt_record_count"] == 1
+        assert summary_arm["replay_summary"] == {
+            "captured": True, "arm": source_arm["arm"],
+            "full_payload_omitted": True}
+        assert "decision_rows" not in summary_arm["replay_summary"]
+
+
+def test_cli_publishes_network_summary_before_full_result(tmp_path, monkeypatch):
+    document = _network_document_for_summary()
+    output = tmp_path / "cell" / "result.json"
+    output.parent.mkdir()
+    monkeypatch.setattr(t1_tasks, "design",
+                        lambda *_args, **_kwargs: ({}, [], None, {}))
+    monkeypatch.setattr(t1_tasks, "run_task",
+                        lambda *_args, **_kwargs: document)
+    real_publish = t1_tasks.publish
+    published = []
+
+    def record_publish(payload, path):
+        published.append((Path(path).name, payload))
+        real_publish(payload, path)
+
+    monkeypatch.setattr(t1_tasks, "publish", record_publish)
+    status = t1_tasks.main([
+        "--task", "network_alignment", "--scenario", "fixture",
+        "--out", str(output),
+    ])
+
+    assert status == 0
+    assert [name for name, _ in published] == [
+        "result-summary.json", "result.json"]
+    assert (output.parent / "result-summary.json").is_file()
+    assert json.loads(output.read_text(encoding="utf-8")) == document
+    assert published[1][1]["document"]["arms"][0]["replay"][
+        "decision_rows"]
+
+
+def test_network_summary_cannot_replace_missing_primary_result(tmp_path,
+                                                               monkeypatch):
+    document = _network_document_for_summary()
+    output = tmp_path / "cell" / "result.json"
+    output.parent.mkdir()
+    monkeypatch.setattr(t1_tasks, "design",
+                        lambda *_args, **_kwargs: ({}, [], None, {}))
+    monkeypatch.setattr(t1_tasks, "run_task",
+                        lambda *_args, **_kwargs: document)
+    real_publish = t1_tasks.publish
+    calls = []
+
+    def fail_primary(payload, path):
+        calls.append(Path(path).name)
+        if Path(path) == output:
+            raise t1_tasks.TaskError("primary result write failed")
+        real_publish(payload, path)
+
+    monkeypatch.setattr(t1_tasks, "publish", fail_primary)
+    status = t1_tasks.main([
+        "--task", "network_alignment", "--scenario", "fixture",
+        "--out", str(output),
+    ])
+
+    assert calls == ["result-summary.json", "result.json"]
+    assert status == 2
+    assert (output.parent / "result-summary.json").is_file()
+    assert not output.exists()
+
+
 def _scenario(name="same_flow"):
     resolved, rows, geometry, _meta = scripted_scenarios.build(name)
     source = {"scenario": name, "config": None, "trace_sha256": None,

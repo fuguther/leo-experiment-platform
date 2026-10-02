@@ -1655,18 +1655,97 @@ def design(config_path=None, scenario=None, root=None, overrides=None):
     return resolved, rows, None, source
 
 
+def network_summary_document(document):
+    """Build a bounded metrics/identity sidecar without mutating the result.
+
+    The full replay remains in the primary result and is still required for a
+    successful cell.  This summary preserves every packet-outcome row and
+    accounting table while omitting event-, decision-, and route-level logs.
+    """
+    if not isinstance(document, dict) or document.get("task") != \
+            "network_alignment":
+        raise TaskError("network summary requires a network_alignment task")
+    driver = document.get("document")
+    if not isinstance(driver, dict) or not isinstance(driver.get("arms"), list):
+        raise TaskError("network summary is missing the network driver arms")
+
+    arms = []
+    arm_fields = (
+        "arm", "config_sha256", "resolved_arm", "seed", "predictor",
+        "scope", "request_rate_per_satellite", "outcome",
+        "measurement_window", "network_outcome", "total_cost",
+        "outcome_document", "time_alignment_audit",
+        "fallback_reason_counts", "compute", "control",
+        "control_advertisement_audit", "query_service",
+        "congestion_metrics", "mechanisms", "natural_end", "stop_time_s",
+        "horizon_s",
+    )
+    for arm in driver["arms"]:
+        if not isinstance(arm, dict):
+            raise TaskError("network summary arm is not an object")
+        summarized = {key: arm[key] for key in arm_fields if key in arm}
+        action_log = arm.get("action_log") or {}
+        if action_log:
+            summarized["action_log"] = {
+                key: action_log[key] for key in ("count", "limit", "truncated",
+                                                 "rule") if key in action_log}
+        routing_log = arm.get("routing_audit_log") or {}
+        if routing_log:
+            summarized["routing_audit_log"] = {
+                key: routing_log[key] for key in (
+                    "schema", "decision_record_count", "attempt_record_count",
+                    "coverage_note") if key in routing_log}
+        replay = arm.get("replay") or {}
+        summarized["replay_summary"] = {
+            "captured": bool(replay.get("captured")),
+            "arm": replay.get("arm", arm.get("arm")),
+            "full_payload_omitted": True,
+        }
+        arms.append(summarized)
+
+    return {
+        "schema": "t1-network-summary/v1",
+        "completeness": "aggregate_metrics_only; full replay is separate",
+        "full_replay_required_for_cell_success": True,
+        "task": document.get("task"),
+        "task_status": document.get("status"),
+        "failed_units": document.get("failed_units"),
+        "driver_schema": document.get("driver_schema"),
+        "identity": document.get("identity"),
+        "source": driver.get("source"),
+        "driver_identity": driver.get("identity"),
+        "replay_capture": driver.get("replay_capture"),
+        "deadline": driver.get("deadline"),
+        "fairness": driver.get("fairness"),
+        "arms": arms,
+        "failures": driver.get("failures"),
+        "driver_status": driver.get("status"),
+        "units": driver.get("units"),
+        "limits": {"task": document.get("limits"),
+                   "driver": driver.get("limits")},
+        "omitted_payloads": [
+            "full replay event streams", "action-log records",
+            "routing decision/attempt records",
+        ],
+    }
+
+
 def publish(document, out):
     out = Path(out)
     if out.exists() or out.is_symlink():
         raise TaskError(f"output destination exists: {out}")
     if not out.parent.is_dir() or out.parent.is_symlink():
         raise TaskError(f"output parent must be a real directory: {out.parent}")
+    # Encode in one C-accelerated pass before opening the atomic temp file.
+    # The network result can exceed 1 GB; pretty-printing it token-by-token
+    # can consume the cell wall budget even after all simulation calls end.
+    encoded = json.dumps(document, ensure_ascii=False, sort_keys=True,
+                         separators=(",", ":"))
     handle, temporary = tempfile.mkstemp(prefix="." + out.name + ".",
                                          suffix=".tmp", dir=str(out.parent))
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            json.dump(document, stream, ensure_ascii=False, sort_keys=True,
-                      indent=1)
+            stream.write(encoded)
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
@@ -1843,6 +1922,14 @@ def main(argv=None) -> int:
                 raise TaskError(
                     "first-call diagnostic stopped before another arm; "
                     "partial four-arm output is intentionally not published")
+        if args.task == "network_alignment":
+            if args.out.exists() or args.out.is_symlink():
+                raise TaskError(f"output destination exists: {args.out}")
+            summary_out = args.out.with_name(
+                args.out.stem + "-summary" + args.out.suffix)
+            if summary_out == args.out:
+                raise TaskError("network summary path collides with full result")
+            publish(network_summary_document(document), summary_out)
         publish(document, args.out)
     except _DiagnosticStop as exc:
         print(f"T1TASKS DIAGNOSTIC STOP: {exc}")

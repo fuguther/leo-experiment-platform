@@ -3240,7 +3240,7 @@
     }
   },
   "small_region_pilot_20261002": {
-    "status": "FIRST_SIMULATION_COMPLETED; FOUR_ARM_CELL_TIMEOUT; SAME_SCIENCE_1200S_BATCH_BOUND",
+    "status": "FOUR_SIMULATIONS_COMPLETED; ATOMIC_OUTPUT_INCOMPLETE; NO_ACCEPTED_FOUR_ARM_RESULT",
     "user_authorization": "explicitly smaller constellation and regional native traffic for tonight report",
     "geometry": {
       "satellites": 96,
@@ -3312,6 +3312,59 @@
       "calls_remaining_batch": 43,
       "calls_remaining_c": 42,
       "simulator_wall_s_remaining_batch": 2271.002943587
+    },
+    "second_vm": {
+      "run_id": "t1-small-region-four-arm-20261002-02",
+      "commit": "14a4a426b4821030dc9e4f289058425b75d4a5a9",
+      "release_id": "14a4a426b4821030dc9e4f289058425b75d4a5a9-acfa60c53509eeab6c4d0eb5fe64e1682f8046e3bdfac0014dea5f1cd43ddd77",
+      "receipt_sha256": "92e943ed783c5bddf113437ce3edbb6bf5bde4b3003069a0209921742bb239b4",
+      "manifest_sha256": "4f05f3b3b33029182278fb800d02ad0f114560365befa258e44509aeb25b4215",
+      "contract_sha256": "60609b6284f57ed1ce23d34169b492104287ef0a7dcc746e3025e9fae3736fbd",
+      "calls_started": 4,
+      "calls_ended": 4,
+      "calls_timed_out": 0,
+      "unresolved": 0,
+      "call_duration_s": [
+        251.348708281,
+        262.8682839,
+        297.920742959,
+        293.923033539
+      ],
+      "packets_per_call": 1236,
+      "simulator_wall_s": 1106.060768679,
+      "cell_wall_s": 1205.67604855448,
+      "cell_status": "timeout",
+      "run_status": "failed",
+      "failure_phase": "publication: incomplete JSON temporary file; no atomically published result, no predicate acceptance",
+      "temporary_output": {
+        "size_bytes": 1079114573,
+        "sha256": "63778fe0ccdabd51f6c74e0ab8e89592b07023605c91eec4776e747ed3e61b46",
+        "complete_json": false
+      },
+      "pullback": "25 files verified by official pull and root independent verify-run",
+      "scientific_claim": "none; completed simulations do not establish outcome comparison or activated research mechanism"
+    },
+    "budget_after_second": {
+      "calls_b_plus_c": 21,
+      "simulator_wall_s_b_plus_c": 2435.057825092,
+      "calls_remaining_batch": 39,
+      "calls_remaining_c": 38,
+      "simulator_wall_s_remaining_batch": 1164.942174908
+    },
+    "compact_output_retry": {
+      "status": "ROOT_ACCEPTED_CODE; COMPILE_VALIDATE_ENFORCE_PASS; NOT_EXECUTED",
+      "execution_chain_sha256": "21fa0527d3a09355d6b1293e0a07ff5a51d56723cd8dfc020a5d29aee1c50924",
+      "cell_input_sha256": "106186c365e92a411a459094b3fbe2b17164ac76378460e3013b488fd9aad0ac",
+      "contract_sha256": "f20dc6bffca8e4d5b71e5a861e5d097b325072181206b79192b1bdf397b1470a",
+      "profile_sha256": "c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451",
+      "scope": "same science and full replay; compact C JSON encoding plus aggregate-metrics sidecar before primary publication",
+      "root_tests": "4 publisher/sidecar tests and replay authorization test passed; native-profile binding test initially refused stale driver hash and passed after source rebind; no weakened assertions",
+      "max_calls": 4,
+      "cell_cap_s": 1160,
+      "remaining_batch_simulator_s_before": 1164.942174908,
+      "full_result_required": true,
+      "summary_alone_does_not_pass_cell": true,
+      "recovery": "raw incomplete; no complete arm; original file/failed receipt preserved"
     }
   }
 }
