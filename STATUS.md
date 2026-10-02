@@ -1,3 +1,9 @@
+## 小区域首测回传与完整四臂执行（2026-10-02）
+
+首 run `t1-small-region-flow-smoke-20261002-01` 已独立核验24文件，receipt `5f047d81c44ae8cfa524fc6ee84d07934de0a5a304b523a2af70e5aa541b19ea`。同一1236包trace：第1调用完整结束196.264647119 s，第2调用用98.352890119 s后被300 s四臂总cell上限终止；总2 started/1 ended/1 timeout，无完整result，不作交付或收益结论。
+
+保持96星/99端点、5 Mbps、D/算法/四臂/控制/完整replay/source/input不变，新合同只把四臂工程总cap设1200 s，使用新run-id，不resume。根compile/validate/enforce通过；待精确新commit发布实跑。实际B+C已17 calls/1328.997056413 s；余43 calls/2271.002943587 s。1200 s上限在剩余预算内，压力候选仍未放行。
+
 # T1 仓库当前状态
 
 本文是仓库级当前状态入口；工作包内 STATUS 只记录各自范围。具体版本以完整 Git commit、release-id 和 run-id 为准。

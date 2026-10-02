@@ -3240,7 +3240,7 @@
     }
   },
   "small_region_pilot_20261002": {
-    "status": "ROOT_ACCEPTED_BOUND_CONTRACT; VM_NOT_STARTED",
+    "status": "FIRST_SIMULATION_COMPLETED; FOUR_ARM_CELL_TIMEOUT; SAME_SCIENCE_1200S_BATCH_BOUND",
     "user_authorization": "explicitly smaller constellation and regional native traffic for tonight report",
     "geometry": {
       "satellites": 96,
@@ -3287,6 +3287,31 @@
     },
     "ddqn_training_started": 0,
     "formal_run": false,
-    "main_merge": false
+    "main_merge": false,
+    "first_vm": {
+      "run_id": "t1-small-region-flow-smoke-20261002-01",
+      "commit": "a0d9289f410eef5d64e11b1551d94253ced8fe86",
+      "receipt_sha256": "5f047d81c44ae8cfa524fc6ee84d07934de0a5a304b523a2af70e5aa541b19ea",
+      "manifest_sha256": "369227934ef9832db99cdb91c352754a8a225482b744ac0a5800d903ad9b06f1",
+      "calls_started": 2,
+      "calls_ended": 1,
+      "calls_timed_out": 1,
+      "first_call_s": 196.264647119,
+      "second_call_s": 98.352890119,
+      "packets": 1236,
+      "simulator_wall_s": 294.617537238,
+      "partial_arm_artifact": "not persisted by current aggregate driver; no outcome claim",
+      "pullback": "24 files independently verified"
+    },
+    "new_contract_sha256": "60609b6284f57ed1ce23d34169b492104287ef0a7dcc746e3025e9fae3736fbd",
+    "new_cell_wall_s": 1200,
+    "new_run_scope": "same input/source, four arms, cap1200s; new run-id, no resume",
+    "budget_after_first": {
+      "calls_b_plus_c": 17,
+      "simulator_wall_s_b_plus_c": 1328.997056413,
+      "calls_remaining_batch": 43,
+      "calls_remaining_c": 42,
+      "simulator_wall_s_remaining_batch": 2271.002943587
+    }
   }
 }

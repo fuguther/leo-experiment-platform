@@ -1,5 +1,5 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: ROOT_AUTHORIZED_SMALL_REGION_FLOW_COST_PILOT
+campaign_stage: ROOT_AUTHORIZED_SMALL_REGION_FOUR_ARM_1200S_BATCH
 purpose: small_region_four_arm_low_cost_smoke_with_same_population_trace_pipeline
 not_formal: true
 not_training: true
@@ -22,11 +22,11 @@ design_readiness:
     cell_input_sha256:
       b-bounded_population_cost_smoke-network-seed-7: 1d094b1e948d54bf064e7f0ba40b460af825da590d95b32c321e4bcf9e605b81
   release_ready: false
-  reason: User explicitly authorized a smaller constellation and regional native traffic
-    for tonight. Root independently verified four distinct physically available positive-capacity
-    neighbors and continuous ground coverage. Only the declared seed7 low-load four-arm
-    cell with full replay is authorized here; pressure workload requires separate
-    bound contract and cost review. No formal/training/main authorization.
+  reason: First regional run completed its first simulator call in196.264647119s;
+    the second call received only98.352890119s of the previous300s four-arm cell cap.
+    User requested complete regional results tonight. This new bounded run keeps science/input/source/replay
+    unchanged and sets the four-arm cell cap1200s, within2271.002943587s remaining
+    actual batch budget. No pressure, training or formal authorization.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451
@@ -160,7 +160,7 @@ cell_allowlist:
   task: network_alignment
   maximum_simulator_calls: 4
   append: false
-  maximum_cell_wall_s: 300
+  maximum_cell_wall_s: 1200
   concurrency: 1
   exact_driver_argv_after_compile:
   - --task
@@ -182,16 +182,16 @@ budget:
   batch_limit_simulator_wall_s: 3600.0
   historical_b_calls: 8
   historical_b_simulator_wall_s: 109.071837305
-  remaining_calls_before_probe: 45
-  remaining_simulator_wall_s_before_probe: 2565.620480825
+  remaining_calls_before_probe: 43
+  remaining_simulator_wall_s_before_probe: 2271.002943587
   probe_calls_reserved: 4
-  probe_wall_s_upper_bound: 300.0
+  probe_wall_s_upper_bound: 1200.0
   actual_calls_and_wall_time_are_authoritative: true
   failed_timeout_and_replay_calls_count: true
-  prior_c_calls: 7
-  prior_c_simulator_wall_s: 925.30768187
+  prior_c_calls: 9
+  prior_c_simulator_wall_s: 1219.925219108
   nominal_task_calls: 4
-  remaining_new_c_calls_before_probe: 44
+  remaining_new_c_calls_before_probe: 42
 post_probe_gate:
   status: COST_UNVERIFIED
   required_evidence:
@@ -214,4 +214,4 @@ source_release_binding: Clean full commit and immutable manifest/run receipt bin
   this contract; no self-referential commit or bundle hash is inserted into its semantic
   input digest.
 budgets:
-  cell_wall_s: 300.0
+  cell_wall_s: 1200.0
