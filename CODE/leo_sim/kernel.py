@@ -2112,6 +2112,15 @@ class Kernel:
             raise KernelError("geometry change certification exceeded 1024 roots")
 
         add_roots(next_change)
+        if (self.rate_model == "mcs"
+                and getattr(self.geometry, "certifies_change_times", False)
+                and len(set(boundaries)) == 2
+                and not available((start + end) / 2.0)):
+            # With no certified visibility transition in the interval, an
+            # unavailable midpoint proves that no physical capacity exists
+            # here.  Avoid range/MCS threshold work while retaining the
+            # ordinary path for visible idle links and visibility changes.
+            return
         if self.rate_model == "mcs":
             # Only thresholds that could be reached in this interval need a
             # root search.  RANGE_RATE_KM_S is conservative for supported

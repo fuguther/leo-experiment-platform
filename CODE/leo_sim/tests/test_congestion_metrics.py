@@ -2,12 +2,12 @@
 
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import pytest
 
-from CODE.leo_sim import config, metrics
-from CODE.leo_sim import kernel
+from CODE.leo_sim import config, kernel, link_budget, metrics, model
 from CODE.leo_sim.tests.helpers import StaticGeometry, cell, make_cfg, row
 
 
@@ -448,6 +448,162 @@ def test_capacity_metric_splits_scripted_visibility_change_inside_interval():
     windows = [w for w in result["link_available_windows"]
                if w["link_id"] == link_id]
     assert [(w["start"], w["end"]) for w in windows] == [(0.25, 0.75)]
+
+
+def _pre_optimization_capacity_segments(k, sat, start, end, lat, lon):
+    """Independent test reference for the pre-shortcut GSL segmenter."""
+    available = lambda t: k.geometry.gsl_available(sat, lat, lon, t)
+    next_change = lambda a, b: k.geometry.next_gsl_change(
+        sat, lat, lon, a, b)
+    range_at = lambda t: k.geometry.slant_range_km(sat, lat, lon, t)
+    next_range_under = lambda threshold, a, b: (
+        k.geometry.next_slant_range_under(sat, lat, lon, threshold, a, b))
+    rf = k.rf_uplink
+    boundaries = [float(start), float(end)]
+    eps = min(1e-9, max((end - start) * 1e-8, 1e-12))
+
+    def add_roots(root_fn):
+        cursor = float(start)
+        for _ in range(1024):
+            if cursor >= end - eps:
+                return
+            nxt = root_fn(cursor, end)
+            if nxt is None:
+                return
+            nxt = float(nxt)
+            assert cursor < nxt <= end
+            boundaries.append(nxt)
+            if nxt >= end - eps:
+                return
+            cursor = nxt
+        raise AssertionError("reference geometry roots exceeded 1024")
+
+    add_roots(next_change)
+    if k.rate_model == "mcs":
+        probe_times = (start, (start + end) / 2.0,
+                       max(start, end - eps))
+        ranges = [float(range_at(t)) for t in probe_times]
+        assert all(math.isfinite(v) and v > 0 for v in ranges)
+        margin = model.RANGE_RATE_KM_S * (end - start)
+        lo, hi = min(ranges) - margin, max(ranges) + margin
+        for threshold in link_budget.mcs_rate_threshold_ranges_km(
+                rf, k.mcs_table):
+            if lo <= threshold <= hi:
+                add_roots(lambda a, b, threshold=threshold:
+                          next_range_under(threshold, a, b))
+
+    segments = []
+    ordered = sorted(set(boundaries))
+    for a, b in zip(ordered, ordered[1:]):
+        if b - a <= eps:
+            continue
+        t = (a + b) / 2.0
+        if not available(t):
+            continue
+        rate = k._metric_available_rate("uplink", sat, t, lat=lat, lon=lon)
+        if rate > 0:
+            segments.append((float(a), float(b), float(rate)))
+    return segments
+
+
+class _CapacityScript(StaticGeometry):
+    def __init__(self, visible, changes=()):
+        super().__init__(1, visible=visible, slant_km=600.0,
+                         gsl_changes=changes)
+        self.range_calls = 0
+
+    def slant_range_km(self, sat_id, lat, lon, t):
+        self.range_calls += 1
+        return super().slant_range_km(sat_id, lat, lon, t)
+
+    def next_slant_range_under(self, sat_id, lat, lon, threshold, t, limit):
+        return None
+
+
+def _mcs_capacity_kernel(geo):
+    cfg = make_cfg({
+        "scenario": {"num_satellites": geo.num_satellites,
+                     "num_planes": getattr(geo, "num_planes", 1),
+                     "duration_s": 1.0},
+        "links": {"rate_model": "mcs"},
+    })
+    return kernel.Kernel(cfg, [], geometry=geo)
+
+
+def test_mcs_capacity_skips_threshold_work_for_certified_invisible_window(
+        monkeypatch):
+    geo = _CapacityScript(lambda *_: False)
+    k = _mcs_capacity_kernel(geo)
+    threshold_calls = []
+    original = link_budget.mcs_rate_threshold_ranges_km
+
+    def counted(rf, table):
+        threshold_calls.append((rf, table))
+        return original(rf, table)
+
+    monkeypatch.setattr(link_budget, "mcs_rate_threshold_ranges_km", counted)
+    reference = _pre_optimization_capacity_segments(k, 0, 0.0, 1.0, 0, 0)
+    assert reference == []
+    assert threshold_calls
+    threshold_calls.clear()
+    geo.range_calls = 0
+
+    actual = list(k._metric_capacity_segments(
+        "uplink", 0, 0.0, 1.0, lat=0, lon=0))
+
+    assert actual == reference
+    assert threshold_calls == []
+    assert geo.range_calls == 0
+
+
+def test_mcs_capacity_certified_constellation_invisible_window_skips_thresholds(
+        monkeypatch):
+    geo = model.Constellation(4, 2, 550.0, 53.0, min_elevation_deg=25.0)
+    lat, lon, _ = geo.subpoint(0, 0.0)
+    lon = ((lon + 180.0 + 180.0) % 360.0) - 180.0
+    assert not geo.gsl_available(0, lat, lon, 0.0)
+    assert not geo.gsl_available(0, lat, lon, 0.5)
+    assert not geo.gsl_available(0, lat, lon, 1.0)
+    k = _mcs_capacity_kernel(geo)
+    threshold_calls = []
+    original = link_budget.mcs_rate_threshold_ranges_km
+
+    def counted(rf, table):
+        threshold_calls.append((rf, table))
+        return original(rf, table)
+
+    monkeypatch.setattr(link_budget, "mcs_rate_threshold_ranges_km", counted)
+    reference = _pre_optimization_capacity_segments(k, 0, 0.0, 1.0,
+                                                     lat, lon)
+    assert reference == []
+    assert threshold_calls
+    threshold_calls.clear()
+
+    actual = list(k._metric_capacity_segments(
+        "uplink", 0, 0.0, 1.0, lat=lat, lon=lon))
+
+    assert actual == reference
+    assert threshold_calls == []
+
+
+@pytest.mark.parametrize("visible, changes, expected_bounds", [
+    (lambda *_: True, (), [(0.0, 1.0)]),
+    (lambda _s, _lat, _lon, t: 0.25 <= t < 0.75,
+     (0.25, 0.75), [(0.25, 0.75)]),
+])
+def test_mcs_capacity_keeps_visible_idle_and_visibility_flip_segments(
+        visible, changes, expected_bounds):
+    geo = _CapacityScript(visible, changes)
+    k = _mcs_capacity_kernel(geo)
+    reference = _pre_optimization_capacity_segments(k, 0, 0.0, 1.0, 0, 0)
+
+    actual = list(k._metric_capacity_segments(
+        "uplink", 0, 0.0, 1.0, lat=0, lon=0))
+
+    assert [(a, b) for a, b, _ in actual] == expected_bounds
+    assert actual == reference
+    if not changes:
+        assert actual[0][2] > 0.0
 
 
 def test_capacity_metric_includes_retired_isl_generation():

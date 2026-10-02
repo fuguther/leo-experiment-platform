@@ -1,6 +1,8 @@
 """Integration tests for D1 distance-dependent MCS rates."""
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from CODE.leo_sim import config, kernel, link_budget
@@ -43,6 +45,41 @@ def test_max_rate_range_matches_zero_rate():
         lim = link_budget.max_rate_range_km(rf)
         assert link_budget.mcs_rate_bps(lim - 1e-3, rf) > 0
         assert link_budget.mcs_rate_bps(lim + 1e-3, rf) == 0.0
+
+
+def test_mcs_threshold_ranges_cache_exact_rf_and_table(monkeypatch):
+    rf = link_budget.RFParams(
+        frequency_hz=31e9, bandwidth_hz=400e6, max_ptx_w=12.0,
+        antenna_diameter_tx_m=0.29, antenna_diameter_rx_m=0.25,
+        pointing_loss_db=0.4, noise_figure_db=2.2,
+        noise_temperature_k=295.0, min_rate_bps=12_000.0)
+    other_rf = dataclasses.replace(rf, frequency_hz=29e9)
+    calls = []
+    original_derived = link_budget._derived
+
+    def counted_derived(params):
+        calls.append(params)
+        return original_derived(params)
+
+    monkeypatch.setattr(link_budget, "_derived", counted_derived)
+    first = link_budget.mcs_rate_threshold_ranges_km(
+        rf, link_budget.LEGACY_DVBS2X)
+    second = link_budget.mcs_rate_threshold_ranges_km(
+        rf, link_budget.LEGACY_DVBS2X)
+    assert isinstance(first, tuple)
+    assert second == first
+    assert calls == [rf]
+    assert second is first
+
+    different_rf = link_budget.mcs_rate_threshold_ranges_km(
+        other_rf, link_budget.LEGACY_DVBS2X)
+    assert different_rf != first
+    assert calls == [rf, other_rf]
+
+    for unsupported_table in ("unsupported-test-table", ["unsupported"]):
+        with pytest.raises(ValueError, match="unsupported mcs_table"):
+            link_budget.mcs_rate_threshold_ranges_km(rf, unsupported_table)
+    assert calls == [rf, other_rf]
 
 
 def test_config_mcs_requires_valid_rf():

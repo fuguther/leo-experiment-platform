@@ -1,14 +1,14 @@
 # WP-T1-COMPLETE — 状态账本
 
 > 计划：`docs/superpowers/plans/2026-09-27-t1-complete-implementation.md` 顶部当前节。交付：`REPORT.md` 当前准备复核段；机器判据：`criteria.json`；旧合同：`contract_dev_c.yaml`（失效，禁止运行）。
-> **当前执行边界：** 根当前仅授权一次 seed7 单kernel cProfile诊断（profile最多30秒、cell上限45秒、最多1 call），由根发布和运行。主矩阵、训练、formal未授权；旧 `contract_dev_c.yaml` 继续无效。
+> **当前执行边界：** 根已审核本轮两项等价优化并绑定低成本合同；待根官方执行最多4 calls、单cell 600秒的 seed7 四臂 smoke。主矩阵、训练、formal未授权；旧 `contract_dev_c.yaml` 继续无效。
 
-## 当前研究与工程状态（2026-10-02；DESIGN_READY=true；PROBE_CODE_READY=true；COST_PROBE_READY=false；整体CODE/COST/MODEL/RELEASE仍false）
+## 当前研究与工程状态（2026-10-02；DESIGN_READY=true；PROBE_CODE_READY=true；COST_PROBE_READY=false；整体CODE/CORE_COST/MODEL/FULL_COST/RELEASE仍PARTIAL）
 
-- 最新 cache smoke `t1-population-matching-cache-smoke-20261002-01`：release `270e95d6404ade9bb03239c0ff5e11146d72406d-b829029d393601144969499cb3c21c7a9e180801c76e0a279232761dfff9b95f`，receipt `46b4a29fa04907aadc477f693051c8860b2cb5106449616a3fcb97f9895a85d0`，manifest `d7cdb11eb9f6dc2f44ae1c86ae9da7d404b3930496a32a36b23e8e45f96277be`，已回传核验。1次kernel call记录1281包，116.563399685 VM秒后超时，0 ended、无result；不是四臂结果或成功smoke，旧run不复用。
-- 前一 cProfile run 的manifest SHA为 `7a811e0b02b4a14f6ff3045db62234c30570cc01f3d89f5518ce617a4b4ee6bc`，receipt SHA `524fd43a84021c536220ac21c63e4ceedf7ca0a50b6f53abf99cfafa54af990d`、pstats SHA `b2b39344145028f8324fbd7158e17bc01e592ef30c8e04474e2edaa9fbcb70c6`；profile在30秒主动停止，定位到topology初始化重复匹配。
-- 根重新绑定单次诊断合同 SHA `8b476af17a56b7fad192ef67a79f2e09c0ad0af860b3357081b0903a70233100`，70文件链 `13f15cd93dd191b2fccf87c3bab21a956a40e3ae1e451301f9178a9e5a1bccc9`，cell input `e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715`。授权1 call、profile 30秒、cell 45秒；compile/validate/enforce已通过。该诊断由根执行，尚无新run结果。
-- 累计B+C 12 calls/374.856053099秒；批次余48 calls/3225.143946901秒，C余47 calls。`COST_PROBE_READY=false`；缓存代码通过定向等价测试不等于运行提速或研究结论。
+- 最新有效 profile 证据：`t1-population-cached-cprofile-20261002-01`，1 call/30.208035662 VM秒，child exit 3、无研究结果；receipt `8c0937d67904f3ba9ca3e5fd035fb73c6a856e001bfbfdf7c20506c29ffcb0ec`，manifest `36cc2ec46427f68b76d9ab636bcaefc869b33dc2f90725939295c6c217cf4c2b`，pstats `d6c8f72c8a5719a7807eca711fa85df5f102b0c4b9afcf81a4a48157d7aa93b8`；热点为容量采样/MCS阈值计算，不据cumtime推整体倍数。
+- 两项等价优化已根审接受：有界RF/table阈值缓存；认证整段不可见时跳过阈值工作。定向测试及原5因果反例通过；两项legacy receipt单测已由根用旧函数复现，未归因于本改动。
+- 根已将当前合同 `a5602e361a70a1fd4ef6e74386bb79e52ad623b11e91dcbdfa7fa8d114c94bcf` 绑定执行链 `1a651ac04149cf1b00f7510a6a7468404a8c64d10dbd1a94062d737fdfae920e`、同一科学输入 `e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715`；compile/validate/enforce通过。仅待根官方启动最多4-call、每cell 600秒的低成本四臂smoke；主矩阵、训练、formal未授权。
+- 账本不清零：B+C累计13 calls/405.064088761秒；C余46 calls，批次余47 calls/3194.935911239秒。容量smoke尚未运行，不能称成本门通过或运行提速。
 
 ## 历史工作包 B 状态（2026-10-01；第二 pilot 失败后停止）
 

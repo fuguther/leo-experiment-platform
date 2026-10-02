@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+from functools import lru_cache
 
 import numpy as np
 
@@ -141,17 +142,9 @@ def max_rate_range_km(rf: RFParams,
     return d_m / 1000.0
 
 
-def mcs_rate_threshold_ranges_km(
-        rf: RFParams, table: str = LEGACY_DVBS2X) -> tuple[float, ...]:
-    """Return slant ranges at which the legacy MCS rate can change.
-
-    ``mcs_rate_bps`` is piecewise constant in distance.  A new table entry
-    becomes feasible whenever received SNR crosses one of the positive MCS
-    thresholds, so these ranges are the certified cut points for the
-    availability metric's interval quadrature.
-    """
-    if table != LEGACY_DVBS2X:
-        raise ValueError(f"unsupported mcs_table {table!r}")
+@lru_cache(maxsize=64)
+def _cached_mcs_rate_threshold_ranges_km(
+        rf: RFParams, table: str) -> tuple[float, ...]:
     maxptx_db, g, no = _derived(rf)
     out = []
     for snr_target in LEGACY_DVBS2X_LIN[1:]:
@@ -161,6 +154,21 @@ def mcs_rate_threshold_ranges_km(
                / (4.0 * math.pi * rf.frequency_hz))
         out.append(d_m / 1000.0)
     return tuple(sorted(set(out)))
+
+
+def mcs_rate_threshold_ranges_km(
+        rf: RFParams, table: str = LEGACY_DVBS2X) -> tuple[float, ...]:
+    """Return slant ranges at which the legacy MCS rate can change.
+
+    ``mcs_rate_bps`` is piecewise constant in distance.  A new table entry
+    becomes feasible whenever received SNR crosses one of the positive MCS
+    thresholds, so these ranges are the certified cut points for the
+    availability metric's interval quadrature.  The bounded cache is keyed
+    by the complete frozen RF parameter value and table identity.
+    """
+    if table != LEGACY_DVBS2X:
+        raise ValueError(f"unsupported mcs_table {table!r}")
+    return _cached_mcs_rate_threshold_ranges_km(rf, table)
 
 
 def mcs_rate_bps(slant_km: float, rf: RFParams,
