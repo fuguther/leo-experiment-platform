@@ -1296,8 +1296,16 @@ def main(argv=None) -> int:
         print(f"T1 DEVELOPMENT REFUSED/FAILED: {exc}")
         return 2
     print(json.dumps(summary, ensure_ascii=False))
-    return 0 if (summary["run_status"] == "ok"
-                  and summary["report_status"] == "ok") else 3
+    if not isinstance(summary, dict):
+        return 3
+    if summary.get("runtime_stage") == "COST_PROBE_READY":
+        return 0 if summary.get("probe_run_status") == "ok" else 3
+    if "probe_run_status" in summary:
+        # A cost-probe-shaped document without its stage label is malformed;
+        # never fall through to the legacy summary fields.
+        return 3
+    return 0 if (summary.get("run_status") == "ok"
+                 and summary.get("report_status") == "ok") else 3
 
 
 if __name__ == "__main__":

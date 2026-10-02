@@ -324,6 +324,126 @@ def test_cost_probe_gate_requires_one_exact_seed7_four_arm_cell(tmp_path):
             append=False, cells={cell_id: bad_cell}, estimated_calls=4)
 
 
+def test_cost_probe_accepts_only_the_fixed_first_call_diagnostic():
+    diagnostic = {
+        "mode": "first_kernel_call_stack_sampling",
+        "max_simulator_calls": 1,
+        "maximum_cell_wall_s": 45,
+        "sample_interval_s": 1,
+    }
+    authorization = {
+        "stage": "cost_probe", "tier": "b_dev",
+        "cell_ids": ["cell"], "max_selected_cells": 1,
+        "expected_simulator_calls": 4, "max_simulator_calls": 4,
+        "allow_append": False, "task": "network_alignment", "seed": 7,
+        "execution_chain_sha256": "c" * 64,
+        "cell_input_sha256": {"cell": "d" * 64},
+        "diagnostic": diagnostic,
+    }
+    contract = {"design_readiness": {
+        "status": "COST_PROBE_READY", "runtime_gate_implemented": True,
+        "runtime_authorization": authorization,
+    }}
+
+    assert t1_suite.require_runtime_ready_contract(contract)["status"] == \
+        "COST_PROBE_READY"
+    for key, value in (("max_simulator_calls", 2),
+                       ("maximum_cell_wall_s", 120),
+                       ("sample_interval_s", 0),
+                       ("mode", "arbitrary_profiler")):
+        malformed = json.loads(json.dumps(contract))
+        malformed["design_readiness"]["runtime_authorization"][
+            "diagnostic"][key] = value
+        with pytest.raises(t1_suite.SuiteError,
+                           match="diagnostic|authorization"):
+            t1_suite.require_runtime_ready_contract(malformed)
+
+
+def _main_with_summary(monkeypatch, capsys, summary):
+    monkeypatch.setattr(t1_development, "execute",
+                        lambda *_args, **_kwargs: summary)
+    release_id = "a" * 40 + "-" + "b" * 64
+    code = t1_development.main([
+        "--contract", "contract.yaml", "--out", "out",
+        "--run-id", "probe-run", "--release-id", release_id,
+    ])
+    output = capsys.readouterr().out
+    assert "Traceback" not in output
+    return code, output
+
+
+def test_cost_probe_timeout_main_prints_probe_summary_and_returns_nonzero(
+        monkeypatch, capsys):
+    summary = {
+        "runtime_stage": "COST_PROBE_READY",
+        "probe_run_status": "FAILED_CELLS",
+        "probe_run_counts": {"timeout": 1, "ok": 0},
+        "simulator_call_accounting": {
+            "started": 1, "timed_out": 1,
+            "simulator_wall_s": 116.074384128,
+        },
+    }
+
+    code, output = _main_with_summary(monkeypatch, capsys, summary)
+
+    assert code == 3
+    assert json.loads(output) == summary
+    assert '"probe_run_status": "FAILED_CELLS"' in output
+
+
+def test_cost_probe_main_is_green_only_for_exact_ok_probe_status(
+        monkeypatch, capsys):
+    ok_summary = {
+        "runtime_stage": "COST_PROBE_READY",
+        "probe_run_status": "ok",
+        "probe_run_counts": {"timeout": 0, "ok": 1},
+    }
+    failed_summary = {
+        "runtime_stage": "COST_PROBE_READY",
+        "probe_run_status": "SMOKE_FAILED",
+        "run_status": "ok",
+        "report_status": "ok",
+    }
+
+    ok_code, ok_output = _main_with_summary(monkeypatch, capsys, ok_summary)
+    failed_code, failed_output = _main_with_summary(
+        monkeypatch, capsys, failed_summary)
+
+    assert ok_code == 0
+    assert json.loads(ok_output) == ok_summary
+    assert failed_code == 3
+    assert json.loads(failed_output) == failed_summary
+
+
+def test_cost_probe_summary_missing_its_status_fails_closed(
+        monkeypatch, capsys):
+    summary = {
+        "runtime_stage": "COST_PROBE_READY",
+        "run_status": "ok",
+        "report_status": "ok",
+    }
+
+    code, output = _main_with_summary(monkeypatch, capsys, summary)
+
+    assert code == 3
+    assert json.loads(output) == summary
+
+
+def test_standard_development_main_keeps_legacy_summary_contract(
+        monkeypatch, capsys):
+    ok_code, ok_output = _main_with_summary(
+        monkeypatch, capsys,
+        {"run_status": "ok", "report_status": "ok"})
+    partial_code, partial_output = _main_with_summary(
+        monkeypatch, capsys, {"run_status": "ok"})
+
+    assert ok_code == 0
+    assert json.loads(ok_output) == {
+        "run_status": "ok", "report_status": "ok"}
+    assert partial_code == 3
+    assert json.loads(partial_output) == {"run_status": "ok"}
+
+
 def test_suite_run_cost_probe_rejects_unlisted_selection_before_run_dir(
         tmp_path, monkeypatch):
     cell_id = "b-native-low-cost-network-seed-7"

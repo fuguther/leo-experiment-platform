@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import collections
 import copy
+import faulthandler
 import hashlib
 import json
 import math
@@ -73,6 +74,7 @@ class TaskError(RuntimeError):
 
 
 _SUITE_RUNTIME_CONTEXT_ENV = "T1_SUITE_RUNTIME_CONTEXT"
+DIAGNOSTIC_STACK_ARTIFACT = "diagnostic-stack-samples.log"
 
 
 def _is_controlled_population_region_profile(config_path):
@@ -113,10 +115,11 @@ def _validate_suite_runtime_context(args, raw_args):
         "contract_sha256", "tier", "cell_id", "selected_cell_ids",
         "append", "result_path", "launch_nonce", "launch_ledger_path",
         "simulator_call_ledger_path", "max_simulator_calls", "expires_at",
+        "diagnostic",
     }
     if not isinstance(context, dict) or set(context) != required:
         raise TaskError("suite stage context has missing or unknown fields")
-    if context["schema"] != "t1-suite-task-runtime-context/v1":
+    if context["schema"] != "t1-suite-task-runtime-context/v2":
         raise TaskError("suite stage context schema is unsupported")
 
     bundle_dir = Path(str(context["bundle_dir"]))
@@ -161,6 +164,15 @@ def _validate_suite_runtime_context(args, raw_args):
         raise TaskError("suite stage context does not name an executable cell")
 
     try:
+        diagnostic = t1_suite._cost_probe_diagnostic(
+            readiness, cell_id=cell_id)
+    except t1_suite.SuiteError as exc:
+        raise TaskError(f"suite stage diagnostic validation failed: {exc}") from exc
+    if context["diagnostic"] != diagnostic:
+        raise TaskError(
+            "suite stage diagnostic differs from its contract authorization")
+
+    try:
         launch_identity = t1_suite._suite_launch_identity(context)
     except t1_suite.SuiteError as exc:
         raise TaskError(f"suite launch context is malformed: {exc}") from exc
@@ -171,6 +183,8 @@ def _validate_suite_runtime_context(args, raw_args):
             or os.environ.get("T1_SIM_CALL_CONTEXT") != cell_id):
         raise TaskError("suite launch ledger environment identity differs")
     expected_calls = t1_suite._estimated_calls_for_cells([cell])
+    if diagnostic is not None:
+        expected_calls = int(diagnostic["max_simulator_calls"])
     if launch_identity["max_simulator_calls"] != expected_calls:
         raise TaskError("suite launch call budget differs from the compiled cell")
     cell_args = list(cell.get("args") or [])
@@ -1651,6 +1665,12 @@ def main(argv=None) -> int:
         window = (float(args.window_start), float(args.window_end))
     suite_launch_claimed = False
     call_guard = None
+    diagnostic = ((suite_runtime_context or {}).get("diagnostic")
+                  if suite_runtime_context is not None else None)
+    diagnostic_stream = None
+    diagnostic_call_count = 0
+    diagnostic_call_exhausted = False
+    diagnostic_sampler_started = False
     exit_code = 0
     try:
         if suite_runtime_context is not None:
@@ -1662,15 +1682,53 @@ def main(argv=None) -> int:
             suite_launch_claimed = True
 
             def call_guard(arm):
+                nonlocal diagnostic_stream, diagnostic_call_count
+                nonlocal diagnostic_call_exhausted
+                nonlocal diagnostic_sampler_started
                 if arm not in NETWORK_ARMS:
                     raise TaskError(
                         f"controlled suite cell requested unknown arm {arm!r}")
+                if diagnostic is not None and diagnostic_call_count >= \
+                        int(diagnostic["max_simulator_calls"]):
+                    diagnostic_call_exhausted = True
+                    raise TaskError(
+                        "first-call diagnostic has exhausted its one-kernel-call cap")
+                stack_path = None
+                if diagnostic is not None:
+                    stack_path = args.out.parent / DIAGNOSTIC_STACK_ARTIFACT
+                    if stack_path.exists() or stack_path.is_symlink():
+                        raise TaskError(
+                            "diagnostic stack artifact already exists; "
+                            "refusing overwrite")
+                    try:
+                        diagnostic_stream = stack_path.open(
+                            "x", encoding="utf-8", buffering=1)
+                    except OSError as exc:
+                        raise TaskError(
+                            f"diagnostic stack artifact cannot be created: {exc}") \
+                            from exc
                 try:
                     t1_suite._reserve_suite_simulator_call(
                         suite_runtime_context)
                 except t1_suite.SuiteError as exc:
+                    if diagnostic_stream is not None:
+                        diagnostic_stream.close()
+                        diagnostic_stream = None
                     raise TaskError(
                         f"suite launch call reservation failed: {exc}") from exc
+                if diagnostic is not None:
+                    try:
+                        faulthandler.dump_traceback_later(
+                            float(diagnostic["sample_interval_s"]), repeat=True,
+                            file=diagnostic_stream)
+                    except (OSError, RuntimeError, ValueError) as exc:
+                        diagnostic_stream.close()
+                        diagnostic_stream = None
+                        raise TaskError(
+                            f"diagnostic stack sampler could not start: {exc}") \
+                            from exc
+                    diagnostic_sampler_started = True
+                    diagnostic_call_count += 1
 
         resolved, rows, geometry, source = design(
             args.config, args.scenario, args.root, overrides)
@@ -1685,11 +1743,26 @@ def main(argv=None) -> int:
             capture_replay=args.capture_replay,
             calibrate_common_horizon=args.calibrate_common_horizon,
             simulator_call_guard=call_guard)
+        if diagnostic is not None:
+            if diagnostic_call_count != 1:
+                raise TaskError(
+                    "first-call diagnostic did not start exactly one kernel call")
+            if diagnostic_call_exhausted:
+                raise TaskError(
+                    "first-call diagnostic stopped before another arm; "
+                    "partial four-arm output is intentionally not published")
         publish(document, args.out)
     except TaskError as exc:
         print(f"T1TASKS REFUSED: {exc}")
         exit_code = 2
     finally:
+        if diagnostic_sampler_started:
+            faulthandler.cancel_dump_traceback_later()
+        if diagnostic_stream is not None:
+            try:
+                diagnostic_stream.flush()
+            finally:
+                diagnostic_stream.close()
         if suite_launch_claimed:
             from CODE.experiment_platform import t1_suite
             try:

@@ -107,10 +107,20 @@ def require_runtime_ready_contract(contract, *, source="contract"):
         "only COST_PROBE_READY or RELEASE_READY can authorize execution")
 
 
-_COST_PROBE_AUTH_KEYS = {
+_COST_PROBE_AUTH_REQUIRED_KEYS = {
     "stage", "tier", "cell_ids", "max_selected_cells",
     "expected_simulator_calls", "max_simulator_calls", "allow_append",
     "task", "seed", "execution_chain_sha256", "cell_input_sha256",
+}
+_COST_PROBE_DIAGNOSTIC_KEYS = {
+    "mode", "max_simulator_calls", "maximum_cell_wall_s",
+    "sample_interval_s",
+}
+_COST_PROBE_DIAGNOSTIC = {
+    "mode": "first_kernel_call_stack_sampling",
+    "max_simulator_calls": 1,
+    "maximum_cell_wall_s": 45,
+    "sample_interval_s": 1,
 }
 
 
@@ -120,7 +130,9 @@ def _is_sha256(value):
 
 
 def _validate_cost_probe_authorization(auth, *, source="contract"):
-    if not isinstance(auth, dict) or set(auth) != _COST_PROBE_AUTH_KEYS:
+    if (not isinstance(auth, dict)
+            or not _COST_PROBE_AUTH_REQUIRED_KEYS.issubset(auth)
+            or set(auth) - _COST_PROBE_AUTH_REQUIRED_KEYS - {"diagnostic"}):
         raise SuiteError(
             f"runtime readiness gate refuses {source}: cost-probe "
             "authorization has missing or unknown fields")
@@ -145,6 +157,36 @@ def _validate_cost_probe_authorization(auth, *, source="contract"):
         raise SuiteError(
             f"runtime readiness gate refuses {source}: cost-probe input "
             "hash allowlist is malformed")
+    if "diagnostic" in auth:
+        _validate_cost_probe_diagnostic(auth["diagnostic"], source=source)
+
+
+def _validate_cost_probe_diagnostic(diagnostic, *, source="contract"):
+    if (not isinstance(diagnostic, dict)
+            or set(diagnostic) != _COST_PROBE_DIAGNOSTIC_KEYS
+            or diagnostic != _COST_PROBE_DIAGNOSTIC
+            or any(isinstance(diagnostic.get(key), bool)
+                   for key in ("max_simulator_calls",
+                               "maximum_cell_wall_s",
+                               "sample_interval_s"))):
+        raise SuiteError(
+            f"runtime readiness gate refuses {source}: diagnostic "
+            "authorization must exactly bound one kernel call, 45 seconds, "
+            "and one-second faulthandler sampling")
+
+
+def _cost_probe_diagnostic(readiness, *, cell_id=None):
+    """Return the exact optional diagnostic bound into cost-probe auth."""
+    if not isinstance(readiness, dict) or readiness.get("status") != \
+            "COST_PROBE_READY":
+        return None
+    auth = readiness.get("runtime_authorization")
+    if not isinstance(auth, dict) or "diagnostic" not in auth:
+        return None
+    _validate_cost_probe_authorization(auth)
+    if cell_id is not None and auth["cell_ids"] != [cell_id]:
+        raise SuiteError("diagnostic cell differs from the cost-probe allowlist")
+    return dict(auth["diagnostic"])
 
 
 def enforce_runtime_stage(contract, bundle, *, tier, selected_cell_ids,
@@ -1737,10 +1779,11 @@ def _aggregate_simulator_calls(records):
 
 
 def _suite_task_runtime_context(bundle_dir, bundle, tier, cell_id,
-                               selected_cell_ids, append, result_path):
+                               selected_cell_ids, append, result_path,
+                               diagnostic=None):
     """Bind a controlled-profile child process to this checked suite cell."""
     return {
-        "schema": "t1-suite-task-runtime-context/v1",
+        "schema": "t1-suite-task-runtime-context/v2",
         "bundle_dir": str(Path(bundle_dir).resolve()),
         "bundle_fingerprint": bundle.get("bundle_fingerprint"),
         "contract_path": bundle.get("contract_path"),
@@ -1750,6 +1793,7 @@ def _suite_task_runtime_context(bundle_dir, bundle, tier, cell_id,
         "selected_cell_ids": list(selected_cell_ids),
         "append": bool(append),
         "result_path": str(Path(result_path).resolve()),
+        "diagnostic": (None if diagnostic is None else dict(diagnostic)),
     }
 
 
@@ -2059,6 +2103,22 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
     controlled_population = (
         config_path is not None
         and t1_tasks._is_controlled_population_region_profile(config_path))
+    diagnostic = ((runtime_context or {}).get("diagnostic")
+                  if runtime_context is not None else None)
+    diagnostic_artifact = cell_dir / t1_tasks.DIAGNOSTIC_STACK_ARTIFACT
+    effective_cell_wall_s = float(budgets["cell_wall_s"])
+    if diagnostic is not None:
+        if not controlled_population:
+            raise SuiteError(
+                "first-call diagnostics require the controlled native-population cell")
+        _validate_cost_probe_diagnostic(diagnostic, source="runtime context")
+        effective_cell_wall_s = min(
+            effective_cell_wall_s,
+            float(diagnostic["maximum_cell_wall_s"]))
+    if diagnostic is not None and (diagnostic_artifact.exists()
+                                   or diagnostic_artifact.is_symlink()):
+        raise SuiteError(
+            "diagnostic stack artifact already exists; refusing overwrite")
     launch_context = None
     if controlled_population:
         if runtime_context is None:
@@ -2071,6 +2131,9 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
                 "controlled native-population suite cell must be network_alignment")
         max_calls = _estimated_calls_for_cells([cell])
         max_calls = min(max_calls, int(budgets["simulator_call_budget"]))
+        if diagnostic is not None:
+            max_calls = min(max_calls,
+                            int(diagnostic["max_simulator_calls"]))
         if max_calls <= 0:
             raise SuiteError("controlled native-population call budget is empty")
         call_ledger.write_text("", encoding="utf-8")
@@ -2083,7 +2146,7 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
                 (cell_dir / f"suite-launch-{nonce}.json").resolve()),
             "simulator_call_ledger_path": str(call_ledger.resolve()),
             "max_simulator_calls": max_calls,
-            "expires_at": time.time() + float(budgets["cell_wall_s"]) + 60.0,
+            "expires_at": time.time() + effective_cell_wall_s + 60.0,
         })
         _write_suite_launch_ledger(launch_context)
     argv = [sys.executable, "-m", cell["driver"], *cell["args"],
@@ -2105,7 +2168,7 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
                 "launch_nonce"]
     try:
         proc = subprocess.run(argv, cwd=str(REPO_ROOT), capture_output=True,
-                              text=True, timeout=budgets["cell_wall_s"],
+                              text=True, timeout=effective_cell_wall_s,
                               env=environment)
         returncode, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired as exc:
@@ -2132,6 +2195,37 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
             returncode = 2
             stderr = (stderr or "") + f"\nSUITE LAUNCH REFUSED: {exc}"
     result_probe = _inspect_result(result_path)
+    diagnostic_record = None
+    if diagnostic is not None:
+        if diagnostic_artifact.is_file() and not diagnostic_artifact.is_symlink():
+            diagnostic_record = {
+                "mode": diagnostic["mode"],
+                "max_simulator_calls": diagnostic["max_simulator_calls"],
+                "maximum_cell_wall_s": diagnostic["maximum_cell_wall_s"],
+                "sample_interval_s": diagnostic["sample_interval_s"],
+                "effective_cell_wall_s": effective_cell_wall_s,
+                "static_estimated_simulator_calls":
+                    _estimated_calls_for_cells([cell]),
+                "launch_max_simulator_calls": max_calls,
+                "artifact_path": str(diagnostic_artifact.relative_to(out_root)),
+                "artifact_sha256": _sha256_file(diagnostic_artifact),
+                "artifact_size_bytes": diagnostic_artifact.stat().st_size,
+            }
+        else:
+            diagnostic_record = {
+                "mode": diagnostic["mode"],
+                "max_simulator_calls": diagnostic["max_simulator_calls"],
+                "maximum_cell_wall_s": diagnostic["maximum_cell_wall_s"],
+                "sample_interval_s": diagnostic["sample_interval_s"],
+                "effective_cell_wall_s": effective_cell_wall_s,
+                "static_estimated_simulator_calls":
+                    _estimated_calls_for_cells([cell]),
+                "launch_max_simulator_calls": max_calls,
+                "artifact_path": None,
+                "artifact_sha256": None,
+                "artifact_size_bytes": None,
+                "status": "missing",
+            }
     predicate = cell.get("predicate") or {"kind": None}
     verdict = (check_predicate(result_probe["payload"], predicate)
                if result_probe["payload"] is not None
@@ -2155,7 +2249,7 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
         status = "ok"
     if call_accounting.get("unresolved", 0) and status == "ok":
         status = "error"
-    return {
+    record = {
         "cell_id": cell["cell_id"],
         "status": status,
         "returncode": returncode,
@@ -2180,6 +2274,9 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
                           or (f"returncode {returncode}"
                               if returncode else "result missing or invalid")))),
     }
+    if diagnostic_record is not None:
+        record["diagnostic"] = diagnostic_record
+    return record
 
 
 def _finalize_simulator_call_ledger(path, *, timed_out=False,
@@ -2985,11 +3082,18 @@ def run_bundle(bundle_dir, tier, out_dir, authorization=None,
         cell_budgets = dict(budgets)
         cell_budgets["cell_wall_s"] = min(
             float(budgets["cell_wall_s"]), float(remaining_sim_s))
+        diagnostic = _cost_probe_diagnostic(
+            readiness, cell_id=cell_id)
+        if diagnostic is not None:
+            cell_budgets["cell_wall_s"] = min(
+                float(cell_budgets["cell_wall_s"]),
+                float(diagnostic["maximum_cell_wall_s"]))
         runtime_context = None
         if readiness is not None:
             runtime_context = _suite_task_runtime_context(
                 bundle_dir, bundle, tier, cell_id, selected_for_budget,
-                append, out_dir / "cells" / cell_id / "result.json")
+                append, out_dir / "cells" / cell_id / "result.json",
+                diagnostic=diagnostic)
         record = _execute_cell(cell, out_dir, cell_budgets,
                                 runtime_context=runtime_context)
         record["identity"] = _cell_identity(bundle, cell)

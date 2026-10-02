@@ -907,10 +907,148 @@ def test_controlled_population_task_context_binds_bundle_cell_and_stage(
         t1_tasks._validate_suite_runtime_context(
             argparse.Namespace(config=compiled_profile, out=result_path), raw_args)
 
+    # A frozen diagnostic sub-authorization is carried through the actual
+    # compiled bundle and reduces only this child launch to one kernel call.
+    diagnostic = {
+        "mode": "first_kernel_call_stack_sampling",
+        "max_simulator_calls": 1,
+        "maximum_cell_wall_s": 45,
+        "sample_interval_s": 1,
+    }
+    contract["design_readiness"]["runtime_authorization"][
+        "diagnostic"] = diagnostic
+    contract_path.write_text(yaml.safe_dump(contract, allow_unicode=True),
+                             encoding="utf-8")
+    bundle["contract_sha256"] = t1_suite._sha256_file(contract_path)
+    bundle["bundle_fingerprint"] = t1_suite._bundle_fingerprint(bundle)
+    t1_suite._write_json(bundle_dir / "bundle.json", bundle)
+    diagnostic_context = t1_suite._suite_task_runtime_context(
+        bundle_dir, bundle, "b_dev", cell_id, [cell_id], False, result_path,
+        diagnostic=diagnostic)
+    diagnostic_ledger = (tmp_path / "diagnostic-simulator-calls.jsonl").resolve()
+    diagnostic_ledger.write_text("", encoding="utf-8")
+    diagnostic_context.update({
+        "launch_nonce": "e" * 64,
+        "launch_ledger_path": str(
+            (tmp_path / "diagnostic-suite-launch.json").resolve()),
+        "simulator_call_ledger_path": str(diagnostic_ledger),
+        "max_simulator_calls": 1,
+        "expires_at": time.time() + 300.0,
+    })
+    t1_suite._write_suite_launch_ledger(diagnostic_context)
+    monkeypatch.setenv(t1_tasks._SUITE_RUNTIME_CONTEXT_ENV,
+                       json.dumps(diagnostic_context, sort_keys=True))
+    monkeypatch.setenv("T1_SUITE_LAUNCH_NONCE",
+                       diagnostic_context["launch_nonce"])
+    monkeypatch.setenv("T1_SIM_CALL_LEDGER", str(diagnostic_ledger))
+    assert t1_tasks._validate_suite_runtime_context(
+        argparse.Namespace(config=compiled_profile, out=result_path),
+        raw_args)["diagnostic"] == diagnostic
+
+    tampered_diagnostic = dict(diagnostic_context)
+    tampered_diagnostic["diagnostic"] = None
+    monkeypatch.setenv(t1_tasks._SUITE_RUNTIME_CONTEXT_ENV,
+                       json.dumps(tampered_diagnostic, sort_keys=True))
+    with pytest.raises(t1_tasks.TaskError,
+                       match="diagnostic differs from its contract"):
+        t1_tasks._validate_suite_runtime_context(
+            argparse.Namespace(config=compiled_profile, out=result_path),
+            raw_args)
+
+    suite_launch = {}
+
+    def fake_execute_cell(_cell, _out_dir, budgets, *, runtime_context=None):
+        (_out_dir / "cells" / cell_id).mkdir(parents=True, exist_ok=True)
+        suite_launch["wall_s"] = budgets["cell_wall_s"]
+        suite_launch["diagnostic"] = runtime_context["diagnostic"]
+        return {
+            "cell_id": cell_id, "status": "error", "returncode": 2,
+            "simulator_calls": {"started": 0, "ended": 0, "failed": 0,
+                                "timed_out": 0, "interrupted": 0,
+                                "unresolved": 0, "simulator_wall_s": 0},
+        }
+
+    original_execute_cell = t1_suite._execute_cell
+    monkeypatch.setattr(t1_suite, "_execute_cell", fake_execute_cell)
+    diagnostic_run = t1_suite.run_bundle(
+        bundle_dir, "b_dev", tmp_path / "diagnostic-run",
+        cell_ids=[cell_id], stop_on_failure=True)
+    assert suite_launch == {"wall_s": 45.0, "diagnostic": diagnostic}
+    assert diagnostic_run["status"] == "FAILED_CELLS"
+
+    # Exercise the real process-launch boundary too: even a caller that hands
+    # _execute_cell a 120-second budget receives a 45-second subprocess cap.
+    monkeypatch.setattr(t1_suite, "_execute_cell", original_execute_cell)
+    child_launch = {}
+
+    def fake_diagnostic_child(argv, **kwargs):
+        child_launch["timeout"] = kwargs["timeout"]
+        child_context = json.loads(
+            kwargs["env"][t1_tasks._SUITE_RUNTIME_CONTEXT_ENV])
+        child_launch["max_simulator_calls"] = child_context[
+            "max_simulator_calls"]
+        child_launch["diagnostic"] = child_context["diagnostic"]
+        t1_suite._claim_suite_launch_ledger(child_context)
+        t1_suite._reserve_suite_simulator_call(child_context)
+        Path(child_context["simulator_call_ledger_path"]).write_text(
+            "\n".join(json.dumps(event) for event in ({
+                "schema": "t1-simulator-call/v1",
+                "context": cell_id,
+                "call_id": f"{cell_id}:0001",
+                "event": "begin",
+                "sequence": 1,
+                "monotonic_ns": time.perf_counter_ns(),
+            }, {
+                "schema": "t1-simulator-call/v1",
+                "context": cell_id,
+                "call_id": f"{cell_id}:0001",
+                "event": "fail",
+                "sequence": 1,
+                "duration_s": 0.01,
+            })) + "\n", encoding="utf-8")
+        t1_suite._close_suite_launch_ledger(child_context)
+        child_result = Path(argv[argv.index("--out") + 1])
+        (child_result.parent / t1_tasks.DIAGNOSTIC_STACK_ARTIFACT).write_text(
+            "sampled stack\n", encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 2, "", "diagnostic child stopped")
+
+    original_subprocess_run = subprocess.run
+    monkeypatch.setattr(t1_suite.subprocess, "run", fake_diagnostic_child)
+    monkeypatch.setattr(t1_tasks, "_is_controlled_population_region_profile",
+                        lambda _path: True)
+    direct_root = tmp_path / "direct-execute"
+    direct_result = direct_root / "cells" / cell_id / "result.json"
+    direct_context = t1_suite._suite_task_runtime_context(
+        bundle_dir, bundle, "b_dev", cell_id, [cell_id], False, direct_result,
+        diagnostic=diagnostic)
+    direct_record = t1_suite._execute_cell(
+        cell, direct_root, {**t1_suite.DEFAULT_BUDGETS,
+                            "cell_wall_s": 120.0,
+                            "simulator_call_budget": 4},
+        runtime_context=direct_context)
+    diagnostic_record = direct_record["diagnostic"]
+    assert child_launch == {
+        "timeout": 45.0,
+        "max_simulator_calls": 1,
+        "diagnostic": diagnostic,
+    }
+    assert diagnostic_record["artifact_path"].endswith(
+        t1_tasks.DIAGNOSTIC_STACK_ARTIFACT)
+    assert diagnostic_record["artifact_sha256"] == hashlib.sha256(
+        b"sampled stack\n").hexdigest()
+    assert diagnostic_record["artifact_size_bytes"] == len(b"sampled stack\n")
+    assert diagnostic_record["max_simulator_calls"] == 1
+    assert diagnostic_record["maximum_cell_wall_s"] == 45
+    assert diagnostic_record["sample_interval_s"] == 1
+    assert diagnostic_record["effective_cell_wall_s"] == 45.0
+    assert diagnostic_record["static_estimated_simulator_calls"] == 4
+    assert diagnostic_record["launch_max_simulator_calls"] == 1
+    monkeypatch.setattr(t1_suite.subprocess, "run", original_subprocess_run)
+
     # Editing the bound profile after compile (including a seed change) fails
     # before design/trace loading, even with the old context still present.
     monkeypatch.setenv(t1_tasks._SUITE_RUNTIME_CONTEXT_ENV,
-                       json.dumps(context, sort_keys=True))
+                       json.dumps(diagnostic_context, sort_keys=True))
     resolved_profile = compiled_profile
     changed_profile = yaml.safe_load(resolved_profile.read_text(
         encoding="utf-8"))

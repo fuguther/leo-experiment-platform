@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import copy
+import faulthandler
 import inspect
+import json
 from pathlib import Path
 
 import pytest
 import yaml
 
 from CODE.experiment_platform import scripted_scenarios, t1_tasks
+from CODE.experiment_platform import t1_suite
 from CODE.leo_sim import config as config_mod
 
 PROFILE = "CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml"
@@ -92,6 +95,125 @@ def test_controlled_network_checks_call_budget_before_every_kernel_call(
     assert document["status"] == "ALL_ARMS_FAILED"
     assert all("budget exhausted" in failure["reason"]
                for failure in document["failures"][2:])
+
+
+def test_first_call_diagnostic_never_starts_a_second_kernel_call(monkeypatch):
+    resolved, rows, geometry, source = _scenario()
+    guard_attempts = []
+    kernel_calls = []
+
+    def one_call_guard(arm):
+        guard_attempts.append(arm)
+        if len(guard_attempts) > 1:
+            raise t1_tasks.TaskError("diagnostic simulator-call budget exhausted")
+
+    def fake_kernel(*_args, **_kwargs):
+        kernel_calls.append(True)
+        raise RuntimeError("bounded first-call fixture")
+
+    monkeypatch.setattr(t1_tasks.kernel, "run_simulation", fake_kernel)
+    document = t1_tasks.network_alignment(
+        resolved, rows, geometry, source,
+        simulator_call_guard=one_call_guard)
+
+    assert guard_attempts == list(t1_tasks.NETWORK_ARMS)
+    assert kernel_calls == [True]
+    assert document["status"] == "ALL_ARMS_FAILED"
+    assert len(document["failures"]) == len(t1_tasks.NETWORK_ARMS)
+
+
+def test_authorized_diagnostic_samples_first_call_and_never_publishes_partial(
+        tmp_path, monkeypatch):
+    diagnostic = {
+        "mode": "first_kernel_call_stack_sampling",
+        "max_simulator_calls": 1,
+        "maximum_cell_wall_s": 45,
+        "sample_interval_s": 1,
+    }
+    output = tmp_path / "cells" / "probe" / "result.json"
+    output.parent.mkdir(parents=True)
+    context = {"cell_id": "probe", "diagnostic": diagnostic}
+    monkeypatch.setattr(t1_tasks, "_is_controlled_population_region_profile",
+                        lambda _path: True)
+    monkeypatch.setattr(t1_tasks, "_validate_suite_runtime_context",
+                        lambda *_args: context)
+    monkeypatch.setattr(t1_tasks, "design",
+                        lambda *_args, **_kwargs: ({}, [], None, {}))
+    monkeypatch.setattr(t1_suite, "_claim_suite_launch_ledger",
+                        lambda _context: None)
+    monkeypatch.setattr(t1_suite, "_close_suite_launch_ledger",
+                        lambda _context: None)
+    reservations = []
+
+    def reserve(_context):
+        reservations.append(True)
+        if len(reservations) > 1:
+            raise t1_suite.SuiteError("call cap exhausted")
+
+    monkeypatch.setattr(t1_suite, "_reserve_suite_simulator_call",
+                        reserve)
+    run_task_calls = []
+
+    def fake_run_task(*_args, simulator_call_guard=None, **_kwargs):
+        errors = []
+        for arm in t1_tasks.NETWORK_ARMS:
+            try:
+                simulator_call_guard(arm)
+                run_task_calls.append(arm)
+            except t1_tasks.TaskError as exc:
+                errors.append(str(exc))
+        return {"status": "DEGRADED", "task": "network_alignment",
+                "failed_units": len(errors), "failures": errors}
+
+    monkeypatch.setattr(t1_tasks, "run_task", fake_run_task)
+    starts = []
+    cancellations = []
+
+    def record_dump(delay, *, repeat, file):
+        starts.append((delay, repeat, Path(file.name)))
+        file.write("stack sample\n")
+        file.flush()
+
+    monkeypatch.setattr(faulthandler, "dump_traceback_later", record_dump)
+    monkeypatch.setattr(faulthandler, "cancel_dump_traceback_later",
+                        lambda: cancellations.append(True))
+
+    status = t1_tasks.main([
+        "--task", "network_alignment", "--config", "profile.yaml",
+        "--out", str(output), "--arms", ",".join(t1_tasks.NETWORK_ARMS),
+    ])
+
+    assert status == 2
+    assert reservations == [True]
+    assert run_task_calls == ["stale"]
+    assert len(starts) == 1 and starts[0][:2] == (1, True)
+    assert starts[0][2].read_text(encoding="utf-8") == "stack sample\n"
+    assert cancellations == [True]
+    assert not output.exists()
+
+    # The ordinary four-arm context carries no diagnostic and must not create
+    # a sampler, timer, or artifact.
+    normal_output = tmp_path / "ordinary" / "result.json"
+    normal_output.parent.mkdir(parents=True)
+    monkeypatch.setattr(t1_tasks, "_validate_suite_runtime_context",
+                        lambda *_args: {"cell_id": "probe", "diagnostic": None})
+    monkeypatch.setattr(t1_suite, "_reserve_suite_simulator_call",
+                        lambda _context: None)
+
+    def normal_run_task(*_args, simulator_call_guard=None, **_kwargs):
+        simulator_call_guard("stale")
+        return {"status": "ok", "task": "network_alignment",
+                "failed_units": 0}
+
+    monkeypatch.setattr(t1_tasks, "run_task", normal_run_task)
+    normal_status = t1_tasks.main([
+        "--task", "network_alignment", "--config", "profile.yaml",
+        "--out", str(normal_output), "--arms", ",".join(t1_tasks.NETWORK_ARMS),
+    ])
+    assert normal_status == 0
+    assert len(starts) == 1
+    assert cancellations == [True]
+    assert not (normal_output.parent / t1_tasks.DIAGNOSTIC_STACK_ARTIFACT).exists()
 
 
 # ------------------------------------------------------ branch eligibility

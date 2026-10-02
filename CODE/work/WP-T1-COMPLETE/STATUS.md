@@ -1,7 +1,9 @@
 # WP-T1-COMPLETE — 状态账本
 
 > 计划：`docs/superpowers/plans/2026-09-27-t1-complete-implementation.md` 顶部当前节。交付：`REPORT.md` 当前准备复核段；机器判据：`criteria.json`；旧合同：`contract_dev_c.yaml`（失效，禁止运行）。
-> **执行边界：** 用户已授权连续实施代码、反例/回归、最多51个新增开发calls及独立≤100 VM分钟DDQN训练包；旧B费用继续计入。根已单独批准本合同绑定的唯一seed7低负载四臂成本探针，允许提交推送、发布及最多4 calls；须先完成clean release/runtime/input/run身份验真，不扩成主矩阵或训练。FORMAL_RUN、seed1001+和main合并不在授权内。
+> **执行边界：** 用户已授权连续实施代码、反例/回归、最多51个新增开发calls及独立≤100 VM分钟DDQN训练包；旧B费用继续计入。前次seed7低负载四臂成本探针已按旧身份运行并超时，不得复跑。根当前仅批准依新合同做一次seed7首臂CPU栈诊断（最多1个kernel call、45秒、1秒采样），按下方精确身份发布执行；不扩成主矩阵或训练。FORMAL_RUN、seed1001+和main合并不在授权内。
+
+> **限域诊断授权（2026-10-02，窗口截止北京时间16:10）：** 根复核本轮冻结的六文件差异并接受70文件执行链 `96c646960b7f10d9a7ad429549963219db44f0347fce5fdde96d66c445a8b3c6` 后，重绑合同 `contract_dev_cost_probe.yaml` SHA-256 `3426e28817dee212f6e64e0910d414deda92ebc581e1ad113264486008e194c3`，批准唯一 seed7 cell 的一次 kernel call、最多45秒、1秒周期的 CPU 栈采样。cell 输入 SHA-256 `3d4eb54ac9447087be8be5acfe6020ccc22150c266566c77f66a512a40aa9155`；本机以既有同字节 GPW 快照做 compile/validate/context 静态核验通过，配置为280/14、5 Mbps、12000 bit、单 compute server/1 ms。旧4-call运行失败仍计账且不复跑；新诊断仅限一臂，不发布四臂结果，主矩阵与训练门仍关闭。当前为待提交/发布的限域诊断准备状态，完整成本及研究门未通过。
 
 ## 当前研究与工程状态（2026-10-02；DESIGN_READY=true，PROBE_CODE_READY=true，COST_PROBE_READY=false，RELEASE_READY=false）
 
