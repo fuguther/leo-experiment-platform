@@ -326,10 +326,10 @@ def test_cost_probe_gate_requires_one_exact_seed7_four_arm_cell(tmp_path):
 
 def test_cost_probe_accepts_only_the_fixed_first_call_diagnostic():
     diagnostic = {
-        "mode": "first_kernel_call_stack_sampling",
+        "mode": "first_kernel_call_cprofile",
         "max_simulator_calls": 1,
         "maximum_cell_wall_s": 45,
-        "sample_interval_s": 1,
+        "profile_duration_s": 30,
     }
     authorization = {
         "stage": "cost_probe", "tier": "b_dev",
@@ -349,7 +349,7 @@ def test_cost_probe_accepts_only_the_fixed_first_call_diagnostic():
         "COST_PROBE_READY"
     for key, value in (("max_simulator_calls", 2),
                        ("maximum_cell_wall_s", 120),
-                       ("sample_interval_s", 0),
+                       ("profile_duration_s", 31),
                        ("mode", "arbitrary_profiler")):
         malformed = json.loads(json.dumps(contract))
         malformed["design_readiness"]["runtime_authorization"][

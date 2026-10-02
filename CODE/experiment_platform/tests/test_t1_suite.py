@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import cProfile
 import json
 import hashlib
 import subprocess
@@ -910,10 +911,10 @@ def test_controlled_population_task_context_binds_bundle_cell_and_stage(
     # A frozen diagnostic sub-authorization is carried through the actual
     # compiled bundle and reduces only this child launch to one kernel call.
     diagnostic = {
-        "mode": "first_kernel_call_stack_sampling",
+        "mode": "first_kernel_call_cprofile",
         "max_simulator_calls": 1,
         "maximum_cell_wall_s": 45,
-        "sample_interval_s": 1,
+        "profile_duration_s": 30,
     }
     contract["design_readiness"]["runtime_authorization"][
         "diagnostic"] = diagnostic
@@ -1008,12 +1009,18 @@ def test_controlled_population_task_context_binds_bundle_cell_and_stage(
             })) + "\n", encoding="utf-8")
         t1_suite._close_suite_launch_ledger(child_context)
         child_result = Path(argv[argv.index("--out") + 1])
-        (child_result.parent / t1_tasks.DIAGNOSTIC_STACK_ARTIFACT).write_text(
-            "sampled stack\n", encoding="utf-8")
-        return subprocess.CompletedProcess(argv, 2, "", "diagnostic child stopped")
+        profile_path = (child_result.parent
+                        / t1_tasks.DIAGNOSTIC_PROFILE_ARTIFACT)
+        profile = cProfile.Profile()
+        profile.runcall(sum, [1, 2])
+        profile.dump_stats(str(profile_path))
+        return subprocess.CompletedProcess(argv, -11, "", "diagnostic child stopped")
 
     original_subprocess_run = subprocess.run
     monkeypatch.setattr(t1_suite.subprocess, "run", fake_diagnostic_child)
+    monkeypatch.setattr(
+        t1_suite, "_suite_launch_ledger_snapshot",
+        lambda _context: {"status": "open", "reserved_calls": 1})
     monkeypatch.setattr(t1_tasks, "_is_controlled_population_region_profile",
                         lambda _path: True)
     direct_root = tmp_path / "direct-execute"
@@ -1027,19 +1034,26 @@ def test_controlled_population_task_context_binds_bundle_cell_and_stage(
                             "simulator_call_budget": 4},
         runtime_context=direct_context)
     diagnostic_record = direct_record["diagnostic"]
+    assert direct_record["child_returncode"] == -11
+    assert direct_record["returncode"] == 2
+    assert "launch ledger was not closed" in direct_record[
+        "launch_integrity_error"]
     assert child_launch == {
         "timeout": 45.0,
         "max_simulator_calls": 1,
         "diagnostic": diagnostic,
     }
     assert diagnostic_record["artifact_path"].endswith(
-        t1_tasks.DIAGNOSTIC_STACK_ARTIFACT)
+        t1_tasks.DIAGNOSTIC_PROFILE_ARTIFACT)
+    artifact_bytes = (direct_root / diagnostic_record["artifact_path"]).read_bytes()
     assert diagnostic_record["artifact_sha256"] == hashlib.sha256(
-        b"sampled stack\n").hexdigest()
-    assert diagnostic_record["artifact_size_bytes"] == len(b"sampled stack\n")
+        artifact_bytes).hexdigest()
+    assert diagnostic_record["artifact_size_bytes"] == len(artifact_bytes)
+    assert diagnostic_record["status"] == "complete"
+    assert diagnostic_record["artifact_format"] == "cProfile-pstats"
     assert diagnostic_record["max_simulator_calls"] == 1
     assert diagnostic_record["maximum_cell_wall_s"] == 45
-    assert diagnostic_record["sample_interval_s"] == 1
+    assert diagnostic_record["profile_duration_s"] == 30
     assert diagnostic_record["effective_cell_wall_s"] == 45.0
     assert diagnostic_record["static_estimated_simulator_calls"] == 4
     assert diagnostic_record["launch_max_simulator_calls"] == 1

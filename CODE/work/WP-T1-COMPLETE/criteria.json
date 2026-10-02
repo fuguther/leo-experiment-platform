@@ -2157,7 +2157,7 @@
       "release_ready": false,
       "runtime_gate_implemented": true,
       "old_contract_readiness": false,
-      "current_action": "ROOT_ACCEPTED_SINGLE_45S_CPU_DIAGNOSTIC; commit/push/release/fresh-run allowed; no main matrix or training yet",
+      "current_action": "ROOT_ACCEPTED_SINGLE_30S_CPROFILE_DIAGNOSTIC; hard45s and1call; no main/training",
       "cost_probe_ready": false,
       "core_cost_ready": false,
       "ddqn_cost_ready": false,
@@ -3019,7 +3019,52 @@
         "batch_calls_remaining": 51,
         "c_new_calls_remaining": 50,
         "batch_simulator_wall_s_remaining": 3374.853778567
+      },
+      "prior_stack_diagnostic_actual": {
+        "run_id": "t1-population-cpu-diagnostic-20261002-01",
+        "cell_wall_s": 6.697868098,
+        "kernel_simulator_wall_s": 3.146360391,
+        "calls_started": 1,
+        "calls_ended": 0,
+        "calls_interrupted": 1,
+        "result_or_four_arm_document": "absent",
+        "stack_artifact_size_bytes": 472,
+        "stack_samples": 1,
+        "raw_child_returncode": "NOT_RETAINED_BY_OLD_SUITE",
+        "exit_cause": "unknown",
+        "interpretation": "not a hot-spot profile; sample frame/function identity did not match the pinned runtime source"
+      },
+      "budget_after_prior_stack_diagnostic": {
+        "batch_calls_used": 10,
+        "batch_simulator_wall_s_used": 228.292581824,
+        "batch_calls_remaining": 50,
+        "c_new_calls_remaining": 49,
+        "batch_simulator_wall_s_remaining": 3371.707418176
       }
+    },
+    "root_cprofile_diagnostic_review": {
+      "status": "ROOT_ACCEPTED_SINGLE_CPROFILE_DIAGNOSTIC_ONLY",
+      "chain": "6d46bdb9d20096a777e81300d4fc52a41edafd092c35e475079779783ad7815d",
+      "production_files": 70,
+      "cell_input_sha256": "e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715",
+      "scientific_inputs_unchanged": true,
+      "validation": true,
+      "diagnostic": {
+        "mode": "first_kernel_call_cprofile",
+        "max_simulator_calls": 1,
+        "maximum_cell_wall_s": 45,
+        "profile_duration_s": 30
+      },
+      "root_independent_tests": {
+        "causal": 5,
+        "diagnostic_context": 4
+      },
+      "budget_before": {
+        "total_calls_used": 10,
+        "sim_wall_s": 228.292581824,
+        "c_new_calls_left": 49
+      },
+      "deadline_beijing": "2026-10-02 16:10"
     }
   }
 }

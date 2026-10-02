@@ -33,15 +33,17 @@ from __future__ import annotations
 
 import argparse
 import collections
+import cProfile
 import copy
-import faulthandler
 import hashlib
 import json
 import math
 import os
+import signal
 import statistics
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from CODE.experiment_platform import (artifact_identity, execution_compare,
@@ -74,7 +76,99 @@ class TaskError(RuntimeError):
 
 
 _SUITE_RUNTIME_CONTEXT_ENV = "T1_SUITE_RUNTIME_CONTEXT"
-DIAGNOSTIC_STACK_ARTIFACT = "diagnostic-stack-samples.log"
+DIAGNOSTIC_PROFILE_ARTIFACT = "diagnostic-kernel-cprofile.pstats"
+
+
+class _DiagnosticStop(BaseException):
+    """Raised by the bounded diagnostic's Python wall-clock alarm."""
+
+
+class _KernelCProfileScope:
+    """Profile only one kernel call, then persist its complete pstats file."""
+
+    def __init__(self, path, duration_s, state, on_start):
+        self.path = Path(path)
+        self.duration_s = float(duration_s)
+        self.state = state
+        self.on_start = on_start
+        self.profile = cProfile.Profile()
+        self.previous_handler = None
+        self.previous_timer = None
+        self.started_at = None
+        self.timer_installed = False
+        self.profile_enabled = False
+
+    def _stop(self, _signum, _frame):
+        self.state["stop_fired"] = True
+        raise _DiagnosticStop(
+            f"cProfile diagnostic stopped at {self.duration_s:g} seconds")
+
+    def __enter__(self):
+        if not hasattr(signal, "setitimer") or not hasattr(signal, "ITIMER_REAL"):
+            raise TaskError(
+                "cProfile diagnostic requires a real-time interval timer")
+        self.previous_handler = signal.getsignal(signal.SIGALRM)
+        self.previous_timer = signal.getitimer(signal.ITIMER_REAL)
+        if any(float(value) > 0.0 for value in self.previous_timer):
+            raise TaskError(
+                "cProfile diagnostic refuses to replace an active real-time timer")
+        if self.path.exists() or self.path.is_symlink():
+            raise TaskError("diagnostic pstats artifact already exists")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            descriptor = os.open(
+                self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except OSError as exc:
+            raise TaskError(
+                f"diagnostic pstats artifact cannot be created: {exc}") from exc
+        else:
+            os.close(descriptor)
+
+        try:
+            signal.signal(signal.SIGALRM, self._stop)
+            self.profile.enable()
+            self.profile_enabled = True
+            self.started_at = time.monotonic()
+            signal.setitimer(signal.ITIMER_REAL, self.duration_s, 0.0)
+            self.timer_installed = True
+            self.on_start()
+            return self
+        except Exception:
+            self._restore_runtime_state()
+            raise
+
+    def _restore_runtime_state(self):
+        if self.timer_installed:
+            signal.setitimer(signal.ITIMER_REAL, 0.0, 0.0)
+            self.timer_installed = False
+        if self.profile_enabled:
+            self.profile.disable()
+            self.profile_enabled = False
+        if self.previous_handler is not None:
+            signal.signal(signal.SIGALRM, self.previous_handler)
+        if self.previous_timer is not None:
+            remaining, interval = self.previous_timer
+            if remaining > 0.0 and self.started_at is not None:
+                remaining = max(0.0, remaining - (time.monotonic()
+                                                  - self.started_at))
+            signal.setitimer(signal.ITIMER_REAL, remaining, interval)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        dump_error = None
+        try:
+            self._restore_runtime_state()
+            if self.path.is_symlink() or not self.path.is_file():
+                raise OSError("diagnostic pstats artifact identity changed")
+            self.profile.dump_stats(str(self.path))
+            if self.path.stat().st_size <= 0:
+                raise OSError("diagnostic pstats artifact is empty")
+        except Exception as error:
+            dump_error = error
+        if dump_error is not None:
+            raise TaskError(
+                f"diagnostic pstats artifact is NOT_AVAILABLE: {dump_error}") \
+                from dump_error
+        return False
 
 
 def _is_controlled_population_region_profile(config_path):
@@ -1146,11 +1240,17 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
     cfg["time_alignment"]["arm"] = arm
     local = config_mod.resolve_config(cfg)
     sink, timeline = [], []
-    if simulator_call_guard is not None:
-        simulator_call_guard(arm)
-    result = kernel.run_simulation(local, rows, geometry=geometry,
-                                   decision_sink=sink, timeline_sink=timeline,
-                                   control_audit=True)
+    call_scope = (simulator_call_guard(arm)
+                  if simulator_call_guard is not None else None)
+    if call_scope is None:
+        result = kernel.run_simulation(
+            local, rows, geometry=geometry, decision_sink=sink,
+            timeline_sink=timeline, control_audit=True)
+    else:
+        with call_scope:
+            result = kernel.run_simulation(
+                local, rows, geometry=geometry, decision_sink=sink,
+                timeline_sink=timeline, control_audit=True)
     e2e = execution_compare._e2e(result["deliveries"],
                                  result["packet_events"])
     forwards = [r for r in sink if r.get("kind") == "forward"]
@@ -1667,10 +1767,10 @@ def main(argv=None) -> int:
     call_guard = None
     diagnostic = ((suite_runtime_context or {}).get("diagnostic")
                   if suite_runtime_context is not None else None)
-    diagnostic_stream = None
     diagnostic_call_count = 0
+    diagnostic_kernel_started = 0
     diagnostic_call_exhausted = False
-    diagnostic_sampler_started = False
+    diagnostic_state = {"stop_fired": False}
     exit_code = 0
     try:
         if suite_runtime_context is not None:
@@ -1682,9 +1782,8 @@ def main(argv=None) -> int:
             suite_launch_claimed = True
 
             def call_guard(arm):
-                nonlocal diagnostic_stream, diagnostic_call_count
+                nonlocal diagnostic_call_count, diagnostic_kernel_started
                 nonlocal diagnostic_call_exhausted
-                nonlocal diagnostic_sampler_started
                 if arm not in NETWORK_ARMS:
                     raise TaskError(
                         f"controlled suite cell requested unknown arm {arm!r}")
@@ -1693,42 +1792,31 @@ def main(argv=None) -> int:
                     diagnostic_call_exhausted = True
                     raise TaskError(
                         "first-call diagnostic has exhausted its one-kernel-call cap")
-                stack_path = None
+                profile_path = None
                 if diagnostic is not None:
-                    stack_path = args.out.parent / DIAGNOSTIC_STACK_ARTIFACT
-                    if stack_path.exists() or stack_path.is_symlink():
+                    profile_path = (args.out.parent
+                                    / DIAGNOSTIC_PROFILE_ARTIFACT)
+                    if profile_path.exists() or profile_path.is_symlink():
                         raise TaskError(
-                            "diagnostic stack artifact already exists; "
+                            "diagnostic pstats artifact already exists; "
                             "refusing overwrite")
-                    try:
-                        diagnostic_stream = stack_path.open(
-                            "x", encoding="utf-8", buffering=1)
-                    except OSError as exc:
-                        raise TaskError(
-                            f"diagnostic stack artifact cannot be created: {exc}") \
-                            from exc
                 try:
                     t1_suite._reserve_suite_simulator_call(
                         suite_runtime_context)
                 except t1_suite.SuiteError as exc:
-                    if diagnostic_stream is not None:
-                        diagnostic_stream.close()
-                        diagnostic_stream = None
                     raise TaskError(
                         f"suite launch call reservation failed: {exc}") from exc
                 if diagnostic is not None:
-                    try:
-                        faulthandler.dump_traceback_later(
-                            float(diagnostic["sample_interval_s"]), repeat=True,
-                            file=diagnostic_stream)
-                    except (OSError, RuntimeError, ValueError) as exc:
-                        diagnostic_stream.close()
-                        diagnostic_stream = None
-                        raise TaskError(
-                            f"diagnostic stack sampler could not start: {exc}") \
-                            from exc
-                    diagnostic_sampler_started = True
                     diagnostic_call_count += 1
+                    def mark_kernel_started():
+                        nonlocal diagnostic_kernel_started
+                        diagnostic_kernel_started += 1
+                    return _KernelCProfileScope(
+                        profile_path,
+                        diagnostic["profile_duration_s"],
+                        diagnostic_state,
+                        mark_kernel_started)
+                return None
 
         resolved, rows, geometry, source = design(
             args.config, args.scenario, args.root, overrides)
@@ -1744,7 +1832,11 @@ def main(argv=None) -> int:
             calibrate_common_horizon=args.calibrate_common_horizon,
             simulator_call_guard=call_guard)
         if diagnostic is not None:
-            if diagnostic_call_count != 1:
+            if diagnostic_state["stop_fired"]:
+                raise TaskError(
+                    "first-call cProfile diagnostic reached its 30-second cap; "
+                    "partial four-arm output is intentionally not published")
+            if diagnostic_call_count != 1 or diagnostic_kernel_started != 1:
                 raise TaskError(
                     "first-call diagnostic did not start exactly one kernel call")
             if diagnostic_call_exhausted:
@@ -1752,17 +1844,13 @@ def main(argv=None) -> int:
                     "first-call diagnostic stopped before another arm; "
                     "partial four-arm output is intentionally not published")
         publish(document, args.out)
+    except _DiagnosticStop as exc:
+        print(f"T1TASKS DIAGNOSTIC STOP: {exc}")
+        exit_code = 3
     except TaskError as exc:
         print(f"T1TASKS REFUSED: {exc}")
         exit_code = 2
     finally:
-        if diagnostic_sampler_started:
-            faulthandler.cancel_dump_traceback_later()
-        if diagnostic_stream is not None:
-            try:
-                diagnostic_stream.flush()
-            finally:
-                diagnostic_stream.close()
         if suite_launch_claimed:
             from CODE.experiment_platform import t1_suite
             try:

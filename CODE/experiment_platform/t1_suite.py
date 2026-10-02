@@ -24,6 +24,7 @@ import hashlib
 import json
 import math
 import os
+import pstats
 import secrets
 import shutil
 import stat
@@ -114,13 +115,13 @@ _COST_PROBE_AUTH_REQUIRED_KEYS = {
 }
 _COST_PROBE_DIAGNOSTIC_KEYS = {
     "mode", "max_simulator_calls", "maximum_cell_wall_s",
-    "sample_interval_s",
+    "profile_duration_s",
 }
 _COST_PROBE_DIAGNOSTIC = {
-    "mode": "first_kernel_call_stack_sampling",
+    "mode": "first_kernel_call_cprofile",
     "max_simulator_calls": 1,
     "maximum_cell_wall_s": 45,
-    "sample_interval_s": 1,
+    "profile_duration_s": 30,
 }
 
 
@@ -168,11 +169,11 @@ def _validate_cost_probe_diagnostic(diagnostic, *, source="contract"):
             or any(isinstance(diagnostic.get(key), bool)
                    for key in ("max_simulator_calls",
                                "maximum_cell_wall_s",
-                               "sample_interval_s"))):
+                               "profile_duration_s"))):
         raise SuiteError(
             f"runtime readiness gate refuses {source}: diagnostic "
-            "authorization must exactly bound one kernel call, 45 seconds, "
-            "and one-second faulthandler sampling")
+            "authorization must exactly bound one cProfile kernel call, "
+            "30 seconds of profiling, and a 45-second cell cap")
 
 
 def _cost_probe_diagnostic(readiness, *, cell_id=None):
@@ -2105,7 +2106,7 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
         and t1_tasks._is_controlled_population_region_profile(config_path))
     diagnostic = ((runtime_context or {}).get("diagnostic")
                   if runtime_context is not None else None)
-    diagnostic_artifact = cell_dir / t1_tasks.DIAGNOSTIC_STACK_ARTIFACT
+    diagnostic_artifact = cell_dir / t1_tasks.DIAGNOSTIC_PROFILE_ARTIFACT
     effective_cell_wall_s = float(budgets["cell_wall_s"])
     if diagnostic is not None:
         if not controlled_population:
@@ -2118,7 +2119,7 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
     if diagnostic is not None and (diagnostic_artifact.exists()
                                    or diagnostic_artifact.is_symlink()):
         raise SuiteError(
-            "diagnostic stack artifact already exists; refusing overwrite")
+            "diagnostic pstats artifact already exists; refusing overwrite")
     launch_context = None
     if controlled_population:
         if runtime_context is None:
@@ -2153,6 +2154,8 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
             "--out", str(result_path)]
     started = time.perf_counter()
     timed_out = False
+    child_returncode = None
+    launch_integrity_error = None
     environment = os.environ.copy()
     environment["T1_SIM_CALL_LEDGER"] = str(call_ledger.resolve())
     environment["T1_SIM_CALL_CONTEXT"] = str(cell["cell_id"])
@@ -2170,6 +2173,7 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
         proc = subprocess.run(argv, cwd=str(REPO_ROOT), capture_output=True,
                               text=True, timeout=effective_cell_wall_s,
                               env=environment)
+        child_returncode = proc.returncode
         returncode, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired as exc:
         timed_out = True
@@ -2192,17 +2196,30 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
                 raise SuiteError(
                     "suite launch reservations differ from kernel call ledger")
         except SuiteError as exc:
+            launch_integrity_error = str(exc)
             returncode = 2
             stderr = (stderr or "") + f"\nSUITE LAUNCH REFUSED: {exc}"
     result_probe = _inspect_result(result_path)
     diagnostic_record = None
     if diagnostic is not None:
-        if diagnostic_artifact.is_file() and not diagnostic_artifact.is_symlink():
+        artifact_exists = (diagnostic_artifact.is_file()
+                           and not diagnostic_artifact.is_symlink()
+                           and diagnostic_artifact.stat().st_size > 0)
+        artifact_status = "NOT_AVAILABLE"
+        if artifact_exists:
+            try:
+                pstats.Stats(str(diagnostic_artifact))
+            except Exception:
+                artifact_status = "invalid"
+            else:
+                artifact_status = "complete"
+        if artifact_exists:
             diagnostic_record = {
                 "mode": diagnostic["mode"],
                 "max_simulator_calls": diagnostic["max_simulator_calls"],
                 "maximum_cell_wall_s": diagnostic["maximum_cell_wall_s"],
-                "sample_interval_s": diagnostic["sample_interval_s"],
+                "profile_duration_s": diagnostic["profile_duration_s"],
+                "artifact_format": "cProfile-pstats",
                 "effective_cell_wall_s": effective_cell_wall_s,
                 "static_estimated_simulator_calls":
                     _estimated_calls_for_cells([cell]),
@@ -2210,13 +2227,15 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
                 "artifact_path": str(diagnostic_artifact.relative_to(out_root)),
                 "artifact_sha256": _sha256_file(diagnostic_artifact),
                 "artifact_size_bytes": diagnostic_artifact.stat().st_size,
+                "status": artifact_status,
             }
         else:
             diagnostic_record = {
                 "mode": diagnostic["mode"],
                 "max_simulator_calls": diagnostic["max_simulator_calls"],
                 "maximum_cell_wall_s": diagnostic["maximum_cell_wall_s"],
-                "sample_interval_s": diagnostic["sample_interval_s"],
+                "profile_duration_s": diagnostic["profile_duration_s"],
+                "artifact_format": "cProfile-pstats",
                 "effective_cell_wall_s": effective_cell_wall_s,
                 "static_estimated_simulator_calls":
                     _estimated_calls_for_cells([cell]),
@@ -2224,7 +2243,7 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
                 "artifact_path": None,
                 "artifact_sha256": None,
                 "artifact_size_bytes": None,
-                "status": "missing",
+                "status": "NOT_AVAILABLE",
             }
     predicate = cell.get("predicate") or {"kind": None}
     verdict = (check_predicate(result_probe["payload"], predicate)
@@ -2253,6 +2272,8 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
         "cell_id": cell["cell_id"],
         "status": status,
         "returncode": returncode,
+        "child_returncode": child_returncode,
+        "launch_integrity_error": launch_integrity_error,
         "wall_s": wall,
         "simulator_calls": call_accounting,
         "argv": argv,

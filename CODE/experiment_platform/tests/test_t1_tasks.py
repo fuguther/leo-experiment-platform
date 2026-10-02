@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import copy
-import faulthandler
 import inspect
 import json
+import pstats
+import signal
+import time
 from pathlib import Path
 
 import pytest
@@ -122,17 +124,20 @@ def test_first_call_diagnostic_never_starts_a_second_kernel_call(monkeypatch):
     assert len(document["failures"]) == len(t1_tasks.NETWORK_ARMS)
 
 
-def test_authorized_diagnostic_samples_first_call_and_never_publishes_partial(
-        tmp_path, monkeypatch):
+def test_authorized_cprofile_stops_first_call_and_keeps_partial_ledger_non_green(
+        tmp_path, monkeypatch, capsys):
     diagnostic = {
-        "mode": "first_kernel_call_stack_sampling",
+        "mode": "first_kernel_call_cprofile",
         "max_simulator_calls": 1,
         "maximum_cell_wall_s": 45,
-        "sample_interval_s": 1,
+        "profile_duration_s": 30,
     }
     output = tmp_path / "cells" / "probe" / "result.json"
     output.parent.mkdir(parents=True)
     context = {"cell_id": "probe", "diagnostic": diagnostic}
+    ledger = tmp_path / "simulator-calls.jsonl"
+    ledger.write_text("", encoding="utf-8")
+    monkeypatch.setenv("T1_SIM_CALL_LEDGER", str(ledger))
     monkeypatch.setattr(t1_tasks, "_is_controlled_population_region_profile",
                         lambda _path: True)
     monkeypatch.setattr(t1_tasks, "_validate_suite_runtime_context",
@@ -152,68 +157,93 @@ def test_authorized_diagnostic_samples_first_call_and_never_publishes_partial(
 
     monkeypatch.setattr(t1_suite, "_reserve_suite_simulator_call",
                         reserve)
-    run_task_calls = []
+    resolved, rows, geometry, source = _scenario()
+    monkeypatch.setattr(t1_tasks, "design",
+                        lambda *_args, **_kwargs:
+                        (resolved, rows, geometry, source))
+    timer_calls = []
+    signal_handlers = []
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    monkeypatch.setattr(signal, "getitimer", lambda _which: (0.0, 0.0))
+    monkeypatch.setattr(signal, "setitimer",
+                        lambda which, delay, interval=0.0:
+                        timer_calls.append((which, delay, interval)))
+    monkeypatch.setattr(signal, "signal",
+                        lambda sig, handler:
+                        signal_handlers.append((sig, handler))
+                        or previous_handler)
 
-    def fake_run_task(*_args, simulator_call_guard=None, **_kwargs):
-        errors = []
-        for arm in t1_tasks.NETWORK_ARMS:
-            try:
-                simulator_call_guard(arm)
-                run_task_calls.append(arm)
-            except t1_tasks.TaskError as exc:
-                errors.append(str(exc))
-        return {"status": "DEGRADED", "task": "network_alignment",
-                "failed_units": len(errors), "failures": errors}
+    kernel_calls = []
 
-    monkeypatch.setattr(t1_tasks, "run_task", fake_run_task)
-    starts = []
-    cancellations = []
+    def interrupted_kernel(*_args, **_kwargs):
+        kernel_calls.append(True)
+        ledger.write_text(json.dumps({
+            "schema": "t1-simulator-call/v1", "context": "probe",
+            "call_id": "probe:0001", "event": "begin", "sequence": 1,
+            "monotonic_ns": time.perf_counter_ns(),
+        }) + "\n", encoding="utf-8")
+        # Exercise the same Python signal handler used by the 30-second cap,
+        # without waiting in a test.
+        try:
+            signal_handlers[-1][1](signal.SIGALRM, None)
+        except Exception:
+            pytest.fail("ordinary exception handler swallowed diagnostic stop")
+        pytest.fail("diagnostic stop handler must raise")
 
-    def record_dump(delay, *, repeat, file):
-        starts.append((delay, repeat, Path(file.name)))
-        file.write("stack sample\n")
-        file.flush()
-
-    monkeypatch.setattr(faulthandler, "dump_traceback_later", record_dump)
-    monkeypatch.setattr(faulthandler, "cancel_dump_traceback_later",
-                        lambda: cancellations.append(True))
+    monkeypatch.setattr(t1_tasks.kernel, "run_simulation", interrupted_kernel)
 
     status = t1_tasks.main([
         "--task", "network_alignment", "--config", "profile.yaml",
         "--out", str(output), "--arms", ",".join(t1_tasks.NETWORK_ARMS),
     ])
 
-    assert status == 2
+    assert status == 3
+    assert "T1TASKS DIAGNOSTIC STOP" in capsys.readouterr().out
     assert reservations == [True]
-    assert run_task_calls == ["stale"]
-    assert len(starts) == 1 and starts[0][:2] == (1, True)
-    assert starts[0][2].read_text(encoding="utf-8") == "stack sample\n"
-    assert cancellations == [True]
+    assert kernel_calls == [True]
+    artifact = output.parent / t1_tasks.DIAGNOSTIC_PROFILE_ARTIFACT
+    assert artifact.is_file() and artifact.stat().st_size > 0
+    stats = pstats.Stats(str(artifact))
+    assert stats.stats
+    assert any(function[2] == "interrupted_kernel"
+               for function in stats.stats)
+    assert timer_calls[0] == (signal.ITIMER_REAL, 30.0, 0.0)
+    assert timer_calls[-1] == (signal.ITIMER_REAL, 0.0, 0.0)
+    assert signal_handlers[0][0] == signal.SIGALRM
+    assert signal_handlers[-1] == (signal.SIGALRM, previous_handler)
     assert not output.exists()
+    accounting = t1_suite._finalize_simulator_call_ledger(
+        ledger, interrupted=True)
+    assert accounting["started"] == 1
+    assert accounting["ended"] == 0
+    assert accounting["interrupted"] == 1
+    assert accounting["unresolved"] == 0
 
-    # The ordinary four-arm context carries no diagnostic and must not create
-    # a sampler, timer, or artifact.
+    # The ordinary context must not start cProfile or touch SIGALRM.
     normal_output = tmp_path / "ordinary" / "result.json"
     normal_output.parent.mkdir(parents=True)
     monkeypatch.setattr(t1_tasks, "_validate_suite_runtime_context",
                         lambda *_args: {"cell_id": "probe", "diagnostic": None})
     monkeypatch.setattr(t1_suite, "_reserve_suite_simulator_call",
                         lambda _context: None)
-
-    def normal_run_task(*_args, simulator_call_guard=None, **_kwargs):
-        simulator_call_guard("stale")
-        return {"status": "ok", "task": "network_alignment",
-                "failed_units": 0}
-
-    monkeypatch.setattr(t1_tasks, "run_task", normal_run_task)
+    monkeypatch.setattr(signal, "setitimer",
+                        lambda *_args, **_kwargs:
+                        pytest.fail("ordinary mode must not start a timer"))
+    monkeypatch.setattr(signal, "signal",
+                        lambda *_args, **_kwargs:
+                        pytest.fail("ordinary mode must not install a handler"))
+    monkeypatch.setattr(t1_tasks.cProfile, "Profile",
+                        lambda: pytest.fail("ordinary mode must not start cProfile"))
+    monkeypatch.setattr(t1_tasks, "run_task",
+                        lambda *_args, **_kwargs:
+                        {"status": "ok", "task": "network_alignment",
+                         "failed_units": 0})
     normal_status = t1_tasks.main([
         "--task", "network_alignment", "--config", "profile.yaml",
         "--out", str(normal_output), "--arms", ",".join(t1_tasks.NETWORK_ARMS),
     ])
     assert normal_status == 0
-    assert len(starts) == 1
-    assert cancellations == [True]
-    assert not (normal_output.parent / t1_tasks.DIAGNOSTIC_STACK_ARTIFACT).exists()
+    assert not (normal_output.parent / t1_tasks.DIAGNOSTIC_PROFILE_ARTIFACT).exists()
 
 
 # ------------------------------------------------------ branch eligibility
