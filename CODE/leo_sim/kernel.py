@@ -68,6 +68,103 @@ class KernelError(RuntimeError):
     pass
 
 
+def _certified_gsl_invisible_pairs(geometry, endpoint_specs, start: float,
+                                  end: float):
+    """Return GSL pairs proven invisible for all of [start,end], else None.
+
+    The only supported fast path is the unmodified MemoizedGeometry wrapping
+    the native Constellation. Elevation can rise no faster than the certified
+    2 deg/s bound over the supported 300--2000 km domain. Thus a start value
+    whose upper bound remains below the mask cannot become visible in-window.
+    The epsilon is one-sided (it only makes pruning harder); uncertain inputs
+    fall back to the original per-link certified path.
+    """
+    try:
+        start, end = float(start), float(end)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(start) or not math.isfinite(end):
+        return None
+    duration = end - start
+    if duration <= 0:
+        return set()
+    if type(geometry) is not model.MemoizedGeometry:
+        return None
+    inner = getattr(geometry, "_inner", None)
+    if type(inner) is not model.Constellation:
+        return None
+    method_names = ("subpoint", "ecef", "positions", "elevation_deg",
+                    "ground_visible", "gsl_available", "next_gsl_change")
+    if any(name in vars(inner) or name in vars(geometry)
+           for name in method_names):
+        return None
+    try:
+        altitude = float(inner.altitude_km)
+        min_elevation = float(inner.min_elevation_deg)
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return None
+    if (not math.isfinite(altitude)
+            or not 300.0 <= altitude <= 2000.0
+            or model.ELEV_RATE_DEG_S != 2.0
+            or not math.isfinite(min_elevation)
+            or model.EARTH_RADIUS_KM != 6371.0
+            or model.EARTH_ROT_RATE_RAD_S != 7.2921159e-5):
+        return None
+    # Constellation's fields are public and mutable. Only trust the bound if
+    # the motion parameters still match its constructor relationships.
+    try:
+        n, planes = int(inner.num_satellites), int(inner.num_planes)
+        expected_r = model.EARTH_RADIUS_KM + altitude
+        expected_period = 2 * math.pi * math.sqrt(
+            expected_r ** 3 / 398600.4418)
+        if (n <= 0 or planes <= 0 or n % planes != 0
+                or int(inner.per_plane) != n // planes
+                or int(geometry.num_satellites) != n
+                or float(inner.r) != expected_r
+                or float(inner.period_s) != expected_period
+                or not math.isfinite(float(inner.geometry_epoch_s))):
+            return None
+    except (AttributeError, ArithmeticError, TypeError, ValueError, OverflowError):
+        return None
+    try:
+        endpoints = list(endpoint_specs.items())
+        if not endpoints:
+            return set()
+        positions = np.asarray(geometry.positions(float(start)), dtype=float)
+        if positions.shape != (int(inner.num_satellites), 3):
+            return None
+        if not np.isfinite(positions).all():
+            return None
+        coords = np.asarray([spec for _, spec in endpoints], dtype=float)
+        if coords.shape != (len(endpoints), 2) or not np.isfinite(coords).all():
+            return None
+        lat = np.radians(coords[:, 0])
+        lon = np.radians(coords[:, 1])
+        radius = model.EARTH_RADIUS_KM
+        ground = radius * np.column_stack((np.cos(lat) * np.cos(lon),
+                                           np.cos(lat) * np.sin(lon),
+                                           np.sin(lat)))
+        delta = positions[np.newaxis, :, :] - ground[:, np.newaxis, :]
+        ranges = np.linalg.norm(delta, axis=2)
+        up = ground / radius
+        numerator = np.sum(delta * up[:, np.newaxis, :], axis=2)
+        cos_z = np.divide(numerator, ranges, out=np.zeros_like(ranges),
+                          where=ranges != 0.0)
+        elevation = np.degrees(np.arcsin(np.clip(cos_z, -1.0, 1.0)))
+        elevation = np.where(ranges == 0.0, 90.0, elevation)
+        if not np.isfinite(elevation).all():
+            return None
+        upper = elevation + model.ELEV_RATE_DEG_S * duration + 1e-6
+        return {
+            (cell, sat)
+            for endpoint_i, (cell, _spec) in enumerate(endpoints)
+            for sat in range(int(inner.num_satellites))
+            if upper[endpoint_i, sat] < min_elevation
+        }
+    except (ArithmeticError, TypeError, ValueError, OverflowError):
+        return None
+
+
 class CapExceeded(KernelError):
     """A configured bound (events/entities/packets) was exceeded. Fail closed."""
 
@@ -2161,8 +2258,13 @@ class Kernel:
         """
         if end <= start:
             return
+        proven_gsl_invisible = _certified_gsl_invisible_pairs(
+            self.geometry, self._metric_endpoint_specs, start, end)
         for cell, (lat, lon) in sorted(self._metric_endpoint_specs.items()):
             for sat in range(self.num_sats):
+                if (proven_gsl_invisible is not None
+                        and (cell, sat) in proven_gsl_invisible):
+                    continue
                 for stage in ("uplink", "downlink"):
                     for seg_start, seg_end, rate in self._metric_capacity_segments(
                             stage, sat, start, end, lat=lat, lon=lon):

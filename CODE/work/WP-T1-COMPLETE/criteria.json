@@ -3182,5 +3182,61 @@
         "batch_simulator_s_remaining": 2595.621771705
       }
     }
+  },
+  "three_hour_closeout_20261002": {
+    "verdict": "PARTIAL; NO_VALID_NEW_FOUR_ARM_RESULT; FINAL_OPTIMIZATION_VM_NOT_EXECUTED",
+    "deadline_beijing": "2026-10-02 16:10",
+    "execution_chain_sha256": "7496221896d56a72ca90a693fce0071a5cb830c68a83443b781287bb541e4025",
+    "contract_sha256": "547dfa11ddd5279418dd07c47baf3f8e64b39d74cc9289d62de90284565ace20",
+    "cell_input_sha256": "e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715",
+    "accepted_final_change": "metrics-only certified GSL-zero prefilter; strict geometry and public-parameter guards; conservative elevation bound; exact fallback",
+    "independent_review": "8 targeted tests passed; old/new complete recorder arrays exactly equal across 50 endpoints x 280 satellites x 3 windows (42000 pair-window cases; 439 nonempty output windows); mutation fallback checked",
+    "scientific_changes": false,
+    "latest_verified_diagnostic": {
+      "run_id": "t1-population-capacity-optimized-cprofile-20261002-01",
+      "receipt_sha256": "81b36f9346d9c1c715a8fe112c01f7ce1178cedab788c7eec6683ec28971fd0e",
+      "manifest_sha256": "a3cf15fe4a5f09c622f09c6b2f6de7247def530addff794ad9f64d99784b9b97",
+      "pstats_sha256": "87e41eccdd0dcf7fa7c058de7856fab57a9d303af02d48a8f7e0c3dc1478c19a",
+      "verified_files": 25,
+      "calls_started": 1,
+      "simulator_wall_s": 30.00129088,
+      "research_result": false,
+      "observed_hotspots": "first capacity sample 15.307s; metric segments, GSL change/elevation checks; control traffic event work"
+    },
+    "budget_b_plus_c": {
+      "calls_used": 15,
+      "simulator_wall_s_used": 1034.379519175,
+      "c_calls_remaining": 44,
+      "batch_calls_remaining": 45,
+      "batch_simulator_wall_s_remaining": 2565.620480825,
+      "native_ddqn_training_started": 0
+    },
+    "final_candidate_vm_state": "NOT_EXECUTED; remaining deadline insufficient for 300s smoke plus publication and pullback",
+    "next_steps_in_order": [
+      "publish this accepted exact clean pushed commit to immutable T1 release",
+      "run unchanged-science seed7 four-arm 300s bounded cost smoke and verify receipt/pullback",
+      "if smoke fails: profile active simulation time and dominant event work; no repeated blind cap increases",
+      "after cost and delivery gates pass: verify competition and causal information audit, freeze common rule, run paired descriptive seeds",
+      "implement and verify native deadline-aware DDQN training contract; train and use one frozen real checkpoint across four arms",
+      "complete full metrics/cost and visualization; report effect or valid negative result"
+    ],
+    "open_boundaries": [
+      "no measured whole-run speedup for final candidate",
+      "no valid new four-arm result",
+      "native trained DDQN not ready",
+      "main matrix not started",
+      "two pre-existing legacy receipt tests fail; not resolved here",
+      "no formal run or main merge"
+    ],
+    "readiness": {
+      "DESIGN_READY": true,
+      "PROBE_CODE_READY": true,
+      "COST_PROBE_READY": false,
+      "CODE_READY": false,
+      "CORE_COST_READY": false,
+      "MODEL_READY": false,
+      "FULL_COST_READY": false,
+      "RELEASE_READY": false
+    }
   }
 }

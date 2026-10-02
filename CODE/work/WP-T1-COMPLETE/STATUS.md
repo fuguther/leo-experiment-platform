@@ -1,3 +1,12 @@
+## 三小时窗口收尾（2026-10-02，截止 16:10；PARTIAL）
+
+- 没有新的有效四臂结果。最近 600 秒 smoke 首臂超时；随后 30 秒 VM cProfile 已独立核验 25 文件，run `t1-population-capacity-optimized-cprofile-20261002-01`，receipt `81b36f9346d9c1c715a8fe112c01f7ce1178cedab788c7eec6683ec28971fd0e`。首次容量采样约 15.307 秒，控制流量事件处理亦占显著开销；该诊断不是科研结果。
+- 最后一项仅作用于指标采样的认证 GSL 零容量预筛选已通过根独立核验：8 项定向测试通过；实际 280 星/14 轨道模型、50 端点、3 窗口的完整旧/新输出逐行一致（42000 pair-window cases，439 非空窗口）；几何参数变更回退原算法。未改四邻居、区域、流量、路由评分、信息权限或模拟算力参数。
+- 最后候选尚未发布或 VM 实跑。三小时截止前已不足以完成 300 秒测试及发布/回传，故不新开超出截止的任务；不得宣称全程加速或 COST_PROBE_READY。候选执行链 `7496221896d56a72ca90a693fce0071a5cb830c68a83443b781287bb541e4025`，合同 `547dfa11ddd5279418dd07c47baf3f8e64b39d74cc9289d62de90284565ace20`，科学输入身份保持 `e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715`。
+- B+C 实际累计 15 calls / 1034.379519175 模拟墙钟秒；C 余 44 calls，批次余 45 calls / 2565.620480825 秒。原生 DDQN 训练启动数为 0。没有主矩阵、正式实验、main 合并。
+- 下一步先发布已接受精确提交，在同科学输入下做一次有界四臂成本/交付 smoke；失败则先量出模拟推进位置与主事件成本，不继续盲加超时上限。过门后才做竞争准入、公共时刻冻结、配对种子、真实 DDQN 训练与同检查点四臂比较、指标和可视化。
+- DESIGN_READY/PROBE_CODE_READY 保持 true；COST_PROBE_READY、CODE_READY、CORE_COST_READY、MODEL_READY、FULL_COST_READY、RELEASE_READY 均 false。两项旧 receipt 兼容测试仍失败，已在旧实现中复现；不能写成全平台全绿。
+
 # WP-T1-COMPLETE — 状态账本
 
 > 计划：`docs/superpowers/plans/2026-09-27-t1-complete-implementation.md` 顶部当前节。交付：`REPORT.md` 当前准备复核段；机器判据：`criteria.json`；旧合同：`contract_dev_c.yaml`（失效，禁止运行）。

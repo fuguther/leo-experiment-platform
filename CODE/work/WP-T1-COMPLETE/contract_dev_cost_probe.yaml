@@ -1,6 +1,6 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: ROOT_ACCEPTED_CAPACITY_OPTIMIZED_CPROFILE_DIAGNOSTIC_ONLY
-purpose: single_kernel_profile_after_600s_smoke_timeout
+campaign_stage: ROOT_ACCEPTED_LAST_WINDOW_CERTIFIED_PREFILTER_SMOKE_ONLY
+purpose: unchanged_science_four_arm_cost_smoke_with_certified_gsl_zero_prefilter
 not_formal: true
 not_training: true
 frozen_at_sha: null
@@ -18,25 +18,21 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 1a651ac04149cf1b00f7510a6a7468404a8c64d10dbd1a94062d737fdfae920e
+    execution_chain_sha256: 7496221896d56a72ca90a693fce0071a5cb830c68a83443b781287bb541e4025
     cell_input_sha256:
       b-bounded_population_cost_smoke-network-seed-7: e29e10a269a60ca77c4fba26e7666fd929c845edff2067e2b4eba456c3c78715
-    diagnostic:
-      mode: first_kernel_call_cprofile
-      max_simulator_calls: 1
-      maximum_cell_wall_s: 45
-      profile_duration_s: 30
   release_ready: false
-  reason: One bounded profile of unchanged latest source after one call exceeded 600s
-    smoke cap; no further blind timeout extension, scientific parameter search, main
-    matrix, training or benefit claim.
+  reason: One final unchanged-science four-arm cost smoke after root exact raw-window
+    comparison on 280 satellites/50 endpoints/3 intervals and eight targeted tests.
+    Deadline 16:10 Beijing, cell cap reduced to 300s to fit remaining window. No benefit/main/model/formal
+    claims or authorization.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: 31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 1a651ac04149cf1b00f7510a6a7468404a8c64d10dbd1a94062d737fdfae920e
+  source_execution_chain_sha256: 7496221896d56a72ca90a693fce0071a5cb830c68a83443b781287bb541e4025
   compiled_trace_sha256: null
   bundle_sha256: null
   cell_input_sha256:
@@ -118,7 +114,7 @@ cell_allowlist:
   task: network_alignment
   maximum_simulator_calls: 4
   append: false
-  maximum_cell_wall_s: 600
+  maximum_cell_wall_s: 300
   concurrency: 1
   exact_driver_argv_after_compile:
   - --task
@@ -139,17 +135,16 @@ budget:
   batch_limit_simulator_wall_s: 3600.0
   historical_b_calls: 8
   historical_b_simulator_wall_s: 109.071837305
-  remaining_calls_before_probe: 46
-  remaining_simulator_wall_s_before_probe: 2595.621771705
-  probe_calls_reserved: 1
-  probe_wall_s_upper_bound: 45.0
+  remaining_calls_before_probe: 45
+  remaining_simulator_wall_s_before_probe: 2565.620480825
+  probe_calls_reserved: 4
+  probe_wall_s_upper_bound: 300.0
   actual_calls_and_wall_time_are_authoritative: true
   failed_timeout_and_replay_calls_count: true
-  prior_c_calls: 6
-  prior_c_simulator_wall_s: 895.30639099
+  prior_c_calls: 7
+  prior_c_simulator_wall_s: 925.30768187
   nominal_task_calls: 4
-  remaining_new_c_calls_before_diagnostic: 45
-  diagnostic_actual_call_cap: 1
+  remaining_new_c_calls_before_probe: 44
 post_probe_gate:
   status: COST_UNVERIFIED
   required_evidence:
@@ -172,4 +167,4 @@ source_release_binding: Clean full commit and immutable manifest/run receipt bin
   this contract; no self-referential commit or bundle hash is inserted into its semantic
   input digest.
 budgets:
-  cell_wall_s: 600.0
+  cell_wall_s: 300.0

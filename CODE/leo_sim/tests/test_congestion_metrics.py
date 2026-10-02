@@ -586,6 +586,82 @@ def test_mcs_capacity_certified_constellation_invisible_window_skips_thresholds(
     assert threshold_calls == []
 
 
+def test_capacity_recorder_prefilter_skips_only_proven_gsl_pairs(monkeypatch):
+    """Whole-window elevation bound skips invisible pairs before root search."""
+    geo = model.Constellation(4, 2, 550.0, 53.0, min_elevation_deg=25.0)
+    k = _mcs_capacity_kernel(geo)
+    # This latitude is outside the full supported orbit ground track; the
+    # short interval is therefore safely below the certified visibility bound.
+    k._metric_endpoint_specs = {"far-south": (-80.0, 0.0)}
+    calls = []
+    original = model.MemoizedGeometry.next_gsl_change
+    prefilter = kernel._certified_gsl_invisible_pairs
+
+    def counted(self, *args, **kwargs):
+        calls.append(args)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(model.MemoizedGeometry, "next_gsl_change", counted)
+    monkeypatch.setattr(kernel, "_certified_gsl_invisible_pairs",
+                        lambda *_args: None)
+    k._record_available_capacity_sample(0.0, 1.0, 0.5)
+    baseline_windows = list(k.link_available_windows)
+    baseline_calls = len(calls)
+    assert baseline_calls == 2 * geo.num_satellites
+    assert not [w for w in baseline_windows if w["stage"] in ("uplink", "downlink")]
+
+    # Re-run with the approved conservative prefilter enabled. A proven
+    # invisible endpoint/satellite pair must avoid both stage root searches.
+    k.link_available_windows.clear()
+    calls.clear()
+    monkeypatch.setattr(kernel, "_certified_gsl_invisible_pairs", prefilter)
+    k._record_available_capacity_sample(0.0, 1.0, 0.5)
+    assert k.link_available_windows == baseline_windows
+    assert calls == []
+
+
+def test_capacity_visibility_prefilter_keeps_possible_rising_link(monkeypatch):
+    """A potentially visible interval is never pruned by the start bound."""
+    geo = model.Constellation(4, 2, 550.0, 53.0, min_elevation_deg=25.0)
+    # This fixed fixture rises through the mask during [0,120]: elevation is
+    # 20.312... degrees at t=0 and 37.128... at t=120.
+    sat, lat, lon = 1, -10.0, -180.0
+    assert geo.elevation_deg(sat, lat, lon, 0.0) < geo.min_elevation_deg
+    assert geo.elevation_deg(sat, lat, lon, 120.0) > geo.min_elevation_deg
+    k = _mcs_capacity_kernel(geo)
+    k._metric_endpoint_specs = {"near-pass": (lat, lon)}
+    reference = _pre_optimization_capacity_segments(k, sat, 0.0, 120.0,
+                                                     lat, lon)
+    actual = list(k._metric_capacity_segments(
+        "uplink", sat, 0.0, 120.0, lat=lat, lon=lon))
+    assert actual == reference
+    assert actual and actual[0][0] > 0.0
+
+    prefilter = kernel._certified_gsl_invisible_pairs
+    monkeypatch.setattr(kernel, "_certified_gsl_invisible_pairs",
+                        lambda *_args: None)
+    k._record_available_capacity_sample(0.0, 120.0, 60.0)
+    baseline_windows = list(k.link_available_windows)
+    k.link_available_windows.clear()
+    monkeypatch.setattr(kernel, "_certified_gsl_invisible_pairs", prefilter)
+    k._record_available_capacity_sample(0.0, 120.0, 60.0)
+    assert k.link_available_windows == baseline_windows
+    assert any(w["link_id"] == "gsl:uplink:1:near-pass"
+               and w["start"] > 0.0
+               for w in k.link_available_windows)
+
+
+def test_gsl_visibility_prefilter_falls_back_after_geometry_mutation():
+    geo = model.Constellation(4, 2, 550.0, 53.0, min_elevation_deg=25.0)
+    k = _mcs_capacity_kernel(geo)
+    specs = {"far-south": (-80.0, 0.0)}
+    assert kernel._certified_gsl_invisible_pairs(
+        k.geometry, specs, 0.0, 1.0)
+    geo.period_s *= 2
+    assert kernel._certified_gsl_invisible_pairs(
+        k.geometry, specs, 0.0, 1.0) is None
+
+
 @pytest.mark.parametrize("visible, changes, expected_bounds", [
     (lambda *_: True, (), [(0.0, 1.0)]),
     (lambda _s, _lat, _lon, t: 0.25 <= t < 0.75,
