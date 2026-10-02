@@ -2137,7 +2137,7 @@
   }
  },
  "c_round": {
-  "status": "ROOT_ACCEPTED_PROBE_SCOPE_RELEASE_RUNTIME_PENDING",
+  "status": "AUTHORIZED_PROBE_FAILED_TIMEOUT_PULLED_BACK; STOP_AFTER_SINGLE_RUN",
   "preparation_base_commit": "c164048c952cbfd6deb49210d5b3e039b7dcd62e",
   "worktree_branch": "codex/20260930-t1-experiment-a",
   "current_authority": {
@@ -2147,7 +2147,7 @@
    "report_current_section": "CODE/work/WP-T1-COMPLETE/REPORT.md",
    "root_status": "STATUS.md",
    "work_package_status": "CODE/work/WP-T1-COMPLETE/STATUS.md",
-   "implementation_plan_sha256": "5522bf77902f82fc1bd9965e2c9ba8667b96a089da502710e1c8ef6512ff005c"
+   "implementation_plan_sha256": "805ecd169e1366c51e76239eed4347cf88ab30e87409a2d604b9a43df950337e"
   },
   "readiness": {
    "design_ready": true,
@@ -2157,7 +2157,7 @@
    "release_ready": false,
    "runtime_gate_implemented": true,
    "old_contract_readiness": false,
-   "current_action": "ROOT_ACCEPTED_SNAPSHOT_ADAPTER_AND_EXACT_PROBE_SCOPE; CLEAN_PUSH_IMMUTABLE_RELEASE_RUNTIME_AND_RUN_ID_PENDING; MAIN_AND_TRAINING_NOT_READY",
+   "current_action": "STOP_AFTER_SINGLE_AUTHORIZED_COST_PROBE_TIMEOUT; pullback VERIFIED; no retry or matrix extension without a new root decision",
    "cost_probe_ready": false,
    "core_cost_ready": false,
    "ddqn_cost_ready": false,
@@ -2172,14 +2172,14 @@
   "cost_probe_contract_candidate": {
    "path": "CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml",
    "sha256": "bb8910902ac366f9b4a9e1ae0716c2cf39e9c8a91151878d6cb54cf082e2e8ff",
-   "status": "ROOT_SCOPE_AUTHORIZED; pending clean release/runtime/run verification",
+   "status": "ROOT_SCOPE_AUTHORIZED; exact run attempted once and timed out; pullback VERIFIED; no result or positive-delivery smoke",
    "profile_path": "CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml",
    "profile_sha256": "31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518",
    "population_path": "CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif",
    "population_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
    "advertisement_protocol_version": 2,
    "planned_cell_id": "b-bounded_population_cost_smoke-network-seed-7",
-   "compiled_trace_bundle_cell_identity": "temporary compile-only bundle/profile checked; no native trace, persistent bundle, receipt, or VM run retained"
+   "compiled_trace_bundle_cell_identity": "immutable release VM bundle validated; runtime bundle fingerprint f0591f071d865fb7d7deb80c8a88fc0365a0e21a2ca421051be4de5933c7362a8; one native-population cell attempted; no result artifact"
   },
   "scenario_candidate": {
    "reference_profile": "CODE/leo_sim/profiles/population_global_1deg_diagnostic.yaml",
@@ -2189,7 +2189,7 @@
    "cost_smoke_profile_sha256": "31c7aae1c33a5886c2618192fe8d5a9ba0f877cf439e60e5a9dc3b5eaec5b518",
    "advertisement_protocol_version": 2,
    "persistent_cost_probe_contract": "CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml",
-   "persistent_cost_probe_contract_readiness": "ROOT_SCOPE_AUTHORIZED; exact cell authorization present; execution awaits clean immutable release and verified VM runtime/run identity",
+   "persistent_cost_probe_contract_readiness": "authorized and executed once; VM bundle/input identity verified; cell timed out, so COST_PROBE_READY remains false and no retry is allowed under this authorization",
    "population_input_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
    "region_lat_half_open_deg": [
     5,
@@ -2294,8 +2294,8 @@
    "historical_b_simulator_s": 109.071837305,
    "batch_calls_limit": 60,
    "batch_simulator_s_limit": 3600,
-   "remaining_calls_max": 52,
-   "remaining_simulator_s_max": 3490.928162695,
+   "remaining_calls_max": 51,
+   "remaining_simulator_s_max": 3374.853778567,
    "planned_new_calls_max": 51,
    "after_historical_calls_if_full": 59,
    "unallocated_calls": 1,
@@ -2320,11 +2320,51 @@
    "arithmetic_average_budget_seconds_per_call": 68.4495718175,
    "average_is_cost_projection": false,
    "cost_probe": {
-    "status": "ROOT_SCOPE_AUTHORIZED; release/runtime/run verification pending",
+    "status": "ATTEMPTED_ONCE_TIMEOUT; pullback VERIFIED; one call/116.074384128 simulator seconds charged; no retry; no positive smoke",
     "allowed_scope": "only seed-7 low-competition four-arm cell",
     "calls": 4,
     "requires_new_allowlisted_contract": "contract_dev_cost_probe.yaml",
-    "requires_clean_immutable_release_and_unique_run_id": true
+    "requires_clean_immutable_release_and_unique_run_id": true,
+    "actual_cumulative_budget_after_probe": {
+     "historical_b_calls": 8,
+     "probe_calls": 1,
+     "cumulative_calls": 9,
+     "call_limit": 60,
+     "historical_b_simulator_s": 109.071837305,
+     "probe_simulator_s": 116.074384128,
+     "cumulative_simulator_s": 225.146221433,
+     "simulator_s_limit": 3600,
+     "remaining_calls": 51,
+     "remaining_simulator_s": 3374.853778567
+    },
+    "actual_run_id": "t1-population-snapshot-cost-20261002-01",
+    "actual_run_status": "failed_timeout",
+    "source_commit": "1e43abb8bb41806109f9ac957f46fae3eb19500e",
+    "source_tree_sha256": "9610b24373845f86c098c0267b0059b3ceef55fb8a01496a9bb94abe77a61150",
+    "execution_chain_sha256": "dd26e1e7f9fc509765f41546d01a60838b1edc7837796a572bad2e6e4ab04cb3",
+    "release_artifact_sha256": "3a30929c2855a0f67fabdc6e08f3a643bd221e3742c67fd503d746faa20b8b20",
+    "contract_sha256": "bb8910902ac366f9b4a9e1ae0716c2cf39e9c8a91151878d6cb54cf082e2e8ff",
+    "cell_input_sha256": "70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905",
+    "bundle_fingerprint": "f0591f071d865fb7d7deb80c8a88fc0365a0e21a2ca421051be4de5933c7362a8",
+    "runtime": {
+     "host": "cuda-liguang13",
+     "machine": "aarch64",
+     "python": "3.11.15",
+     "installed_packages_sha256": "3bc4c603b890231bfe8e27441c639d2bf0152617524b43e72dd4dfc34edbe152",
+     "runtime_contract_sha256": "b3b548fdba7f364d5f48ed0bcc5c77ca667f6bd4ad2c463844eca8a18923e5d0"
+    },
+    "gpw_input_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+    "cell_wall_s": 120.13890650868416,
+    "call_ledger_sha256": "20ccee036828f4072dc4665105327ee74d065d04f44e6b536aa47ac19d282aaa",
+    "receipt_file_sha256": "6d24705e35bafd5bf54a77d3b6e1b66099ef77e99e188bf3cf68a1cace128573",
+    "actual_calls_started": 1,
+    "actual_simulator_wall_s": 116.074384128,
+    "pullback_status": "VERIFIED",
+    "canonical_receipt_sha256": "0e452549b922b2e99548f138e4fadae0eb2ad989f0b6da69ce1e6faf48270737",
+    "manifest_sha256": "c657b9b96ab5c9ca80048b1e38101750627e817aba16969e64ed447791f195d4",
+    "archive_sha256": "bb69be2de7d445633985568e04cfdcee94be72a20b29eb7d188211b282534005",
+    "positive_delivery_smoke": "not demonstrated; no result artifact",
+    "retry_policy": "no retry, append, resume, or additional cell under this authorization"
    },
    "staged_gates": {
     "COST_PROBE_READY": false,
@@ -2788,17 +2828,23 @@
     "merge_main"
    ],
    "current_manual_sha256": "f82dac0a1efc73bc54ad6a3ffcb64be2f0ca439ef05faca0e11c13777ba2d622",
-   "current_plan_sha256": "5522bf77902f82fc1bd9965e2c9ba8667b96a089da502710e1c8ef6512ff005c"
+   "current_plan_sha256": "805ecd169e1366c51e76239eed4347cf88ab30e87409a2d604b9a43df950337e"
   },
   "this_execution": {
-   "phase": "ROOT_ACCEPTED_PROBE_SCOPE; COMMIT_PUSH_RELEASE_RUNTIME_AND_RUN_PENDING",
+   "phase": "AUTHORIZED_SINGLE_COST_PROBE_COMPLETED_FAILED_TIMEOUT; PULLBACK_VERIFIED; STOP_PENDING_ROOT_REVIEW",
    "source_changes_started_this_round": true,
    "tests_run_this_round": true,
-   "latest_bounded_recheck": "10 authorization, cold-release snapshot and native trace locator tests passed in 1.41s; maintenance 0 errors/1 external-scope warning",
-   "vm_calls_this_round": 0,
+   "latest_bounded_recheck": "10 authorization, cold-release snapshot and native trace locator tests passed before release; maintenance 0 errors/1 external-scope warning",
+   "vm_calls_this_round": 1,
+   "vm_simulator_s_this_round": 116.074384128,
    "training_started": false,
-   "release_started": false,
-   "existing_dirty_assets": "protected and continued from root-provided starting diff/backup"
+   "release_started": true,
+   "existing_dirty_assets": "protected and continued from root-provided starting diff/backup",
+   "release_id": "1e43abb8bb41806109f9ac957f46fae3eb19500e-9610b24373845f86c098c0267b0059b3ceef55fb8a01496a9bb94abe77a61150",
+   "run_id": "t1-population-snapshot-cost-20261002-01",
+   "run_status": "failed_timeout",
+   "pullback_status": "VERIFIED",
+   "additional_vm_runs_authorized": false
   },
   "probe_closure_candidate": {
    "scope": "ROOT_ACCEPTED_PROBE_CODE_AND_INPUT; only the authorized seed7 native-population low-load four-arm cell may proceed after release/runtime gates; overall CODE_READY remains false",
@@ -2868,14 +2914,10 @@
    },
    "local_kernel_throttle_observation": "12,000-bit packet over 594.152 Mbps ISL serializes in about 20.20 us; N=1 with 1 ms compute separates two same-port data admissions by 1 ms. With default ads enabled, fixture accounts 16,384 control bits on that port; no sustained/data backlog is demonstrated.",
    "open_probe_dependencies": {
-    "pre_probe_required": [
-     "no actual native-region research trace has been compiled; after root review, bind its complete offered population, profile and raster inputs, source execution-chain SHA, bundle/cell/input SHA, effective seed 7 and four arms to a clean immutable release and unique run identity",
-     "persistent contract authorization is root-approved and exact; clean immutable release, remote input/runtime verification, fresh run identity and single-use launch context are not yet available",
-     "derive and verify a conservative entity/memory safety bound from the materialized full trace and kernel resource accounting; do not truncate the offered population"
-    ],
+    "pre_probe_required": [],
     "post_probe_evidence": [
-     "actual full-trace admission, all-offered population/fates, positive-delivery smoke and VM cost receipt are not available before the first run",
-     "no VM probe, receipt, or actual runtime cost evidence exists"
+     "the authorized run compiled the native-population bundle and verified the GPW input snapshot, but the only cell timed out after one kernel call; no result artifact, arm-level fate table, admission predicate, or positive-delivery smoke is available",
+     "receipt and exact file set are pullback VERIFIED; this establishes provenance and integrity, not successful simulation or delivery"
     ],
     "before_main_matrix": [
      "static main-load R, per-port capacity and entity/memory bound are not computed or frozen",

@@ -6,7 +6,7 @@
 
 ## 当前研究准备复核与首探针放行范围（2026-10-02）
 
-根已独立接受仅限seed7原生人口低负载四臂成本探针的PROBE_CODE子图和语义输入，并写入精确合同授权；这不是整体CODE_READY或主矩阵/模型/成本门通过。已授权审阅当前任务路径、提交推送干净完整SHA、发布immutable release，再以固定VM环境启动唯一新run和唯一网络cell，最多4次kernel调用。禁止append/resume/隐藏重试、训练、主矩阵、改研究参数或进入formal。失败/timeout照计预算并保留运行身份。
+根已独立接受仅限seed7原生人口低负载四臂成本探针的PROBE_CODE子图和语义输入，并写入精确合同授权；这不是整体CODE_READY或主矩阵/模型/成本门通过。唯一获准run已执行且失败：该cell在墙钟上限超时，没有结果文件，禁止append/resume/隐藏重试或再启动同scope。训练、主矩阵、改研究参数和formal也不在本次执行范围。失败/timeout照计预算并保留运行身份。
 
 研究定义见权威手册及实施计划；当前执行身份、哈希和门状态以本工作包 STATUS 与 criteria 当前段为准。
 
@@ -14,7 +14,7 @@
 
 根独立验证原始五因果反例及stage门30 passed，ETA/四臂/receipt/control/trace/config/population相关集164 passed；人口快照适配另经根独立验证60项通过。本机本轮10项授权、cold-release快照与原生trace定位测试通过（1.41秒）；移除授权的合同副本仍拒绝，合同compile/validate=true，执行链和cell input摘要与授权相同。此前拒绝候选的REQUEST_CHANGES、原始反例1 failed/4 passed及较宽相关回归251 passed/4 failed后于623.52s中断等历史事实保留。旧`contract_dev_c.yaml`仍明确无效。
 
-预算不清零：旧B 8 calls/109.071837305s继续占用60/3600上限。本段更新时新VM calls=0。旧release `51e7a86b32e0184fdacbf324eaa6b3e18a25e50f-8fd946cf155db9bbd320f6b68f0014f5b71e88ced289085f461c0cc77ab91157`验证过但未运行；新提交、release和run尚未创建。阶段门：DESIGN_READY=true、PROBE_CODE_READY=true；COST_PROBE_READY待clean push、immutable release、VM依赖与GPW输入/实际bundle/argv/seed/run ledger验真。整体CODE_READY、CORE_COST、MODEL、DDQN_COST、FULL_COST和完整RELEASE仍false；BP、五模式、DDQN、主竞争R与主矩阵未完成，不能从成本probe推断全scope成本或机制结论。
+预算不清零：旧B 8 calls/109.071837305s；本次只启动1个kernel call，116.074384128 VM模拟秒后timeout；累计9/60 calls、225.146221433/3600s，余51 calls/3374.853778567s。唯一release `1e43abb8bb41806109f9ac957f46fae3eb19500e-9610b24373845f86c098c0267b0059b3ceef55fb8a01496a9bb94abe77a61150`及run `t1-population-snapshot-cost-20261002-01`的receipt canonical SHA `0e452549b922b2e99548f138e4fadae0eb2ad989f0b6da69ce1e6faf48270737`已`VERIFIED` pullback；cell状态为timeout、无结果/逐臂结局，故无正交付smoke。远端实际bundle通过validate，70文件链及GPW快照SHA与声明一致。run启动器在汇总失败时另抛`KeyError: run_status`；该错误已保留，不能替代或掩盖先发生的cell timeout。阶段门：DESIGN_READY=true、PROBE_CODE_READY=true；COST_PROBE_READY=false，禁止在无新集中裁决前重跑/扩展。整体CODE_READY、CORE_COST、MODEL、DDQN_COST、FULL_COST和完整RELEASE仍false；BP、五模式、DDQN、主竞争R与主矩阵未完成，不能从该失败probe推断机制收益或全scope成本。
 
 ## 历史：设计改写前 C 的本机验证记录（未发布、未运行；不覆盖当前合同）
 

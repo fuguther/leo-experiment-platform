@@ -5,10 +5,10 @@
 
 ## 当前研究与工程状态（2026-10-02；DESIGN_READY=true，PROBE_CODE_READY=true，COST_PROBE_READY=false，RELEASE_READY=false）
 
-- 根接受的范围仅为seed7原生人口低负载四臂成本探针代码子图和语义输入；授权提交/推送任务分支、immutable release和唯一新run，最多4个kernel calls，不append/resume/隐藏重试，不启动主矩阵或训练。FORMAL_RUN、seed1001+和main合并不在此范围。
+- 根接受的范围仅为seed7原生人口低负载四臂成本探针代码子图和语义输入；按授权提交/推送任务分支、immutable release并启动了唯一run，最多4个kernel calls，不append/resume/隐藏重试，不启动主矩阵或训练。该cell在120秒墙钟上限超时；pullback `VERIFIED` 只说明receipt和文件集通过核验，不能算正交付smoke。FORMAL_RUN、seed1001+和main合并不在此范围，禁止复跑或扩展。
 - 持久合同`contract_dev_cost_probe.yaml` SHA-256 `bb8910902ac366f9b4a9e1ae0716c2cf39e9c8a91151878d6cb54cf082e2e8ff`含根限域授权；唯一cell `b-bounded_population_cost_smoke-network-seed-7`、四臂、4 calls，70文件执行链SHA `dd26e1e7f9fc509765f41546d01a60838b1edc7837796a572bad2e6e4ab04cb3`，cell input SHA `70553d1dc6bce687309f18348c84c863c5213679cdc264b915ea9564f2dbf905`。根独立接受人口快照定位接线；compile-only核对validate=true及280/14、5Mbps/12000bit/N1/1ms、research D=4/物理TTL独立、窗口正确。
 - 根独立核验原始五因果反例+stage门30 passed，相关ETA/四臂/receipt/control/trace/config/population 164 passed；快照适配另经根独立复核60项通过。本机当前授权、cold-release快照和原生trace定位10项测试通过（1.41秒）。此前REQUEST_CHANGES与251 passed/4 failed中断事实保留。
-- B历史8 calls/109.071837305s继续计入60/3600上限；本段更新时本轮VM calls=0。旧release `51e7a86b32e0184fdacbf324eaa6b3e18a25e50f-8fd946cf155db9bbd320f6b68f0014f5b71e88ced289085f461c0cc77ab91157`已验证但未运行；本轮新提交/release/run尚未创建。提交、push、release、VM依赖/GPW/实际bundle及run身份验真完成后才可把COST_PROBE_READY记为通过。整体CODE_READY、CORE_COST、MODEL、DDQN_COST、FULL_COST和完整RELEASE均false。
+- B历史8 calls/109.071837305s继续计入60/3600上限。本次唯一run `t1-population-snapshot-cost-20261002-01` 使用release `1e43abb8bb41806109f9ac957f46fae3eb19500e-9610b24373845f86c098c0267b0059b3ceef55fb8a01496a9bb94abe77a61150`，源码commit `1e43abb8bb41806109f9ac957f46fae3eb19500e`，70文件链`dd26e1e7f9fc509765f41546d01a60838b1edc7837796a572bad2e6e4ab04cb3`。receipt canonical SHA `0e452549b922b2e99548f138e4fadae0eb2ad989f0b6da69ce1e6faf48270737`已pullback `VERIFIED`；cell实际启动1/最多4次调用；call ledger记录`packet_count=1281`（未验证为完整offered人口），116.074384128 VM模拟秒后超时，零ended、1 timeout、无result.json，不能核验逐臂人口/结局或正交付。B+C累计9 calls/225.146221433s，余51 calls/3374.853778567s；不复跑、不扩展。`COST_PROBE_READY=false`（探针失败），整体CODE_READY、CORE_COST、MODEL、DDQN_COST、FULL_COST和完整RELEASE均false。
 
 ## 历史工作包 B 状态（2026-10-01；第二 pilot 失败后停止）
 

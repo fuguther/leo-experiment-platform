@@ -45,7 +45,7 @@ B历史8 calls/109.071837305 s；批次上限60/3600，最多剩52/3490.92816269
 | DESIGN_READY | 本设计经根集中裁决 | true；仅逻辑准备通过 |
 | PROBE_CODE_READY | 根独立验收仅首probe真实调用依赖子图与语义输入；未用扩展不阻塞 | true；仅seed7四臂低竞争单cell，不等于整体CODE_READY |
 | CODE_READY | 所有按顺序实现项、必需反例和相关回归完成 | false；主矩阵、背压、五模式和DDQN扩展仍未完成 |
-| COST_PROBE_READY | 根授权合同中唯一seed7低竞争四臂4-call cell；clean full-SHA push、immutable release、VM依赖/GPW/bundle/argv/seed验真、新run-id与one-use ledger齐备后通过 | false；release/runtime/run验真待执行 |
+| COST_PROBE_READY | 根授权合同中唯一seed7低竞争四臂cell；clean full-SHA push、immutable release、VM依赖/GPW/bundle/argv/seed验真、新run-id与one-use ledger齐备后执行并核验 | false；唯一run已pullback验证但cell timeout、无结果/正交付smoke；见工作包STATUS与criteria，不得复跑 |
 | MODEL_READY / DDQN_COST_READY | 真checkpoint来源/契约通过且模型、查询与模式VM实测成本 | false；未找到已审checkpoint，成本未测 |
 | FULL_COST_READY | deterministic core和获准DDQN范围的上界合计在原预算内 | false |
 | RELEASE_READY | 完整主矩阵/DDQN的发布门；首成本探针仅受单独COST_PROBE_READY授权 | false；不得执行主矩阵或训练 |
