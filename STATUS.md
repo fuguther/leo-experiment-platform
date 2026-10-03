@@ -112,3 +112,14 @@ B+C 已累计 **21 calls / 2,435.057825092 模拟墙钟秒**；批次余 **39 ca
 - **实测事实（不是时间补偿收益）**：`flat_v2` 负对照两分支逐位对称 2.914003/2.914003 s；`drain_v2` 4.843002 vs 13.053003 s；`cross_v2` 1.644003 vs 4.271003 s（Δloss 0.589000）。四臂均未产生不同选择。
 - 方法学发现：`--decision-id first_forward` 在 `drain_v2`/`cross_v2` 选中竞争包 pid=1（decision_id=3/2）而非目标包 pid=10；下一轮须显式指定 decision-id 并回读 `target_pid` 自检。
 - 本批**未记录峰值 RSS 与内核调用数**；`replay.captured=false` 延续。完整一页汇报见工作区 `状态时间错位实验_首轮60分钟执行报告_20261003.md`，主文档 §10.8 已同步更新。
+
+## 状态时间错位第二轮60分钟诊断（2026-10-03，ta60-mech-20261003 分支追加记录）
+
+- 功能提交 `1c62f19f824bf38cb9c6775be972ab898f379dbb`；索引提交 `31558e63f4ac30c8d35f672714287e30477e90bd`；release `31558e63f4ac30c8d35f672714287e30477e90bd-7d27b4242534b821d4feeea4c6e64e337fb605dfd60e6c94deeb460cc1086f0f`（`remote_backup_pending`）。
+- 改动 3 个文件：`CODE/leo_sim/kernel.py`（`_observation_at_start` 在冻结时刻输出 `local_egress_in_service_s`，无法认证的方向省略不写 0）、`CODE/experiment_platform/time_alignment_compare.py`（ISL 分支补 `resource_rate`；历史按代际过滤并优先 `advertised_isl_work_ahead_bits_proxy`；接通 `capture_replay` 与 `--decision-pid`）、`CODE/experiment_platform/tests/test_time_alignment_compare.py`（fixture 补新字段 + 新增缺失信息回退测试 + 修正一处**预存在**的测试调用缺陷）。
+- 测试：`test_time_alignment_compare.py` **18/18 通过**（改动前 8 failed / 9 passed）。其中排序测试在原 HEAD `7502c3f` 复现失败（断言第 90 行），根因是该测试给 `score_snapshot_at` 传了显式时刻，按该函数契约会**覆盖臂的查询时刻**，四臂按构造相同；仅修正调用，断言原样保留。
+- 三次有效格全部 completed/exit 0、官方回传核验、`replay.captured=true`：`ta-flat-v2-full-20261003-01`（28,228,668 B，5 s）、`ta-drain-v2-full-20261003-01`（28,713,113 B，4 s）、`ta-cross-v2-full-20261003-01`（48,526,227 B，6 s）。目标分别为 decision 3/4/12，pid 均为 10；三格 `resource_mismatch=0`、`valid_pairs=2`。
+- **结果：三格均为有效零/负结果**。flat_v2 过门（四臂对称一致、两分支代价逐位相同）；drain_v2 四臂全选 W 且与神谕一致（regret=0）；cross_v2 四臂全选 W、regret=0.20675，神谕选 E。**四臂从未做出不同选择，未测到任何时间补偿收益**；分支代价差不是补偿收益。
+- cross_v2 的 2×2 分解：ETA 换真值无变化，队列/前方工作量换真值则 regret 由 0.20675 归零 → 误差唯一落在前方工作量预测。理想信息臂 common/candidate 可选 E，合法预测器无一臂做到。
+- 未记账项：内核逐次调用数、峰值 RSS（manifest 仅写 `cpu_count`）。完整记录使单格输出放大约 200–430 倍，后续排期须用新口径。
+- 一页汇报见工作区 `状态时间错位实验_第二轮60分钟执行报告_20261003.md`；主文档 §10.8 已同步为唯一当前状态；首轮报告保持历史身份。
