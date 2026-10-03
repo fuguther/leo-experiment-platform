@@ -625,30 +625,65 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
             legal.append(direction)  # stays in the set, scored as missing
             continue
         legal.append(direction)
+        raw_generation = cr.get("egress_generation")
+        key_generation = (int(raw_generation)
+                          if isinstance(raw_generation, int)
+                          and not isinstance(raw_generation, bool)
+                          and raw_generation >= 0 else None)
         key = ta.ResourceKey(int(cr["peer"]), str(cr["egress_direction"]),
-                             "isl")
+                             "isl", generation=key_generation)
         resources[direction] = key
         rate[direction] = cr.get(
             "candidate_isl_rate_bps", cr.get("isl_rate_bps"))
         prop[direction] = cr.get("propagation_s")
         peer_process[direction] = node_process
         remaining[direction] = cr.get("remaining_prop_s")
+        # The TARGET resource service rate is a different quantity from the
+        # local first-hop send rate above: it is the rate advertised for the
+        # peer egress this candidate actually targets.  Without it the scorer
+        # cannot price the work queued ahead, and every ISL candidate falls
+        # back (measured on the VM: all four arms, all three scenarios).
+        # Missing stays missing -- it is never replaced by the local rate.
+        resource_rate[direction] = cr.get("isl_rate_bps")
         # ordered advertisement history for THIS named resource: every arrived
         # advertisement that reported the peer egress the candidate targets.
         # Using only the newest value would silently degrade bounded_linear to
         # hold_last, which is exactly the comparison this task must not fudge.
         peer = cr.get("peer")
         egress = cr.get("egress_direction")
-        rate_bps = cr.get("isl_rate_bps")
         records = ((obs.get("neighbours") or {}).get(str(peer)) or {}).get(
             "advertised_history") or []
         for rec in records:
-            bits = (rec.get("advertised_isl_queue_bits") or {}).get(egress)
+            # Bind each sample to the SAME resource generation, as the
+            # online kernel path does.  A row that carries no generation
+            # (v1 / fixture) cannot be rejected on generation and is
+            # admitted on peer identity alone; when both sides carry one, a
+            # mismatch is not information about this resource.
+            rec_generation = (rec.get("advertised_isl_generation")
+                              or {}).get(egress)
+            if (key_generation is not None
+                    and isinstance(rec_generation, int)
+                    and not isinstance(rec_generation, bool)
+                    and rec_generation != key_generation):
+                continue
+            # Prefer the advertised work-ahead proxy (queued + active
+            # residual), which is what the online kernel path reads; the
+            # queue-only value remains the fallback for older rows.
+            bits = (rec.get("advertised_isl_work_ahead_bits_proxy")
+                    or {}).get(egress)
+            if bits is None:
+                bits = (rec.get("advertised_isl_queue_bits")
+                        or {}).get(egress)
             if bits is None:
                 continue
+            sample_rate = (rec.get("advertised_isl_rate_bps")
+                           or {}).get(egress)
+            if sample_rate is None:
+                sample_rate = cr.get("isl_rate_bps")
             history.append(ta.StateSample(
                 key, float(rec["generated_at"]), float(rec["received_at"]),
-                float(bits), None if rate_bps is None else float(rate_bps)))
+                float(bits),
+                None if sample_rate is None else float(sample_rate)))
         if not records:
             measurement = cr.get("measurement")
             if measurement and cr.get("advertised_queue_known"):
@@ -656,7 +691,16 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
                     key, float(measurement["generated_at"]),
                     float(measurement["received_at"]),
                     float(cr["advertised_queue_bits"]),
-                    None if rate_bps is None else float(rate_bps)))
+                    None if cr.get("isl_rate_bps") is None
+                    else float(cr["isl_rate_bps"])))
+    # Local first-hop residual work, recorded by the kernel AT OBSERVATION
+    # FREEZE TIME.  estimate_eta subtracts it from the local egress wait;
+    # when it is absent the ETA must report local_egress_wait_s as unknown
+    # rather than treat an unmeasured queue as empty.  A direction the
+    # kernel did not measure is simply absent, and is NOT written as 0.
+    raw_local_in_service = obs.get("local_egress_in_service_s")
+    local_in_service = (dict(raw_local_in_service)
+                        if isinstance(raw_local_in_service, dict) else {})
     # A3: the probe snapshot is built with the CONFIGURED rule, so a
     # fixed_horizon config must carry its horizon here too -- otherwise the
     # snapshot constructor refuses the pair and EVERY fixed-h candidate fails
@@ -675,6 +719,7 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
         resources=resources,
         egress_queue_bits=_pairs_from(
             {d: own_q.get(d, 0.0) for d in resources}),
+        local_egress_in_service_s=_pairs_from(local_in_service),
         link_rate_bps=_pairs_from(rate),
         link_propagation_s=_pairs_from(prop),
         peer_process_s=_pairs_from(peer_process),
@@ -792,16 +837,24 @@ def score_common_horizon_candidates(probe, resolved, target, pkt_bits,
 
 
 # ---------------------------------------------------------------- driving
-def _branch(resolved, rows, geometry, decision_id):
+def _branch(resolved, rows, geometry, decision_id, decision_pid=None):
     sink, timeline = [], []
     baseline = kernel.run_simulation(
         resolved, rows, geometry=geometry, decision_sink=sink,
         timeline_sink=timeline)
     if decision_id is None:
-        target = next((r for r in sink if r.get("kind") == "forward"), None)
+        pool = [r for r in sink if r.get("kind") == "forward"]
+        if decision_pid is not None:
+            # Pre-declared target identity: the packet, not whichever
+            # competitor happened to reach a structural decision first.
+            # Never selected by outcome or arm ranking.
+            pool = [r for r in pool
+                    if int(r.get("pid", -1)) == int(decision_pid)]
+        target = pool[0] if pool else None
         if target is None:
             raise CompareError(
-                "the fixture produced no forward decision to compare")
+                "the fixture produced no matching forward decision "
+                "to compare (decision_pid=%r)" % (decision_pid,))
     else:
         target = next((r for r in sink if r.get("decision_id") == decision_id),
                       None)
@@ -994,8 +1047,9 @@ def arm_view(scored, detail, label, role, losses, best):
 
 def compare(resolved, rows, geometry, decision_id, deadline_s, source,
             frozen_deadline=None, run_kind="dev", capture_replay=False,
-            common_horizon_candidates=None):
-    branch, target = _branch(resolved, rows, geometry, decision_id)
+            common_horizon_candidates=None, decision_pid=None):
+    branch, target = _branch(resolved, rows, geometry, decision_id,
+                             decision_pid=decision_pid)
     decision_id = int(target["decision_id"])
     if target.get("kind") != "forward":
         raise CompareError(
@@ -1356,7 +1410,8 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source,
 
 
 def compare_config(config_path, decision_id, deadline_s, root,
-                   frozen_deadline=None, run_kind="dev"):
+                   frozen_deadline=None, run_kind="dev",
+                   capture_replay=False, decision_pid=None):
     try:
         resolved = config_mod.load_config_file(str(config_path))
     except (config_mod.ConfigError, FileNotFoundError) as exc:
@@ -1372,11 +1427,14 @@ def compare_config(config_path, decision_id, deadline_s, root,
               "trace_sha256": digest, "rows": len(rows),
               "rows_digest": _rows_digest(rows)}
     return compare(resolved, rows, None, decision_id, deadline_s, source,
-                   frozen_deadline=frozen_deadline, run_kind=run_kind)
+                   frozen_deadline=frozen_deadline, run_kind=run_kind,
+                   capture_replay=capture_replay,
+                   decision_pid=decision_pid)
 
 
 def compare_scenario(name, decision_id, deadline_s, frozen_deadline=None,
-                     run_kind="dev"):
+                     run_kind="dev", capture_replay=False,
+                     decision_pid=None):
     try:
         resolved, rows, geometry, meta = scripted_scenarios.build(name)
     except KeyError as exc:
@@ -1386,7 +1444,9 @@ def compare_scenario(name, decision_id, deadline_s, frozen_deadline=None,
               "scripted_topology": meta["topology"],
               "scripted_cells": meta["cells"]}
     return compare(resolved, rows, geometry, decision_id, deadline_s, source,
-                   frozen_deadline=frozen_deadline, run_kind=run_kind)
+                   frozen_deadline=frozen_deadline, run_kind=run_kind,
+                   capture_replay=capture_replay,
+                   decision_pid=decision_pid)
 
 
 def publish(document, out: Path):
@@ -1422,6 +1482,13 @@ def main(argv=None) -> int:
                         choices=sorted(scripted_scenarios.SCENARIOS))
     parser.add_argument("--decision-id", required=True,
                         help="an integer decision id, or first_forward")
+    parser.add_argument("--decision-pid", type=int, default=None,
+                        help="with --decision-id first_forward: restrict"
+                             " the structural selection to this packet id")
+    parser.add_argument("--capture-replay", action="store_true",
+                        help="save the shared baseline and every forced"
+                             " candidate branch event streams for offline"
+                             " replay (large output)")
     parser.add_argument("--deadline-s", type=float, default=None)
     parser.add_argument("--deadline-from", type=Path, default=None,
                         help="development-frozen deadline JSON to load")
@@ -1447,12 +1514,16 @@ def main(argv=None) -> int:
             document = compare_config(args.config, decision_id,
                                       args.deadline_s, args.root,
                                       frozen_deadline=frozen,
-                                      run_kind=run_kind)
+                                      run_kind=run_kind,
+                                      capture_replay=args.capture_replay,
+                                      decision_pid=args.decision_pid)
         else:
             document = compare_scenario(args.scenario, decision_id,
                                         args.deadline_s,
                                         frozen_deadline=frozen,
-                                        run_kind=run_kind)
+                                        run_kind=run_kind,
+                                        capture_replay=args.capture_replay,
+                                        decision_pid=args.decision_pid)
         if args.freeze_deadline_to is not None:
             if run_kind != "dev":
                 raise CompareError(

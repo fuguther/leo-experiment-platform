@@ -4279,6 +4279,20 @@ class Kernel:
                     [] if self.decision_sink is None
                     else self._advertisement_history(sat, int(origin), now)),
             }
+        # Local first-hop residual work AT THE OBSERVATION INSTANT.  It is
+        # recorded here, at freeze time, so the offline comparator neither
+        # reads the post-commit queue nor invents a zero for an unmeasured
+        # queue.  A direction whose residual cannot be certified is omitted
+        # rather than reported as empty.
+        local_egress_in_service = {}
+        for direction in considered:
+            link = self.isls[int(sat)].get(str(direction))
+            if link is None:
+                continue
+            residual = self._isl_in_service_s(link, now)
+            if residual is None:
+                continue
+            local_egress_in_service[str(direction)] = float(residual)
         return {
             "schema": "leo-sim-observation-at-start/v1",
             "mode": mode,
@@ -4287,6 +4301,7 @@ class Kernel:
             "sat": int(sat),
             "own_queue_bits": {d: int(bits)
                                for d, bits in own_queue_bits.items()},
+            "local_egress_in_service_s": local_egress_in_service,
             "neighbours": neighbours,
             "candidate_directions": list(considered),
             "legal_directions": list(legal),

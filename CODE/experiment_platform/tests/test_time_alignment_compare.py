@@ -52,6 +52,9 @@ def _row():
         "observation_at_start": {
             "sat": 0, "legal_directions": ["E", "W"],
             "own_queue_bits": {"E": 0, "W": 0},
+            # Emitted by the kernel at observation freeze time; the local
+            # egress is idle here, which is a KNOWN zero, not missing.
+            "local_egress_in_service_s": {"E": 0.0, "W": 0.0},
             "candidate_resources": {
                 "E": {"status": "ok", "peer": 1, "egress_direction": "E",
                       "egress_peer": 3, "isl_rate_bps": 1e6,
@@ -75,6 +78,21 @@ def _row():
 
 
 # -------------------------------------------------------- arm behaviour
+def test_a_row_without_local_in_service_is_fallback_not_zero():
+    """A frozen observation with no recorded local residual work must
+    stay unusable.  Dropping the term to 0.0 would silently invent an
+    empty local egress and produce a scored candidate the kernel never
+    measured."""
+    resolved = _resolved()
+    row = _row()
+    del row["observation_at_start"]["local_egress_in_service_s"]
+    snap = cmp.build_snapshot(row, resolved, "now", 3.0, 1000.0, 0.0, 0.0)
+    scored = ta.score_snapshot_at(snap, snap.snapshot_at + 3.0)
+    assert scored.fallback_directions == ("E", "W")
+    for direction in ("E", "W"):
+        assert "local_egress_wait_s" in scored.by_direction()[direction].missing
+
+
 def test_the_query_instant_is_the_only_arm_difference():
     resolved = _resolved()
     row = _row()
@@ -82,7 +100,11 @@ def test_the_query_instant_is_the_only_arm_difference():
     totals = {}
     for arm in ta.ARMS:
         snap = cmp.build_snapshot(row, resolved, arm, 3.0, 1000.0, 0.0, 0.0)
-        scored = ta.score_snapshot_at(snap, snap.snapshot_at + 3.0)
+        # NO explicit instant: score_snapshot_at(snapshot, instant) scores
+        # EVERY arm at that one instant, which is exactly the arm difference
+        # this test exists to observe.  Passing an override here made all four
+        # arms identical by construction.
+        scored = ta.score_snapshot_at(snap)
         rankings[arm] = list(scored.ranking)
         totals[arm] = {s.direction: max(v for v in s.terms.values())
                        if False else s.total_s for s in scored.scores}
@@ -136,6 +158,7 @@ def test_offline_branch_snapshot_keeps_destination_downlink_as_real_resource():
     obs = row["observation_at_start"]
     obs["legal_directions"] = ["N", "W"]
     obs["own_queue_bits"] = {"N": 0, "W": 0}
+    obs["local_egress_in_service_s"] = {"N": 0.0, "W": 0.0}
     obs["candidate_resources"] = {
         "N": {"status": "delivered_downlink", "kind": "downlink",
               "peer": 2, "isl_rate_bps": 1e6,
