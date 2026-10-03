@@ -123,3 +123,16 @@ B+C 已累计 **21 calls / 2,435.057825092 模拟墙钟秒**；批次余 **39 ca
 - cross_v2 的 2×2 分解：ETA 换真值无变化，队列/前方工作量换真值则 regret 由 0.20675 归零 → 误差唯一落在前方工作量预测。理想信息臂 common/candidate 可选 E，合法预测器无一臂做到。
 - 未记账项：内核逐次调用数、峰值 RSS（manifest 仅写 `cpu_count`）。完整记录使单格输出放大约 200–430 倍，后续排期须用新口径。
 - 一页汇报见工作区 `状态时间错位实验_第二轮60分钟执行报告_20261003.md`；主文档 §10.8 已同步为唯一当前状态；首轮报告保持历史身份。
+
+## 状态时间错位第三轮60分钟诊断（2026-10-03，ta60-mech-20261003 分支追加记录）
+
+- 三个功能提交：`1627f81`（线上/离线口径统一）、`7a4b180`（H1 格单服务器 10 ms 服务）、`f7dc736`（**臂查询时刻修复**）；release `f7dc736fb005d00010425dc867a2ff2b1754723a-d7fbaea29e53a2af24018dd3ca141e78db1ad695c00ae331ea1b5ff6c573df0e`（`remote_backup_pending`）。
+- 改动 `CODE/leo_sim/time_alignment.py`（新增共用纯函数 `project_advertised_peer_processing`）、`CODE/leo_sim/kernel.py`（该方法改为委派；`_observation_at_start` 输出 `compute_state`/`query_state`）、`CODE/experiment_platform/time_alignment_compare.py`（读查询池状态；邻星处理改用共享投影，不再用配置 0 冒充；**在线四臂不再用显式时刻覆盖臂的查询时刻**）、`CODE/experiment_platform/scripted_scenarios.py`（新增 `h1_visible`、`h1_visible_shift`）、测试文件。
+- 测试：`test_time_alignment_compare.py` **19/19**；`test_time_alignment_online.py`+`test_eta_terms.py` **27/27**。断言未放宽；测试 fixture 补齐内核新输出的字段，并新增“缺字段必须回退而非写 0”的检查。
+- **找到“四臂相同”的真正根因**：在线四臂循环 `score_snapshot_at(snap, snap.snapshot_at + horizon)` 的显式时刻覆盖臂查询时刻。第二轮的中位斜率 0 是必要背景，本轮覆盖是充分扼杀条件。修复后 `h1_visible` 四臂预测值随臂移动。
+- **首次取得四臂可区分的 H1 实测**：`h1_visible`（decision 246，pid=10）stale/now 选 E（regret 0.182499），common/candidate 选 W（regret 0）；E 实际时延 4.810203 s vs W 3.270002 s → 时间补偿避免 **1.5402 s / 0.182499 归一化损失**。
+- **相位稳健性未通过**：`h1_visible_shift` 四臂全选 E、全部错选、regret 均 0.057499、零恢复 → 效果依赖精确发包相位。
+- flat 负对照修复后仍对称（四臂 E=W=2.202002、预测 work 全 0、两分支 2.914003 s）。
+- 有效格：`ta-third-{flat_v2,h1_visible,h1_visible_shift}-20261003-03`，全部 completed/exit 0、官方回传 `VERIFIED`、`replay.captured=true`；输出 28.2/139.5/139.8 MB，墙钟 5/13/13 s。准入失败格 `…-01`、中间格 `…-02` 身份保留。
+- **仍未满足**：峰值 RSS 口径与内核逐次调用记账本轮未实现（runner manifest 仍只有 `cpu_count`）。
+- 一页汇报见 `状态时间错位实验_第三轮60分钟执行报告_20261003.md`；主文档 §10.8 已同步为唯一当前状态；前两轮报告保持历史身份。
