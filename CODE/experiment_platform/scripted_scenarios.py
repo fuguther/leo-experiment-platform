@@ -300,13 +300,21 @@ B_LAST_S = 4.0
 B_PERIOD_S = 0.04
 B_BITS = 100_000
 
-#: The background streams ask for far more routing decisions per second
-#: (15/s at sat1, 25/s at sat2) than a single 1 ms server can serve (10/s).
-#: The pool is enlarged and DECLARED here so that compute congestion is not
-#: mistaken for the egress-queue mechanism: 15/80 = 19% and 25/80 = 31%.
-H1_COMPUTE_SERVERS = 8
+#: The background streams ask for 15/s of routing decisions at sat1 and
+#: 25/s at sat2.  DECLARED IDEAL CONDITION: the compute service is shortened
+#: to 10 ms on the SINGLE server, giving 100 jobs/s per satellite, so the
+#: streams sit at 15% and 25% utilisation.  Compute congestion is thereby
+#: kept out of the egress-queue mechanism.
+#:
+#: The server COUNT must stay 1.  The shared projection deliberately refuses
+#: multi-server telemetry (servers not in (0,1)) and reports the peer wait as
+#: unknown, which makes every candidate fall back -- measured on the VM in
+#: ta-third-h1_visible-20261003-01, where 8 servers produced exactly that.
+H1_COMPUTE_DELAY_S = 0.01
+H1_COMPUTE_SERVERS = 1
 H1_CONTROL_PLANE = dict(V2_CONTROL_PLANE)
-H1_EXECUTION = dict(V2_EXECUTION, compute_servers_per_satellite=H1_COMPUTE_SERVERS,
+H1_EXECUTION = dict(V2_EXECUTION, compute_delay_s=H1_COMPUTE_DELAY_S,
+                    compute_servers_per_satellite=H1_COMPUTE_SERVERS,
                     max_packets=400)
 
 
@@ -341,6 +349,8 @@ def _h1_declared(target_emit_s):
         "b_period_s": B_PERIOD_S, "b_bits": B_BITS,
         "advertisement_protocol_version": 2,
         "compute_servers_per_satellite": H1_COMPUTE_SERVERS,
+        "compute_delay_s": H1_COMPUTE_DELAY_S,
+        "declared_compute_utilisation": "15/100 at sat1, 25/100 at sat2",
         "declared_median_slope_a_mbit_s": 0.5,
         "declared_median_slope_b_mbit_s": -1.0,
         "declared_work_a_mbit_at_6s": 1.75,
