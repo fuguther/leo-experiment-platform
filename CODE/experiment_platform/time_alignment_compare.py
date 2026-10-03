@@ -1236,7 +1236,15 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source,
         snap = build_snapshot(target, resolved, arm, horizon, pkt_bits,
                               0.0, float(resolved["config"]["execution"][
                                   "compute_delay_s"]), provenance=(scope,))
-        scored = ta.score_snapshot_at(snap, snap.snapshot_at + horizon)
+        # NO explicit instant.  score_snapshot_at(snapshot, instant) scores
+        # at that ONE instant and overrides the arm instant, which made all
+        # four online arms numerically identical no matter what the history
+        # sloped like -- measured: h1_visible had median slopes +0.6356 and
+        # -0.982 Mbit/s and still produced identical predictions for every
+        # arm.  The arm's own query instant is the ONLY arm-dependent input
+        # this comparison is supposed to exercise, so it must not be
+        # overridden here.
+        scored = ta.score_snapshot_at(snap)
         ranking = list(scored.ranking)
         picked = ranking[0] if ranking else None
         picked_loss = losses.get(picked) if picked in losses else None
