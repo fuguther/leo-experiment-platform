@@ -258,6 +258,102 @@ def _w_load_rows(first_pid):
     return rows
 
 
+
+
+# --------------------------------------------------------------------------
+# Third-round H1 scenario: a trend ALREADY VISIBLE before the decision
+# --------------------------------------------------------------------------
+# Hand-computed design (declared BEFORE the run, to be checked against it):
+#
+#   A = isl:1:3 (E branch)   arrivals 1.5 Mbps vs 1 Mbps service
+#                            -> net +0.5 Mbit/s, rising from t=2.5 s
+#   B = isl:2:3 (W branch)   arrivals 2.5 Mbps until t=4.0 s, then pure drain
+#                            -> net -1.0 Mbit/s after 4.0 s
+#
+#   The predictor takes the MEDIAN of the 7 slopes of the last 8 samples
+#   (measured_at 2.5, 3.0, ... 6.0 s at a 0.5 s advertisement interval).
+#   All 7 A-slopes are positive (+0.5 Mbit/s) and 4 of the 7 B-slopes are
+#   negative (-1.0 Mbit/s), so BOTH medians are non-zero -- which is what
+#   the earlier scenarios lacked: there the median was 0 for both
+#   resources, so every query instant returned the same number.
+#
+#   Prediction at the three query instants (snapshot at 6.312 s):
+#     work_A: 6.000 -> 1.75 Mbit   6.312 -> 1.906   7.413 -> 2.457
+#     work_B: 6.000 -> 1.80 Mbit   6.312 -> 1.488   7.413 -> 0.387
+#   Ranking:  stale sees A=1.75 < B=1.80  -> picks A
+#             now/future sees A > B        -> picks B
+#   Realised: the packet reaches isl:1:3 at ~7.51 s (A still rising,
+#   ~2.5 Mbit ahead) and isl:2:3 at ~8.40 s (B drained empty), so B is the
+#   actually cheaper action and the stale arm should lose real completion
+#   time.  This is the crossover the earlier cells never had.
+H1_TARGET_EMIT_S = 6.30
+#: Neighbour/phase control: same scenario, target 0.5 s earlier, so the
+#: last received advertisement is the one generated at 5.5 s instead of 6.0.
+H1_NEIGHBOUR_EMIT_S = 5.80
+
+A_FIRST_S = 2.5
+A_LAST_S = 8.0
+A_PERIOD_S = 0.0667
+A_BITS = 100_000
+B_FIRST_S = 1.5
+B_LAST_S = 4.0
+B_PERIOD_S = 0.04
+B_BITS = 100_000
+
+#: The background streams ask for far more routing decisions per second
+#: (15/s at sat1, 25/s at sat2) than a single 1 ms server can serve (10/s).
+#: The pool is enlarged and DECLARED here so that compute congestion is not
+#: mistaken for the egress-queue mechanism: 15/80 = 19% and 25/80 = 31%.
+H1_COMPUTE_SERVERS = 8
+H1_CONTROL_PLANE = dict(V2_CONTROL_PLANE)
+H1_EXECUTION = dict(V2_EXECUTION, compute_servers_per_satellite=H1_COMPUTE_SERVERS,
+                    max_packets=400)
+
+
+def _stream_rows(first_pid, first_s, last_s, period_s, bits, src):
+    rows = []
+    t = first_s
+    pid = first_pid
+    while t <= last_s + 1e-9:
+        rows.append(_row(pid, round(t, 6), src, DST, bits))
+        pid += 1
+        t += period_s
+    return rows
+
+
+def _h1_rows(target_emit_s):
+    return ([_row(TARGET_PID, target_emit_s, SRC, DST, PACKET_BITS)]
+            + _stream_rows(200, A_FIRST_S, A_LAST_S, A_PERIOD_S, A_BITS,
+                           COMPETING_SRC)
+            + _stream_rows(300, B_FIRST_S, B_LAST_S, B_PERIOD_S, B_BITS,
+                           W_SRC))
+
+
+def _h1_declared(target_emit_s):
+    return {
+        "target_bits": PACKET_BITS,
+        "target_emit_s": target_emit_s,
+        "a_resource": "isl:1:3",
+        "b_resource": "isl:2:3",
+        "a_first_s": A_FIRST_S, "a_last_s": A_LAST_S,
+        "a_period_s": A_PERIOD_S, "a_bits": A_BITS,
+        "b_first_s": B_FIRST_S, "b_last_s": B_LAST_S,
+        "b_period_s": B_PERIOD_S, "b_bits": B_BITS,
+        "advertisement_protocol_version": 2,
+        "compute_servers_per_satellite": H1_COMPUTE_SERVERS,
+        "declared_median_slope_a_mbit_s": 0.5,
+        "declared_median_slope_b_mbit_s": -1.0,
+        "declared_work_a_mbit_at_6s": 1.75,
+        "declared_work_b_mbit_at_6s": 1.80,
+        "declared_expectation": (
+            "stale should see A cheaper than B and pick A; now/common/"
+            "candidate should extrapolate A above B and pick B; B is the "
+            "actually cheaper action because A is still rising when the "
+            "packet arrives and B has drained empty.  Declared, not "
+            "measured; a mismatch is a result, not a failure to hide."),
+    }
+
+
 #: name -> (customer overrides, trace rows, what the run is expected to show)
 SCENARIOS = {
     "reachability": {
@@ -369,6 +465,27 @@ SCENARIOS = {
                     "the W egress light, while now/common/candidate see "
                     "the E egress drained and the W egress loaded",
         },
+    },
+    # ---- third-round H1 cell + its phase neighbour ----------------------
+    "h1_visible": {
+        "purpose": "one H1 competition cell whose trend is already "
+                    "visible in the history received before t0, so the "
+                    "query instant can actually change the ranking",
+        "overrides": {"control_plane": H1_CONTROL_PLANE,
+                      "execution": H1_EXECUTION},
+        "cells": CELLS_W,
+        "rows": _h1_rows(H1_TARGET_EMIT_S),
+        "declared": _h1_declared(H1_TARGET_EMIT_S),
+    },
+    "h1_visible_shift": {
+        "purpose": "phase neighbour of h1_visible: identical science, "
+                    "target 0.5 s earlier, to test whether the effect "
+                    "depends on one exact emission instant",
+        "overrides": {"control_plane": H1_CONTROL_PLANE,
+                      "execution": H1_EXECUTION},
+        "cells": CELLS_W,
+        "rows": _h1_rows(H1_NEIGHBOUR_EMIT_S),
+        "declared": _h1_declared(H1_NEIGHBOUR_EMIT_S),
     },
 }
 

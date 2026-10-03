@@ -561,6 +561,14 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
     obs = row.get("observation_at_start") or {}
     cand = obs.get("candidate_resources") or {}
     own_q = obs.get("own_queue_bits") or {}
+    # Local first-hop residual work, recorded by the kernel AT OBSERVATION
+    # FREEZE TIME.  estimate_eta subtracts it from the local egress wait;
+    # when it is absent the ETA must report local_egress_wait_s as unknown
+    # rather than treat an unmeasured queue as empty.  A direction the
+    # kernel did not measure is simply absent, and is NOT written as 0.
+    raw_local_in_service = obs.get("local_egress_in_service_s")
+    local_in_service = (dict(raw_local_in_service)
+                        if isinstance(raw_local_in_service, dict) else {})
     cfg_ta = resolved["config"]["time_alignment"]
     node_process = float(resolved["config"]["execution"]["node_process_delay_s"])
     # T1-R8: the compute-wait term must come from the pool state KNOWN at the
@@ -570,6 +578,17 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
     if isinstance(state, dict):
         compute_wait = float(state.get("wait_estimate_s", 0.0))
         compute_service = float(state.get("service_s", compute_service))
+    # The query pool is priced from the SAME freeze-time state the online
+    # kernel path uses.  Leaving it at 0 while the real branch charged a
+    # finite single-server pool is exactly the kind of online/offline drift
+    # this comparison must not contain.
+    qstate = obs.get("query_state")
+    query_wait = 0.0
+    query_service = 0.0
+    if isinstance(qstate, dict):
+        query_wait = float(qstate.get("wait_s", 0.0))
+        query_service = float(qstate.get("service_s", 0.0))
+    exec_mode = str(cfg_ta["execution_mode"])
     legal = []
     resources = {}
     history = []
@@ -636,8 +655,37 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
         rate[direction] = cr.get(
             "candidate_isl_rate_bps", cr.get("isl_rate_bps"))
         prop[direction] = cr.get("propagation_s")
-        peer_process[direction] = node_process
         remaining[direction] = cr.get("remaining_prop_s")
+        # Peer processing comes from the SAME received advertisement the
+        # online kernel path projects, through the SHARED pure projection.
+        # A configured node_process_delay_s is not evidence about this
+        # peer's finite pools and must NOT stand in for an unmeasured wait.
+        peer_records = ((obs.get("neighbours") or {}).get(str(cr.get("peer")))
+                        or {}).get("advertised_history") or []
+        rate_local = cr.get("candidate_isl_rate_bps", cr.get("isl_rate_bps"))
+        residual_local = local_in_service.get(direction)
+        if (peer_records
+                and all(isinstance(v, (int, float))
+                        and not isinstance(v, bool)
+                        and math.isfinite(float(v))
+                        for v in (rate_local, cr.get("propagation_s"),
+                                  own_q.get(direction, 0.0)))
+                and float(rate_local) > 0
+                and isinstance(residual_local, (int, float))
+                and not isinstance(residual_local, bool)):
+            source_compute_query = (compute_wait + compute_service
+                                    + query_wait + query_service)
+            local_wait = max(
+                0.0, float(own_q.get(direction, 0.0)) / float(rate_local)
+                + float(residual_local) - source_compute_query)
+            projected_peer = ta.project_advertised_peer_processing(
+                peer_records[-1],
+                float(row["t_decision_start"]) + source_compute_query
+                + local_wait + float(pkt_bits) / float(rate_local)
+                + float(cr["propagation_s"]),
+                exec_mode)
+            if projected_peer is not None:
+                peer_process[direction] = projected_peer
         # The TARGET resource service rate is a different quantity from the
         # local first-hop send rate above: it is the rate advertised for the
         # peer egress this candidate actually targets.  Without it the scorer
@@ -693,14 +741,6 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
                     float(cr["advertised_queue_bits"]),
                     None if cr.get("isl_rate_bps") is None
                     else float(cr["isl_rate_bps"])))
-    # Local first-hop residual work, recorded by the kernel AT OBSERVATION
-    # FREEZE TIME.  estimate_eta subtracts it from the local egress wait;
-    # when it is absent the ETA must report local_egress_wait_s as unknown
-    # rather than treat an unmeasured queue as empty.  A direction the
-    # kernel did not measure is simply absent, and is NOT written as 0.
-    raw_local_in_service = obs.get("local_egress_in_service_s")
-    local_in_service = (dict(raw_local_in_service)
-                        if isinstance(raw_local_in_service, dict) else {})
     # A3: the probe snapshot is built with the CONFIGURED rule, so a
     # fixed_horizon config must carry its horizon here too -- otherwise the
     # snapshot constructor refuses the pair and EVERY fixed-h candidate fails
@@ -728,6 +768,7 @@ def build_snapshot(row, resolved, arm, common_horizon_s, pkt_bits,
         terminal_propagation_s=_pairs_from(terminal_prop),
         resource_available=resource_available,
         compute_wait_s=compute_wait, compute_service_s=compute_service,
+        query_wait_s=query_wait, query_service_s=query_service,
         pkt_bits=pkt_bits,
         max_resource_queue_bits=None,
         arm=arm, predictor=str(cfg_ta["predictor"]),

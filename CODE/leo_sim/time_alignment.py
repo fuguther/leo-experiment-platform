@@ -673,6 +673,70 @@ def estimate_eta(snapshot: ObservationSnapshot, direction: str) -> EtaEstimate:
                        tuple(unknown), method)
 
 
+def project_advertised_peer_processing(record, peer_arrival_at,
+                                        exec_mode: str):
+    """Estimate peer compute+query delay from ONE received advertisement.
+
+    Shared by the ONLINE kernel path and the OFFLINE comparator so the two
+    cannot drift apart.  Pure: it reads only the advertisement record and
+    the projected arrival instant -- never a live pool, never a realised
+    wait.  Work measured at generation time drains while the packet is in
+    flight and while earlier services run.
+
+    Returns None when the telemetry cannot support an estimate, so the
+    caller records 'unknown' instead of substituting a configured zero.
+    """
+    if not isinstance(record, dict):
+        return None
+    processing = record.get("advertised_processing")
+    measured_at = record.get("generated_at")
+    if (not isinstance(processing, dict)
+            or not isinstance(measured_at, (int, float))
+            or isinstance(measured_at, bool)
+            or not math.isfinite(float(measured_at))
+            or float(measured_at) < 0
+            or not isinstance(peer_arrival_at, (int, float))
+            or isinstance(peer_arrival_at, bool)
+            or not math.isfinite(float(peer_arrival_at))):
+        return None
+    compute = processing.get("compute") or {}
+    query = processing.get("query") or {}
+
+    def field(pool, name):
+        value = pool.get(name)
+        return (float(value) if isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(float(value)) and float(value) >= 0
+                else None)
+
+    compute_service = field(compute, "service_s")
+    compute_work = field(compute, "work_ahead_s")
+    compute_servers = compute.get("servers")
+    query_service = field(query, "service_s")
+    query_work = field(query, "work_ahead_s")
+    query_servers = query.get("servers")
+    if (compute_service is None or compute_work is None
+            or query_service is None or query_work is None
+            or compute_servers not in (0, 1)
+            or query_servers not in (0, 1)):
+        return None
+    if exec_mode in ("precomputed", "async_point", "async_window"):
+        compute_service = 0.0
+    elif exec_mode == "per_flow":
+        # Cache presence on the peer is not part of this advertisement.
+        return None
+    since_measurement = max(0.0, float(peer_arrival_at)
+                            - float(measured_at))
+    compute_wait = (0.0 if compute_servers == 0 else
+                    max(0.0, compute_work - since_measurement))
+    compute_done_elapsed = (since_measurement + compute_wait
+                            + compute_service)
+    query_wait = (0.0 if query_servers == 0 else
+                  max(0.0, query_work - compute_done_elapsed))
+    return float(compute_wait + compute_service + query_wait
+                 + query_service)
+
+
 # --------------------------------------------------------------------------
 # unified scoring
 # --------------------------------------------------------------------------

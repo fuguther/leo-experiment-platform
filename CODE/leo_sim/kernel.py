@@ -3686,52 +3686,11 @@ class Kernel:
                                             peer_arrival_at: float):
         """Estimate peer compute/query delay from one received ad only.
 
-        Work measured at generation time drains while the packet is in flight
-        and while earlier local/peer services run.  No peer live pool or
-        realized future wait is read.  Unknown/multi-server telemetry remains
-        unknown so the common scorer uses its shared fallback.
+        Delegates to the SHARED pure projection so the online kernel path
+        and the offline comparator cannot drift apart.
         """
-        processing = record.get("advertised_processing")
-        measured_at = record.get("generated_at")
-        if (not isinstance(processing, dict)
-                or not isinstance(measured_at, (int, float))
-                or isinstance(measured_at, bool)
-                or not math.isfinite(float(measured_at))
-                or float(measured_at) < 0):
-            return None
-        compute = processing.get("compute") or {}
-        query = processing.get("query") or {}
-
-        def field(pool, name):
-            value = pool.get(name)
-            return (float(value) if isinstance(value, (int, float))
-                    and not isinstance(value, bool)
-                    and math.isfinite(float(value)) and float(value) >= 0
-                    else None)
-
-        compute_service = field(compute, "service_s")
-        compute_work = field(compute, "work_ahead_s")
-        compute_servers = compute.get("servers")
-        query_service = field(query, "service_s")
-        query_work = field(query, "work_ahead_s")
-        query_servers = query.get("servers")
-        if (compute_service is None or compute_work is None
-                or query_service is None or query_work is None
-                or compute_servers not in (0, 1) or query_servers not in (0, 1)):
-            return None
-        if self.exec_mode in ("precomputed", "async_point", "async_window"):
-            compute_service = 0.0
-        elif self.exec_mode == "per_flow":
-            # Cache presence on the peer is not part of this advertisement.
-            return None
-        since_measurement = max(0.0, float(peer_arrival_at) -
-                                float(measured_at))
-        compute_wait = (0.0 if compute_servers == 0 else
-                        max(0.0, compute_work - since_measurement))
-        compute_done_elapsed = since_measurement + compute_wait + compute_service
-        query_wait = (0.0 if query_servers == 0 else
-                      max(0.0, query_work - compute_done_elapsed))
-        return float(compute_wait + compute_service + query_wait + query_service)
+        return _ta.project_advertised_peer_processing(
+            record, peer_arrival_at, self.exec_mode)
 
     def _ctrl_arrive_after_prop(self, pkt: ControlPacket, from_sat: int, sat: int, prop: float):
         yield self.env.timeout(prop)
@@ -4279,6 +4238,16 @@ class Kernel:
                     [] if self.decision_sink is None
                     else self._advertisement_history(sat, int(origin), now)),
             }
+        # Compute and query pool state AT THE OBSERVATION INSTANT, from the
+        # same helpers the online kernel path uses.  Without these the
+        # offline comparator silently priced compute at the configured
+        # service with zero wait, and query at zero, while the real branch
+        # charged the finite pool.
+        observation_compute = self._compute_state_now(int(sat))
+        observation_query = self._query_state_at(
+            int(sat), now,
+            float(observation_compute["wait_estimate_s"])
+            + float(observation_compute["service_s"]))
         # Local first-hop residual work AT THE OBSERVATION INSTANT.  It is
         # recorded here, at freeze time, so the offline comparator neither
         # reads the post-commit queue nor invents a zero for an unmeasured
@@ -4302,6 +4271,8 @@ class Kernel:
             "own_queue_bits": {d: int(bits)
                                for d, bits in own_queue_bits.items()},
             "local_egress_in_service_s": local_egress_in_service,
+            "compute_state": observation_compute,
+            "query_state": observation_query,
             "neighbours": neighbours,
             "candidate_directions": list(considered),
             "legal_directions": list(legal),

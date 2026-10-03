@@ -34,8 +34,15 @@ def _resolved(**over):
 
 
 def _history(measured, received, bits):
+    # The v2 advertisement carries the peer's finite-pool telemetry; without it
+    # the peer processing term is UNKNOWN and the candidate must fall back.
     return {"generated_at": measured, "received_at": received,
-            "advertised_isl_queue_bits": bits}
+            "advertised_isl_queue_bits": bits,
+            "advertised_processing": {
+                "compute": {"servers": 1, "service_s": 0.1,
+                            "work_ahead_s": 0.0},
+                "query": {"servers": 1, "service_s": 0.0,
+                          "work_ahead_s": 0.0}}}
 
 
 def _row():
@@ -75,6 +82,77 @@ def _row():
             },
         },
     }
+
+
+# ------------------------------------------------- h1 declared design
+#: Sample times and DECLARED work-ahead values for the h1_visible cell,
+#: hand-computed before the VM run from the declared arrival/service rates.
+H1_TIMES = (2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0)
+H1_A_BITS = (0, 250_000, 500_000, 750_000, 1_000_000, 1_250_000,
+             1_500_000, 1_750_000)          # isl:1:3, rising +0.5 Mbit/s
+H1_B_BITS = (1_550_000, 2_300_000, 3_050_000, 3_800_000, 3_300_000,
+             2_800_000, 2_300_000, 1_800_000)  # isl:2:3, then -1.0 Mbit/s
+
+
+def _h1_declared_row(target_at=6.3120013845711885):
+    """The h1_visible design as a frozen observation, with declared values.
+
+    This checks the PREDICTOR ARITHMETIC AND THE RANKING FLIP the VM cell
+    is meant to demonstrate.  It is not a substitute for that cell."""
+    def hist(bits, egress):
+        out = []
+        for t, v in zip(H1_TIMES, bits):
+            rec = _history(t, t + 0.009, {egress: v})
+            rec["advertised_isl_work_ahead_bits_proxy"] = {egress: v}
+            out.append(rec)
+        return out
+
+    def cand(peer, egress, egress_peer):
+        return {"status": "ok", "peer": peer,
+                "egress_direction": egress, "egress_peer": egress_peer,
+                "isl_rate_bps": 1e6, "candidate_isl_rate_bps": 1e6,
+                "propagation_s": 0.001, "remaining_prop_s": 0.001}
+
+    return {
+        "decision_id": 12, "pid": 10, "sat": 0, "dst": "B",
+        "kind": "forward", "chosen": "E", "candidates": ["E", "W"],
+        "t_decision_start": target_at, "t": target_at,
+        "observation_at_start": {
+            "sat": 0, "legal_directions": ["E", "W"],
+            "own_queue_bits": {"E": 0, "W": 0},
+            "local_egress_in_service_s": {"E": 0.0, "W": 0.0},
+            "compute_state": {"wait_estimate_s": 0.0, "service_s": 0.1},
+            "query_state": {"wait_s": 0.0, "service_s": 0.0},
+            "candidate_resources": {"E": cand(1, "E", 3),
+                                    "W": cand(2, "S", 4)},
+            "neighbours": {"1": {"advertised_history": hist(H1_A_BITS, "E")},
+                           "2": {"advertised_history": hist(H1_B_BITS, "S")}},
+        },
+    }
+
+
+def test_h1_visible_declared_history_flips_the_ranking():
+    """Declared before the run: non-zero median slopes make the query
+    instant matter, so stale and the later arms must disagree."""
+    resolved = _resolved()
+    row = _h1_declared_row()
+    rankings, works = {}, {}
+    for arm in ta.ARMS:
+        snap = cmp.build_snapshot(row, resolved, arm, 3.0, 1_000_000, 0.0, 0.0)
+        scored = ta.score_snapshot_at(snap)
+        by = scored.by_direction()
+        rankings[arm] = list(scored.ranking)
+        works[arm] = {d: by[d].terms.get("resource_work_s")
+                      for d in ("E", "W")}
+    assert rankings["stale"][0] == "E"
+    assert rankings["now"][0] == "W"
+    assert rankings["common"][0] == "W"
+    assert rankings["candidate"][0] == "W"
+    # the predicted work itself must move with the instant
+    assert works["stale"]["E"] == pytest.approx(1.75, abs=1e-9)
+    assert works["stale"]["W"] == pytest.approx(1.80, abs=1e-9)
+    assert works["now"]["E"] == pytest.approx(1.9060007, abs=1e-6)
+    assert works["now"]["W"] == pytest.approx(1.4879986, abs=1e-6)
 
 
 # -------------------------------------------------------- arm behaviour
