@@ -84,6 +84,28 @@ def _row():
     }
 
 
+def test_the_real_compare_loop_lets_the_arms_differ(tmp_path):
+    """Regression for the third-round defect, on the REAL compare loop.
+
+    h1_visible has non-zero median slopes, so a correct loop cannot make
+    all four arms agree.  If the online arm loop ever passes a common
+    overlap instant again -- score_snapshot_at(snap, snap.snapshot_at +
+    horizon) -- every arm collapses onto that instant and this fails."""
+    out = tmp_path / "h1_visible.json"
+    done = _run("--scenario", "h1_visible", "--decision-id",
+                "first_forward", "--decision-pid", "10",
+                "--deadline-s", "4", "--run-kind", "dev",
+                "--out", str(out))
+    assert done.returncode == 0, done.stdout + done.stderr
+    document = json.loads(out.read_text(encoding="utf-8"))
+    chosen = {arm: document["arms"][arm]["chosen"] for arm in ta.ARMS}
+    assert len(set(chosen.values())) > 1, chosen
+    assert chosen["stale"] != chosen["common"], chosen
+    work = {arm: document["arms"][arm]["scores"]["E"]["terms"]
+                       ["resource_work_s"] for arm in ta.ARMS}
+    assert len({round(v, 9) for v in work.values()}) > 1, work
+
+
 # ------------------------------------------------- h1 declared design
 #: Sample times and DECLARED work-ahead values for the h1_visible cell,
 #: hand-computed before the VM run from the declared arrival/service rates.

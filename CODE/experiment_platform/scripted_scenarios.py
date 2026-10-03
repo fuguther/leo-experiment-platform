@@ -291,6 +291,17 @@ H1_TARGET_EMIT_S = 6.30
 #: last received advertisement is the one generated at 5.5 s instead of 6.0.
 H1_NEIGHBOUR_EMIT_S = 5.80
 
+#: Fourth-round frozen phases.  Chosen from the known 0.5 s advertisement
+#: period and how the received history window moves, NOT from any outcome:
+#:   6.05 and 6.45 keep the same 8-sample window (2.5-6.0 s) as the 6.30
+#:     reference and differ only in the decision instant, which straddles
+#:     the unfitted crossing time t_cross = 6.0 + (2.493000-1.925401)/
+#:     (0.6356-(-0.982)) = 6.350890 s;
+#:   6.55 crosses to the next advertisement, so its window becomes 3.0-6.5 s.
+H1_PHASE_605_S = 6.05
+H1_PHASE_645_S = 6.45
+H1_PHASE_655_S = 6.55
+
 A_FIRST_S = 2.5
 A_LAST_S = 8.0
 A_PERIOD_S = 0.0667
@@ -337,7 +348,7 @@ def _h1_rows(target_emit_s):
                            W_SRC))
 
 
-def _h1_declared(target_emit_s):
+def _h1_declared(target_emit_s, expectation=None):
     return {
         "target_bits": PACKET_BITS,
         "target_emit_s": target_emit_s,
@@ -355,12 +366,12 @@ def _h1_declared(target_emit_s):
         "declared_median_slope_b_mbit_s": -1.0,
         "declared_work_a_mbit_at_6s": 1.75,
         "declared_work_b_mbit_at_6s": 1.80,
-        "declared_expectation": (
+        "declared_expectation": (expectation or (
             "stale should see A cheaper than B and pick A; now/common/"
             "candidate should extrapolate A above B and pick B; B is the "
             "actually cheaper action because A is still rising when the "
             "packet arrives and B has drained empty.  Declared, not "
-            "measured; a mismatch is a result, not a failure to hide."),
+            "measured; a mismatch is a result, not a failure to hide.")),
     }
 
 
@@ -496,6 +507,53 @@ SCENARIOS = {
         "cells": CELLS_W,
         "rows": _h1_rows(H1_NEIGHBOUR_EMIT_S),
         "declared": _h1_declared(H1_NEIGHBOUR_EMIT_S),
+    },
+    # ---- fourth-round frozen phases (declared before running) -----------
+    "h1_phase_605": {
+        "purpose": "frozen phase 6.05 s: same 8-sample window as the "
+                    "6.30 reference, decision instant BEFORE t_cross",
+        "overrides": {"control_plane": H1_CONTROL_PLANE,
+                      "execution": H1_EXECUTION},
+        "cells": CELLS_W,
+        "rows": _h1_rows(H1_PHASE_605_S),
+        "declared": _h1_declared(
+            H1_PHASE_605_S,
+            "DECLARED BEFORE THE RUN: 8-sample window 2.5-6.0 s, median "
+            "slopes A=+0.6356 and B=-0.982 Mbit/s, t0=6.062001 < t_cross "
+            "6.350890 s, so stale and now are expected to pick E and "
+            "common/candidate W, the same split as the 6.30 reference."),
+    },
+    "h1_phase_645": {
+        "purpose": "frozen phase 6.45 s: same 8-sample window, decision "
+                    "instant AFTER t_cross",
+        "overrides": {"control_plane": H1_CONTROL_PLANE,
+                      "execution": H1_EXECUTION},
+        "cells": CELLS_W,
+        "rows": _h1_rows(H1_PHASE_645_S),
+        "declared": _h1_declared(
+            H1_PHASE_645_S,
+            "DECLARED BEFORE THE RUN: same window and slopes as the 6.05 "
+            "and 6.30 cells, but t0=6.462001 > t_cross 6.350890 s, so now "
+            "is expected to join common/candidate on W while stale still "
+            "picks E.  This is the point that tests whether the crossing "
+            "time is the real boundary rather than the emission instant."),
+    },
+    "h1_phase_655": {
+        "purpose": "frozen phase 6.55 s: decision after the 6.5 s "
+                    "advertisement, so the 8-sample window shifts to 3.0-6.5 s",
+        "overrides": {"control_plane": H1_CONTROL_PLANE,
+                      "execution": H1_EXECUTION},
+        "cells": CELLS_W,
+        "rows": _h1_rows(H1_PHASE_655_S),
+        "declared": _h1_declared(
+            H1_PHASE_655_S,
+            "DECLARED BEFORE THE RUN: window 3.0-6.5 s.  A keeps its "
+            "positive slopes (+0.4356/+0.6356) and B keeps 5 of 7 negative "
+            "(-0.982), so the medians are +0.6356 and -0.982 as before, but "
+            "A is already above B at the last measurement (about 2.24 vs "
+            "2.00 Mbit), so stale is expected to pick W as well and NO arm "
+            "difference is expected: this is a declared boundary/negative "
+            "point, not a hoped-for win."),
     },
 }
 
