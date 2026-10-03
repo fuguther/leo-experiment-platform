@@ -108,8 +108,12 @@ class ScriptedGeometry:
     num_satellites = NUM_SATELLITES
     certifies_change_times = True
 
+    def __init__(self, cells=None):
+        # Default keeps every pre-existing scenario on the original table.
+        self.cells = dict(CELLS if cells is None else cells)
+
     def ground_visible(self, sat_id, lat, lon, t):
-        for spec in CELLS.values():
+        for spec in self.cells.values():
             clat, clon = spec["center"]
             if abs(clat - lat) < 1e-6 and abs(clon - lon) < 1e-6:
                 return sat_id == spec["sat"]
@@ -186,6 +190,74 @@ def _row(pid, t, src, dst, bits):
             "dst_grid_id": dst, "bits": bits, "deadline_at_s": None}
 
 
+# --------------------------------------------------------------------------
+# 2026-10-03 P0 mechanism scenarios (ADDED; the names above are untouched)
+# --------------------------------------------------------------------------
+# Two gaps were measured on the earlier diagnostics and are fixed here:
+#
+#   resource_mapping (target_egress_identity_unavailable)
+#       advertisement_protocol_version=1 puts only {peer, value} on the wire
+#       for every egress, so the kernel cannot bind an online prediction to a
+#       concrete peer egress.  Version 2 adds generation, rate_bps and
+#       work_ahead_bits_proxy, which the resource mapping requires.
+#   no_received_history
+#       Received history rows are filtered by matching egress generation;
+#       with v1 there is no generation to match, so every arm -- stale, now,
+#       common and candidate -- saw an empty history and fell back.
+#
+# The earlier fixtures also inherited compute_servers_per_satellite=0, which
+# the kernel reports as unbounded_pool_no_wait; that is not a finite
+# computing resource, so the bounded pool is declared here instead.
+V2_CONTROL_PLANE = {
+    "enabled": True,
+    "advertise_interval_s": ADVERTISE_INTERVAL_S,
+    "vis_k": 2,
+    "advertisement_protocol_version": 2,
+}
+
+V2_EXECUTION = {
+    "compute_delay_s": COMPUTE_DELAY_S,
+    "decision_observation_mode": "frozen",
+    "node_process_delay_s": 0.0,
+    "compute_servers_per_satellite": 1,
+    "max_events": 200000,
+    "max_packets": 100,
+}
+
+#: Cell seen only by satellite 2, so the OTHER branch (sat2 -> isl:2:3) can
+#: be loaded too and the two candidate egresses can be brought close enough
+#: together that a state-time correction is able to cross the ranking gap.
+W_SRC = _cell(0.0, -5.0)
+CELLS_W = dict(CELLS)
+CELLS_W[W_SRC] = {"sat": 2, "center": grid.grid_center(W_SRC)}
+
+# E-branch load: ONE 1 Mbit packet on isl:1:3 whose service ends shortly
+# after the decision instant, so its advertised work falls at link rate.
+E_LOAD_EMIT_S = 5.29
+E_LOAD_BITS = 1_000_000
+# W-branch load: small packets entering isl:2:3 faster than it can serve, so
+# the advertised work on that egress RISES across the same history window.
+W_LOAD_FIRST_S = 5.80
+W_LOAD_LAST_S = 7.00
+W_LOAD_PERIOD_S = 0.05
+W_LOAD_BITS = 100_000
+#: Target emit time chosen so the decision lands about 0.31 s after the
+#: advertisement generated at t = 6.0 -- that offset is the stale arm's
+#: state age, and it is what the stale arm is wrong about.
+CROSS_TARGET_EMIT_S = 6.30
+
+
+def _w_load_rows(first_pid):
+    rows = []
+    t = W_LOAD_FIRST_S
+    pid = first_pid
+    while t <= W_LOAD_LAST_S + 1e-9:
+        rows.append(_row(pid, round(t, 6), W_SRC, DST, W_LOAD_BITS))
+        pid += 1
+        t += W_LOAD_PERIOD_S
+    return rows
+
+
 #: name -> (customer overrides, trace rows, what the run is expected to show)
 SCENARIOS = {
     "reachability": {
@@ -234,6 +306,70 @@ SCENARIOS = {
                     "part of the declared service time",
         },
     },
+    # ---- 2026-10-03 P0 scenarios: protocol v2 + finite compute pool ------
+    "flat_v2": {
+        "purpose": "P0 negative control: v2 wire, no competing load at all",
+        "overrides": {"control_plane": V2_CONTROL_PLANE,
+                      "execution": V2_EXECUTION},
+        "rows": [_row(TARGET_PID, TARGET_EMIT_S, SRC, DST, PACKET_BITS)],
+        "declared": {
+            "target_bits": PACKET_BITS,
+            "competing_bits": 0,
+            "advertisement_protocol_version": 2,
+            "compute_servers_per_satellite": 1,
+            "note": "every egress is empty and stays empty, so all four "
+                    "arms must agree; any arm difference here would be a "
+                    "harness artefact, not a state-time effect",
+        },
+    },
+    "drain_v2": {
+        "purpose": "P0 positive control: the earlier contention fixture on v2",
+        "overrides": {"control_plane": V2_CONTROL_PLANE,
+                      "execution": V2_EXECUTION},
+        "rows": [_row(TARGET_PID, TARGET_EMIT_S, SRC, DST, PACKET_BITS),
+                 _row(COMPETING_PID, COMPETING_EMIT_S, COMPETING_SRC, DST,
+                      COMPETING_BITS)],
+        "declared": {
+            "target_bits": PACKET_BITS,
+            "competing_bits": COMPETING_BITS,
+            "declared_competing_service_s":
+                COMPETING_BITS / (ISL_RATE_MBPS * 1e6),
+            "advertisement_protocol_version": 2,
+            "compute_servers_per_satellite": 1,
+            "note": "identical science to the v1 contention fixture; only "
+                    "the wire version and the compute bound change, so a "
+                    "difference here isolates the P0 fix",
+        },
+    },
+    "cross_v2": {
+        "purpose": "the two candidate egresses cross inside the observed "
+                    "history: E-branch work falls at link rate, W-branch "
+                    "work rises, and the crossing instant sits between the "
+                    "newest received advertisement and the decision instant",
+        "overrides": {"control_plane": V2_CONTROL_PLANE,
+                      "execution": V2_EXECUTION},
+        "cells": CELLS_W,
+        "rows": ([_row(TARGET_PID, CROSS_TARGET_EMIT_S, SRC, DST,
+                       PACKET_BITS),
+                  _row(COMPETING_PID, E_LOAD_EMIT_S, COMPETING_SRC, DST,
+                       E_LOAD_BITS)]
+                 + _w_load_rows(100)),
+        "declared": {
+            "target_bits": PACKET_BITS,
+            "target_emit_s": CROSS_TARGET_EMIT_S,
+            "e_side_bits": E_LOAD_BITS,
+            "e_side_emit_s": E_LOAD_EMIT_S,
+            "w_side_bits_each": W_LOAD_BITS,
+            "w_side_emit_span_s": [W_LOAD_FIRST_S, W_LOAD_LAST_S],
+            "w_side_period_s": W_LOAD_PERIOD_S,
+            "advertisement_protocol_version": 2,
+            "compute_servers_per_satellite": 1,
+            "note": "declared expectation, not a measured result: the "
+                    "stale arm should see the E egress still loaded and "
+                    "the W egress light, while now/common/candidate see "
+                    "the E egress drained and the W egress loaded",
+        },
+    },
 }
 
 
@@ -247,7 +383,8 @@ def build(name: str):
     for key, value in spec["overrides"].items():
         user[key] = value
     resolved = config_mod.resolve_config(user)
-    return (resolved, [dict(r) for r in spec["rows"]], ScriptedGeometry(),
+    return (resolved, [dict(r) for r in spec["rows"]],
+            ScriptedGeometry(spec.get("cells")),
             {"scenario": name, "purpose": spec["purpose"],
              "declared": spec["declared"],
              "topology": {str(k): dict(v) for k, v in TOPO.items()},
