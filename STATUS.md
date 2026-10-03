@@ -99,3 +99,16 @@ B+C 已累计 **21 calls / 2,435.057825092 模拟墙钟秒**；批次余 **39 ca
 - `/data/论文/leo-direct-sim` 旧 formal 根保持只读。4 个清单外 JSON 的历史 source snapshot 可关联到已知代码快照，但没有精确 run-id/receipt 绑定；不删除、不重写 receipt、不重新盖章。该旧账与新的隔离 T1 release 流程分开记录。
 - 当前复核到 7 个 Git worktree。其他工作树 owner/活动进程无法全部确认；dirty、untracked 和 ignored 研究材料原样保留，没有批量归档或删除，也未声称其他工作树已统一升级。
 - 状态入口持续维护；每次规则或工作状态变化更新本文件。检查器只读，不联网、不做实验、不删文件；`0 errors` 仅表示通过其列明的维护范围。
+
+
+## 状态时间错位首轮60分钟诊断（2026-10-03，ta60-mech-20261003 分支追加记录）
+
+- 新增隔离工作树 `.t1-ta60-20261003`（分支 `ta60-mech-20261003`），未触碰其他工作树的 dirty 文件；提交 `d131d22550e53fdd8037c1e1f59471597ed5fce5`，父提交 `7502c3f26302260844fcaf8df3692c3d5efcc848`。
+- 只改一个文件 `CODE/experiment_platform/scripted_scenarios.py`（纯新增 v2 场景 + `ScriptedGeometry` 支持显式 cell 表）。旧场景归一化配置哈希改动前后同为 `589fbaa87b3858470effa7e62366605b2fff6da642c4882db996765b2ce19d18`，与已发布 v1 运行一致，证明旧 fixture 语义未变。
+- 发布不可变 release `d131d22550e53fdd8037c1e1f59471597ed5fce5-353d39329ca7f668ee61dc7348e806ab7e369bac846072705f111c7549ab8843`；`remote_backup_pending`（未推送远端，仅开发/诊断）。
+- 三次诊断运行 `ta-mech-{flat_v2,drain_v2,cross_v2}-20261003-02` 全部 completed/exit 0，入口墙钟 3–4 s，输出 11.9–15.7 万字节；已官方回传核验并追加 3 条 `evidence://t1/<run-id>`，本机证据根 `.diag-ta-20261002/ta60-evidence-20261003/`。
+- 失败批次 `ta-mech-{flat_v2,drain_v2,cross_v2}-20261003-01` 因入口未用 `-m` 报 `ModuleNotFoundError: No module named 'CODE'`，receipt 保留，未复用 run-id。
+- **P0 进展**：`resource_mapping` 与 `no_received_history` 已从四臂 missing 列表消失，`resource_mismatch=0`、`valid_pairs=2`。但四臂**仍全部 fallback**，剩余缺口为 `local_egress_wait_s`、`resource_service_rate`，两者均定位到 `experiment_platform/time_alignment_compare.py::build_snapshot`（551–694）：ISL `status=="ok"` 分支未写 `resource_rate[direction]`，且从未传 `local_egress_in_service_s`；已核验审计行 `observation` 块不含任何 in-service 字段，故 P0.1 是**内核审计行补输出 + 平台补读取**的两文件改动。
+- **实测事实（不是时间补偿收益）**：`flat_v2` 负对照两分支逐位对称 2.914003/2.914003 s；`drain_v2` 4.843002 vs 13.053003 s；`cross_v2` 1.644003 vs 4.271003 s（Δloss 0.589000）。四臂均未产生不同选择。
+- 方法学发现：`--decision-id first_forward` 在 `drain_v2`/`cross_v2` 选中竞争包 pid=1（decision_id=3/2）而非目标包 pid=10；下一轮须显式指定 decision-id 并回读 `target_pid` 自检。
+- 本批**未记录峰值 RSS 与内核调用数**；`replay.captured=false` 延续。完整一页汇报见工作区 `状态时间错位实验_首轮60分钟执行报告_20261003.md`，主文档 §10.8 已同步更新。
