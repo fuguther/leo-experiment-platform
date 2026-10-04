@@ -581,6 +581,30 @@ SCENARIOS = {
             "picks E.  This is the point that tests whether the crossing "
             "time is the real boundary rather than the emission instant."),
     },
+    "net_h1_h8": {
+        "purpose": "AUTHORISED FOURTH ENTRY: sensitivity control for the "
+                    "net_h1 result -- identical business, common arm, only "
+                    "the predictor window changes from 3 to 8 points",
+        "overrides": {"control_plane": H1_CONTROL_PLANE,
+                      "execution": H1_EXECUTION},
+        "cells": CELLS_W,
+        "time_alignment": dict(NET_TIME_ALIGNMENT, history_limit=8),
+        "rows": (_stream_rows(200, A_FIRST_S, A_LAST_S, A_PERIOD_S, A_BITS,
+                               COMPETING_SRC)
+                 + _stream_rows(300, B_FIRST_S, B_LAST_S, B_PERIOD_S,
+                                B_BITS, W_SRC)
+                 + _probe_rows()),
+        "declared": {
+            "role": "sensitivity control; NOT a new window search",
+            "background_packets": 146,
+            "probe_packets": 27,
+            "offered_packets": 173,
+            "probe_first_pid": PROBE_FIRST_PID,
+            "time_alignment": dict(NET_TIME_ALIGNMENT, history_limit=8),
+            "note": "differs from net_h1 ONLY in history_limit; the arm is "
+                    "common in both, so a difference isolates the window",
+        },
+    },
     "net_h1": {
         "purpose": "one continuous business stream where stale/now/common "
                     "actually control every forwarding decision",
