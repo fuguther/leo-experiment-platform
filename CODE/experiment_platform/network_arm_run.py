@@ -53,13 +53,17 @@ def _publish(document, out: Path) -> None:
 
 
 def _loss_of(row, deadline):
-    """min(delay, D)/D for a delivered packet; 1.0 for a terminal failure."""
-    if row.get("loss") is not None:
-        return float(row["loss"])
-    delay = row.get("delay_s")
-    if delay is None:
+    """The builder's own per-packet deadline loss (min(delay,D)/D, or 1.0
+    for a terminal failure).  Rows outside the population carry no loss."""
+    if row.get("in_population") is False:
         return None
-    return min(float(delay), deadline) / deadline
+    block = row.get("deadline_loss")
+    if isinstance(block, dict):
+        value = block.get("value")
+        return None if value is None else float(value)
+    if isinstance(block, (int, float)) and not isinstance(block, bool):
+        return float(block)
+    return None
 
 
 def _pid_of(row):
@@ -79,7 +83,7 @@ def _group_loss(rows, pids, deadline):
         "with_loss": len(values),
         "mean_loss": (sum(values) / len(values)) if values else None,
         "terminal_failures": sum(1 for r in picked
-                                 if r.get("delivered") is False),
+                                 if r.get("terminal_reason")),
     }
 
 
