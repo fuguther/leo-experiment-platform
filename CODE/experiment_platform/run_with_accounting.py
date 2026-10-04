@@ -39,8 +39,12 @@ def _ru_maxrss_bytes(usage):
     value = int(usage.ru_maxrss)
     return value if _RU_MAXRSS_UNIT == "bytes" else value * 1024
 
-from CODE.experiment_platform import time_alignment_compare as compare
+from CODE.experiment_platform import network_arm_run, time_alignment_compare as compare
 from CODE.leo_sim import kernel
+
+#: Wrapped drivers.  "compare" scores one frozen branch offline; "network" runs
+#: the arm as a closed loop over all traffic.  Both are accounted the same way.
+DRIVERS = {"compare": compare, "network": network_arm_run}
 
 SCHEMA = "t1-run-accounting/v1"
 
@@ -93,6 +97,8 @@ def main(argv=None):
         description="Run a compare driver with peak-RSS and kernel-call "
                     "accounting")
     parser.add_argument("--accounting-out", type=Path, required=True)
+    parser.add_argument("--driver", choices=sorted(DRIVERS),
+                        default="compare")
     parser.add_argument("rest", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     rest = list(args.rest)
@@ -119,7 +125,7 @@ def main(argv=None):
     kernel.run_simulation = traced
     status = 1
     try:
-        status = int(compare.main(rest) or 0)
+        status = int(DRIVERS[args.driver].main(rest) or 0)
     finally:
         kernel.run_simulation = original
         out_path = None

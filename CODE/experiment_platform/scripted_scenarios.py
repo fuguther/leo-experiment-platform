@@ -375,6 +375,49 @@ def _h1_declared(target_emit_s, expectation=None):
     }
 
 
+# --------------------------------------------------------------------------
+# Fifth-stage: ONE continuous business stream, arms really drive routing
+# --------------------------------------------------------------------------
+# Frozen arrival table (declared before any run; not tuned by outcome):
+#   background  the original A/B streams, 146 packets
+#   probes      27 x 100,000 bit from SRC to DST at t = 2.50 + 0.26k s,
+#               k = 0..26, last at 9.26 s, independent PIDs from 400
+#   0.26 s is coprime-ish with the 0.5 s advertisement period so the table
+#   does not sample only two locked phases.
+#   offered = 146 + 27 = 173; probe rate ~0.3846 Mbps = 19.23% of the
+#   2 Mbps combined ISL capacity; each 100 kbit probe occupies 0.1 s at
+#   1 Mbps, so the probe job rate is ~3.846/s.
+PROBE_FIRST_S = 2.50
+PROBE_PERIOD_S = 0.26
+PROBE_LAST_S = 9.50
+PROBE_BITS = 100_000
+PROBE_FIRST_PID = 400
+
+#: The closed loop: with enabled=true and execution_mode=per_packet the
+#: kernel routes EVERY forwarding decision through plan_decision with this
+#: arm, so each arm evolves its own queues.  3-point median slope is the
+#: simple baseline chosen during exploration; it is frozen here, not tuned.
+NET_TIME_ALIGNMENT = {
+    "enabled": True,
+    "arm": "stale",
+    "predictor": "bounded_linear",
+    "history_limit": 3,
+    "common_rule": "median_eta",
+    "execution_mode": "per_packet",
+}
+
+
+def _probe_rows():
+    rows = []
+    t = PROBE_FIRST_S
+    pid = PROBE_FIRST_PID
+    while t <= PROBE_LAST_S + 1e-9:
+        rows.append(_row(pid, round(t, 6), SRC, DST, PROBE_BITS))
+        pid += 1
+        t += PROBE_PERIOD_S
+    return rows
+
+
 #: name -> (customer overrides, trace rows, what the run is expected to show)
 SCENARIOS = {
     "reachability": {
@@ -538,6 +581,35 @@ SCENARIOS = {
             "picks E.  This is the point that tests whether the crossing "
             "time is the real boundary rather than the emission instant."),
     },
+    "net_h1": {
+        "purpose": "one continuous business stream where stale/now/common "
+                    "actually control every forwarding decision",
+        "overrides": {"control_plane": H1_CONTROL_PLANE,
+                      "execution": H1_EXECUTION},
+        "cells": CELLS_W,
+        "time_alignment": NET_TIME_ALIGNMENT,
+        "rows": (_stream_rows(200, A_FIRST_S, A_LAST_S, A_PERIOD_S, A_BITS,
+                               COMPETING_SRC)
+                 + _stream_rows(300, B_FIRST_S, B_LAST_S, B_PERIOD_S,
+                                B_BITS, W_SRC)
+                 + _probe_rows()),
+        "declared": {
+            "background_packets": 146,
+            "probe_packets": 27,
+            "offered_packets": 173,
+            "probe_bits": PROBE_BITS,
+            "probe_first_s": PROBE_FIRST_S,
+            "probe_period_s": PROBE_PERIOD_S,
+            "probe_last_s": 9.26,
+            "probe_first_pid": PROBE_FIRST_PID,
+            "probe_rate_mbps": PROBE_BITS * 1e6 / PROBE_PERIOD_S / 1e6 / 1e6,
+            "time_alignment": NET_TIME_ALIGNMENT,
+            "arms_compared": ["stale", "now", "common"],
+            "note": "the three arms differ ONLY in time_alignment.arm; "
+                    "the arrival table, information permissions, predictor "
+                    "and service budget are identical by construction",
+        },
+    },
     "h1_phase_655": {
         "purpose": "frozen phase 6.55 s: decision after the 6.5 s "
                     "advertisement, so the 8-sample window shifts to 3.0-6.5 s",
@@ -558,8 +630,15 @@ SCENARIOS = {
 }
 
 
-def build(name: str):
-    """Return (resolved_config, trace_rows, geometry, declared_meta)."""
+def build(name: str, arm=None):
+    """Return (resolved_config, trace_rows, geometry, declared_meta).
+
+    arm selects the time-alignment NETWORK arm for scenarios that declare a
+    time_alignment block.  The three arms then differ ONLY in that field, so
+    the traffic, information permissions, predictor and service budget stay
+    identical; the substituted config is re-resolved and re-validated, so
+    each arm carries its own identity hash.
+    """
     if name not in SCENARIOS:
         raise KeyError(f"unknown scripted scenario {name!r}; "
                        f"available: {sorted(SCENARIOS)}")
@@ -567,6 +646,12 @@ def build(name: str):
     user = copy.deepcopy(_base_user())
     for key, value in spec["overrides"].items():
         user[key] = value
+    block = spec.get("time_alignment")
+    if block is not None:
+        resolved_ta = copy.deepcopy(block)
+        if arm is not None:
+            resolved_ta["arm"] = str(arm)
+        user["time_alignment"] = resolved_ta
     resolved = config_mod.resolve_config(user)
     return (resolved, [dict(r) for r in spec["rows"]],
             ScriptedGeometry(spec.get("cells")),
