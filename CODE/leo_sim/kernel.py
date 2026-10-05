@@ -6073,10 +6073,76 @@ class Kernel:
                 legal.append(d)
         return legal
 
+    def _min_remaining_hop_filter(self, pkt: DataPacket, sat: int,
+                                  now: float, cands: list):
+        """Keep only the directions achieving the minimum remaining hops.
+
+        RESTRICTED-ROUTING DIAGNOSTIC, off by default.  The distance is the
+        path-constrained hop count from each candidate peer to a node THIS
+        satellite has actually received an advertisement from that reports
+        serving the destination -- the same visible-topology information the
+        scorer already uses for its remaining-propagation term.  It is NOT
+        the `hop` policy best_only shortcut, which also carries a local
+        queue term.
+
+        Returns (kept, audit).  Unknown distances are never treated as a
+        number: if any candidate's distance cannot be established the
+        restriction is not applied and the audit says so.
+        """
+        if not bool(self.cfg_rt.get("min_remaining_hop_only", False)) \
+                or not cands:
+            return list(cands), None
+        forbidden = set(getattr(pkt, "path", ()) or ())
+        serving = routing.destinations_in_cache(self.caches[sat], pkt.dst,
+                                                now)
+        safe_serving = [s for s in serving if s not in forbidden]
+        audit = {
+            "schema": "leo-sim-min-remaining-hop/v1",
+            "basis": "visible_topology_path_constrained_distance_to_received_serving",
+            "pre_candidates": list(cands),
+            "serving_from_received_cache": sorted(serving),
+            "serving_after_visited_filter": sorted(safe_serving),
+        }
+        if not safe_serving:
+            audit.update({"applied": False,
+                          "reason": "no_received_serving_advertisement",
+                          "post_candidates": list(cands)})
+            return list(cands), audit
+        try:
+            safe_reverse = routing.without_nodes(self._routing_reverse_adj,
+                                                 forbidden)
+            hops_map = routing._multi_source_bfs(safe_reverse, safe_serving)
+        except Exception:
+            audit.update({"applied": False, "reason": "distance_unavailable",
+                          "post_candidates": list(cands)})
+            return list(cands), audit
+        per_direction = {}
+        for direction in cands:
+            peer = self.topo.get(sat, {}).get(direction)
+            per_direction[str(direction)] = (None if peer is None
+                                             else hops_map.get(peer))
+        if any(v is None for v in per_direction.values()):
+            audit.update({"applied": False,
+                          "reason": "unknown_distance_present",
+                          "per_direction_remaining_hops": per_direction,
+                          "post_candidates": list(cands)})
+            return list(cands), audit
+        best = min(per_direction.values())
+        kept = [d for d in cands if per_direction[str(d)] == best]
+        audit.update({
+            "applied": True,
+            "reason": "min_remaining_hops",
+            "per_direction_remaining_hops": per_direction,
+            "min_remaining_hops": best,
+            "dropped_candidates": [d for d in cands if d not in kept],
+            "post_candidates": list(kept),
+        })
+        return kept, audit
+
     def _four_direction_audit(self, pkt: DataPacket, sat: int, now: float, *,
                               route_candidates=(), loop_free_candidates=(),
                               legal=(), route_status=None, kind="forward",
-                              ta_audit=None) -> dict:
+                              ta_audit=None, hop_restriction=None) -> dict:
         """Describe N/E/S/W masks using the same gates as the live router.
 
         This is output-only. It records physical feasibility separately from
@@ -6165,6 +6231,10 @@ class Kernel:
                 for direction in directions},
             "route_candidates": [d for d in directions if d in route],
             "loop_free_candidates": [d for d in directions if d in loop_free],
+            # Output-only: the restricted-routing diagnostic's pre/post
+            # candidate sets and its hop-count basis.  None when the
+            # restriction is disabled (the historical default).
+            "min_remaining_hop_restriction": hop_restriction,
             "committed_legal_directions": list(legal or ()),
             "route_candidate_mask": {
                 direction: direction in route for direction in directions},
@@ -6228,6 +6298,7 @@ class Kernel:
             legal, cands, status = ["deliver"], ["deliver"], "ok"
             route_candidates, loop_free_candidates = [], []
             ta_audit = None
+            hop_restriction = None
             chosen = self._fixed_policy_action(pkt, sat, legal)
             if chosen is not None:
                 action = chosen
@@ -6250,6 +6321,11 @@ class Kernel:
             route_candidates = list(cands)
             cands = [d for d in cands if self.topo[sat][d] not in pkt.path]
             loop_free_candidates = list(cands)
+            # Restricted-routing diagnostic (off by default): the arm scores
+            # ONLY the shortest-remaining-hop candidates, so a detour the
+            # scorer prices partially can no longer be chosen.
+            cands, hop_restriction = self._min_remaining_hop_filter(
+                pkt, sat, now, cands)
             cands, ta_audit = self._time_aligned_order(pkt, sat, now, cands,
                                                        own_q)
             legal = self._forward_legal_now(pkt, sat, now, cands)
@@ -6272,7 +6348,8 @@ class Kernel:
         observation["four_direction_audit"] = self._four_direction_audit(
             pkt, sat, now, route_candidates=route_candidates,
             loop_free_candidates=loop_free_candidates, legal=legal,
-            route_status=status, kind=kind, ta_audit=ta_audit)
+            route_status=status, kind=kind, ta_audit=ta_audit,
+            hop_restriction=hop_restriction)
         estimate, estimate_reason = self._estimate_at_start(
             pkt, sat, now, action, kind)
         return {"t_observe": now, "kind": kind, "action": action,

@@ -581,6 +581,36 @@ SCENARIOS = {
             "picks E.  This is the point that tests whether the crossing "
             "time is the real boundary rather than the emission instant."),
     },
+    # ---- round-7 restricted-routing diagnostic ---------------------------
+    "net_h1_restricted": {
+        "purpose": "RESTRICTED ROUTING: identical 173-packet business, but"
+                    " every arm may only choose among the minimum"
+                    " remaining-hop candidates, so background packets go"
+                    " straight to sat3 and the probes keep both equal"
+                    " two-hop paths.  Isolates the detour/scoring-range"
+                    " interference from the time-alignment question.",
+        "overrides": {"control_plane": H1_CONTROL_PLANE,
+                      "execution": H1_EXECUTION,
+                      "routing": {"policy": "hop",
+                                  "min_remaining_hop_only": True}},
+        "cells": CELLS_W,
+        "time_alignment": NET_TIME_ALIGNMENT,
+        "rows": (_stream_rows(200, A_FIRST_S, A_LAST_S, A_PERIOD_S, A_BITS,
+                               COMPETING_SRC)
+                 + _stream_rows(300, B_FIRST_S, B_LAST_S, B_PERIOD_S,
+                                B_BITS, W_SRC)
+                 + _probe_rows()),
+        "declared": {
+            "background_packets": 146,
+            "probe_packets": 27,
+            "offered_packets": 173,
+            "min_remaining_hop_only": True,
+            "expected_isl_transmissions": 200,
+            "expected_dual_exit_opportunities": 27,
+            "note": "restricted-routing diagnostic; the unrestricted"
+                    " net_h1 result stands unchanged and is NOT rewritten",
+        },
+    },
     "net_h1_h8": {
         "purpose": "AUTHORISED FOURTH ENTRY: sensitivity control for the "
                     "net_h1 result -- identical business, common arm, only "
@@ -677,9 +707,16 @@ def build(name: str, arm=None):
             resolved_ta["arm"] = str(arm)
         user["time_alignment"] = resolved_ta
     resolved = config_mod.resolve_config(user)
+    # METADATA FIX (2026-10-05): the declared cell table must be the one the
+    # scenario actually uses.  Earlier scenarios that extend CELLS with the
+    # W source cell were being described by the three-cell base table, so
+    # their recorded source metadata omitted a real endpoint.  This changes
+    # metadata only; earlier artifacts keep their original text and are not
+    # rewritten.
+    cells = dict(spec.get("cells") or CELLS)
     return (resolved, [dict(r) for r in spec["rows"]],
-            ScriptedGeometry(spec.get("cells")),
+            ScriptedGeometry(cells),
             {"scenario": name, "purpose": spec["purpose"],
              "declared": spec["declared"],
              "topology": {str(k): dict(v) for k, v in TOPO.items()},
-             "cells": {k: dict(v) for k, v in CELLS.items()}})
+             "cells": {k: dict(v) for k, v in cells.items()}})

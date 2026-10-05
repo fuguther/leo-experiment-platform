@@ -49,6 +49,51 @@ def _snapshot(directions, *, arm="common", remaining_prop=None,
         common_rule="median_eta", query_delay_s=0.0)
 
 
+def test_the_restricted_scenario_keeps_only_shortest_hop_candidates():
+    """The round-7 restricted condition, checked before spending a run.
+
+    Background sources sit on sat1 / sat2 and must keep ONLY the direction
+    to sat3; the probe source sat0 must keep BOTH equal-length two-hop
+    directions.  The restriction is a declared diagnostic and must be OFF
+    by default so every earlier scenario keeps its historical candidates.
+    """
+    from CODE.experiment_platform import scripted_scenarios as scen
+    from CODE.leo_sim import routing
+
+    _r, rows, geometry, _m = scen.build("net_h1_restricted", arm="stale")
+    assert len(rows) == 173
+    probe_pids = {int(r["packet_id"]) for r in rows
+                  if int(r["packet_id"]) >= scen.PROBE_FIRST_PID}
+    assert len(probe_pids) == 27
+    assert len(rows) - len(probe_pids) == 146
+
+    # old scenarios are untouched: the flag is False unless declared
+    legacy, _rows, _g, _mm = scen.build("net_h1", arm="stale")
+    assert legacy["config"]["routing"]["min_remaining_hop_only"] is False
+    assert _r["config"]["routing"]["min_remaining_hop_only"] is True
+
+    # sat1 and sat2 each have exactly ONE direction reaching sat3 directly;
+    # sat0 has two equal-length two-hop directions, so the restriction must
+    # keep both of them there and only there.
+    topo = scen.TOPO
+    for sat in (1, 2):
+        direct = [d for d, p in topo[sat].items() if p == 3]
+        assert len(direct) == 1, (sat, topo[sat])
+        assert len(topo[sat]) == 2, (sat, topo[sat])
+    sat0 = sorted(topo[0].items())
+    assert [d for d, _p in sat0] == ["E", "W"]
+    reverse = scen.TOPO
+    forward = {s: {p: 1 for p in dict(reverse[s]).values()}
+               for s in reverse}
+    reach = routing._multi_source_bfs(forward, [3])
+    hops0 = sorted(reach[peer] for _d, peer in sat0)
+    assert hops0[0] == hops0[1] == 1, hops0
+    assert reach[topo[1]["E"]] == 0 and len(topo[1]) == 2
+
+    # the W source cell must be present in the recorded metadata: the older
+    # compare source table omitted it, and this is metadata only
+    assert len(_m["cells"]) == 4
+
 def test_single_legal_exit_fallback_cannot_change_the_choice():
     """Round 5 reported a 55% fallback rate for common.  With ONE executable
     exit a NO_STRONG_COMMON fallback cannot change the action, so that rate is

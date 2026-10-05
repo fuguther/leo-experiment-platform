@@ -175,6 +175,13 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
     "routing": {
         "policy": str,  # hop|delay|capacity|oracle|info_queue|info_physical
         "max_hops": int,  # data-packet loop cap
+        # RESTRICTED-ROUTING DIAGNOSTIC (default False = historical routing).
+        # When true, only the candidate directions that achieve the minimum
+        # remaining hop count to a node this satellite has actually been told
+        # serves the destination are admitted, BEFORE the time-alignment arm
+        # scores them.  Unknown distances never become a number: if any
+        # candidate's distance is unknown the restriction is not applied.
+        "min_remaining_hop_only": bool,
         "learning_enabled": bool,
         "contract": str,  # C1|C3|C4|C5|C6|C7 (observation contracts)
     },
@@ -437,6 +444,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "priority": "nonpreemptive_priority",
     },
     "routing": {"policy": "hop", "max_hops": 16, "learning_enabled": False,
+                "min_remaining_hop_only": False,
                 "contract": "C3"},
     "learning": {
         "algorithm": "none",
