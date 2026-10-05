@@ -1483,9 +1483,9 @@ def compare_config(config_path, decision_id, deadline_s, root,
 
 def compare_scenario(name, decision_id, deadline_s, frozen_deadline=None,
                      run_kind="dev", capture_replay=False,
-                     decision_pid=None):
+                     decision_pid=None, arm=None):
     try:
-        resolved, rows, geometry, meta = scripted_scenarios.build(name)
+        resolved, rows, geometry, meta = scripted_scenarios.build(name, arm=arm)
     except KeyError as exc:
         raise CompareError(str(exc)) from exc
     source = {"scenario": name, "config": None, "trace_sha256": None,
@@ -1534,6 +1534,11 @@ def main(argv=None) -> int:
     parser.add_argument("--decision-pid", type=int, default=None,
                         help="with --decision-id first_forward: restrict"
                              " the structural selection to this packet id")
+    parser.add_argument("--arm", default=None,
+                        choices=sorted(ta.ARMS),
+                        help="with a scenario that declares a time_alignment"
+                             " block: run the whole simulation under this"
+                             " arm, so the branches share one real policy")
     parser.add_argument("--capture-replay", action="store_true",
                         help="save the shared baseline and every forced"
                              " candidate branch event streams for offline"
@@ -1572,7 +1577,8 @@ def main(argv=None) -> int:
                                         frozen_deadline=frozen,
                                         run_kind=run_kind,
                                         capture_replay=args.capture_replay,
-                                        decision_pid=args.decision_pid)
+                                        decision_pid=args.decision_pid,
+                                        arm=args.arm)
         if args.freeze_deadline_to is not None:
             if run_kind != "dev":
                 raise CompareError(
