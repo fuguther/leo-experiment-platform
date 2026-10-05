@@ -6,12 +6,18 @@ The compare driver scores one frozen branch offline and never lets an arm
 change what the simulation does.  This driver runs the kernel ONCE per arm
 with time_alignment.enabled=true and execution_mode=per_packet, so the arm
 orders EVERY forwarding decision and each arm evolves its own queues.  The
-primary quantity is therefore the whole offered traffic's deadline loss, not
-a per-decision regret.
+primary quantity is the whole offered traffic's deadline loss.
 
-Everything an arm sees (arrival table, information permissions, predictor,
-history limit, common rule, compute/query budget) is identical across arms;
-only time_alignment.arm differs, and the re-resolved config hash records it.
+Recording
+---------
+With --replay-out the run publishes ONE flat copy of the events needed to
+rebuild it offline: decision rows (including each decision's actual
+time-alignment audit), timeline rows, packet events, link service and
+availability windows, topology trace, fates and deliveries.  queue_state
+events are NOT duplicated -- they are exactly the timeline rows whose
+milestone is queue_state, and a second copy is what made earlier artifacts
+several times larger than necessary.  No second kernel call is made to
+produce it.
 """
 from __future__ import annotations
 
@@ -26,15 +32,16 @@ from CODE.experiment_platform import outcome_metrics, scripted_scenarios
 from CODE.leo_sim import kernel
 
 SCHEMA = "network-arm-run/v1"
+REPLAY_SCHEMA = "network-arm-replay/v1"
 ARMS = ("stale", "now", "common")
 
 
-def _publish(document, out: Path) -> None:
-    parent = out.parent
+def _write_atomic(path: Path, document) -> None:
+    parent = path.parent
     if not parent.is_dir() or parent.is_symlink():
         raise SystemExit(f"output parent must be an existing non-symlink "
                          f"directory: {parent}")
-    handle, temporary = tempfile.mkstemp(prefix="." + out.name + ".",
+    handle, temporary = tempfile.mkstemp(prefix="." + path.name + ".",
                                          suffix=".tmp", dir=str(parent))
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
@@ -43,7 +50,7 @@ def _publish(document, out: Path) -> None:
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, out)
+        os.replace(temporary, path)
     except BaseException:
         try:
             os.unlink(temporary)
@@ -88,30 +95,75 @@ def _group_loss(rows, pids, deadline):
 
 
 def _ta_coverage(decision_rows):
-    # The kernel records the arm's audit INSIDE the frozen observation
-    # (kernel.py: "time_alignment": ta_audit in _observation_at_start),
-    # not at the top level of the decision row.
-    audits = [(r.get("observation_at_start") or {}).get("time_alignment")
-              for r in decision_rows]
-    present = [a for a in audits if isinstance(a, dict)]
-    legal_sizes = {}
+    """Where the arm actually ran, split by how many exits were executable.
+
+    The 55% fallback figure from the round-5 summary is NOT a comparability
+    verdict: with a single legal exit a fallback cannot change the choice.
+    This breaks the denominator by legal-direction count and additionally
+    reports whether the arm's applied order actually differed from the
+    un-reordered candidate order, which is the only thing that can change an
+    action.
+    """
+    by_legal = {}
+    audits = 0
     for row in decision_rows:
         obs = row.get("observation_at_start") or {}
-        n = len(obs.get("legal_directions") or ())
-        legal_sizes[n] = legal_sizes.get(n, 0) + 1
+        audit = obs.get("time_alignment")
+        n_legal = len(obs.get("legal_directions") or ())
+        slot = by_legal.setdefault(str(n_legal), {
+            "decisions": 0, "with_audit": 0, "fallback": 0,
+            "missing": 0, "order_differs_from_unordered": 0,
+            "chosen_differs_from_unordered": 0})
+        slot["decisions"] += 1
+        if not isinstance(audit, dict):
+            continue
+        audits += 1
+        slot["with_audit"] += 1
+        if audit.get("fallback_directions"):
+            slot["fallback"] += 1
+        if audit.get("missing_directions"):
+            slot["missing"] += 1
+        order = list(audit.get("applied_order") or ())
+        four = obs.get("four_direction_audit") or {}
+        unordered = (four.get("loop_free_candidates")\
+                     or four.get("route_candidates") or ())
+        if order and unordered:
+            if order[0] != list(unordered)[0]:
+                slot["order_differs_from_unordered"] += 1
+            if row.get("chosen") is not None and row["chosen"] != list(unordered)[0]:
+                slot["chosen_differs_from_unordered"] += 1
     return {
         "decisions_total": len(decision_rows),
-        "decisions_with_time_alignment_audit": len(present),
-        "decisions_without_audit": len(decision_rows) - len(present),
-        "decisions_with_fallback_directions": sum(
-            1 for a in present if a.get("fallback_directions")),
-        "decisions_with_missing_directions": sum(
-            1 for a in present if a.get("missing_directions")),
-        "legal_direction_count_histogram":
-            {str(k): v for k, v in sorted(legal_sizes.items())},
-        "audit_keys_sample": sorted(present[0].keys()) if present else [],
-        "execution_mode_sample": (present[0].get("execution_mode")
-                                   if present else None),
+        "decisions_with_time_alignment_audit": audits,
+        "by_legal_direction_count": by_legal,
+    }
+
+
+def _replay_payload(result, decision_rows, timeline_rows):
+    """One flat copy of the events needed to rebuild this run offline."""
+    handover = result.get("handover") or {}
+    control = result.get("control") or {}
+    return {
+        "schema": REPLAY_SCHEMA,
+        "decision_rows": list(decision_rows),
+        "timeline_rows": list(timeline_rows),
+        "packet_events": list(result.get("packet_events") or ()),
+        "link_service_windows": list(result.get("link_service_windows") or ()),
+        "link_available_windows": list(
+            result.get("link_available_windows") or ()),
+        "topology_trace": list(result.get("topology_trace") or ()),
+        "fates": dict(result.get("fates") or {}),
+        "deliveries": dict(result.get("deliveries") or {}),
+        "handover_events": list(handover.get("events") or ()),
+        "control_totals": {
+            "counters": dict((control.get("counters") or {})),
+            "bits": dict(control.get("bits") or {}),
+        },
+        "recording_notes": {
+            "queue_state_events": "not duplicated: select timeline_rows "
+                                  "with milestone == queue_state",
+            "no_second_kernel_call": True,
+        },
     }
 
 
@@ -123,6 +175,8 @@ def main(argv=None) -> int:
     parser.add_argument("--arm", required=True, choices=sorted(ARMS))
     parser.add_argument("--deadline-s", type=float, default=4.0)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--replay-out", type=Path, default=None,
+                        help="publish the flat full-event record here")
     args = parser.parse_args(argv)
 
     resolved, rows, geometry, meta = scripted_scenarios.build(
@@ -175,7 +229,21 @@ def main(argv=None) -> int:
         "throughput": outcome.get("throughput"),
         "e2e": outcome.get("e2e"),
     }
-    _publish(document, args.out)
+    if args.replay_out is not None:
+        payload = _replay_payload(result, sink, timeline)
+        _write_atomic(args.replay_out, payload)
+        document["replay"] = {
+            "published": True,
+            "path": str(args.replay_out),
+            "schema": REPLAY_SCHEMA,
+            "decision_rows": len(payload["decision_rows"]),
+            "timeline_rows": len(payload["timeline_rows"]),
+            "packet_events": len(payload["packet_events"]),
+            "link_service_windows": len(payload["link_service_windows"]),
+        }
+    else:
+        document["replay"] = {"published": False}
+    _write_atomic(args.out, document)
     print(json.dumps({
         "status": "ran", "out": str(args.out), "arm": args.arm,
         "offered": (outcome.get("counts") or {}).get("offered"),
@@ -185,9 +253,7 @@ def main(argv=None) -> int:
         "probe_mean_loss": document["traffic_groups"]["probe"]["mean_loss"],
         "background_mean_loss":
             document["traffic_groups"]["background"]["mean_loss"],
-        "ta_audits": document["time_alignment_coverage"]
-                      ["decisions_with_time_alignment_audit"],
-        "decisions": document["time_alignment_coverage"]["decisions_total"],
+        "replay": document["replay"],
     }, ensure_ascii=False))
     return 0
 
