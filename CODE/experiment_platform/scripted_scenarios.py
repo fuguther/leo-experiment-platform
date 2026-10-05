@@ -418,6 +418,31 @@ def _probe_rows():
     return rows
 
 
+#: Round-8 densified probe table.  The ORIGINAL 27 probes keep their PIDs
+#: (400..426) and their exact 2.50 + 0.26k times: those are the k values
+#: divisible by 4 in the new grid.  78 new probes fill the gaps, so the
+#: shared grid is 2.50 + 0.065k s for k = 0..104 (105 probes, last 9.26 s),
+#: which is where LOCAL WAITING can make the candidates' projected resource
+#: instants differ -- the condition the earlier cells never reached.
+RATE4_PROBE_PERIOD_S = 0.065
+RATE4_PROBE_COUNT = 105
+RATE4_PROBE_NEW_PID = 600
+
+
+def _rate4_probe_rows():
+    rows = []
+    next_new_pid = RATE4_PROBE_NEW_PID
+    for k in range(RATE4_PROBE_COUNT):
+        at = round(PROBE_FIRST_S + RATE4_PROBE_PERIOD_S * k, 6)
+        if k % 4 == 0:
+            pid = PROBE_FIRST_PID + k // 4
+        else:
+            pid = next_new_pid
+            next_new_pid += 1
+        rows.append(_row(pid, at, SRC, DST, PROBE_BITS))
+    return rows
+
+
 #: name -> (customer overrides, trace rows, what the run is expected to show)
 SCENARIOS = {
     "reachability": {
@@ -580,6 +605,48 @@ SCENARIOS = {
             "is expected to join common/candidate on W while stale still "
             "picks E.  This is the point that tests whether the crossing "
             "time is the real boundary rather than the emission instant."),
+    },
+    # ---- round-8 densified-probe restricted condition ---------------------
+    "net_h1_restricted_rate4": {
+        "purpose": "RESTRICTED ROUTING with a DENSER probe grid: the same"
+                    " 146 background rows and the same original 27 probes,"
+                    " plus 78 new probes on a 0.065 s grid, so local waiting"
+                    " can make the candidates' projected resource instants"
+                    " actually differ (the condition H2 needs).",
+        "overrides": {"control_plane": H1_CONTROL_PLANE,
+                      "execution": H1_EXECUTION,
+                      "routing": {"policy": "hop",
+                                  "min_remaining_hop_only": True}},
+        "cells": CELLS_W,
+        "time_alignment": NET_TIME_ALIGNMENT,
+        "rows": (_stream_rows(200, A_FIRST_S, A_LAST_S, A_PERIOD_S, A_BITS,
+                               COMPETING_SRC)
+                 + _stream_rows(300, B_FIRST_S, B_LAST_S, B_PERIOD_S,
+                                B_BITS, W_SRC)
+                 + _rate4_probe_rows()),
+        "declared": {
+            "background_packets": 146,
+            "original_probe_packets": 27,
+            "new_probe_packets": 78,
+            "probe_packets": 105,
+            "offered_packets": 251,
+            "probe_period_s": RATE4_PROBE_PERIOD_S,
+            "probe_first_s": PROBE_FIRST_S,
+            "probe_last_s": round(PROBE_FIRST_S + RATE4_PROBE_PERIOD_S
+                                    * (RATE4_PROBE_COUNT - 1), 6),
+            "original_probe_pids": [PROBE_FIRST_PID,
+                                     PROBE_FIRST_PID + 26],
+            "new_probe_pids": [RATE4_PROBE_NEW_PID,
+                               RATE4_PROBE_NEW_PID + 77],
+            "total_bits": 251 * PROBE_BITS,
+            "min_remaining_hop_only": True,
+            "expected_isl_transmissions": 146 + 2 * 105,
+            "expected_dual_exit_opportunities": 105,
+            "note": "the original 27 probes keep their PID and time; the"
+                    " old net_h1 / net_h1_restricted inputs are different"
+                    " inputs and must NOT be paired by PID across"
+                    " conditions",
+        },
     },
     # ---- round-7 restricted-routing diagnostic ---------------------------
     "net_h1_restricted": {

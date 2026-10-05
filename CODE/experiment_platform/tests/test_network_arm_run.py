@@ -49,6 +49,101 @@ def _snapshot(directions, *, arm="common", remaining_prop=None,
         common_rule="median_eta", query_delay_s=0.0)
 
 
+def test_rate4_probe_table_is_the_declared_251_packet_input():
+    """Round-8 input, checked statically BEFORE any run (no simulation).
+
+    146 background rows and the original 27 probes must be byte-identical
+    to the round-7 restricted input; 78 new probes fill the 0.065 s grid so
+    that local waiting can separate the candidates' projected instants."""
+    import json
+    from CODE.experiment_platform import scripted_scenarios as scen
+
+    rate4, rows, _g, meta = scen.build("net_h1_restricted_rate4",
+                                       arm="now")
+    assert len(rows) == 251
+    pids = [r["packet_id"] for r in rows]
+    assert len(set(pids)) == 251, "duplicate PID in the arrival table"
+    assert sum(r["bits"] for r in rows) == 25_100_000
+    assert rate4["config"]["execution"]["max_packets"] >= 251
+
+    # the shared grid, and the original probe PIDs/times preserved exactly
+    probe = [r for r in rows if r["packet_id"] >= 400]
+    assert len(probe) == 105
+    assert [r["emit_time_s"] for r in probe] == [
+        round(scen.PROBE_FIRST_S + scen.RATE4_PROBE_PERIOD_S * k, 6)
+        for k in range(105)]
+    assert probe[0]["emit_time_s"] == 2.5
+    assert probe[-1]["emit_time_s"] == 9.26
+
+    old, old_rows, _og, _om = scen.build("net_h1_restricted", arm="now")
+    old_by_pid = {r["packet_id"]: r for r in old_rows}
+    new_by_pid = {r["packet_id"]: r for r in rows}
+    original_pids = list(range(400, 427))
+    for pid in original_pids:
+        assert new_by_pid[pid] == old_by_pid[pid], pid
+    for pid in [r["packet_id"] for r in old_rows if r["packet_id"] < 400]:
+        assert new_by_pid[pid] == old_by_pid[pid], pid
+    added = set(new_by_pid) - set(old_by_pid)
+    assert len(added) == 78
+    assert min(added) == 600 and max(added) == 677
+
+    # 146 background + 27 original + 78 new, and nothing else
+    assert len([p for p in pids if p < 400]) == 146
+    assert len([p for p in pids if 400 <= p <= 426]) == 27
+    assert len([p for p in pids if 600 <= p <= 677]) == 78
+    assert sorted(added) == sorted(range(600, 678))
+    assert pids.count(0) == 0
+    assert all(0 <= p <= 677 for p in pids)
+
+    # expected admission arithmetic, declared not measured
+    assert meta["declared"]["expected_isl_transmissions"] == 356
+    assert meta["declared"]["expected_dual_exit_opportunities"] == 105
+
+
+def test_rate4_arms_differ_only_in_the_arm_field():
+    """Four arms must share one input and one configuration otherwise."""
+    import copy
+    import json
+    from CODE.experiment_platform import scripted_scenarios as scen
+
+    fingerprints = {}
+    digests = {}
+    for arm in ("stale", "now", "common", "candidate"):
+        resolved, rows, _g, _m = scen.build("net_h1_restricted_rate4",
+                                            arm=arm)
+        doc = copy.deepcopy(resolved)
+        # sha256 and canonical_json are DERIVED from the config: they must
+        # differ between arms, so they are excluded from the comparison of
+        # what the arms are actually given.
+        doc.pop("sha256", None)
+        doc.pop("canonical_json", None)
+        assert doc["config"]["time_alignment"]["arm"] == arm
+        doc["config"]["time_alignment"].pop("arm")
+        fingerprints[arm] = json.dumps(
+            {"config": doc, "rows": rows}, sort_keys=True)
+        digests[arm] = resolved["sha256"]
+    # one input, one configuration, four distinct identities
+    assert len(set(fingerprints.values())) == 1
+    assert len(set(digests.values())) == 4
+
+
+def test_older_scenarios_keep_their_semantics():
+    """The new condition must not change any earlier scenario."""
+    from CODE.experiment_platform import scripted_scenarios as scen
+
+    net, rows, _g, _m = scen.build("net_h1", arm="stale")
+    assert len(rows) == 173
+    assert net["config"]["routing"]["min_remaining_hop_only"] is False
+    restricted, rrows, _rg, _rm = scen.build("net_h1_restricted",
+                                             arm="stale")
+    assert len(rrows) == 173
+    assert restricted["config"]["routing"]["min_remaining_hop_only"] is True
+    rate4, qrows, _qg, _qm = scen.build("net_h1_restricted_rate4",
+                                        arm="stale")
+    assert len(qrows) == 251
+    assert rate4["config"]["routing"]["min_remaining_hop_only"] is True
+
+
 def test_the_restricted_scenario_keeps_only_shortest_hop_candidates():
     """The round-7 restricted condition, checked before spending a run.
 
