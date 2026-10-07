@@ -9,6 +9,76 @@ import pytest
 from CODE.leo_sim import time_alignment as ta
 
 
+@pytest.mark.parametrize("arm", ("stale", "now", "common", "candidate"))
+def test_network_cli_reaches_the_requested_arm_without_simulating(arm, tmp_path, monkeypatch):
+    """The actual CLI must dispatch every arm, not merely build its config."""
+    from CODE.experiment_platform import network_arm_run as driver
+
+    class ReachedKernel(Exception):
+        pass
+
+    seen = []
+
+    def stop_at_kernel(resolved, rows, **kwargs):
+        seen.append(resolved["config"]["time_alignment"]["arm"])
+        assert len(rows) == 251
+        raise ReachedKernel
+
+    monkeypatch.setattr(driver.kernel, "run_simulation", stop_at_kernel)
+    with pytest.raises(ReachedKernel):
+        driver.main(["--scenario", "net_h1_restricted_rate4", "--arm", arm,
+                     "--out", str(tmp_path / "out.json"),
+                     "--replay-out", str(tmp_path / "replay.json")])
+    assert seen == [arm]
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("arm", ("stale", "now", "common", "candidate"))
+def test_network_preflight_checks_the_real_cli_without_running_or_writing(arm, tmp_path, monkeypatch, capsys):
+    import json
+    from CODE.experiment_platform import network_arm_run as driver
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("preflight must not invoke the scientific kernel")
+
+    monkeypatch.setattr(driver.kernel, "run_simulation", forbidden)
+    assert driver.main(["--scenario", "net_h1_restricted_rate4", "--arm", arm,
+                        "--out", str(tmp_path / "out.json"),
+                        "--replay-out", str(tmp_path / "replay.json"),
+                        "--preflight"]) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["status"] == "preflight_ok"
+    assert doc["arm"] == arm and doc["trace_rows"] == 251
+    assert doc["kernel_calls"] == 0 and doc["claimable"] is False
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("problem", ("same_path", "existing_output", "missing_parent", "missing_replay", "bad_deadline"))
+def test_invalid_output_contract_is_rejected_before_kernel(problem, tmp_path, monkeypatch):
+    from CODE.experiment_platform import network_arm_run as driver
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid invocation must fail before consuming a kernel call")
+
+    monkeypatch.setattr(driver.kernel, "run_simulation", forbidden)
+    output, replay = tmp_path / "out.json", tmp_path / "replay.json"
+    if problem == "same_path":
+        replay = output
+    elif problem == "existing_output":
+        output.write_text("preserve existing evidence")
+    elif problem == "missing_parent":
+        replay = tmp_path / "missing" / "replay.json"
+    argv = ["--scenario", "net_h1_restricted_rate4", "--arm", "now", "--out", str(output)]
+    if problem != "missing_replay":
+        argv += ["--replay-out", str(replay)]
+    if problem == "bad_deadline":
+        argv += ["--deadline-s", "nan"]
+    with pytest.raises(SystemExit):
+        driver.main(argv)
+    if problem == "existing_output":
+        assert output.read_text() == "preserve existing evidence"
+
+
 def _resource(peer, egress, generation=None):
     return ta.ResourceKey(int(peer), str(egress), "isl", generation=generation)
 

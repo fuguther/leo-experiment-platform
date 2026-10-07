@@ -24,16 +24,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import tempfile
 from pathlib import Path
 
 from CODE.experiment_platform import outcome_metrics, scripted_scenarios
 from CODE.leo_sim import kernel
+from CODE.leo_sim.time_alignment import ARMS
 
 SCHEMA = "network-arm-run/v1"
 REPLAY_SCHEMA = "network-arm-replay/v1"
-ARMS = ("stale", "now", "common")
 
 
 def _write_atomic(path: Path, document) -> None:
@@ -175,12 +176,38 @@ def main(argv=None) -> int:
     parser.add_argument("--arm", required=True, choices=sorted(ARMS))
     parser.add_argument("--deadline-s", type=float, default=4.0)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--replay-out", type=Path, default=None,
-                        help="publish the flat full-event record here")
+    parser.add_argument("--replay-out", type=Path, required=True,
+                        help="publish the required flat full-event record here")
+    parser.add_argument("--preflight", action="store_true",
+                        help="validate this invocation and input identity without running or writing")
     args = parser.parse_args(argv)
+
+    if not math.isfinite(args.deadline_s) or args.deadline_s <= 0:
+        parser.error("--deadline-s must be finite and positive")
+    if args.out.resolve() == args.replay_out.resolve():
+        parser.error("--out and --replay-out must be different files")
+    for path in (args.out, args.replay_out):
+        if path.exists() or path.is_symlink():
+            parser.error(f"output already exists; preserve it and use a new path: {path}")
+        if not path.parent.is_dir() or path.parent.is_symlink():
+            parser.error(f"output parent must be an existing non-symlink directory: {path.parent}")
 
     resolved, rows, geometry, meta = scripted_scenarios.build(
         args.scenario, arm=args.arm)
+    alignment = resolved["config"]["time_alignment"]
+    if not alignment["enabled"] or alignment["arm"] != args.arm:
+        parser.error("scenario must enable the requested time-alignment arm")
+    if args.preflight:
+        print(json.dumps({
+            "status": "preflight_ok", "scenario": args.scenario,
+            "arm": args.arm, "config_sha256": resolved["sha256"],
+            "trace_rows": len(rows),
+            "trace_sha256": hashlib.sha256(
+                json.dumps(rows, sort_keys=True).encode("utf-8")).hexdigest(),
+            "time_alignment": alignment, "kernel_calls": 0,
+            "claimable": False,
+        }, ensure_ascii=False))
+        return 0
     sink, timeline = [], []
     result = kernel.run_simulation(resolved, rows, geometry=geometry,
                                    decision_sink=sink, timeline_sink=timeline)
