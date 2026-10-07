@@ -1,3 +1,15 @@
+## 当前验收结论（2026-10-07，具名四星诊断）
+
+`net_h1_restricted_rate4` 缺失的 candidate 臂已完成，四臂原始事件与回执通过离线验收；这是诊断数据，`claimable=false`、`formal=false`。各251包全交付，356次ISL发送、105次双出口；D4达标均110/251。candidate 相对 now 平均时延增加4.083665毫秒，相对 common 增加0.035857毫秒；两项D4差均恶化0.000008964143426。当前条件不支持候选分别对齐的独立增量，按既定收口规则停止默认扩场景、调参和训练。
+
+修复运行源：`d5a2450b1cbbff3e797f1c41b19cebd1c4299a41`；离线验收源：`6d87d135a2df8ecfd43f281d0d237817022c8fd4`。新run `ta-r9-candidate-20261007-01`，本轮1个VM科学入口/1次内核调用。官方索引见 `ANALYSIS/DEPLOYMENT-INDEX.jsonl`，证据身份 `evidence://t1/ta-r9-candidate-20261007-01`。原三臂复用原回执，科学源码等价由精确diff独立核对。
+
+入口 `CODE/experiment_platform/network_arm_run.py` 共享全部ARMS，要求完整replay，可用 `--preflight` 零内核预检；验收入口 `python3 -B -m CODE.experiment_platform.network_arm_acceptance --stale DIR --now DIR --common DIR --candidate DIR`，拒绝缺臂、失败回执、配置/查询语义或逐包账目不一致。验收器只覆盖具名全交付条件，不是通用丢包/删失或全内核重执行验证。55项针对性测试在干净提交通过，不代替研究结论。
+
+96星输出截断、真实LEO迁移、多种子统计和正式实验仍未验收；下文历史失败不因四星诊断通过而解决。额外VM预检收集与本次运行发生重叠，内部driver检查仍先于内核；不声称外部前置屏障严格完成。主文档保存完整偏差与科学边界。以下保留既有历史记录。
+
+---
+
 ## 小区域首测回传与完整四臂执行（2026-10-02）
 
 首 run `t1-small-region-flow-smoke-20261002-01` 已独立核验24文件，receipt `5f047d81c44ae8cfa524fc6ee84d07934de0a5a304b523a2af70e5aa541b19ea`。同一1236包trace：第1调用完整结束196.264647119 s，第2调用用98.352890119 s后被300 s四臂总cell上限终止；总2 started/1 ended/1 timeout，无完整result，不作交付或收益结论。
