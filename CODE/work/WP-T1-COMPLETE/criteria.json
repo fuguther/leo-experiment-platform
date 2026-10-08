@@ -3428,6 +3428,24 @@
         "simulator_calls": 0,
         "research_result": false
       }
+    },
+    "acceptance_20261009": {
+      "run_id": "t1-small-region-acceptance-20261009-01",
+      "source_commit": "7123786bf41e30c367df020305d779b8820475e8",
+      "status": "FAILED_PUBLICATION",
+      "receipt_sha256": "66b0d7b1e0203e4d59822a715c80f696845d70b2aa89317c3e2dd078809e6499",
+      "calls_started": 4,
+      "calls_ended": 4,
+      "simulator_wall_s": 901.373815752,
+      "cell_wall_s": 1804.3520818427205,
+      "cell_cap_s": 1800,
+      "temporary_primary_bytes": 12080809325,
+      "primary_result_published": false,
+      "accepted_data": false,
+      "summary_only": true,
+      "pullback_status": "VERIFIED",
+      "automatic_retry_performed": false,
+      "one_hour_report_delivered": false
     }
   }
 }
