@@ -1,5 +1,5 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: ROOT_AUTHORIZED_SMALL_REGION_COMPACT_OUTPUT_RETRY
+campaign_stage: USER_AUTHORIZED_ONE_HOUR_ACCEPTANCE_20261009
 purpose: small_region_four_arm_low_cost_smoke_with_same_population_trace_pipeline
 not_formal: true
 not_training: true
@@ -18,27 +18,24 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 21fa0527d3a09355d6b1293e0a07ff5a51d56723cd8dfc020a5d29aee1c50924
+    execution_chain_sha256: 31199dc81b4891c91b88b8a91d7c939a3f791eb5613955d0284ff6ce5a224577
     cell_input_sha256:
-      b-bounded_population_cost_smoke-network-seed-7: 106186c365e92a411a459094b3fbe2b17164ac76378460e3013b488fd9aad0ac
+      b-bounded_population_cost_smoke-network-seed-7: a172b3bf34d869652d0eee4ce7eb3ad977e0dd078a97b9a65f0e661650c4046f
   release_ready: false
-  reason: The previous four same-input simulations all ended (1106.060768679s) but
-    pretty JSON publication hit the cell cap. Same 96-star/99-endpoint/1236-packet
-    science, actor and full replay; only compact encoding and an aggregate-metrics
-    sidecar. Root must rebind and verify the new source before publishing. One new
-    run, four calls, cell <=1160s within actual remaining1164.942174908 simulator
-    seconds. No pressure, additional seed, training, formal or resume.
+  reason: User approved supplemental budget on 2026-10-09 and requested a report within
+    one hour. One fixed-input four-arm run, 1800s cell including publication, 2100s
+    outer. No automatic retry, training or formal claim.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 21fa0527d3a09355d6b1293e0a07ff5a51d56723cd8dfc020a5d29aee1c50924
-  compiled_trace_sha256: null
+  source_execution_chain_sha256: 31199dc81b4891c91b88b8a91d7c939a3f791eb5613955d0284ff6ce5a224577
+  compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
-    b-bounded_population_cost_smoke-network-seed-7: 106186c365e92a411a459094b3fbe2b17164ac76378460e3013b488fd9aad0ac
+    b-bounded_population_cost_smoke-network-seed-7: a172b3bf34d869652d0eee4ce7eb3ad977e0dd078a97b9a65f0e661650c4046f
 scenario:
   reference_geometry: selected 96-satellite, 12-plane small-study engineering geometry
   reference_is_global_platform_freeze: false
@@ -161,7 +158,7 @@ cell_allowlist:
   task: network_alignment
   maximum_simulator_calls: 4
   append: false
-  maximum_cell_wall_s: 1200
+  maximum_cell_wall_s: 1800
   concurrency: 1
   exact_driver_argv_after_compile:
   - --task
@@ -177,24 +174,20 @@ cell_allowlist:
   - --arms
   - stale,now,common,candidate
   - --capture-replay
-  exact_bundle_cell_input_hash_after_compile: 106186c365e92a411a459094b3fbe2b17164ac76378460e3013b488fd9aad0ac
+  exact_bundle_cell_input_hash_after_compile: a172b3bf34d869652d0eee4ce7eb3ad977e0dd078a97b9a65f0e661650c4046f
 budget:
-  batch_limit_calls: 60
-  batch_limit_simulator_wall_s: 3600.0
-  historical_b_calls: 8
-  historical_b_simulator_wall_s: 109.071837305
-  remaining_calls_before_probe: 39
-  remaining_simulator_wall_s_before_probe: 1164.942174908
-  probe_calls_reserved: 4
-  probe_wall_s_upper_bound: 1160.0
-  actual_calls_and_wall_time_are_authoritative: true
-  failed_timeout_and_replay_calls_count: true
-  prior_c_calls: 13
-  prior_c_simulator_wall_s: 2325.985987787
-  nominal_task_calls: 4
-  remaining_new_c_calls_before_probe: 38
+  authorization_status: USER_APPROVED_20261009
+  supplement_calls: 4
+  supplement_simulator_wall_s: 1800.0
+  maximum_cell_wall_s_including_publication: 1800.0
+  outer_timeout_s: 2100
+  maximum_runs: 1
+  automatic_retry: false
+  failed_timeout_calls_count: true
+  prior_balance_not_reset: true
+  user_instruction: 预算给你充足预算，你一个小时之内给我回复就行
 post_probe_gate:
-  status: COST_UNVERIFIED
+  status: PENDING_REAL_OUTPUT_ACCEPTANCE
   required_evidence:
   - exact release, unique run identity, and source/runtime chain hashes
   - profile, raster, trace, bundle, cell-input, and receipt digest verification
@@ -215,5 +208,14 @@ source_release_binding: Clean full commit and immutable manifest/run receipt bin
   this contract; no self-referential commit or bundle hash is inserted into its semantic
   input digest.
 budgets:
-  cell_wall_s: 1160.0
-  total_wall_s: 1164.942174908
+  cell_wall_s: 1800.0
+  total_wall_s: 1800.0
+  simulator_call_budget: 4
+prior_campaign_ledger:
+  original_contract_sha256: f20dc6bffca8e4d5b71e5a861e5d097b325072181206b79192b1bdf397b1470a
+  limit_calls: 60
+  limit_simulator_wall_s: 3600.0
+  used_calls: 25
+  used_simulator_wall_s: 3384.508132138
+  remaining_calls: 35
+  remaining_simulator_wall_s: 215.491867862

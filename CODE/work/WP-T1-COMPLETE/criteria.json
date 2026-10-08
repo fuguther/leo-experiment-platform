@@ -3405,16 +3405,17 @@
         "source_commit": "126b8d114e8f8da14c6e1abe0bd07cc9cff7f629"
       },
       "next_real_four_arm_budget_proposal": {
-        "status": "PENDING_APPROVAL",
+        "status": "USER_APPROVED_20261009",
         "max_calls": 4,
         "max_simulator_seconds": 1800,
         "outer_wall_cap_seconds": 2100,
-        "authorization_granted": false,
-        "existing_contract_changed": false,
+        "authorization_granted": true,
+        "existing_contract_changed": true,
         "static_contract_review": "passed; pending contract refuses execution; recompile after approval",
         "cell_wall_cap_including_publication_seconds": 1800,
         "maximum_runs": 1,
-        "automatic_retry": false
+        "automatic_retry": false,
+        "report_within_seconds": 3600
       },
       "publication_probe_20261008": {
         "run_id": "t1-publication-probe-20261008-01",

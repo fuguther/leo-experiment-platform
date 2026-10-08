@@ -1,3 +1,9 @@
+## 当前执行（2026-10-09，用户已批准新增预算）
+
+用户要求一小时内回复。执行同输入96星四臂验收，最多1个入口/4次仿真，cell含输出1800秒、外层2100秒；旧批次账本保留，不训练、不改科学设置、不自动重试。下方10月8日待批准描述为历史状态。当前准备干净提交、发布与前置核验，尚未启动本次仿真。
+
+---
+
 ## 当前状态（2026-10-08，96星 compact-output retry）
 
 官方回传 `t1-small-region-compact-output-20261002-03` 已核验，证据身份为 `evidence://t1/t1-small-region-compact-output-20261002-03`。source commit `7502c3f26302260844fcaf8df3692c3d5efcc848`，receipt `3cc34676a56edc7a0b1a5e75b603a0cb402eceacbb03181a01dd42809ea472d6`，状态 `VERIFIED`；receipt 绑定25个运行文件及receipt自身，共26个文件。
