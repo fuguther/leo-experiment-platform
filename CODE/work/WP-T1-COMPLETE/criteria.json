@@ -3395,10 +3395,14 @@
         "chunked_output_writer": true,
         "reader_reduces_raw_byte_copy": true,
         "stricter_replay_gate": true,
-        "publication_probe": "pure-fixture tests only; VM probe not executed",
-        "candidate_vm_release_run_evidence": false,
+        "publication_probe": "VM actual production writer completed and pulled; fixed 105 MB engineering fixture only",
+        "candidate_vm_release_run_evidence": true,
         "accepted_96_satellite_result": false,
-        "four_satellite_20261007_negative_result_unchanged": true
+        "four_satellite_20261007_negative_result_unchanged": true,
+        "native_population_snapshot_identity_fixed": true,
+        "independent_packet_acceptance_implemented": true,
+        "targeted_tests_passed": 147,
+        "source_commit": "126b8d114e8f8da14c6e1abe0bd07cc9cff7f629"
       },
       "next_real_four_arm_budget_proposal": {
         "status": "PENDING_APPROVAL",
@@ -3406,7 +3410,22 @@
         "max_simulator_seconds": 1800,
         "outer_wall_cap_seconds": 2100,
         "authorization_granted": false,
-        "existing_contract_changed": false
+        "existing_contract_changed": false,
+        "static_contract_review": "passed; pending contract refuses execution; recompile after approval",
+        "cell_wall_cap_including_publication_seconds": 1800,
+        "maximum_runs": 1,
+        "automatic_retry": false
+      },
+      "publication_probe_20261008": {
+        "run_id": "t1-publication-probe-20261008-01",
+        "evidence_uri": "evidence://t1/t1-publication-probe-20261008-01",
+        "receipt_sha256": "32bc4eb5191261f2e479a783b6711a822a158e6b874953eec3cf505e10f4b220",
+        "payload_sha256": "88ead8f1a63155cb5855d66eca5d6cd9d250bda17cccc146a01c3f56c1e3e5c9",
+        "bytes": 105037879,
+        "wall_s": 22.275530241429806,
+        "peak_rss_bytes": 396787712,
+        "simulator_calls": 0,
+        "research_result": false
       }
     }
   }
