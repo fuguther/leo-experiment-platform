@@ -2490,6 +2490,279 @@ def _background_jobs_count(row):
     return 0
 
 
+def _full_replay_structure(row):
+    """Check captured replay stream shape and reconcile existing counters.
+
+    This is a completeness gate for the saved envelope, not a replay of the
+    packet/event semantics. Event-level recomputation remains a separate
+    acceptance step.
+    """
+    issues = []
+    lengths = {}
+
+    def uint(value):
+        return (isinstance(value, int) and not isinstance(value, bool)
+                and value >= 0)
+
+    def packet_id(value):
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            pid = value
+        elif isinstance(value, str):
+            try:
+                pid = int(value)
+            except ValueError:
+                return None
+        else:
+            return None
+        return pid if pid > 0 else None
+
+    def count_matches(label, declared, observed):
+        if not uint(declared) or declared != observed:
+            issues.append(f"{label} differs from observed count")
+
+    def mapping_packet_ids(values, label):
+        if values is None:
+            return None
+        ids = set()
+        for raw_pid in values:
+            pid = packet_id(raw_pid)
+            if pid is None:
+                issues.append(f"{label} contains an invalid packet id")
+            elif pid in ids:
+                issues.append(f"{label} contains a duplicate packet id")
+            ids.add(pid)
+        return ids
+
+    replay = row.get("replay")
+    if not isinstance(replay, dict):
+        return False, {
+            "validation_scope": "structural completeness and count reconciliation",
+            "full_event_recomputation": False,
+            "stream_lengths": lengths,
+            "issues": ["replay is not a mapping"],
+        }
+    if replay.get("captured") is not True:
+        issues.append("captured is not true")
+    if replay.get("arm") != row.get("arm"):
+        issues.append("replay arm differs from network row")
+
+    streams = {}
+    for name in ("decision_rows", "timeline_rows", "packet_events",
+                 "link_service_windows", "link_available_windows",
+                 "queue_state_events", "topology_trace", "handover_events"):
+        value = replay.get(name)
+        if (not isinstance(value, list)
+                or any(not isinstance(x, dict) for x in value)):
+            issues.append(f"{name} must be a list of mappings")
+        else:
+            streams[name] = value
+            lengths[name] = len(value)
+    for name in ("fates", "deliveries", "counts"):
+        if not isinstance(replay.get(name), dict):
+            issues.append(f"{name} must be a mapping")
+    fates = (replay.get("fates")
+             if isinstance(replay.get("fates"), dict) else None)
+    deliveries = (replay.get("deliveries")
+                  if isinstance(replay.get("deliveries"), dict) else None)
+    counts = (replay.get("counts")
+              if isinstance(replay.get("counts"), dict) else None)
+    fate_ids = mapping_packet_ids(fates, "fates")
+    delivery_ids = mapping_packet_ids(deliveries, "deliveries")
+    if deliveries is not None and any(not isinstance(x, dict)
+                                      for x in deliveries.values()):
+        issues.append("deliveries contains a non-mapping record")
+
+    scope = row.get("scope") if isinstance(row.get("scope"), dict) else {}
+    outcome = row.get("outcome") if isinstance(row.get("outcome"), dict) else {}
+    if streams.get("decision_rows") is not None:
+        decision_rows = streams["decision_rows"]
+        count_matches("decision_rows/scope.decision_requests",
+                      scope.get("decision_requests"),
+                      len(decision_rows))
+    forwards = scope.get("forward_decisions")
+    if not uint(forwards):
+        issues.append("scope.forward_decisions is not a nonnegative integer")
+    elif streams.get("decision_rows") is not None:
+        count_matches("forward decision rows/scope.forward_decisions", forwards,
+                      sum(x.get("kind") == "forward"
+                          for x in streams["decision_rows"]))
+        if (uint(scope.get("decision_requests"))
+                and forwards > scope["decision_requests"]):
+            issues.append("forward decisions exceed decision requests")
+
+    routing = row.get("routing_audit_log")
+    if not isinstance(routing, dict):
+        issues.append("routing_audit_log is not a mapping")
+    else:
+        records = routing.get("decision_records")
+        if (not isinstance(records, list)
+                or any(not isinstance(x, dict) for x in records)):
+            issues.append("routing decision records are malformed")
+        else:
+            count_matches("routing decision records",
+                          routing.get("decision_record_count"), len(records))
+            if uint(forwards):
+                count_matches("routing decisions/scope.forward_decisions",
+                              forwards, len(records))
+        attempts = routing.get("attempt_records")
+        if (not isinstance(attempts, list)
+                or any(not isinstance(x, dict) for x in attempts)):
+            issues.append("routing attempt records are malformed")
+        else:
+            count_matches("routing attempt records",
+                          routing.get("attempt_record_count"), len(attempts))
+            timeline = streams.get("timeline_rows")
+            if timeline is not None:
+                milestones = {"decision_attempt", "frozen_inferred_hold",
+                              "commit_rejected"}
+                count_matches("timeline decision attempts", len(attempts),
+                              sum(x.get("milestone") in milestones for x in timeline))
+
+    timeline, queue = (streams.get("timeline_rows"),
+                       streams.get("queue_state_events"))
+    if timeline is not None and queue is not None:
+        expected = [x for x in timeline if x.get("milestone") == "queue_state"]
+        if queue != expected:
+            issues.append("queue_state_events differs from timeline queue_state subset")
+
+    if counts is not None:
+        totals = [counts.get(name) for name in
+                  ("offered", "admitted", "delivered")]
+        if not all(uint(x) for x in totals):
+            issues.append("replay packet counts are malformed")
+        else:
+            offered, admitted, delivered = totals
+            if not delivered <= admitted <= offered:
+                issues.append("delivered/admitted/offered counts are inconsistent")
+            for label, value, expected in (
+                    ("scope.packets_in_trace",
+                     scope.get("packets_in_trace"), offered),
+                    ("outcome.offered", outcome.get("offered"), offered),
+                    ("outcome.admitted", outcome.get("admitted"), admitted),
+                    ("outcome.delivered", outcome.get("delivered"), delivered)):
+                count_matches(label, value, expected)
+
+            if fates is not None:
+                count_matches("fates/counts.offered", offered, len(fates))
+                fate_counts = {}
+                for fate in fates.values():
+                    if not isinstance(fate, str) or not fate:
+                        issues.append("fates contains a malformed fate")
+                        continue
+                    fate_counts[fate] = fate_counts.get(fate, 0) + 1
+
+                def positive_counts(value):
+                    if (not isinstance(value, dict)
+                            or any(not uint(x) for x in value.values())):
+                        return None
+                    return {str(k): v for k, v in value.items() if v}
+
+                if positive_counts(counts.get("fate_counts")) != fate_counts:
+                    issues.append("counts.fate_counts differs from fates")
+                if positive_counts(outcome.get("fate_counts")) != fate_counts:
+                    issues.append("outcome.fate_counts differs from fates")
+                delivered_ids = {str(pid) for pid, fate in fates.items()
+                                 if fate == "DELIVERED"}
+                if len(delivered_ids) != delivered:
+                    issues.append(
+                        "DELIVERED fate count differs from counts.delivered")
+                if deliveries is not None:
+                    count_matches("deliveries/counts.delivered", delivered,
+                                  len(deliveries))
+                    if delivery_ids != {packet_id(pid) for pid, fate
+                                        in fates.items()
+                                        if fate == "DELIVERED"}:
+                        issues.append(
+                            "deliveries keys differ from DELIVERED fate keys")
+
+            events = streams.get("packet_events")
+            if events is not None:
+                event_pids = {}
+                all_event_pids = []
+                for event in events:
+                    kind = event.get("kind")
+                    if not isinstance(kind, str) or not kind:
+                        issues.append("packet event has no nonempty kind")
+                    pid = packet_id(event.get("pid"))
+                    if pid is None:
+                        issues.append("packet event has an invalid packet id")
+                        continue
+                    all_event_pids.append((kind, pid))
+                    if kind in ("packet_emitted", "satellite_ingress", "delivered"):
+                        event_pids.setdefault(kind, []).append(pid)
+
+                emitted = event_pids.get("packet_emitted", [])
+                emitted_ids = set(emitted)
+                count_matches("packet_events.packet_emitted", offered,
+                              len(emitted))
+                if len(emitted_ids) != len(emitted):
+                    issues.append("packet_emitted contains duplicate packet ids")
+                if fate_ids is not None and emitted_ids != fate_ids:
+                    issues.append("packet_emitted ids differ from fates ids")
+                for kind, pid in all_event_pids:
+                    if kind != "packet_emitted" and pid not in emitted_ids:
+                        issues.append("packet event references an unknown offered pid")
+
+                ingress_ids = set(event_pids.get("satellite_ingress", []))
+                count_matches("unique satellite_ingress pids", admitted,
+                              len(ingress_ids))
+
+                delivered_events = event_pids.get("delivered", [])
+                delivered_event_ids = set(delivered_events)
+                if len(delivered_event_ids) != len(delivered_events):
+                    issues.append("delivered events contain duplicate packet ids")
+                count_matches("unique delivered event pids", delivered,
+                              len(delivered_event_ids))
+                if delivery_ids is not None and delivered_event_ids != delivery_ids:
+                    issues.append("delivered event ids differ from deliveries ids")
+                if fates is not None:
+                    fate_delivered_ids = {
+                        packet_id(pid) for pid, fate in fates.items()
+                        if fate == "DELIVERED"
+                    }
+                    if delivered_event_ids != fate_delivered_ids:
+                        issues.append(
+                            "delivered event ids differ from DELIVERED fates")
+
+    congestion = row.get("congestion_metrics")
+    links = congestion.get("links") if isinstance(congestion, dict) else None
+    validation = (congestion.get("validation")
+                  if isinstance(congestion, dict) else None)
+    if not isinstance(validation, dict) or validation.get("ok") is not True:
+        issues.append("congestion metrics validation is missing or failed")
+    if not isinstance(links, dict):
+        issues.append("congestion_metrics.links is not a mapping")
+    else:
+        service_count = available_count = 0
+        for link in links.values():
+            if (not isinstance(link, dict)
+                    or not uint(link.get("service_windows"))
+                    or not uint(link.get("available_samples"))):
+                issues.append("congestion link window counts are malformed")
+                break
+            service_count += link["service_windows"]
+            available_count += link["available_samples"]
+        if streams.get("link_service_windows") is not None:
+            count_matches("link service windows", service_count,
+                          len(streams["link_service_windows"]))
+        if streams.get("link_available_windows") is not None:
+            count_matches("link available windows", available_count,
+                          len(streams["link_available_windows"]))
+
+    # _arm_row passes non-None sinks, so the kernel always records the initial
+    # topology snapshot even when packet or service streams are empty.
+    if streams.get("topology_trace") == []:
+        issues.append("topology_trace has no initial snapshot")
+    return not issues, {
+        "validation_scope": "structural completeness and count reconciliation",
+        "full_event_recomputation": False,
+        "stream_lengths": lengths,
+        "issues": issues,
+    }
+
+
 def _check_task_predicate(result, require):
     """Machine-check the pre-declared behaviour of a t1_task cell.
 
@@ -2724,14 +2997,12 @@ def _check_task_predicate(result, require):
                                 "forward_decisions": scope.get("forward_decisions"),
                                 "all_masks_complete": complete_masks}])
             if require.get("require_full_replay"):
-                replay = row.get("replay") or {}
-                checks.append([f"arm {arm} has the full-network event replay",
-                               replay.get("captured") is True
-                               and len(replay.get("packet_events") or []) > 0
-                               and len(replay.get("topology_trace") or []) > 0,
-                               {"captured": replay.get("captured"),
-                                "packet_events": len(replay.get("packet_events") or []),
-                                "topology_snapshots": len(replay.get("topology_trace") or [])}])
+                replay_ok, replay_detail = _full_replay_structure(row)
+                checks.append([
+                    f"arm {arm} has structurally complete "
+                    "full-network replay streams",
+                    replay_ok, replay_detail,
+                ])
     elif task == "execution_modes":
         rows = {row.get("mode"): row for row in (doc.get("modes") or [])}
         for mode in require.get("modes", []):
@@ -3000,9 +3271,24 @@ def _inspect_result(result_path):
         return probe
     probe["exists"] = True
     try:
-        raw = result_path.read_bytes()
-        probe["sha256"] = hashlib.sha256(raw).hexdigest()
-        payload = json.loads(raw.decode("utf-8"))
+        # Keep no full raw-byte copy alive while decoding a large replay.
+        # Read through one descriptor so hashing and parsing refer to the same
+        # inode; atomically published results are immutable to this reader.
+        digest = hashlib.sha256()
+        with result_path.open("rb") as stream:
+            before = os.fstat(stream.fileno())
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+            probe["sha256"] = digest.hexdigest()
+            stream.seek(0)
+            import io
+            with io.TextIOWrapper(stream, encoding="utf-8") as text_stream:
+                payload = json.load(text_stream)
+                after = os.fstat(text_stream.fileno())
+                fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+                if any(getattr(before, key) != getattr(after, key)
+                       for key in fields):
+                    raise OSError("result changed while hashing and parsing")
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         probe["parse_error"] = f"{type(exc).__name__}: {exc}"
         return probe

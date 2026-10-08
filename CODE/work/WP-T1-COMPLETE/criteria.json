@@ -3352,7 +3352,8 @@
       "simulator_wall_s_remaining_batch": 1164.942174908
     },
     "compact_output_retry": {
-      "status": "ROOT_ACCEPTED_CODE; COMPILE_VALIDATE_ENFORCE_PASS; NOT_EXECUTED",
+      "status": "ACTUAL_RETRY_FAILED_CELL_TIMEOUT; OFFICIAL_PULLBACK_VERIFIED; NO_PRIMARY_RESULT",
+      "initial_plan_status": "ROOT_ACCEPTED_CODE; COMPILE_VALIDATE_ENFORCE_PASS; NOT_EXECUTED",
       "execution_chain_sha256": "21fa0527d3a09355d6b1293e0a07ff5a51d56723cd8dfc020a5d29aee1c50924",
       "cell_input_sha256": "106186c365e92a411a459094b3fbe2b17164ac76378460e3013b488fd9aad0ac",
       "contract_sha256": "f20dc6bffca8e4d5b71e5a861e5d097b325072181206b79192b1bdf397b1470a",
@@ -3364,7 +3365,49 @@
       "remaining_batch_simulator_s_before": 1164.942174908,
       "full_result_required": true,
       "summary_alone_does_not_pass_cell": true,
-      "recovery": "raw incomplete; no complete arm; original file/failed receipt preserved"
+      "recovery": "raw incomplete; no complete arm; original file/failed receipt preserved",
+      "actual_vm_attempt": {
+        "run_id": "t1-small-region-compact-output-20261002-03",
+        "source_commit": "7502c3f26302260844fcaf8df3692c3d5efcc848",
+        "release_id": "7502c3f26302260844fcaf8df3692c3d5efcc848-5242b5c13145773618a914809419bcdab5be0d485cde91de9ced8a2ae83e2a17",
+        "receipt_sha256": "3cc34676a56edc7a0b1a5e75b603a0cb402eceacbb03181a01dd42809ea472d6",
+        "evidence_uri": "evidence://t1/t1-small-region-compact-output-20261002-03",
+        "pullback_status": "VERIFIED",
+        "run_files_bound": 25,
+        "receipt_inclusive_files": 26,
+        "calls": 4,
+        "simulator_wall_s": 949.450307046,
+        "cell_elapsed_s": 1166.783253,
+        "original_cell_cap_s": 1160,
+        "cell_cap_exceeded_s": 6.783253,
+        "summary_bytes": 5831402,
+        "primary_result_present": false,
+        "research_result": false
+      },
+      "budget_after_actual_attempt": {
+        "batch_calls_used": 25,
+        "batch_simulator_wall_s_used": 3384.508132138,
+        "batch_calls_remaining": 35,
+        "batch_simulator_wall_s_remaining": 215.491867862,
+        "failed_calls_counted": true
+      },
+      "local_candidate_state": {
+        "chunked_output_writer": true,
+        "reader_reduces_raw_byte_copy": true,
+        "stricter_replay_gate": true,
+        "publication_probe": "pure-fixture tests only; VM probe not executed",
+        "candidate_vm_release_run_evidence": false,
+        "accepted_96_satellite_result": false,
+        "four_satellite_20261007_negative_result_unchanged": true
+      },
+      "next_real_four_arm_budget_proposal": {
+        "status": "PENDING_APPROVAL",
+        "max_calls": 4,
+        "max_simulator_seconds": 1800,
+        "outer_wall_cap_seconds": 2100,
+        "authorization_granted": false,
+        "existing_contract_changed": false
+      }
     }
   }
 }

@@ -1,10 +1,20 @@
+## 当前状态（2026-10-08，96星 compact-output retry）
+
+官方回传 `t1-small-region-compact-output-20261002-03` 已核验，证据身份为 `evidence://t1/t1-small-region-compact-output-20261002-03`。source commit `7502c3f26302260844fcaf8df3692c3d5efcc848`，receipt `3cc34676a56edc7a0b1a5e75b603a0cb402eceacbb03181a01dd42809ea472d6`，状态 `VERIFIED`；receipt 绑定25个运行文件及receipt自身，共26个文件。
+
+该次运行4 calls / 949.450307046模拟秒，cell elapsed 1166.783253 s，超过原1160 s合同上限6.783253 s。仅生成5,831,402 byte摘要，没有主result；因此本次失败，96星四臂结果仍未验收。旧批次累计25 calls / 3384.508132138模拟秒，余35 calls / 215.491867862模拟秒，失败成本照计。
+
+本机候选工作树已有分块输出、减少reader raw bytes复制、较严格的replay门及纯fixture publication probe 测试；VM probe 尚未执行，候选尚无新的release/run证据。10月7日四星负结果和停止结论不变。最多4 calls / 1800模拟秒 / 外层2100秒的后续真实四臂预算目前只是待批准提案，不是运行授权，也不修改现存合同。
+
+---
+
 ## 小区域首测回传与完整四臂执行（2026-10-02）
 
 首 run `t1-small-region-flow-smoke-20261002-01` 已独立核验24文件，receipt `5f047d81c44ae8cfa524fc6ee84d07934de0a5a304b523a2af70e5aa541b19ea`。同一1236包trace：第1调用完整结束196.264647119 s，第2调用用98.352890119 s后被300 s四臂总cell上限终止；总2 started/1 ended/1 timeout，无完整result，不作交付或收益结论。
 
 保持96星/99端点、5 Mbps、D/算法/四臂/控制/完整replay/source/input不变，新合同只把四臂工程总cap设1200 s，使用新run-id，不resume。根compile/validate/enforce通过；待精确新commit发布实跑。实际B+C已17 calls/1328.997056413 s；余43 calls/2271.002943587 s。1200 s上限在剩余预算内，压力候选仍未放行。
 
-## 小星座区域 pilot 当前状态（2026-10-02；未产生结果）
+## 历史计划状态（2026-10-02；当时未产生结果）
 
 用户明确授权缩小星座和业务区域。当前首个 pilot 固定 96 星/12 面/每面 8 星、800 km、53°、最低仰角 10°，max ISL 保留 6000 km；地面区域为 [20,30)°N × [100,110)°E，99 个正人口 1°网格。参数为工程场景假设，不是商业星座实测。主策略仍为同一确定性目的队列时延评分器，四臂只改变查询时刻；背压/DDQN 不前置。
 

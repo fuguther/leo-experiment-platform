@@ -1583,9 +1583,26 @@ def design(config_path=None, scenario=None, root=None, overrides=None):
               "overrides": dict(overrides or {})}
     demand = resolved["config"].get("demand") or {}
     if demand.get("mode") == "population_gravity":
-        population_path = Path(str(demand.get("population_path") or ""))
-        if not population_path.is_absolute():
-            population_path = artifact_identity.REPO_ROOT / population_path
+        population_manifest = manifest.get("population")
+        input_population_sha256 = manifest.get("input_sha256")
+        source_population_sha256 = (
+            population_manifest.get("source_sha256")
+            if isinstance(population_manifest, dict) else None)
+
+        def valid_sha256(value):
+            return (isinstance(value, str) and len(value) == 64
+                    and all(character in "0123456789abcdef"
+                            for character in value))
+
+        if (not valid_sha256(input_population_sha256)
+                or not valid_sha256(source_population_sha256)):
+            raise TaskError(
+                "compiled population manifest has a missing or invalid "
+                "SHA-256 hash")
+        if input_population_sha256 != source_population_sha256:
+            raise TaskError(
+                "compiled population input hash differs from population "
+                "source hash")
         mapped_rows = [
             row for row in rows
             if isinstance(row.get("src_grid_id"), str)
@@ -1598,9 +1615,7 @@ def design(config_path=None, scenario=None, root=None, overrides=None):
         source["native_population"] = {
             "mode": "population_gravity",
             "population_source": str(demand.get("population_path")),
-            "population_sha256": (
-                hashlib.sha256(population_path.read_bytes()).hexdigest()
-                if population_path.is_file() else None),
+            "population_sha256": input_population_sha256,
             "all_rows_have_ground_grid_ids": len(mapped_rows) == len(rows),
             "source_grid_count": len({row["src_grid_id"]
                                        for row in mapped_rows}),
@@ -1730,22 +1745,102 @@ def network_summary_document(document):
     }
 
 
+def _json_piece_fits(value, nodes=1024, characters=32768):
+    """Bound container encoding without constructing its expanded JSON string.
+
+    A single scalar may exceed the character target; it is encoded intact.
+    Shared references are counted for each occurrence, just as JSON expands them.
+    """
+    remaining = [nodes, characters]
+    active = set()
+
+    def visit(item):
+        remaining[0] -= 1
+        if remaining[0] < 0:
+            return False
+        if isinstance(item, str):
+            remaining[1] -= len(item)
+            return remaining[1] >= 0
+        if not isinstance(item, (dict, list, tuple)):
+            return True
+        identity = id(item)
+        if identity in active:
+            raise ValueError("Circular reference detected")
+        active.add(identity)
+        try:
+            if isinstance(item, dict):
+                if len(item) * 2 > remaining[0]:
+                    return False
+                return all(visit(key) and visit(child)
+                           for key, child in item.items())
+            if len(item) > remaining[0]:
+                return False
+            return all(visit(child) for child in item)
+        finally:
+            active.remove(identity)
+
+    return visit(value)
+
+
+def _write_json_pieces(value, stream, ancestors=None):
+    """C-encode small subtrees; never materialize a whole large result string."""
+    container = isinstance(value, (dict, list, tuple))
+    if not container or _json_piece_fits(value):
+        stream.write(json.dumps(value, ensure_ascii=False, sort_keys=True,
+                                separators=(",", ":")))
+        return
+    if ancestors is None:
+        ancestors = set()
+    identity = id(value)
+    if identity in ancestors:
+        raise ValueError("Circular reference detected")
+    ancestors.add(identity)
+    try:
+        if isinstance(value, dict):
+            stream.write("{")
+            for index, key in enumerate(sorted(value)):
+                if index:
+                    stream.write(",")
+                # Delegate supported key conversion/escaping to the standard
+                # encoder; remove only the surrounding object and null value.
+                key_prefix = json.dumps({key: None}, ensure_ascii=False,
+                                        separators=(",", ":"))[1:-5]
+                stream.write(key_prefix)
+                _write_json_pieces(value[key], stream, ancestors)
+            stream.write("}")
+        else:
+            stream.write("[")
+            for start in range(0, len(value), 128):
+                batch = value[start:start + 128]
+                if start:
+                    stream.write(",")
+                if _json_piece_fits(batch):
+                    stream.write(json.dumps(batch, ensure_ascii=False,
+                                            sort_keys=True,
+                                            separators=(",", ":"))[1:-1])
+                else:
+                    for index, child in enumerate(batch):
+                        if index:
+                            stream.write(",")
+                        _write_json_pieces(child, stream, ancestors)
+            stream.write("]")
+    finally:
+        ancestors.remove(identity)
+
+
 def publish(document, out):
     out = Path(out)
     if out.exists() or out.is_symlink():
         raise TaskError(f"output destination exists: {out}")
     if not out.parent.is_dir() or out.parent.is_symlink():
         raise TaskError(f"output parent must be a real directory: {out.parent}")
-    # Encode in one C-accelerated pass before opening the atomic temp file.
-    # The network result can exceed 1 GB; pretty-printing it token-by-token
-    # can consume the cell wall budget even after all simulation calls end.
-    encoded = json.dumps(document, ensure_ascii=False, sort_keys=True,
-                         separators=(",", ":"))
+    # Large replay graphs expand shared observations repeatedly in JSON.
+    # Bound the encoder's temporary string; preserve every field and event.
     handle, temporary = tempfile.mkstemp(prefix="." + out.name + ".",
                                          suffix=".tmp", dir=str(out.parent))
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            stream.write(encoded)
+            _write_json_pieces(document, stream)
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
