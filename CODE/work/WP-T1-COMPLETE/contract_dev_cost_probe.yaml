@@ -193,9 +193,9 @@ budget:
     no scientific input, cell, arm, deadline or seed was changed.
   third_round_fix: per-arm compaction of the recorded advertisement history to the
     four fields the analysis reads (capped at the pre-declared 16 most recent
-    samples) plus sampled per-component payload accounting. Diagnosed cause of the
-    round-2 failure: ~58.7 GiB resident before serialization against a 64 GiB
-    container limit. No scientific input, cell, arm, deadline or seed was changed.
+    samples) plus sampled per-component payload accounting. The round-2 run died
+    with about 58.7 GiB resident before serialization against a 64 GiB container
+    limit. No scientific input, cell, arm, deadline or seed was changed.
 post_probe_gate:
   status: PENDING_REAL_OUTPUT_ACCEPTANCE
   required_evidence:
