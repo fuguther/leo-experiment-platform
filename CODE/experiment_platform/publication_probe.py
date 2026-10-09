@@ -708,6 +708,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rows", default=DEFAULT_ROWS, type=int,
                         help=f"fixed repeated rows, {MIN_ROWS}..{MAX_ROWS} "
                              f"(default: {DEFAULT_ROWS})")
+    parser.add_argument("--receivers", default=DEFAULT_HISTORY_RECEIVERS,
+                        type=int, help="history mode receiver labels "
+                                       f"(1..{MAX_HISTORY_RECEIVERS})")
+    parser.add_argument("--origins", default=DEFAULT_HISTORY_ORIGINS,
+                        type=int, help="history mode origins per receiver "
+                                       f"(1..{MAX_HISTORY_ORIGINS})")
+    parser.add_argument("--history-length", default=DEFAULT_HISTORY_LENGTH,
+                        type=int, help="history samples per (receiver, origin) "
+                                       f"(1..{MAX_HISTORY_LENGTH})")
+    parser.add_argument("--downlink", default=DEFAULT_HISTORY_DOWNLINK,
+                        type=int, help="downlink resources per sample "
+                                       f"(1..{MAX_HISTORY_DOWNLINK})")
+    parser.add_argument("--queries", default=DEFAULT_HISTORY_QUERIES,
+                        type=int, help="recorded queries per arm "
+                                       f"({HISTORY_INVALIDATION_QUERIES}.."
+                                       f"{MAX_HISTORY_QUERIES})")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--graph", action="store_true",
                        help="test the production network object-graph storage path")
@@ -716,7 +732,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = (run_graph_probe(args.out_dir) if args.graph else
-                  run_history_probe(args.out_dir) if args.history else
+                  run_history_probe(args.out_dir,
+                                     receivers=args.receivers,
+                                     origins=args.origins,
+                                     history=args.history_length,
+                                     downlink=args.downlink,
+                                     queries=args.queries) if args.history else
                   run_probe(args.out_dir, rows=args.rows))
     except (ProbeError, t1_tasks.TaskError, OSError, ValueError) as exc:
         print(f"PUBLICATION PROBE FAILED: {exc}", file=sys.stderr)
