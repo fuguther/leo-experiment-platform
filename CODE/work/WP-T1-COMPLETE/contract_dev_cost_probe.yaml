@@ -161,7 +161,7 @@ cell_allowlist:
   task: network_alignment
   maximum_simulator_calls: 4
   append: false
-  maximum_cell_wall_s: 1800
+  maximum_cell_wall_s: 3600
   concurrency: 1
   exact_driver_argv_after_compile:
   - --task
@@ -182,8 +182,8 @@ budget:
   authorization_status: USER_APPROVED_CONTINUATION_20261009
   supplement_calls: 4
   supplement_simulator_wall_s: 1800.0
-  maximum_cell_wall_s_including_publication: 1800.0
-  outer_timeout_s: 2100
+  maximum_cell_wall_s_including_publication: 3600.0
+  outer_timeout_s: 3900
   maximum_runs: 1
   automatic_retry: false
   failed_timeout_calls_count: true
@@ -225,8 +225,8 @@ source_release_binding: Clean full commit and immutable manifest/run receipt bin
   this contract; no self-referential commit or bundle hash is inserted into its semantic
   input digest.
 budgets:
-  cell_wall_s: 1800.0
-  total_wall_s: 1800.0
+  cell_wall_s: 3600.0
+  total_wall_s: 3600.0
   simulator_call_budget: 4
 prior_campaign_ledger:
   original_contract_sha256: f20dc6bffca8e4d5b71e5a861e5d097b325072181206b79192b1bdf397b1470a
