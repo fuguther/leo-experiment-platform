@@ -1,5 +1,5 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: USER_AUTHORIZED_RECORDING_REPAIR_ACCEPTANCE_20261010
+campaign_stage: USER_AUTHORIZED_RECORDING_REPAIR_ACCEPTANCE_20261010_ROUND2
 purpose: small_region_four_arm_low_cost_smoke_with_same_population_trace_pipeline
 not_formal: true
 not_training: true
@@ -18,7 +18,7 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 5d033d8f26e99653baf4937efd85edd7b452572c2408b446899b3ca7a3e2dbde
+    execution_chain_sha256: 197992e2c136887536ec2b99288940f912da203102ea272be75ec07baef776f1
     cell_input_sha256:
       b-bounded_population_cost_smoke-network-seed-7: db354c0038c7726b3032f97ea58f8dbdc50d434d9935e97b75614af567398ee7
   release_ready: false
@@ -34,7 +34,7 @@ input_identity:
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 5d033d8f26e99653baf4937efd85edd7b452572c2408b446899b3ca7a3e2dbde
+  source_execution_chain_sha256: 197992e2c136887536ec2b99288940f912da203102ea272be75ec07baef776f1
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
