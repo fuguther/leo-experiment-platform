@@ -1487,6 +1487,26 @@ def _log_replay_size(arm, estimate):
         pass
 
 
+def _release_arm_memory():
+    """Return the finished arm's freed arenas to the operating system.
+
+    Measured on the real cell: the RETAINED replay is only ~1.24 GB per arm,
+    yet resident memory grows by ~14 GB per arm and the fourth arm dies at the
+    64 GiB container limit.  The difference is allocator-retained memory from
+    the arm's transient objects.  glibc keeps freed arenas unless asked, so ask.
+    """
+    try:
+        import gc
+        gc.collect()
+    except Exception:
+        pass
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
+
+
 def network_alignment(resolved, rows, geometry, source,
                      arms=NETWORK_ARMS, overrides=None, *, deadline_s=None,
                      window=None, capture_replay=False,
@@ -1517,6 +1537,7 @@ def network_alignment(resolved, rows, geometry, source,
                 replay["history_compaction"] = _compact_advertised_history(replay)
                 replay["size_estimate"] = _replay_size_estimate(replay)
                 _log_replay_size(arm, replay["size_estimate"])
+            _release_arm_memory()
             arm_rows.append(row)
         except Exception as exc:      # noqa: BLE001 - recorded, not lost
             failures.append({"arm": arm,
