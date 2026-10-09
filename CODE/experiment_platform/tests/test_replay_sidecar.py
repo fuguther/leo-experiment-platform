@@ -76,6 +76,29 @@ def test_stream_facts_recomputes_gate_evidence_without_materializing(tmp_path):
     assert facts["queue_subset_digest"] == facts["timeline_subset_digest"]
 
 
+def test_routing_audit_lists_are_extracted_to_the_sidecar(tmp_path):
+    """The audit lists embed one observation per attempt; they must leave."""
+    document = _document()
+    arm = document["document"]["arms"][0]
+    arm["routing_audit_log"] = {
+        "decision_record_count": 1, "decision_records": [{"decision_id": 1}],
+        "attempt_record_count": 2,
+        "attempt_records": [{"attempt": 1}, {"attempt": 2}],
+    }
+    result = tmp_path / "result.json"
+    replay_sidecar.write_sidecar(document, result)
+
+    audit = arm["routing_audit_log"]
+    assert audit["decision_records"] == []
+    assert audit["attempt_records"] == []
+    reference = arm["replay"]
+    assert reference["index"]["routing_decision_records"]["count"] == 1
+    assert reference["index"]["routing_attempt_records"]["count"] == 2
+    side = replay_sidecar.sidecar_of(result, reference)
+    assert [row["attempt"] for row in replay_sidecar.resolve(
+        side, reference, "routing_attempt_records")] == [1, 2]
+
+
 def test_index_resolvers_return_exactly_the_recorded_streams(tmp_path):
     """Acceptance and reporting read through these; they must not rescan."""
     result = tmp_path / "result.json"

@@ -2529,11 +2529,24 @@ def _sidecar_replay_structure(row, reference, result_path):
         issues.append("sidecar decision_rows differ from scope.decision_requests")
     if facts["forward_decisions"] != scope.get("forward_decisions"):
         issues.append("sidecar forward rows differ from scope.forward_decisions")
-    routing = row.get("routing_audit_log")
-    attempts = routing.get("attempt_records") if isinstance(routing, dict) else None
-    if (isinstance(attempts, list)
-            and len(attempts) != facts["routing_attempts"]):
-        issues.append("sidecar timeline decision attempts differ from the audit")
+    # The audit lists themselves are sidecar streams (they embed one full
+    # observation per attempt); their counts are reconciled here and against the
+    # timeline milestones recomputed above.
+    audit = row.get("routing_audit_log")
+    audit = audit if isinstance(audit, dict) else {}
+    declared_index = reference.get("index") or {}
+    decision_entry = declared_index.get("routing_decision_records")
+    attempt_entry = declared_index.get("routing_attempt_records")
+    if (not isinstance(decision_entry, dict)
+            or decision_entry.get("count")
+            != audit.get("decision_record_count")):
+        issues.append("sidecar routing decision records do not match their count")
+    if (not isinstance(attempt_entry, dict)
+            or attempt_entry.get("count") != audit.get("attempt_record_count")):
+        issues.append("sidecar routing attempt records do not match their count")
+    if (isinstance(attempt_entry, dict)
+            and attempt_entry.get("count") != facts["routing_attempts"]):
+        issues.append("sidecar timeline attempts differ from the audit count")
     if (facts["queue_subset_count"] != facts["timeline_subset_count"]
             or facts["queue_subset_digest"] != facts["timeline_subset_digest"]):
         issues.append("queue_state_events differs from the timeline subset")

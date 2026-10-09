@@ -28,6 +28,13 @@ STREAMS = (
 )
 #: The recorded mappings the gate reconciles by key count.
 MAPPINGS = ("fates", "deliveries", "counts")
+#: Per-arm audit lists that embed one full observation per attempt.  They are
+#: written as sidecar streams too: the primary result kept them and reached
+#: 7,170,591,303 bytes, which the post-publish inspection then could not decode.
+AUDIT_LISTS = (
+    ("routing_audit_log", "decision_records", "routing_decision_records"),
+    ("routing_audit_log", "attempt_records", "routing_attempt_records"),
+)
 
 
 class SidecarError(RuntimeError):
@@ -68,6 +75,23 @@ def write_sidecar(document, result_path) -> dict:
                 position[0] += len(data)
 
             for arm_row in document["document"]["arms"]:
+                arm = arm_row.get("arm")
+                arm_index = index.setdefault(arm, {})
+                audit = arm_row.get("routing_audit_log")
+                if isinstance(audit, dict):
+                    for container, key, name in AUDIT_LISTS:
+                        rows = audit.get(key)
+                        if not isinstance(rows, list):
+                            continue
+                        emit({"schema": SCHEMA, "kind": "stream", "arm": arm,
+                              "stream": name, "count": len(rows)})
+                        arm_index[name] = {"offset": position[0],
+                                             "count": len(rows),
+                                             "lines": len(rows)}
+                        for row in rows:
+                            emit({"schema": SCHEMA, "kind": "row",
+                                  "arm": arm, "stream": name, "row": row})
+                        audit[key] = []
                 replay = arm_row.get("replay") or {}
                 if replay.get("captured") is not True:
                     continue
@@ -78,7 +102,6 @@ def write_sidecar(document, result_path) -> dict:
                             "required" % marker)
                 arm = arm_row.get("arm")
                 per_arm: dict = {}
-                arm_index: dict = {}
                 for name in STREAMS:
                     rows = replay.get(name)
                     if rows is None:
