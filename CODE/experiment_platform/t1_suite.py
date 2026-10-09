@@ -2515,7 +2515,8 @@ def _sidecar_replay_structure(row, reference, result_path):
     if not path.is_file():
         detail["issues"] = issues
         return False, detail
-    facts = replay_sidecar.stream_facts(path, reference.get("arm"))
+    facts = replay_sidecar.stream_facts(path, reference.get("arm"),
+                                        index=reference.get("index"))
     declared = facts["declared"]
     missing = [name for name in replay_sidecar.STREAMS if name not in declared]
     if missing:

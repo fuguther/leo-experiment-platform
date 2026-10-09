@@ -20,15 +20,25 @@ def write_csv(path, rows, fields=None):
         writer.writerows(rows)
 
 
-def extract(document):
+def extract(document, result_path=None):
     packets, candidates, ages, summaries, events = [], [], [], [], []
     for arm in document['arms']:
         name, replay = arm['arm'], arm['replay']
-        emitted = {e['pid']: e for e in replay['packet_events'] if e['kind'] == 'packet_emitted'}
-        delivered = {e['pid']: e['at'] for e in replay['packet_events'] if e['kind'] == 'delivered'}
+        if replay.get('sidecar'):
+            from CODE.experiment_platform import replay_sidecar
+            side = replay_sidecar.sidecar_of(result_path, replay)
+            packet_events = replay_sidecar.resolve(side, replay, 'packet_events')
+            fates = replay_sidecar.resolve_mapping(side, replay, 'fates')
+            decisions = replay_sidecar.resolve_iter(side, replay, 'decision_rows')
+        else:
+            packet_events = replay['packet_events']
+            fates = replay['fates']
+            decisions = replay['decision_rows']
+        emitted = {e['pid']: e for e in packet_events if e['kind'] == 'packet_emitted'}
+        delivered = {e['pid']: e['at'] for e in packet_events if e['kind'] == 'delivered'}
         own_packets = []
         for pid, ev in emitted.items():
-            fate = replay['fates'][str(pid)]
+            fate = fates[str(pid)]
             latency = delivered[pid] - ev['at'] if pid in delivered else None
             d4 = acceptance.deadline_loss(fate, emit_time_s=ev['at'],
                 delivered_at_s=delivered.get(pid), stop_time_s=arm['stop_time_s'], deadline_s=4.)
@@ -40,10 +50,10 @@ def extract(document):
                 'not_delivered_within_4s': int(latency is None or latency > 4.)}
             own_packets.append(row)
         packets.extend(own_packets)
-        for e in replay['packet_events']:
+        for e in packet_events:
             if e['kind'] in ('packet_emitted', 'satellite_ingress', 'delivered'):
                 events.append({'arm':name,'kind':e['kind'],'at_s':e['at'],'pid':e['pid']})
-        for row in replay['decision_rows']:
+        for row in decisions:
             if row.get('kind') != 'forward':
                 continue
             obs = row.get('observation_at_start') or {}
@@ -123,7 +133,8 @@ def make_report(run_dir, out_dir, scope=None):
     inspected=t1_suite._inspect_result(path)
     if inspected['sha256'] != accepted['identity']['result_sha256']:
         raise ValueError('result changed after acceptance')
-    packets,candidates,ages,summary,events=extract(inspected['payload']['document'])
+    packets,candidates,ages,summary,events=extract(inspected['payload']['document'],
+                                                   path)
     for row in summary:
         expected=accepted['arms'][row['arm']]['deadline_primary_loss']['value']
         if abs(row['D4_capped_loss']-expected)>1e-9:

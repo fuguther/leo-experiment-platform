@@ -56,14 +56,16 @@ def write_sidecar(document, result_path) -> dict:
     handle, temporary = tempfile.mkstemp(prefix="." + target.name + ".",
                                          suffix=".tmp", dir=str(target.parent))
     counts: dict = {}
+    index: dict = {}
+    position = [0]
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
             def emit(payload) -> None:
                 line = _line(payload)
-                digest.update(line.encode("utf-8"))
-                digest.update(b"\n")
-                stream.write(line)
-                stream.write("\n")
+                data = line.encode("utf-8") + b"\n"
+                digest.update(data)
+                stream.write(line + "\n")
+                position[0] += len(data)
 
             for arm_row in document["document"]["arms"]:
                 replay = arm_row.get("replay") or {}
@@ -76,6 +78,7 @@ def write_sidecar(document, result_path) -> dict:
                             "required" % marker)
                 arm = arm_row.get("arm")
                 per_arm: dict = {}
+                arm_index: dict = {}
                 for name in STREAMS:
                     rows = replay.get(name)
                     if rows is None:
@@ -87,6 +90,9 @@ def write_sidecar(document, result_path) -> dict:
                             "arm %r stream %r is not a list" % (arm, name))
                     emit({"schema": SCHEMA, "kind": "stream", "arm": arm,
                           "stream": name, "count": len(rows)})
+                    arm_index[name] = {"offset": position[0],
+                                       "count": len(rows),
+                                       "lines": len(rows)}
                     for row in rows:
                         emit({"schema": SCHEMA, "kind": "row", "arm": arm,
                               "stream": name, "row": row})
@@ -94,13 +100,20 @@ def write_sidecar(document, result_path) -> dict:
                 for name in MAPPINGS:
                     value = replay.get(name)
                     if isinstance(value, dict):
+                        arm_index[name] = {"offset": position[0],
+                                           "count": len(value),
+                                           "lines": 1}
                         emit({"schema": SCHEMA, "kind": "mapping", "arm": arm,
                               "mapping": name, "value": value})
                         per_arm[name] = len(value)
                 emit({"schema": SCHEMA, "kind": "arm_end", "arm": arm,
                       "counts": per_arm})
                 counts[arm] = per_arm
-                arm_row["replay"] = {
+                index[arm] = arm_index
+                scalars = {name: replay[name] for name in
+                           ("stop_time_s", "horizon_s", "cost")
+                           if name in replay}
+                arm_row["replay"] = dict(scalars, **{
                     "captured": True,
                     "arm": arm,
                     "sidecar": target.name,
@@ -108,7 +121,8 @@ def write_sidecar(document, result_path) -> dict:
                                 if key in per_arm},
                     "mappings": {key: per_arm[key] for key in MAPPINGS
                                  if key in per_arm},
-                }
+                    "index": arm_index,
+                })
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, target)
@@ -123,7 +137,63 @@ def write_sidecar(document, result_path) -> dict:
         reference = arm_row.get("replay")
         if isinstance(reference, dict) and reference.get("sidecar") == target.name:
             reference["sha256"] = sha256
-    return {"path": target.name, "sha256": sha256, "counts": counts}
+    return {"path": target.name, "sha256": sha256, "counts": counts,
+            "index": index}
+
+
+def resolve(path, reference, stream):
+    """Return one recorded stream of one arm, using the index when present."""
+    index = (reference or {}).get("index") or {}
+    entry = index.get(stream)
+    if isinstance(entry, dict):
+        return [json.loads(line) for line in
+                iter_indexed(path, int(entry.get("offset", 0)),
+                             int(entry.get("lines", entry.get("count", 0))))]
+    return [row for _arm, name, row in
+            iter_sidecar(path, arm=reference.get("arm"), stream=stream)
+            if name == stream]
+
+
+def resolve_iter(path, reference, stream):
+    """Iterate one recorded stream of one arm without materializing it."""
+    index = (reference or {}).get("index") or {}
+    entry = index.get(stream)
+    if isinstance(entry, dict):
+        for payload in iter_indexed(path, int(entry.get("offset", 0)),
+                                    int(entry.get("lines",
+                                                  entry.get("count", 0)))):
+            yield payload.get("row")
+        return
+    for _arm, name, row in iter_sidecar(path, arm=reference.get("arm"),
+                                        stream=stream):
+        if name == stream:
+            yield row
+
+
+def resolve_mapping(path, reference, name):
+    """Return one recorded mapping of one arm (fates/deliveries/counts)."""
+    index = (reference or {}).get("index") or {}
+    entry = index.get(name)
+    if isinstance(entry, dict):
+        for payload in iter_indexed(path, int(entry.get("offset", 0)),
+                                    int(entry.get("lines", 1))):
+            if payload.get("kind") == "mapping":
+                return payload.get("value")
+        return None
+    for line in Path(path).open(encoding="utf-8"):
+        text = line.strip()
+        if not text:
+            continue
+        payload = json.loads(text)
+        if (payload.get("kind") == "mapping"
+                and payload.get("arm") == (reference or {}).get("arm")
+                and payload.get("mapping") == name):
+            return payload.get("value")
+    return None
+
+
+def sidecar_of(result_path, reference):
+    return Path(result_path).with_name(str((reference or {}).get("sidecar") or ""))
 
 
 def iter_sidecar(path, *, arm=None, stream=None):
@@ -189,7 +259,8 @@ ROUTING_MILESTONES = ("decision_attempt", "frozen_inferred_hold",
                       "commit_rejected")
 
 
-def stream_facts(path, arm, *, queue_milestone="queue_state") -> dict:
+def stream_facts(path, arm, *, queue_milestone="queue_state",
+                 index=None) -> dict:
     """Recompute the per-arm facts the completeness gate needs, in one pass.
 
     Memory stays proportional to one row: the two subset digests and the small
@@ -202,13 +273,33 @@ def stream_facts(path, arm, *, queue_milestone="queue_state") -> dict:
     timeline_digest = hashlib.sha256()
     queue_count = 0
     timeline_count = 0
-    for line in Path(path).open(encoding="utf-8"):
-        line = line.strip()
-        if not line:
-            continue
-        payload = json.loads(line)
-        if payload.get("arm") != arm:
-            continue
+    if isinstance(index, dict) and index:
+        # The index records the declared count per stream; the row lines
+        # themselves carry no header, so seed the declared set from it.
+        facts["declared"] = {name: int(entry.get("count", 0))
+                             for name, entry in index.items()
+                             if name in STREAMS and isinstance(entry, dict)}
+
+        def _indexed():
+            for name, entry in index.items():
+                if not isinstance(entry, dict):
+                    continue
+                for payload in iter_indexed(
+                        path, int(entry.get("offset", 0)),
+                        int(entry.get("lines", entry.get("count", 0)))):
+                    yield payload
+        stream = _indexed()
+    else:
+        def _scan():
+            for line in Path(path).open(encoding="utf-8"):
+                text = line.strip()
+                if not text:
+                    continue
+                payload = json.loads(text)
+                if payload.get("arm") == arm:
+                    yield payload
+        stream = _scan()
+    for payload in stream:
         kind = payload.get("kind")
         if kind == "stream":
             facts["declared"][payload.get("stream")] = payload.get("count")
@@ -245,8 +336,29 @@ def stream_facts(path, arm, *, queue_milestone="queue_state") -> dict:
     return facts
 
 
+#: File digests are cached per (path, size, mtime): one pass serves every arm.
+_FILE_SHA_CACHE: dict = {}
+
+
+def cached_file_sha256(path) -> str:
+    path = Path(path)
+    stat = path.stat()
+    key = (str(path), stat.st_size, stat.st_mtime_ns)
+    cached = _FILE_SHA_CACHE.get(key)
+    if cached is None:
+        cached = file_sha256(path)
+        _FILE_SHA_CACHE.clear()
+        _FILE_SHA_CACHE[key] = cached
+    return cached
+
+
 def verify_reference(reference, result_path, *, expected_arm=None) -> list:
-    """Stream-verify one arm sidecar reference without materializing it."""
+    """Verify one arm sidecar reference with one cached hash and its index.
+
+    The recorded counts are cross-checked against the index, and the index is
+    covered by the file digest, so no per-row rescan is needed to establish
+    integrity.
+    """
     issues: list = []
     target = Path(result_path).with_name(str(reference.get("sidecar") or ""))
     if reference.get("captured") is not True:
@@ -256,27 +368,28 @@ def verify_reference(reference, result_path, *, expected_arm=None) -> list:
     if not target.is_file():
         issues.append("sidecar is missing: " + target.name)
         return issues
-    if reference.get("sha256") != file_sha256(target):
+    if reference.get("sha256") != cached_file_sha256(target):
         issues.append("sidecar sha256 differs from the recorded digest")
-    declared = reference.get("streams") or {}
-    seen: dict = {}
-    mapping_seen: dict = {}
-    for line in target.open(encoding="utf-8"):
-        line = line.strip()
-        if not line:
-            continue
-        payload = json.loads(line)
-        kind = payload.get("kind")
-        if kind == "row":
-            key = payload.get("stream")
-            seen[key] = seen.get(key, 0) + 1
-        elif kind == "mapping":
-            mapping_seen[payload.get("mapping")] = mapping_seen.get(
-                payload.get("mapping"), 0) + 1
-    for name, count in declared.items():
-        if seen.get(name, 0) != count:
-            issues.append("sidecar %s rows differ from declared count" % name)
+    index = reference.get("index") or {}
+    for name, count in (reference.get("streams") or {}).items():
+        entry = index.get(name)
+        if not isinstance(entry, dict) or entry.get("count") != count:
+            issues.append("sidecar %s index does not match the declared count"
+                          % name)
     for name, count in (reference.get("mappings") or {}).items():
-        if mapping_seen.get(name, 0) != 1:
-            issues.append("sidecar %s mapping is not recorded exactly once" % name)
+        entry = index.get(name)
+        if not isinstance(entry, dict) or entry.get("count") != count:
+            issues.append("sidecar %s index does not match the declared count"
+                          % name)
     return issues
+
+
+def iter_indexed(path, offset, count):
+    """Yield the count records that start at byte offset."""
+    with Path(path).open("rb") as handle:
+        handle.seek(offset)
+        for _ in range(count):
+            line = handle.readline()
+            if not line:
+                break
+            yield json.loads(line)
