@@ -1487,6 +1487,69 @@ def _log_replay_size(arm, estimate):
         pass
 
 
+#: Per-decision fields the offline analysis actually reads.  Everything else in
+#: a raw decision row (full observation, audits, truth, service windows) is
+#: dropped before the next arm starts.
+_DECISION_ANALYSIS_FIELDS = ("decision_id", "pid", "kind", "t_decision_start",
+                             "chosen", "sat", "src", "dst")
+_OBSERVATION_ANALYSIS_FIELDS = (
+    "schema", "mode", "t_observed", "sat", "own_queue_bits",
+    "local_egress_in_service_s", "compute_state", "query_state",
+    "candidate_directions", "legal_directions", "routing_status", "kind",
+    "action", "candidate_resources", "time_alignment", "four_direction_audit")
+_NEIGHBOUR_ANALYSIS_FIELDS = (
+    "origin", "generated_at", "received_at", "age_s", "hops",
+    "advertised_isl_queue_bits", "advertised_isl_generation",
+    "advertised_isl_rate_bps", "advertised_isl_work_ahead_bits_proxy")
+#: Raw replay components retained by nobody in the analysis.  In Python object
+#: form they are what makes four arms exceed a 64 GiB container.
+REPLAY_DROPPED_COMPONENTS = (
+    "timeline_rows", "link_service_windows", "link_available_windows",
+    "topology_trace", "handover_events", "queue_state_events")
+
+
+def _compact_decision_rows(replay):
+    """Replace raw decision rows with the per-decision analysis record.
+
+    The nested shape of the fields the report reads is preserved, so the offline
+    analysis is unchanged while the raw rows (and the whole control timeline)
+    stop occupying memory across arms.
+    """
+    rows = replay.get("decision_rows")
+    if not isinstance(rows, list):
+        return {"rows_total": 0, "rows_kept": 0, "dropped_components": []}
+    compact = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        item = {key: row.get(key) for key in _DECISION_ANALYSIS_FIELDS}
+        observation = row.get("observation_at_start")
+        if isinstance(observation, dict):
+            kept = {key: observation.get(key)
+                    for key in _OBSERVATION_ANALYSIS_FIELDS}
+            neighbours = {}
+            for origin, entry in (observation.get("neighbours") or {}).items():
+                if not isinstance(entry, dict):
+                    continue
+                kept_entry = {key: entry.get(key)
+                              for key in _NEIGHBOUR_ANALYSIS_FIELDS}
+                kept_entry["advertised_history"] = (
+                    entry.get("advertised_history") or [])
+                neighbours[origin] = kept_entry
+            kept["neighbours"] = neighbours
+            item["observation_at_start"] = kept
+        compact.append(item)
+    total = len(rows)
+    replay["decision_rows"] = compact
+    dropped = []
+    for name in REPLAY_DROPPED_COMPONENTS:
+        if name in replay:
+            replay[name] = [] if isinstance(replay.get(name), list) else None
+            dropped.append(name)
+    return {"rows_total": total, "rows_kept": len(compact),
+            "dropped_components": dropped}
+
+
 def _release_arm_memory():
     """Return the finished arm's freed arenas to the operating system.
 
@@ -1535,6 +1598,7 @@ def network_alignment(resolved, rows, geometry, source,
                 # Compact and measure immediately, while this arm is the only
                 # raw replay alive: four raw arms cannot fit in the container.
                 replay["history_compaction"] = _compact_advertised_history(replay)
+                replay["analysis_projection"] = _compact_decision_rows(replay)
                 replay["size_estimate"] = _replay_size_estimate(replay)
                 _log_replay_size(arm, replay["size_estimate"])
             _release_arm_memory()
