@@ -146,7 +146,7 @@ def resolve(path, reference, stream):
     index = (reference or {}).get("index") or {}
     entry = index.get(stream)
     if isinstance(entry, dict):
-        return [json.loads(line) for line in
+        return [payload.get("row") for payload in
                 iter_indexed(path, int(entry.get("offset", 0)),
                              int(entry.get("lines", entry.get("count", 0))))]
     return [row for _arm, name, row in

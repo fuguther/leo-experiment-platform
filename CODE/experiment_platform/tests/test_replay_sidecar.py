@@ -76,6 +76,27 @@ def test_stream_facts_recomputes_gate_evidence_without_materializing(tmp_path):
     assert facts["queue_subset_digest"] == facts["timeline_subset_digest"]
 
 
+def test_index_resolvers_return_exactly_the_recorded_streams(tmp_path):
+    """Acceptance and reporting read through these; they must not rescan."""
+    result = tmp_path / "result.json"
+    document = _document()
+    replay_sidecar.write_sidecar(document, result)
+    reference = document["document"]["arms"][0]["replay"]
+    side = replay_sidecar.sidecar_of(result, reference)
+
+    assert [row["decision_id"] for row in
+            replay_sidecar.resolve(side, reference, "decision_rows")] == [1, 2, 3]
+    assert [row["milestone"] for row in
+            replay_sidecar.resolve(side, reference, "timeline_rows")] == [
+        "queue_state", "decision_attempt", "queue_state"]
+    assert replay_sidecar.resolve_mapping(side, reference, "fates") == {
+        "1": "DELIVERED"}
+    assert replay_sidecar.resolve_mapping(side, reference, "counts") == {
+        "offered": 1, "admitted": 1, "delivered": 1}
+    assert [row["pid"] for row in
+            replay_sidecar.resolve_iter(side, reference, "packet_events")] == [1]
+
+
 def test_tampering_and_misdeclared_counts_are_reported(tmp_path):
     result = tmp_path / "result.json"
     document = _document()

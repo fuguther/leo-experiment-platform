@@ -2072,6 +2072,24 @@ class _MemoryWatch:
         return False
 
 
+def publish_network_result(document, out):
+    """Write the replay sidecar (when captured) then the primary result.
+
+    The per-decision and per-event streams go out first as line-delimited
+    records: a full replay reached 9.62 GB and could not be decoded in process
+    (about 13.6x the file size), so the gate and the analysis read it row by row
+    instead of materializing the object graph.  The primary result keeps the
+    sidecar name, its sha256, the per-stream counts and the byte-offset index.
+    """
+    from CODE.experiment_platform import replay_sidecar
+    if any((row.get("replay") or {}).get("captured") is True
+           for row in document["document"]["arms"]):
+        manifest = replay_sidecar.write_sidecar(document, out)
+        document["document"].setdefault(
+            "replay_capture", {})["sidecar"] = manifest
+    publish(document, out)
+
+
 def publish(document, out):
     out = Path(out)
     if out.exists() or out.is_symlink():
@@ -2277,19 +2295,7 @@ def main(argv=None) -> int:
             if summary_out == args.out:
                 raise TaskError("network summary path collides with full result")
             publish(network_summary_document(document), summary_out)
-            # The per-decision and per-event streams are written as a line
-            # delimited sidecar first: a full replay reached 9.62 GB and could
-            # not be decoded in process (about 13.6x the file size), so the
-            # gate and the analysis read it row by row instead of materializing
-            # the object graph.  The reference in the result carries the
-            # sidecar name, its sha256 and the per-stream counts.
-            if any((row.get("replay") or {}).get("captured") is True
-                   for row in document["document"]["arms"]):
-                from CODE.experiment_platform import replay_sidecar
-                manifest = replay_sidecar.write_sidecar(document, args.out)
-                document["document"].setdefault(
-                    "replay_capture", {})["sidecar"] = manifest
-        publish(document, args.out)
+        publish_network_result(document, args.out)
     except _DiagnosticStop as exc:
         print(f"T1TASKS DIAGNOSTIC STOP: {exc}")
         exit_code = 3

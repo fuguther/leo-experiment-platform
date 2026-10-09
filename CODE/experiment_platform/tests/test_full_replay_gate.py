@@ -372,6 +372,27 @@ def test_replay_gate_reports_structural_scope_without_claiming_event_replay():
     assert "structural" in detail["validation_scope"]
     assert detail["full_event_recomputation"] is False
 
+def test_publish_inspect_and_gate_agree_on_a_sidecar_result(tmp_path):
+    """The production order (sidecar, then primary result) must satisfy the gate."""
+    from CODE.experiment_platform import replay_sidecar, t1_tasks
+    result = _result()
+    result["schema"] = "t1-task-result/v1"
+    for name in replay_sidecar.STREAMS:
+        result["document"]["arms"][0]["replay"].setdefault(name, [])
+    result_path = tmp_path / "result.json"
+    t1_tasks.publish_network_result(result, result_path)
+    assert (tmp_path / "result-replay.jsonl").is_file()
+
+    probe = t1_suite._inspect_result(result_path)
+    assert probe["parse_error"] is None
+    assert probe["schema"] == "t1-task-result/v1"
+    verdict = t1_suite.check_predicate(probe["payload"], _PREDICATE,
+                                       result_path=result_path)
+    check = next(item for item in verdict["checks"]
+                 if "full-network" in item["check"])
+    assert check["passed"] is True, check["observed"]
+
+
 def test_full_replay_gate_accepts_a_streamed_sidecar(tmp_path):
     """The gate must verify a line-delimited sidecar without decoding it."""
     from CODE.experiment_platform import replay_sidecar
