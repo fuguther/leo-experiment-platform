@@ -2547,6 +2547,31 @@ def _sidecar_replay_structure(row, reference, result_path):
     if (isinstance(attempt_entry, dict)
             and attempt_entry.get("count") != facts["routing_attempts"]):
         issues.append("sidecar timeline attempts differ from the audit count")
+    # The four-direction mask completeness used to be checked on the audit
+    # records in the result; with those records in the sidecar the check has to
+    # stream them, otherwise all([]) would pass vacuously and silently drop a
+    # pre-declared requirement.
+    audit_stream = declared_index.get("routing_decision_records")
+    if isinstance(audit_stream, dict):
+        needed = {"N", "E", "S", "W"}
+        complete = True
+        seen = 0
+        for payload in replay_sidecar.iter_indexed(
+                path, int(audit_stream.get("offset", 0)),
+                int(audit_stream.get("lines", audit_stream.get("count", 0)))):
+            mask = ((payload.get("row") or {}).get("four_direction_audit") or {})
+            seen += 1
+            if (mask.get("direction_order") != ["N", "E", "S", "W"]
+                    or set(mask.get("final_legal_mask") or {}) != needed):
+                complete = False
+                break
+        scope = row.get("scope") if isinstance(row.get("scope"), dict) else {}
+        if (not complete
+                or seen != scope.get("forward_decisions")):
+            issues.append("sidecar routing decision records do not all carry a "
+                          "complete four-direction mask")
+        else:
+            detail["audit_masks_complete"] = True
     if (facts["queue_subset_count"] != facts["timeline_subset_count"]
             or facts["queue_subset_digest"] != facts["timeline_subset_digest"]):
         issues.append("queue_state_events differs from the timeline subset")
@@ -3058,12 +3083,17 @@ def _check_task_predicate(result, require, *, result_path=None):
             if require.get("require_routing_audit_log"):
                 scope = row.get("scope") or {}
                 records = audit_log.get("decision_records") or []
-                complete_masks = all(
+                if (row.get("replay") or {}).get("sidecar"):
+                    # The records live in the sidecar; the structural check
+                    # above streams every mask and fails if any is incomplete.
+                    complete_masks = True
+                else:
+                    complete_masks = all(
                     (item.get("four_direction_audit") or {}).get(
                         "direction_order") == ["N", "E", "S", "W"]
                     and set((item.get("four_direction_audit") or {}).get(
                         "final_legal_mask", {})) == {"N", "E", "S", "W"}
-                    for item in records)
+                        for item in records)
                 checks.append([f"arm {arm} logs every forward decision with all four directions",
                                audit_log.get("decision_record_count")
                                == scope.get("forward_decisions")

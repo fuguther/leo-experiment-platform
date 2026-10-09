@@ -43,7 +43,13 @@ def _result():
                 "action_log": {"count": 1},
                 "routing_audit_log": {
                     "decision_record_count": 1,
-                    "decision_records": [{}],
+                    "decision_records": [{
+                        "four_direction_audit": {
+                            "direction_order": ["N", "E", "S", "W"],
+                            "final_legal_mask": {"N": True, "E": True,
+                                                 "S": True, "W": True},
+                        },
+                    }],
                     "attempt_record_count": 0,
                     "attempt_records": [],
                 },
