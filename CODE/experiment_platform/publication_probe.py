@@ -155,6 +155,56 @@ def run_probe(out_dir: str | Path, rows: int = DEFAULT_ROWS) -> dict:
     return report
 
 
+def run_graph_probe(out_dir, references=500000):
+    """Exercise the production network codec with a large shared replay graph.
+
+    Expanded size is calculated from standard JSON on the fixture row, not
+    estimated from a partial failed file. This is engineering evidence only.
+    """
+    from CODE.experiment_platform import replay_codec, t1_suite
+    if not 1 <= references <= 500000 or isinstance(references, bool):
+        raise ProbeError("graph references must be in 1..500000")
+    out_dir = Path(out_dir)
+    if out_dir.exists() or not out_dir.parent.is_dir():
+        raise ProbeError("graph probe needs a new output directory")
+    row = _fixture_row()
+    document = {"schema": t1_tasks.SCHEMA_TASK, "task": "network_alignment",
+                "document": {"fixture_rows": [row] * references}}
+    expected_row = json.loads(json.dumps(row, ensure_ascii=False, allow_nan=False))
+    row_bytes = len(json.dumps(row, ensure_ascii=False, sort_keys=True,
+                              separators=(",", ":"), allow_nan=False).encode())
+    empty = {"schema": t1_tasks.SCHEMA_TASK, "task": "network_alignment",
+             "document": {"fixture_rows": []}}
+    expanded_bytes = len(json.dumps(empty, ensure_ascii=False, sort_keys=True,
+                                   separators=(",", ":")).encode()) + 1
+    expanded_bytes += references * row_bytes + max(0, references - 1)
+    out_dir.mkdir()
+    path = out_dir / "fixture.json"
+    started = time.perf_counter()
+    t1_tasks.publish(document, path)
+    published = time.perf_counter()
+    probe = t1_suite._inspect_result(path)
+    decoded = probe.get("payload") or {}
+    records = (decoded.get("document") or {}).get("fixture_rows", [])
+    equal = (probe["parse_error"] is None and len(records) == references
+             and records[0] == expected_row
+             and all(record is records[0] for record in records)
+             and decoded.get("schema") == t1_tasks.SCHEMA_TASK
+             and decoded.get("task") == "network_alignment")
+    report = {"schema": "engineering-graph-publication-probe/v1",
+        "not_scientific": True, "simulator_calls": 0, "references": references,
+        "expanded_standard_json_bytes": expanded_bytes, "outputbytes": path.stat().st_size,
+        "publish_s": published - started, "read_verify_s": time.perf_counter() - published,
+        "equal": equal, "encoded_file_sha256": probe["sha256"], "peak_rss": _peak_rss(),
+        "source_driver_sha256": _source_driver_sha256(),
+        "codec_sha256": hashlib.sha256(Path(replay_codec.__file__).read_bytes()).hexdigest(),
+        "scope": "shared-reference fixture; actual scientific replay still requires a complete run"}
+    _write_report(out_dir / "report.json", report)
+    if not equal:
+        raise ProbeError("lossless production graph round trip failed")
+    return report
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out-dir", required=True, type=Path,
@@ -162,14 +212,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rows", default=DEFAULT_ROWS, type=int,
                         help=f"fixed repeated rows, {MIN_ROWS}..{MAX_ROWS} "
                              f"(default: {DEFAULT_ROWS})")
+    parser.add_argument("--graph", action="store_true",
+                        help="test the production network object-graph storage path")
     args = parser.parse_args(argv)
     try:
-        report = run_probe(args.out_dir, rows=args.rows)
+        report = (run_graph_probe(args.out_dir) if args.graph
+                  else run_probe(args.out_dir, rows=args.rows))
     except (ProbeError, t1_tasks.TaskError, OSError, ValueError) as exc:
         print(f"PUBLICATION PROBE FAILED: {exc}", file=sys.stderr)
         return 2
     print(json.dumps({"status": "verified", "report": str(args.out_dir / "report.json"),
-                      "rows": report["rows"], "outputbytes": report["outputbytes"],
+                      "rows": report.get("rows", report.get("references")), "outputbytes": report["outputbytes"],
                       "equal": report["equal"]}, ensure_ascii=False))
     return 0
 

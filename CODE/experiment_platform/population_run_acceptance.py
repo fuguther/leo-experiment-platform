@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+from dataclasses import dataclass
 import hashlib
 import json
 import math
@@ -38,6 +39,43 @@ POPULATION_SHA256 = (
 PROFILE_POPULATION_PATH = (
     "CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif")
 TOLERANCE = 1e-9
+STUDY_BLOCKS = (
+    "primary_steady", "primary_burst", "hold_last_burst",
+    "frequent_advertisement_burst",
+)
+STUDY_EXPECTED_PACKETS = {"primary_steady": 844}
+STUDY_EXPECTED_PACKETS.update({block: 9036 for block in STUDY_BLOCKS[1:]})
+
+
+@dataclass(frozen=True)
+class AcceptanceScope:
+    """Immutable expected identities for one legacy cell or study block."""
+
+    cell_id: str
+    expected_packets: int
+    expected_resolved_config_sha256: str
+    block: str | None = None
+    profile_path: str | None = None
+    expected_profile_sha256: str | None = None
+    expected_trace_sha256: str | None = None
+    expected_rows_digest: str | None = None
+    study_contract_sha256: str | None = None
+    study_design_sha256: str | None = None
+    input_compilation_sha256: str | None = None
+
+    @property
+    def is_study(self) -> bool:
+        return self.block is not None
+
+
+def _legacy_scope() -> AcceptanceScope:
+    # Read the legacy constants at call time so existing tests and callers that
+    # intentionally patch them retain their original behavior.
+    return AcceptanceScope(
+        cell_id=CELL_ID,
+        expected_packets=EXPECTED_PACKETS,
+        expected_resolved_config_sha256=RESOLVED_CONFIG_SHA256,
+    )
 
 
 class PopulationRunAcceptanceError(ValueError):
@@ -376,6 +414,231 @@ def _read_small_json(path: Path, label: str, *, maximum_bytes: int = 20_000_000)
             f"{label} is unreadable: {type(exc).__name__}: {exc}") from exc
 
 
+def _read_json_with_sha(path: Path, label: str,
+                        *, maximum_bytes: int = 20_000_000) -> tuple[dict, str]:
+    if path.is_symlink() or not path.is_file():
+        raise PopulationRunAcceptanceError(f"{label} is missing or unsafe")
+    try:
+        if path.stat().st_size > maximum_bytes:
+            raise PopulationRunAcceptanceError(f"{label} exceeds its size bound")
+        raw = path.read_bytes()
+        value = json.loads(raw)
+    except PopulationRunAcceptanceError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PopulationRunAcceptanceError(
+            f"{label} is unreadable: {type(exc).__name__}: {exc}") from exc
+    _require(isinstance(value, dict), f"{label} must be a JSON object")
+    return value, hashlib.sha256(raw).hexdigest()
+
+
+def _is_sha256(value) -> bool:
+    return (isinstance(value, str) and len(value) == 64
+            and all(char in "0123456789abcdef" for char in value))
+
+
+def _study_profile_path(study_dir: Path, relative: str) -> Path:
+    _require(isinstance(relative, str), "study profile path is missing")
+    pure = PurePosixPath(relative)
+    _require(pure.parts and not pure.is_absolute()
+             and all(part not in ("", ".", "..") for part in pure.parts)
+             and pure.parts[0] == "profiles",
+             "study profile path is unsafe")
+    path = study_dir / Path(*pure.parts)
+    _require(not study_dir.is_symlink() and study_dir.is_dir(),
+             "study design directory is missing or unsafe")
+    cursor = path
+    while cursor != study_dir:
+        _require(not cursor.is_symlink(), "study profile path contains a symlink")
+        cursor = cursor.parent
+    _require(path.is_file(), "study profile file is missing")
+    try:
+        _require(path.resolve(strict=True).is_relative_to(
+            study_dir.resolve(strict=True)),
+            "study profile resolves outside the study design directory")
+    except (OSError, RuntimeError) as exc:
+        raise PopulationRunAcceptanceError(
+            f"study profile path cannot be resolved: {exc}") from exc
+    return path
+
+
+def _unique_block_records(records, label: str) -> dict[str, dict]:
+    _require(isinstance(records, list), f"{label} must be a list")
+    mapped = {}
+    for index, record in enumerate(records):
+        _require(isinstance(record, dict),
+                 f"{label}[{index}] must be an object")
+        block = record.get("block")
+        _require(isinstance(block, str) and block,
+                 f"{label}[{index}] is missing block")
+        _require(block not in mapped,
+                 f"{label} contains duplicate block {block!r}")
+        mapped[block] = record
+    _require(set(mapped) == set(STUDY_BLOCKS),
+             f"{label} does not contain the four frozen study blocks")
+    return mapped
+
+
+def _validate_frozen_config_identity(resolved: dict,
+                                     scope: AcceptanceScope) -> None:
+    cfg = resolved.get("config") or {}
+    scenario, demand, endpoints = (
+        cfg.get("scenario") or {}, cfg.get("demand") or {},
+        cfg.get("endpoints") or {})
+    _require(scenario.get("name") == "t1-population-small-region-cost-smoke"
+             and scenario.get("duration_s") == HORIZON_S
+             and scenario.get("seed") == 7
+             and scenario.get("num_satellites") == 96
+             and scenario.get("num_planes") == 12,
+             "config is not the frozen 96-satellite seed-7 scenario")
+    _require(demand.get("mode") == "population_gravity"
+             and demand.get("population_path") == PROFILE_POPULATION_PATH
+             and demand.get("emission_start_s") == 2.0
+             and demand.get("emission_end_s") == 4.0
+             and demand.get("packet_bits") == 12000
+             and demand.get("research_deadline_s") == DEADLINE_S,
+             "config demand differs from the frozen population trace")
+    offered_mbps = demand.get("offered_mbps")
+    _require(isinstance(offered_mbps, (int, float))
+             and not isinstance(offered_mbps, bool) and offered_mbps > 0,
+             "config offered rate must be positive")
+    if not scope.is_study:
+        _require(offered_mbps == 5.0,
+                 "config demand differs from the frozen population trace")
+    _require(endpoints.get("region_lat_bounds_deg") == [20.0, 30.0]
+             and endpoints.get("region_lon_bounds_deg") == [100.0, 110.0],
+             "config population region differs from the frozen scope")
+    if scope.is_study:
+        time_alignment = cfg.get("time_alignment") or {}
+        _require(time_alignment.get("enabled") is True
+                 and time_alignment.get("arm") == "now",
+                 "study block profile must be the frozen now-arm launch profile")
+
+
+def load_study_scope(study_design_dir: str | Path, block: str) -> AcceptanceScope:
+    """Load and verify one block from an immutable, pre-run study plan."""
+    study_dir = Path(study_design_dir).absolute()
+    _require(not study_dir.is_symlink() and study_dir.is_dir(),
+             "study design directory is missing or unsafe")
+    design, design_sha = _read_json_with_sha(
+        study_dir / "design.json", "study design")
+    input_compilation, input_sha = _read_json_with_sha(
+        study_dir / "input-compilation.json", "study input compilation")
+
+    _require(design.get("schema") == "time-alignment-study/v1"
+             and design.get("status") == "COMPILED_NOT_RUN"
+             and design.get("simulator_calls") == 0
+             and design.get("execution_authorized_by_this_file") is False,
+             "study design is not the frozen compile-only contract")
+    contract_sha = design.get("contract_sha256")
+    _require(_is_sha256(contract_sha),
+             "study contract SHA-256 is missing or malformed")
+    _require(design.get("within_block_only_arm_changes") is True
+             and design.get("trace_equivalence")
+             == "must compile once per condition/seed and verify at runtime",
+             "study design omits the frozen within-block trace contract")
+    design_boundary = design.get("run_boundary") or {}
+    _require(design_boundary.get("requires_matching_scope_validator_not_the_old_1236_packet_validator") is True,
+             "study design does not require a matching scope validator")
+    _require((design.get("primary") or {}).get("deadline_s") == DEADLINE_S,
+             "study design deadline differs from the frozen D4 scope")
+
+    execution = _unique_block_records(
+        design.get("execution_blocks"), "study execution blocks")
+    compiled_inputs = _unique_block_records(
+        input_compilation.get("blocks"), "input compilation blocks")
+    _require(input_compilation.get("simulator_calls") == 0
+             and input_compilation.get(
+                 "burst_trace_identical_across_predictor_and_advertisement_blocks")
+             is True,
+             "input compilation is not the frozen compile-only trace plan")
+    _require(isinstance(block, str) and block in STUDY_BLOCKS,
+             f"unknown study block {block!r}")
+
+    exec_block = execution[block]
+    required_options = {
+        "--task": "network_alignment",
+        "--deadline-s": "4.0",
+        "--window-start": "2.0",
+        "--window-end": "8.0",
+        "--arms": ",".join(ARMS),
+        "--capture-replay": True,
+    }
+    _require(exec_block.get("driver") == "CODE.experiment_platform.t1_tasks"
+             and exec_block.get("task") == "network_alignment"
+             and exec_block.get("arms") == list(ARMS)
+             and exec_block.get("capture_replay") is True
+             and exec_block.get("driver_options") == required_options,
+             "study execution block differs from the frozen four-arm D4/stop-8 scope")
+    profile_relative = exec_block.get("profile")
+
+    cells = design.get("cells")
+    _require(isinstance(cells, list), "study design cells must be a list")
+    cell_ids = [cell.get("cell_id") for cell in cells if isinstance(cell, dict)]
+    _require(len(cell_ids) == len(cells)
+             and all(isinstance(cell_id, str) and cell_id for cell_id in cell_ids)
+             and len(set(cell_ids)) == len(cell_ids),
+             "study design cells have missing or duplicate cell IDs")
+    block_cells = [cell for cell in cells
+                   if cell.get("block") == block]
+    _require(len(block_cells) == len(ARMS)
+             and {cell.get("arm") for cell in block_cells} == set(ARMS),
+             "study block cells do not contain each of the four arms exactly once")
+    now_cells = [cell for cell in block_cells if cell.get("arm") == "now"]
+    _require(len(now_cells) == 1, "study block has a duplicate or missing now cell")
+    now_cell = now_cells[0]
+    _require(now_cell.get("profile") == profile_relative,
+             "execution profile differs from the design now-arm profile")
+
+    input_record = compiled_inputs[block]
+    expected_packets = input_record.get("packets")
+    _require(expected_packets == STUDY_EXPECTED_PACKETS[block],
+             "input compilation packet count differs from the frozen block count")
+    trace_sha = input_record.get("trace_sha256")
+    rows_digest = input_record.get("rows_digest")
+    population_sha = input_record.get("population_sha256")
+    _require(_is_sha256(trace_sha) and _is_sha256(rows_digest),
+             "input compilation trace identity is missing or malformed")
+    _require(population_sha == POPULATION_SHA256,
+             "input compilation population raster differs from the frozen input")
+
+    profile_sha = now_cell.get("profile_sha256")
+    resolved_sha = now_cell.get("resolved_config_sha256")
+    _require(_is_sha256(profile_sha) and _is_sha256(resolved_sha),
+             "study now profile hashes are missing or malformed")
+    profile_path = _study_profile_path(study_dir, profile_relative)
+    try:
+        profile_bytes = profile_path.read_bytes()
+    except OSError as exc:
+        raise PopulationRunAcceptanceError(
+            f"study profile cannot be read: {exc}") from exc
+    _require(hashlib.sha256(profile_bytes).hexdigest() == profile_sha,
+             "study original profile SHA differs from design.json")
+    try:
+        resolved = config_mod.load_config_file(str(profile_path))
+    except (config_mod.ConfigError, FileNotFoundError) as exc:
+        raise PopulationRunAcceptanceError(
+            f"study profile cannot be resolved: {exc}") from exc
+    _require(resolved.get("sha256") == resolved_sha,
+             "study profile resolved-config SHA differs from design.json")
+
+    scope = AcceptanceScope(
+        cell_id=f"b-{block}-network-seed-7",
+        expected_packets=expected_packets,
+        expected_resolved_config_sha256=resolved_sha,
+        block=block,
+        profile_path=profile_relative,
+        expected_profile_sha256=profile_sha,
+        expected_trace_sha256=trace_sha,
+        expected_rows_digest=rows_digest,
+        study_contract_sha256=contract_sha,
+        study_design_sha256=design_sha,
+        input_compilation_sha256=input_sha,
+    )
+    _validate_frozen_config_identity(resolved, scope)
+    return scope
+
+
 def _receipt_files(receipt: dict) -> dict[str, dict]:
     files = receipt.get("files")
     if not isinstance(files, list):
@@ -455,39 +718,26 @@ def _population_snapshot(run_dir: Path, manifest: dict,
 
 
 def _validate_fixed_config(config_path: Path, expected_sha: str,
-                           population_path: Path, source: dict) -> dict:
+                           population_path: Path, source: dict,
+                           scope: AcceptanceScope | None = None) -> dict:
+    scope = scope or _legacy_scope()
     if config_path.is_symlink() or not config_path.is_file():
         raise PopulationRunAcceptanceError(
             "receipt-bound profile config snapshot is missing or unsafe")
     config_sha = hashlib.sha256(config_path.read_bytes()).hexdigest()
     _require(config_sha == expected_sha,
              "receipt-bound profile config SHA differs from bundle")
+    if scope.expected_profile_sha256 is not None:
+        _require(config_sha == scope.expected_profile_sha256,
+                 "receipt-bound profile SHA differs from the study plan")
     try:
         resolved = config_mod.load_config_file(str(config_path))
     except (config_mod.ConfigError, FileNotFoundError) as exc:
         raise PopulationRunAcceptanceError(
             f"profile config cannot be resolved: {exc}") from exc
-    _require(resolved["sha256"] == RESOLVED_CONFIG_SHA256,
+    _require(resolved["sha256"] == scope.expected_resolved_config_sha256,
              "config differs from the frozen resolved scientific configuration")
-    cfg = resolved["config"]
-    scenario, demand, endpoints = cfg["scenario"], cfg["demand"], cfg["endpoints"]
-    _require(scenario.get("name") == "t1-population-small-region-cost-smoke"
-             and scenario.get("duration_s") == HORIZON_S
-             and scenario.get("seed") == 7
-             and scenario.get("num_satellites") == 96
-             and scenario.get("num_planes") == 12,
-             "config is not the frozen 96-satellite seed-7 scenario")
-    _require(demand.get("mode") == "population_gravity"
-             and demand.get("population_path") == PROFILE_POPULATION_PATH
-             and demand.get("offered_mbps") == 5.0
-             and demand.get("emission_start_s") == 2.0
-             and demand.get("emission_end_s") == 4.0
-             and demand.get("packet_bits") == 12000
-             and demand.get("research_deadline_s") == DEADLINE_S,
-             "config demand differs from the frozen population trace")
-    _require(endpoints.get("region_lat_bounds_deg") == [20.0, 30.0]
-             and endpoints.get("region_lon_bounds_deg") == [100.0, 110.0],
-             "config population region differs from the frozen scope")
+    _validate_frozen_config_identity(resolved, scope)
     source_sha = source.get("config_sha256")
     _require(source_sha == resolved["sha256"],
              "result resolved-config SHA differs from receipt-bound profile")
@@ -501,7 +751,17 @@ def _validate_fixed_config(config_path: Path, expected_sha: str,
 
 def _rebuild_trace(run_dir: Path, dev_root: Path, manifest: dict,
                    receipt_files: dict[str, dict], bundle_cell: dict,
-                   source: dict) -> tuple[list[dict], str, str]:
+                   source: dict,
+                   scope: AcceptanceScope | None = None
+                   ) -> tuple[list[dict], str, str]:
+    scope = scope or _legacy_scope()
+    if scope.is_study:
+        _require(source.get("trace_sha256") == scope.expected_trace_sha256,
+                 "result trace SHA differs from the study plan")
+        _require(source.get("rows_digest") == scope.expected_rows_digest,
+                 "result rows_digest differs from the study plan")
+        _require(source.get("rows") == scope.expected_packets,
+                 "result packet count differs from the study plan")
     config_path, config_sha = _safe_bundle_config_path(dev_root, bundle_cell)
     config_rel = config_path.relative_to(run_dir).as_posix()
     _require(_receipt_sha(receipt_files, config_rel) == config_sha,
@@ -511,8 +771,10 @@ def _rebuild_trace(run_dir: Path, dev_root: Path, manifest: dict,
     _require(_receipt_sha(receipt_files, population_path.relative_to(
         run_dir).as_posix()) == population_sha,
         "population raster snapshot is not receipt-bound")
-    trace_resolved = _validate_fixed_config(
-        config_path, config_sha, population_path, source)
+    trace_resolved = (_validate_fixed_config(
+        config_path, config_sha, population_path, source, scope)
+        if scope.is_study else _validate_fixed_config(
+            config_path, config_sha, population_path, source))
     try:
         with tempfile.TemporaryDirectory(prefix="population-acceptance-") as temp:
             trace_manifest = trace_mod.compile_trace(trace_resolved, temp)
@@ -528,6 +790,11 @@ def _rebuild_trace(run_dir: Path, dev_root: Path, manifest: dict,
     trace_sha = (trace_manifest.get("__trace_sha256")
                  or trace_manifest.get("trace_sha256"))
     rows_sha = t1_tasks._rows_digest(rows)
+    if scope.is_study:
+        _require(trace_sha == scope.expected_trace_sha256,
+                 "rebuilt trace SHA differs from the study plan")
+        _require(rows_sha == scope.expected_rows_digest,
+                 "rebuilt trace rows_digest differs from the study plan")
     _require(trace_sha == source.get("trace_sha256"),
              "rebuilt trace SHA differs from the result source identity")
     _require(rows_sha == source.get("rows_digest"),
@@ -536,15 +803,18 @@ def _rebuild_trace(run_dir: Path, dev_root: Path, manifest: dict,
              and trace_manifest.get("population", {}).get(
                  "source_sha256") == population_sha,
              "trace compiler did not use the receipt-bound population raster")
-    _require(len(rows) == EXPECTED_PACKETS
-             and source.get("rows") == EXPECTED_PACKETS,
-             "rebuilt trace is not the fixed 1236-packet trace")
+    _require(len(rows) == scope.expected_packets
+             and source.get("rows") == scope.expected_packets,
+             f"rebuilt trace is not the expected {scope.expected_packets}-packet trace")
     return rows, trace_sha, rows_sha
 
 
 def _validate_bundle_cell(bundle: dict, run_doc: dict,
                           run_record: dict, cell_file: dict,
-                          source_commit: str) -> tuple[dict, Path]:
+                          source_commit: str,
+                          scope: AcceptanceScope | None = None
+                          ) -> tuple[dict, Path]:
+    scope = scope or _legacy_scope()
     _require(bundle.get("bundle_fingerprint")
              == run_doc.get("bundle_fingerprint"),
              "b_dev run and compiled bundle fingerprints differ")
@@ -552,9 +822,10 @@ def _validate_bundle_cell(bundle: dict, run_doc: dict,
              == source_commit,
              "compiled bundle source commit differs from run manifest")
     cell_matches = [cell for cell in bundle.get("cells", [])
-                    if isinstance(cell, dict) and cell.get("cell_id") == CELL_ID]
+                    if isinstance(cell, dict)
+                    and cell.get("cell_id") == scope.cell_id]
     _require(len(cell_matches) == 1,
-             "compiled bundle does not contain exactly one named 96-star cell")
+             "compiled bundle does not contain exactly one named scope cell")
     cell = cell_matches[0]
     _require(cell.get("group") == "b_round" and cell.get("seed") == 7,
              "compiled cell is not the named seed-7 b_round cell")
@@ -564,8 +835,8 @@ def _validate_bundle_cell(bundle: dict, run_doc: dict,
              "b_dev run status is not ok")
     records = run_doc.get("cells")
     _require(isinstance(records, list) and len(records) == 1
-             and records[0].get("cell_id") == CELL_ID,
-             "b_dev run must contain only the named cell")
+             and records[0].get("cell_id") == scope.cell_id,
+             "b_dev run must contain only the named scope cell")
     _require(run_record == records[0] == cell_file,
              "cell record differs between b_dev run and cell.json")
     _require(run_record.get("status") == "ok"
@@ -601,16 +872,18 @@ def _validate_bundle_cell(bundle: dict, run_doc: dict,
              and actual_argv[3:-2] == expected_args
              and actual_argv[-2] == "--out"
              and str(actual_argv[-1]).endswith(
-                 f"/cells/{CELL_ID}/result.json"),
+                 f"/cells/{scope.cell_id}/result.json"),
              "cell invocation differs from the fixed four-arm D4/stop-8 scope")
     relative_result = run_record.get("result_path")
-    expected_result = f"cells/{CELL_ID}/result.json"
+    expected_result = f"cells/{scope.cell_id}/result.json"
     _require(relative_result == expected_result,
              "cell primary result path differs from the fixed result.json path")
     return cell, PurePosixPath(relative_result)
 
 
-def _accept_run(run_dir: Path) -> dict:
+def _accept_run(run_dir: Path,
+                scope: AcceptanceScope | None = None) -> dict:
+    scope = scope or _legacy_scope()
     if run_dir.is_symlink() or not run_dir.is_dir():
         raise PopulationRunAcceptanceError("official run directory is missing or unsafe")
     run_id = run_dir.name
@@ -647,13 +920,13 @@ def _accept_run(run_dir: Path) -> dict:
              and isinstance(records[0], dict),
              "b_dev run must contain exactly one cell record")
     run_record = records[0]
-    cell_dir = dev_root / "b_dev" / "cells" / CELL_ID
+    cell_dir = dev_root / "b_dev" / "cells" / scope.cell_id
     cell_record_path = cell_dir / "cell.json"
     _receipt_sha(receipt_files,
-                 f"t1-development/b_dev/cells/{CELL_ID}/cell.json")
+                 f"t1-development/b_dev/cells/{scope.cell_id}/cell.json")
     cell_file = _read_small_json(cell_record_path, "b_dev cell record")
     bundle_cell, result_rel = _validate_bundle_cell(
-        bundle, run_doc, run_record, cell_file, source_commit)
+        bundle, run_doc, run_record, cell_file, source_commit, scope)
 
     # Check the expected primary result before any trace recompilation. A
     # summary sidecar is deliberately insufficient and failed runs stop here.
@@ -703,9 +976,9 @@ def _accept_run(run_dir: Path) -> dict:
              "network result does not declare the fixed common trace and seed")
 
     rows, trace_sha, rows_sha = _rebuild_trace(
-        run_dir, dev_root, manifest, receipt_files, bundle_cell, source)
-    _require(len(rows) == EXPECTED_PACKETS,
-             "rebuilt trace packet count differs from fixed 1236 packets")
+        run_dir, dev_root, manifest, receipt_files, bundle_cell, source, scope)
+    _require(len(rows) == scope.expected_packets,
+             "rebuilt trace packet count differs from the selected scope")
     _require(source.get("native_population", {}).get("population_sha256")
              == POPULATION_SHA256,
              "network result population SHA differs from frozen snapshot")
@@ -722,7 +995,7 @@ def _accept_run(run_dir: Path) -> dict:
                  and arm_row.get("resolved_arm") == arm_row.get("arm")
                  and arm_row.get("scope", {}).get("duration_s") == HORIZON_S
                  and arm_row.get("scope", {}).get("packets_in_trace")
-                 == EXPECTED_PACKETS,
+                 == scope.expected_packets,
                  f"{arm_row.get('arm')} result scope differs from fixed run")
         arm_results[arm_row["arm"]] = recompute_arm(
             arm_row, rows, deadline_s=DEADLINE_S,
@@ -733,6 +1006,9 @@ def _accept_run(run_dir: Path) -> dict:
                  and arm_results[arm_row["arm"]]["deadline_primary_loss"][
                      "packets"] == EXPECTED_PACKETS,
                  f"{arm_row['arm']} D4 is incomplete or interval-censored")
+        _require(arm_results[arm_row["arm"]]["deadline_primary_loss"][
+            "packets"] == scope.expected_packets,
+                 f"{arm_row['arm']} D4 packet count differs from selected scope")
 
     d4_pairs, latency_pairs = {}, {}
     for left_index, left in enumerate(ARMS):
@@ -747,7 +1023,7 @@ def _accept_run(run_dir: Path) -> dict:
                                      if right_mean is not None and left_mean is not None
                                      else None)
 
-    return {
+    report = {
         "schema": SCHEMA,
         "status": "ACCEPTED_DATA",
         "validator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
@@ -757,7 +1033,7 @@ def _accept_run(run_dir: Path) -> dict:
             "scope_kind": "only_named_96_diagnostic",
             "scenario": "t1_population_region_cost_smoke",
             "satellites": 96, "planes": 12, "seed": 7,
-            "arms": list(ARMS), "offered_packets": EXPECTED_PACKETS,
+            "arms": list(ARMS), "offered_packets": scope.expected_packets,
             "deadline_s": DEADLINE_S, "population_window_s": list(
                 POPULATION_WINDOW_S), "stop_time_s": HORIZON_S,
         },
@@ -796,12 +1072,37 @@ def _accept_run(run_dir: Path) -> dict:
             "Delivered-only latency differences describe potentially different delivered populations; they are not paired all-offered causal effects. Zero-delivery latency is null, never zero.",
         ],
     }
+    if scope.is_study:
+        report["scope"].update({
+            "scope_kind": "frozen_study_block",
+            "block": scope.block,
+            "cell_id": scope.cell_id,
+        })
+        report["scope"]["expected_plan"] = {
+            "study_contract_sha256": scope.study_contract_sha256,
+            "design_sha256": scope.study_design_sha256,
+            "input_compilation_sha256": scope.input_compilation_sha256,
+            "profile": scope.profile_path,
+            "profile_sha256": scope.expected_profile_sha256,
+            "resolved_config_sha256": scope.expected_resolved_config_sha256,
+            "packets": scope.expected_packets,
+            "trace_sha256": scope.expected_trace_sha256,
+            "rows_digest": scope.expected_rows_digest,
+        }
+        report["identity"].update({
+            "study_contract_sha256": scope.study_contract_sha256,
+            "study_design_sha256": scope.study_design_sha256,
+            "input_compilation_sha256": scope.input_compilation_sha256,
+        })
+        report["identity"]["cell_id"] = scope.cell_id
+    return report
 
 
-def accept_run(run_dir: str | Path) -> dict:
+def accept_run(run_dir: str | Path,
+               scope: AcceptanceScope | None = None) -> dict:
     """Verify one official run and return a non-formal bounded data record."""
     try:
-        return _accept_run(Path(run_dir).absolute())
+        return _accept_run(Path(run_dir).absolute(), scope)
     except PopulationRunAcceptanceError:
         raise
     except Exception as exc:
@@ -876,6 +1177,10 @@ def main(argv=None) -> int:
                         help="official returned run directory with verified receipt")
     parser.add_argument("--out", type=Path, required=True,
                         help="new JSON output path; existing files are never overwritten")
+    parser.add_argument("--study-design-dir", type=Path,
+                        help="validated study plan directory containing design.json, input-compilation.json, and profiles/")
+    parser.add_argument("--block",
+                        help="one frozen study execution block; requires --study-design-dir")
     args = parser.parse_args(argv)
     run_dir = args.run_dir.absolute()
     try:
@@ -884,7 +1189,14 @@ def main(argv=None) -> int:
         print(f"population-run-acceptance: {exc}", file=sys.stderr)
         return 2
     try:
-        report = accept_run(run_dir)
+        has_study_dir = args.study_design_dir is not None
+        has_block = args.block is not None
+        _require(has_study_dir == has_block,
+                 "--study-design-dir and --block must be provided together")
+        scope = (load_study_scope(args.study_design_dir, args.block)
+                 if has_study_dir else None)
+        report = (accept_run(run_dir) if scope is None
+                  else accept_run(run_dir, scope))
     except Exception as exc:
         report = {
             "schema": SCHEMA, "status": "REJECTED",

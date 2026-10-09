@@ -1835,12 +1835,19 @@ def publish(document, out):
     if not out.parent.is_dir() or out.parent.is_symlink():
         raise TaskError(f"output parent must be a real directory: {out.parent}")
     # Large replay graphs expand shared observations repeatedly in JSON.
-    # Bound the encoder's temporary string; preserve every field and event.
+    # Store shared containers once for network results, preserving every field
+    # and event. Legacy/generic documents retain their standard JSON bytes.
     handle, temporary = tempfile.mkstemp(prefix="." + out.name + ".",
                                          suffix=".tmp", dir=str(out.parent))
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            _write_json_pieces(document, stream)
+            if (isinstance(document, dict)
+                    and document.get("schema") == SCHEMA_TASK
+                    and document.get("task") == "network_alignment"):
+                from CODE.experiment_platform.replay_codec import dump_graph
+                dump_graph(document, stream)
+            else:
+                _write_json_pieces(document, stream)
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())

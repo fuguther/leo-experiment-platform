@@ -3283,13 +3283,17 @@ def _inspect_result(result_path):
             stream.seek(0)
             import io
             with io.TextIOWrapper(stream, encoding="utf-8") as text_stream:
-                payload = json.load(text_stream)
+                from CODE.experiment_platform import replay_codec
+                payload = json.load(text_stream,
+                    object_pairs_hook=replay_codec._object_without_duplicate_keys)
+                if isinstance(payload, dict) and payload.get("schema") == replay_codec.SCHEMA:
+                    payload = replay_codec.decode_graph(payload)
                 after = os.fstat(text_stream.fileno())
                 fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
                 if any(getattr(before, key) != getattr(after, key)
                        for key in fields):
                     raise OSError("result changed while hashing and parsing")
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, ValueError, TypeError) as exc:
         probe["parse_error"] = f"{type(exc).__name__}: {exc}"
         return probe
     if not isinstance(payload, dict):
@@ -3644,10 +3648,7 @@ def report_run(run_dir):
         result_path = run_dir / record["result_path"]
         payload = None
         if result_path.exists():
-            try:
-                payload = json.loads(result_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                payload = None
+            payload = _inspect_result(result_path)["payload"]
         # a report must never call a cell ok when its result vanished or moved
         reason = _verify_recorded_result(run_dir, record)
         status = record["status"] if reason is None else "invalidated"

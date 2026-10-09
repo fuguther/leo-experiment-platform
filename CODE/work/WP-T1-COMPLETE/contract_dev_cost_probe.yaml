@@ -1,5 +1,5 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: USER_AUTHORIZED_ONE_HOUR_ACCEPTANCE_20261009
+campaign_stage: USER_AUTHORIZED_STORAGE_REPAIR_ACCEPTANCE_20261009
 purpose: small_region_four_arm_low_cost_smoke_with_same_population_trace_pipeline
 not_formal: true
 not_training: true
@@ -18,24 +18,24 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 31199dc81b4891c91b88b8a91d7c939a3f791eb5613955d0284ff6ce5a224577
+    execution_chain_sha256: 4a4533155becbee587eb431707f9e6f0967726b43b3a4f21a6768d2458f42898
     cell_input_sha256:
-      b-bounded_population_cost_smoke-network-seed-7: a172b3bf34d869652d0eee4ce7eb3ad977e0dd078a97b9a65f0e661650c4046f
+      b-bounded_population_cost_smoke-network-seed-7: 0677ed6f5f108526bd269973f4ed9105ae2ca817a43811bac4a37dc1c4bf7221
   release_ready: false
-  reason: User approved supplemental budget on 2026-10-09 and requested a report within
-    one hour. One fixed-input four-arm run, 1800s cell including publication, 2100s
-    outer. No automatic retry, training or formal claim.
+  reason: User authorized continued repair and reportable data on 2026-10-09. One
+    bounded four-arm unchanged-input verification after lossless storage probe. Prior
+    failures preserved; no automatic retry or formal claim.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 31199dc81b4891c91b88b8a91d7c939a3f791eb5613955d0284ff6ce5a224577
+  source_execution_chain_sha256: 4a4533155becbee587eb431707f9e6f0967726b43b3a4f21a6768d2458f42898
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
-    b-bounded_population_cost_smoke-network-seed-7: a172b3bf34d869652d0eee4ce7eb3ad977e0dd078a97b9a65f0e661650c4046f
+    b-bounded_population_cost_smoke-network-seed-7: 0677ed6f5f108526bd269973f4ed9105ae2ca817a43811bac4a37dc1c4bf7221
 scenario:
   reference_geometry: selected 96-satellite, 12-plane small-study engineering geometry
   reference_is_global_platform_freeze: false
@@ -174,9 +174,9 @@ cell_allowlist:
   - --arms
   - stale,now,common,candidate
   - --capture-replay
-  exact_bundle_cell_input_hash_after_compile: a172b3bf34d869652d0eee4ce7eb3ad977e0dd078a97b9a65f0e661650c4046f
+  exact_bundle_cell_input_hash_after_compile: 0677ed6f5f108526bd269973f4ed9105ae2ca817a43811bac4a37dc1c4bf7221
 budget:
-  authorization_status: USER_APPROVED_20261009
+  authorization_status: USER_APPROVED_CONTINUATION_20261009
   supplement_calls: 4
   supplement_simulator_wall_s: 1800.0
   maximum_cell_wall_s_including_publication: 1800.0
@@ -185,7 +185,7 @@ budget:
   automatic_retry: false
   failed_timeout_calls_count: true
   prior_balance_not_reset: true
-  user_instruction: 预算给你充足预算，你一个小时之内给我回复就行
+  user_instruction: 继续，一直做到能够产出今天可以汇报的完整数据；先写好总体目标与可接力计划。
 post_probe_gate:
   status: PENDING_REAL_OUTPUT_ACCEPTANCE
   required_evidence:
@@ -219,3 +219,9 @@ prior_campaign_ledger:
   used_simulator_wall_s: 3384.508132138
   remaining_calls: 35
   remaining_simulator_wall_s: 215.491867862
+previous_supplement_runs:
+- run_id: t1-small-region-acceptance-20261009-01
+  calls: 4
+  simulator_wall_s: 901.373815752
+  status: failed_output_publication
+  receipt_sha256: 66b0d7b1e0203e4d59822a715c80f696845d70b2aa89317c3e2dd078809e6499

@@ -513,8 +513,13 @@ def _primary_estimand_check(run_dir, bundle, contract, cell_ids=None):
                 "reason": "cell result is missing, failed, or hash-mismatched"}
             continue
         try:
-            result = json.loads(result_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+            probe = t1_suite._inspect_result(result_path)
+            if probe["parse_error"] or probe["sha256"] != result_sha:
+                raise ValueError(probe["parse_error"] or "result hash changed")
+            result = probe["payload"]
+            if result is None:
+                raise ValueError("result is missing")
+        except (OSError, ValueError) as exc:
             cell_checks[cell_id] = {
                 "passed": False, "status": "INVALID_RESULT",
                 "reason": f"{type(exc).__name__}: {exc}"}
