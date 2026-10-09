@@ -102,16 +102,36 @@ def _complete_query_evidence(action):
     return True
 
 
-def _full_network_branch_counts(arm_row, window):
-    """Count multi-legal and queued-alternative decisions from full arm logs."""
+def _full_network_branch_counts(arm_row, window, *, result_path=None):
+    """Count multi-legal and queued-alternative decisions from full arm logs.
+
+    In production the audit records are a sidecar stream and the arm row keeps
+    only their count, so read them row by row through the recorded index: the
+    reachability count must come from the same evidence, not from an empty list.
+    """
     audit = arm_row.get("routing_audit_log") or {}
     records = audit.get("decision_records")
     reported = audit.get("decision_record_count")
-    if (not isinstance(records, list) or not isinstance(reported, int)
-            or reported != len(records)):
+    reference = arm_row.get("replay") or {}
+    stream = None
+    if isinstance(records, list) and records:
+        stream = iter(records)
+    elif reference.get("sidecar") and result_path is not None:
+        from CODE.experiment_platform import replay_sidecar
+        side = replay_sidecar.sidecar_of(result_path, reference)
+        entry = (reference.get("index") or {}).get("routing_decision_records")
+        if not side.is_file() or not isinstance(entry, dict):
+            return None, "declared routing audit sidecar is missing"
+        reported = int(entry.get("count", -1))
+        stream = (payload.get("row") for payload in replay_sidecar.iter_indexed(
+            side, int(entry.get("offset", 0)),
+            int(entry.get("lines", entry.get("count", 0)))))
+    if stream is None or not isinstance(reported, int):
         return None, "full routing audit is missing, truncated, or inconsistent"
     comparable, competing, sampled_ids = 0, 0, []
-    for record in records:
+    seen = 0
+    for record in stream:
+        seen += 1
         at = record.get("t_decision_start")
         if not _valid_number(at) or not window[0] <= float(at) <= window[1]:
             continue
@@ -145,6 +165,8 @@ def _full_network_branch_counts(arm_row, window):
                 has_queued_candidate = True
         if has_queued_candidate:
             competing += 1
+    if seen != reported:
+        return None, "full routing audit is missing, truncated, or inconsistent"
     return {"comparable": comparable, "competing": competing,
             "decision_ids": sampled_ids}, None
 
@@ -355,7 +377,9 @@ def _admit_multiod(run_dir, spec, cell_by_id, record_by_id, thresholds,
                 competing_by_arm[name] = NOT_COMPUTABLE
                 concurrency_by_arm[name] = NOT_COMPUTABLE
                 continue
-            counts, issue = _full_network_branch_counts(row, window)
+            counts, issue = _full_network_branch_counts(
+                row, window,
+                result_path=run_dir / "cells" / network_id / "result.json")
             if issue:
                 comparable_by_arm[name] = NOT_COMPUTABLE
                 competing_by_arm[name] = NOT_COMPUTABLE
