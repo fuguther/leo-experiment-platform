@@ -1,5 +1,5 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: USER_AUTHORIZED_STORAGE_REPAIR_ACCEPTANCE_20261009_ROUND2
+campaign_stage: USER_AUTHORIZED_STORAGE_REPAIR_ACCEPTANCE_20261009_ROUND3
 purpose: small_region_four_arm_low_cost_smoke_with_same_population_trace_pipeline
 not_formal: true
 not_training: true
@@ -18,9 +18,9 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: ffd7ac91183818c64bb98cf87bb9b9d22df02dad5116ba59dd7f4d91f5118005
+    execution_chain_sha256: eb3572c90d88bd69a3f7e9132ccd495c4fa18e4a6deedb14f772b3ba5da3d845
     cell_input_sha256:
-      b-bounded_population_cost_smoke-network-seed-7: ec57eaf2f2c55c01e017b679a43226458bb055079a7718642068b9cb540ca393
+      b-bounded_population_cost_smoke-network-seed-7: 02c9841ecf5ac11b16937a99e79288758fc45d7ece42cc0085ebe5cfe5038244
   release_ready: false
   reason: User authorized continued repair and reportable data on 2026-10-09. A
     first bounded four-arm verification ran all four kernels and then was SIGKILLed
@@ -34,11 +34,11 @@ input_identity:
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: ffd7ac91183818c64bb98cf87bb9b9d22df02dad5116ba59dd7f4d91f5118005
+  source_execution_chain_sha256: eb3572c90d88bd69a3f7e9132ccd495c4fa18e4a6deedb14f772b3ba5da3d845
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
-    b-bounded_population_cost_smoke-network-seed-7: ec57eaf2f2c55c01e017b679a43226458bb055079a7718642068b9cb540ca393
+    b-bounded_population_cost_smoke-network-seed-7: 02c9841ecf5ac11b16937a99e79288758fc45d7ece42cc0085ebe5cfe5038244
 scenario:
   reference_geometry: selected 96-satellite, 12-plane small-study engineering geometry
   reference_is_global_platform_freeze: false
@@ -177,7 +177,7 @@ cell_allowlist:
   - --arms
   - stale,now,common,candidate
   - --capture-replay
-  exact_bundle_cell_input_hash_after_compile: ec57eaf2f2c55c01e017b679a43226458bb055079a7718642068b9cb540ca393
+  exact_bundle_cell_input_hash_after_compile: 02c9841ecf5ac11b16937a99e79288758fc45d7ece42cc0085ebe5cfe5038244
 budget:
   authorization_status: USER_APPROVED_CONTINUATION_20261009
   supplement_calls: 4
@@ -191,6 +191,11 @@ budget:
   user_instruction: 继续，一直做到能够产出今天可以汇报的完整数据；先写好总体目标与可接力计划。
   second_round_fix: two-pass identity-only replay index plus a publish memory log;
     no scientific input, cell, arm, deadline or seed was changed.
+  third_round_fix: per-arm compaction of the recorded advertisement history to the
+    four fields the analysis reads (capped at the pre-declared 16 most recent
+    samples) plus sampled per-component payload accounting. Diagnosed cause of the
+    round-2 failure: ~58.7 GiB resident before serialization against a 64 GiB
+    container limit. No scientific input, cell, arm, deadline or seed was changed.
 post_probe_gate:
   status: PENDING_REAL_OUTPUT_ACCEPTANCE
   required_evidence:
@@ -235,3 +240,8 @@ previous_supplement_runs:
   simulator_wall_s: 935.4764710520001
   status: failed_publication_out_of_memory
   receipt_sha256: f0ceeb9fdabefa67072675091f918b1ac2ea65c3bc6080e12c2a150811d40d9a
+- run_id: t1-lossless-population-acceptance-20261009-02
+  calls: 4
+  simulator_wall_s: 901.27899959
+  status: failed_publication_out_of_memory
+  receipt_sha256: f9d6977d9952169b77c7e30c3667064e0af3bb2d93626cadf00da524740823ed
