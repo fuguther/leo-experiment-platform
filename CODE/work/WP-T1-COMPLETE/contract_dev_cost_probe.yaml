@@ -1,5 +1,5 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: USER_AUTHORIZED_STORAGE_REPAIR_ACCEPTANCE_20261009
+campaign_stage: USER_AUTHORIZED_STORAGE_REPAIR_ACCEPTANCE_20261009_ROUND2
 purpose: small_region_four_arm_low_cost_smoke_with_same_population_trace_pipeline
 not_formal: true
 not_training: true
@@ -18,24 +18,27 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 4a4533155becbee587eb431707f9e6f0967726b43b3a4f21a6768d2458f42898
+    execution_chain_sha256: ffd7ac91183818c64bb98cf87bb9b9d22df02dad5116ba59dd7f4d91f5118005
     cell_input_sha256:
-      b-bounded_population_cost_smoke-network-seed-7: 0677ed6f5f108526bd269973f4ed9105ae2ca817a43811bac4a37dc1c4bf7221
+      b-bounded_population_cost_smoke-network-seed-7: ec57eaf2f2c55c01e017b679a43226458bb055079a7718642068b9cb540ca393
   release_ready: false
-  reason: User authorized continued repair and reportable data on 2026-10-09. One
-    bounded four-arm unchanged-input verification after lossless storage probe. Prior
-    failures preserved; no automatic retry or formal claim.
+  reason: User authorized continued repair and reportable data on 2026-10-09. A
+    first bounded four-arm verification ran all four kernels and then was SIGKILLed
+    while serializing the replay (container memory high-water mark at its 64 GiB
+    limit). One targeted storage fix was applied, with the scientific cell, arms,
+    seed, profile and population input unchanged. Prior failures preserved; no
+    automatic retry or formal claim.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 4a4533155becbee587eb431707f9e6f0967726b43b3a4f21a6768d2458f42898
+  source_execution_chain_sha256: ffd7ac91183818c64bb98cf87bb9b9d22df02dad5116ba59dd7f4d91f5118005
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
-    b-bounded_population_cost_smoke-network-seed-7: 0677ed6f5f108526bd269973f4ed9105ae2ca817a43811bac4a37dc1c4bf7221
+    b-bounded_population_cost_smoke-network-seed-7: ec57eaf2f2c55c01e017b679a43226458bb055079a7718642068b9cb540ca393
 scenario:
   reference_geometry: selected 96-satellite, 12-plane small-study engineering geometry
   reference_is_global_platform_freeze: false
@@ -174,7 +177,7 @@ cell_allowlist:
   - --arms
   - stale,now,common,candidate
   - --capture-replay
-  exact_bundle_cell_input_hash_after_compile: 0677ed6f5f108526bd269973f4ed9105ae2ca817a43811bac4a37dc1c4bf7221
+  exact_bundle_cell_input_hash_after_compile: ec57eaf2f2c55c01e017b679a43226458bb055079a7718642068b9cb540ca393
 budget:
   authorization_status: USER_APPROVED_CONTINUATION_20261009
   supplement_calls: 4
@@ -186,6 +189,8 @@ budget:
   failed_timeout_calls_count: true
   prior_balance_not_reset: true
   user_instruction: 继续，一直做到能够产出今天可以汇报的完整数据；先写好总体目标与可接力计划。
+  second_round_fix: two-pass identity-only replay index plus a publish memory log;
+    no scientific input, cell, arm, deadline or seed was changed.
 post_probe_gate:
   status: PENDING_REAL_OUTPUT_ACCEPTANCE
   required_evidence:
@@ -225,3 +230,8 @@ previous_supplement_runs:
   simulator_wall_s: 901.373815752
   status: failed_output_publication
   receipt_sha256: 66b0d7b1e0203e4d59822a715c80f696845d70b2aa89317c3e2dd078809e6499
+- run_id: t1-lossless-population-acceptance-20261009-01
+  calls: 4
+  simulator_wall_s: 935.4764710520001
+  status: failed_publication_out_of_memory
+  receipt_sha256: f0ceeb9fdabefa67072675091f918b1ac2ea65c3bc6080e12c2a150811d40d9a
