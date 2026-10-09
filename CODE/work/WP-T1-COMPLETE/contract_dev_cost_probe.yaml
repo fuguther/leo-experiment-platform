@@ -1,5 +1,5 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: USER_AUTHORIZED_STORAGE_REPAIR_ACCEPTANCE_20261009_ROUND4
+campaign_stage: USER_AUTHORIZED_STORAGE_REPAIR_ACCEPTANCE_20261009_ROUND5
 purpose: small_region_four_arm_low_cost_smoke_with_same_population_trace_pipeline
 not_formal: true
 not_training: true
@@ -18,9 +18,9 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: cdc91b0c7403bc033019b322d3367d60adccda0907dba5fc1b1ae7f93386ba16
+    execution_chain_sha256: 9bdf7133d7e41a35922a96068963faa934ef99076c9f52761b860a23f9088cab
     cell_input_sha256:
-      b-bounded_population_cost_smoke-network-seed-7: bf4fe6253b826ea39048b983909707ef98f46a0d06e147e1e220c015b87e74c0
+      b-bounded_population_cost_smoke-network-seed-7: 27240f8c5fd581582b1e6b4659c4c7cd61e084a03dd4df435d3987f8f1aa1ef7
   release_ready: false
   reason: User authorized continued repair and reportable data on 2026-10-09. A
     first bounded four-arm verification ran all four kernels and then was SIGKILLed
@@ -34,11 +34,11 @@ input_identity:
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: cdc91b0c7403bc033019b322d3367d60adccda0907dba5fc1b1ae7f93386ba16
+  source_execution_chain_sha256: 9bdf7133d7e41a35922a96068963faa934ef99076c9f52761b860a23f9088cab
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
-    b-bounded_population_cost_smoke-network-seed-7: bf4fe6253b826ea39048b983909707ef98f46a0d06e147e1e220c015b87e74c0
+    b-bounded_population_cost_smoke-network-seed-7: 27240f8c5fd581582b1e6b4659c4c7cd61e084a03dd4df435d3987f8f1aa1ef7
 scenario:
   reference_geometry: selected 96-satellite, 12-plane small-study engineering geometry
   reference_is_global_platform_freeze: false
@@ -177,7 +177,7 @@ cell_allowlist:
   - --arms
   - stale,now,common,candidate
   - --capture-replay
-  exact_bundle_cell_input_hash_after_compile: bf4fe6253b826ea39048b983909707ef98f46a0d06e147e1e220c015b87e74c0
+  exact_bundle_cell_input_hash_after_compile: 27240f8c5fd581582b1e6b4659c4c7cd61e084a03dd4df435d3987f8f1aa1ef7
 budget:
   authorization_status: USER_APPROVED_CONTINUATION_20261009
   supplement_calls: 4
