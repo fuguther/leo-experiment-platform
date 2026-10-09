@@ -2274,7 +2274,8 @@ def _execute_cell(cell, out_root, budgets, runtime_context=None):
                 "status": "NOT_AVAILABLE",
             }
     predicate = cell.get("predicate") or {"kind": None}
-    verdict = (check_predicate(result_probe["payload"], predicate)
+    verdict = (check_predicate(result_probe["payload"], predicate,
+                               result_path=result_path)
                if result_probe["payload"] is not None
                else {"passed": False, "checks": [],
                      "reason": "result unavailable"})
@@ -2490,7 +2491,62 @@ def _background_jobs_count(row):
     return 0
 
 
-def _full_replay_structure(row):
+def _sidecar_replay_structure(row, reference, result_path):
+    """Stream-verify a line-delimited replay sidecar without materializing it.
+
+    Every recorded row is still checked; only the memory cost changes (one row
+    instead of the whole object graph).
+    """
+    from CODE.experiment_platform import replay_sidecar
+    from pathlib import Path
+    issues = []
+    detail = {"validation_scope": "line-delimited sidecar completeness",
+              "full_event_recomputation": False, "stream_lengths": {}}
+    for marker in ("history_compaction", "analysis_projection"):
+        if marker in reference:
+            issues.append("%s is a lossy capture, not full replay" % marker)
+    if result_path is None:
+        issues.append("sidecar reference has no result path to resolve")
+        detail["issues"] = issues
+        return False, detail
+    issues.extend(replay_sidecar.verify_reference(
+        reference, result_path, expected_arm=row.get("arm")))
+    path = Path(result_path).with_name(str(reference.get("sidecar") or ""))
+    if not path.is_file():
+        detail["issues"] = issues
+        return False, detail
+    facts = replay_sidecar.stream_facts(path, reference.get("arm"))
+    declared = facts["declared"]
+    missing = [name for name in replay_sidecar.STREAMS if name not in declared]
+    if missing:
+        issues.append("sidecar omits declared streams: "
+                      + ",".join(sorted(missing)))
+    for name in replay_sidecar.STREAMS:
+        detail["stream_lengths"][name] = declared.get(name)
+    scope = row.get("scope") if isinstance(row.get("scope"), dict) else {}
+    if declared.get("decision_rows") != scope.get("decision_requests"):
+        issues.append("sidecar decision_rows differ from scope.decision_requests")
+    if facts["forward_decisions"] != scope.get("forward_decisions"):
+        issues.append("sidecar forward rows differ from scope.forward_decisions")
+    routing = row.get("routing_audit_log")
+    attempts = routing.get("attempt_records") if isinstance(routing, dict) else None
+    if (isinstance(attempts, list)
+            and len(attempts) != facts["routing_attempts"]):
+        issues.append("sidecar timeline decision attempts differ from the audit")
+    if (facts["queue_subset_count"] != facts["timeline_subset_count"]
+            or facts["queue_subset_digest"] != facts["timeline_subset_digest"]):
+        issues.append("queue_state_events differs from the timeline subset")
+    for name, label in (("fates", "fates"), ("deliveries", "deliveries"),
+                        ("counts_mapping", "counts")):
+        if not isinstance(facts[name], dict):
+            issues.append("sidecar %s is not recorded" % label)
+    if facts["counts"].get("decision_rows", 0) != declared.get("decision_rows"):
+        issues.append("sidecar decision row lines differ from the declared count")
+    detail["issues"] = issues
+    return (not issues), detail
+
+
+def _full_replay_structure(row, result_path=None):
     """Check captured replay stream shape and reconcile existing counters.
 
     This is a completeness gate for the saved envelope, not a replay of the
@@ -2536,6 +2592,8 @@ def _full_replay_structure(row):
         return ids
 
     replay = row.get("replay")
+    if isinstance(replay, dict) and replay.get("sidecar"):
+        return _sidecar_replay_structure(row, replay, result_path)
     if not isinstance(replay, dict):
         return False, {
             "validation_scope": "structural completeness and count reconciliation",
@@ -2766,7 +2824,7 @@ def _full_replay_structure(row):
     }
 
 
-def _check_task_predicate(result, require):
+def _check_task_predicate(result, require, *, result_path=None):
     """Machine-check the pre-declared behaviour of a t1_task cell.
 
     A2: all three task types are dispatched through the same driver, so ONE
@@ -3000,7 +3058,8 @@ def _check_task_predicate(result, require):
                                 "forward_decisions": scope.get("forward_decisions"),
                                 "all_masks_complete": complete_masks}])
             if require.get("require_full_replay"):
-                replay_ok, replay_detail = _full_replay_structure(row)
+                replay_ok, replay_detail = _full_replay_structure(
+                    row, result_path=result_path)
                 checks.append([
                     f"arm {arm} has structurally complete "
                     "full-network replay streams",
@@ -3022,13 +3081,14 @@ def _check_task_predicate(result, require):
     return checks
 
 
-def check_predicate(result, predicate):
+def check_predicate(result, predicate, *, result_path=None):
     """Evaluate a cell predicate against its result document."""
     kind = (predicate or {}).get("kind")
     if kind is None:
         return {"passed": True, "checks": [], "kind": None}
     if kind == "t1_task":
-        checks = _check_task_predicate(result, predicate.get("require") or {})
+        checks = _check_task_predicate(result, predicate.get("require") or {},
+                                       result_path=result_path)
     elif kind == "execution_modes":
         checks = _check_execution_predicate(result,
                                             predicate.get("require") or {})

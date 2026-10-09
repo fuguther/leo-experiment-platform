@@ -2277,6 +2277,18 @@ def main(argv=None) -> int:
             if summary_out == args.out:
                 raise TaskError("network summary path collides with full result")
             publish(network_summary_document(document), summary_out)
+            # The per-decision and per-event streams are written as a line
+            # delimited sidecar first: a full replay reached 9.62 GB and could
+            # not be decoded in process (about 13.6x the file size), so the
+            # gate and the analysis read it row by row instead of materializing
+            # the object graph.  The reference in the result carries the
+            # sidecar name, its sha256 and the per-stream counts.
+            if any((row.get("replay") or {}).get("captured") is True
+                   for row in document["document"]["arms"]):
+                from CODE.experiment_platform import replay_sidecar
+                manifest = replay_sidecar.write_sidecar(document, args.out)
+                document["document"].setdefault(
+                    "replay_capture", {})["sidecar"] = manifest
         publish(document, args.out)
     except _DiagnosticStop as exc:
         print(f"T1TASKS DIAGNOSTIC STOP: {exc}")

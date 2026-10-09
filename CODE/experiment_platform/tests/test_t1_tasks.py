@@ -200,8 +200,13 @@ def test_cli_publishes_network_summary_before_full_result(tmp_path, monkeypatch)
         "result-summary.json", "result.json"]
     assert (output.parent / "result-summary.json").is_file()
     assert json.loads(output.read_text(encoding="utf-8")) == document
-    assert published[1][1]["document"]["arms"][0]["replay"][
-        "decision_rows"]
+    reference = published[1][1]["document"]["arms"][0]["replay"]
+    assert reference["captured"] is True
+    assert reference["streams"]["decision_rows"] == 1
+    assert len(reference["sha256"]) == 64
+    sidecar = output.parent / reference["sidecar"]
+    assert sidecar.is_file()
+    assert "decision_rows" in sidecar.read_text(encoding="utf-8")
 
 
 def test_network_summary_cannot_replace_missing_primary_result(tmp_path,
