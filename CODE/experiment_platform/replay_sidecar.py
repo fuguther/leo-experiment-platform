@@ -303,9 +303,16 @@ def stream_facts(path, arm, *, queue_milestone="queue_state",
                              for name, entry in index.items()
                              if name in STREAMS and isinstance(entry, dict)}
 
+        # Only the streams whose CONTENTS are needed are parsed: the per-stream
+        # counts already come from the index, and parsing 50 GB of attempt
+        # records only to count them dominated the gate.
+        wanted = {"decision_rows", "timeline_rows", "queue_state_events"}
+
         def _indexed():
             for name, entry in index.items():
                 if not isinstance(entry, dict):
+                    continue
+                if name in STREAMS and name not in wanted:
                     continue
                 for payload in iter_indexed(
                         path, int(entry.get("offset", 0)),
