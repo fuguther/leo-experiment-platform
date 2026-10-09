@@ -462,6 +462,57 @@ def test_authorized_cprofile_stops_first_call_and_keeps_partial_ledger_non_green
 
 
 # ------------------------------------------------------ branch eligibility
+def test_advertised_history_compaction_keeps_only_analysis_fields_and_the_cap():
+    """The replay must not repeat whole advertisements four times over.
+
+    Measured on an archived replay: 23.7 KB of one neighbour's 76.3 KB
+    observation was its own advertised_history, copied again for every
+    decision.  Compaction keeps the four fields the analysis reads and the
+    most recent capped samples.
+    """
+    full_sample = {
+        "generated_at": 1.0,
+        "received_at": 1.02,
+        "advertised_isl_work_ahead_bits_proxy": {"E": 1200.0, "W": 800.0},
+        "advertised_isl_generation": {"E": 3, "W": 3},
+        "advertised_isl_queue_bits": {"E": 999999, "W": 999999},
+        "advertised_processing": {"compute": {"active": [1, 2, 3] * 50}},
+        "advertised_downlink_resources": {"G1": [0] * 200},
+        "advertised_serve_cells": ["G1:90:180"] * 20,
+    }
+    history = [dict(full_sample, generated_at=float(i)) for i in range(40)]
+    replay = {"captured": True, "decision_rows": [
+        {"decision_id": 1, "observation_at_start": {
+            "neighbours": {"7": {"advertised_history": history}}}},
+    ], "timeline_rows": []}
+
+    before = t1_tasks._estimated_json_bytes(replay["decision_rows"])
+    stats = t1_tasks._compact_advertised_history(replay)
+    after = t1_tasks._estimated_json_bytes(replay["decision_rows"])
+
+    kept = replay["decision_rows"][0]["observation_at_start"]["neighbours"]["7"][
+        "advertised_history"]
+    assert stats == {"rows": 1, "samples_total": 40,
+                     "samples_kept": t1_tasks.REPLAY_HISTORY_SAMPLE_CAP}
+    assert len(kept) == t1_tasks.REPLAY_HISTORY_SAMPLE_CAP
+    assert kept[0]["generated_at"] == 24.0          # the most recent window
+    assert set(kept[0]) == {"generated_at", "received_at",
+                            "advertised_isl_work_ahead_bits_proxy",
+                            "advertised_isl_generation"}
+    assert after < before // 4
+
+
+def test_replay_size_estimate_reports_every_declared_component():
+    replay = {"decision_rows": [{"a": index} for index in range(100)],
+              "packet_events": [{"at": 1.0}] * 10,
+              "fates": {str(index): "DELIVERED" for index in range(50)}}
+    estimate = t1_tasks._replay_size_estimate(replay)
+    assert set(estimate) == set(t1_tasks.REPLAY_SIZE_COMPONENTS) | {"total"}
+    assert estimate["total"] == sum(
+        estimate[name] for name in t1_tasks.REPLAY_SIZE_COMPONENTS)
+    assert estimate["decision_rows"] > 0 and estimate["timeline_rows"] == 0
+
+
 def test_a_forward_decision_with_two_legal_directions_is_eligible():
     eligible, rejected = t1_tasks.eligible_branches([_row(4, ["E", "W"])])
     assert [item["decision_id"] for item in eligible] == [4]

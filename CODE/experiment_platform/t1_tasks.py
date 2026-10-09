@@ -1399,6 +1399,94 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
     }
 
 
+#: Pre-declared cap on advertisement-history samples retained per neighbour and
+#: decision.  The online predictor uses the most recent eight samples, so sixteen
+#: keeps a superset for offline re-derivation while removing the verbatim copy of
+#: every received advertisement, which is the dominant repeated payload of a real
+#: 96-star replay (measured on an archived 4-satellite replay: 28.75 MB of the
+#: 34.73 MB tracked content sat in 607 decision rows, and 23.7 KB of one
+#: neighbour's 76.3 KB observation sat in its own advertised_history).
+REPLAY_HISTORY_SAMPLE_CAP = 16
+REPLAY_HISTORY_RULE = (
+    "keep the most recent {} history samples per (decision, neighbour), each "
+    "reduced to generated_at, received_at, per-direction work-ahead bits and "
+    "per-direction generation; the simulator never reads this record back"
+).format(REPLAY_HISTORY_SAMPLE_CAP)
+
+#: Components whose retained size is reported per arm.  A serialization that
+#: cannot finish must be explainable by measured bytes, never by a guess.
+REPLAY_SIZE_COMPONENTS = (
+    "decision_rows", "timeline_rows", "packet_events",
+    "link_service_windows", "link_available_windows", "queue_state_events",
+    "topology_trace", "fates", "deliveries", "handover_events",
+)
+
+
+def _compact_advertised_history(replay, *, cap=REPLAY_HISTORY_SAMPLE_CAP):
+    """Replace each recorded advertisement history with the analysis fields.
+
+    Mutates in place so the verbatim advertisements are freed for the next arm
+    instead of accumulating across all four.
+    """
+    stats = {"rows": 0, "samples_total": 0, "samples_kept": 0}
+    if not isinstance(replay, dict):
+        return stats
+    for row in replay.get("decision_rows") or []:
+        observation = row.get("observation_at_start") if isinstance(row, dict) else None
+        if not isinstance(observation, dict):
+            continue
+        for entry in (observation.get("neighbours") or {}).values():
+            history = entry.get("advertised_history") if isinstance(entry, dict) else None
+            if not isinstance(history, list):
+                continue
+            stats["rows"] += 1
+            stats["samples_total"] += len(history)
+            compact = []
+            for sample in history[-cap:]:
+                if not isinstance(sample, dict):
+                    continue
+                compact.append({
+                    "generated_at": sample.get("generated_at"),
+                    "received_at": sample.get("received_at"),
+                    "advertised_isl_work_ahead_bits_proxy": dict(
+                        sample.get("advertised_isl_work_ahead_bits_proxy") or {}),
+                    "advertised_isl_generation": dict(
+                        sample.get("advertised_isl_generation") or {}),
+                })
+            entry["advertised_history"] = compact
+            stats["samples_kept"] += len(compact)
+    return stats
+
+
+def _estimated_json_bytes(value, sample=12):
+    """Sample-based JSON size of a retained component (never encodes it whole)."""
+    if isinstance(value, (list, tuple)) and value:
+        step = max(1, len(value) // sample)
+        picked = [value[index] for index in range(0, len(value), step)][:sample]
+        sizes = [len(json.dumps(item, ensure_ascii=False, separators=(",", ":")))
+                 for item in picked]
+        return int(sum(sizes) / len(sizes) * len(value))
+    if value in (None, [], {}):
+        return 0
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+
+
+def _replay_size_estimate(replay):
+    estimate = {}
+    for name in REPLAY_SIZE_COMPONENTS:
+        estimate[name] = _estimated_json_bytes(replay.get(name))
+    estimate["total"] = sum(estimate.values())
+    return estimate
+
+
+def _log_replay_size(arm, estimate):
+    try:
+        print(json.dumps({"stage": "replay_size", "arm": arm, **estimate},
+                         sort_keys=True), file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
+
 def network_alignment(resolved, rows, geometry, source,
                      arms=NETWORK_ARMS, overrides=None, *, deadline_s=None,
                      window=None, capture_replay=False,
@@ -1417,11 +1505,19 @@ def network_alignment(resolved, rows, geometry, source,
         if arm not in NETWORK_ARMS:
             raise TaskError(f"unknown online arm {arm!r}")
         try:
-            arm_rows.append(_arm_row(
+            row = _arm_row(
                 resolved, rows, geometry, arm, deadline_s=deadline_s,
                 window=window, source=source,
                 capture_replay=capture_replay,
-                simulator_call_guard=simulator_call_guard))
+                simulator_call_guard=simulator_call_guard)
+            replay = row.get("replay") if isinstance(row, dict) else None
+            if isinstance(replay, dict) and replay.get("captured"):
+                # Compact and measure immediately, while this arm is the only
+                # raw replay alive: four raw arms cannot fit in the container.
+                replay["history_compaction"] = _compact_advertised_history(replay)
+                replay["size_estimate"] = _replay_size_estimate(replay)
+                _log_replay_size(arm, replay["size_estimate"])
+            arm_rows.append(row)
         except Exception as exc:      # noqa: BLE001 - recorded, not lost
             failures.append({"arm": arm,
                              "reason": f"{type(exc).__name__}: {exc}"})
@@ -1438,6 +1534,9 @@ def network_alignment(resolved, rows, geometry, source,
             "captured_arms": [row["arm"] for row in arm_rows
                               if (row.get("replay") or {}).get("captured")],
             "rule": "capture all four arms only for the predeclared replay seed; no outcome-based arm or packet selection",
+            "history_rule": REPLAY_HISTORY_RULE,
+            "size_estimate": {row.get("arm"): (row.get("replay") or {}).get(
+                "size_estimate") for row in arm_rows},
         },
         "deadline": {"deadline_s": (None if deadline_s is None
                                       else float(deadline_s)),
