@@ -1,5 +1,5 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: USER_AUTHORIZED_STORAGE_REPAIR_ACCEPTANCE_20261009_ROUND5
+campaign_stage: USER_AUTHORIZED_RECORDING_REPAIR_ACCEPTANCE_20261010
 purpose: small_region_four_arm_low_cost_smoke_with_same_population_trace_pipeline
 not_formal: true
 not_training: true
@@ -18,27 +18,27 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 9bdf7133d7e41a35922a96068963faa934ef99076c9f52761b860a23f9088cab
+    execution_chain_sha256: 5d033d8f26e99653baf4937efd85edd7b452572c2408b446899b3ca7a3e2dbde
     cell_input_sha256:
-      b-bounded_population_cost_smoke-network-seed-7: 27240f8c5fd581582b1e6b4659c4c7cd61e084a03dd4df435d3987f8f1aa1ef7
+      b-bounded_population_cost_smoke-network-seed-7: db354c0038c7726b3032f97ea58f8dbdc50d434d9935e97b75614af567398ee7
   release_ready: false
-  reason: User authorized continued repair and reportable data on 2026-10-09. A
-    first bounded four-arm verification ran all four kernels and then was SIGKILLed
-    while serializing the replay (container memory high-water mark at its 64 GiB
-    limit). One targeted storage fix was applied, with the scientific cell, arms,
-    seed, profile and population input unchanged. Prior failures preserved; no
-    automatic retry or formal claim.
+  reason: User authorized platform preparation and continuation. The candidate repair
+    preserves complete replay and shares immutable arrived advertisement history in
+    the recording path; online prediction is unchanged. Final suite profile equality
+    and scope-dependent packet validation are checked. A representative recording/storage
+    fixture must pass before one fixed same-input four-arm acceptance. Previous failed
+    runs remain preserved. No automatic unchanged retry, training, or formal claim.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 9bdf7133d7e41a35922a96068963faa934ef99076c9f52761b860a23f9088cab
+  source_execution_chain_sha256: 5d033d8f26e99653baf4937efd85edd7b452572c2408b446899b3ca7a3e2dbde
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
-    b-bounded_population_cost_smoke-network-seed-7: 27240f8c5fd581582b1e6b4659c4c7cd61e084a03dd4df435d3987f8f1aa1ef7
+    b-bounded_population_cost_smoke-network-seed-7: db354c0038c7726b3032f97ea58f8dbdc50d434d9935e97b75614af567398ee7
 scenario:
   reference_geometry: selected 96-satellite, 12-plane small-study engineering geometry
   reference_is_global_platform_freeze: false
@@ -188,17 +188,21 @@ budget:
   automatic_retry: false
   failed_timeout_calls_count: true
   prior_balance_not_reset: true
-  user_instruction: 继续，一直做到能够产出今天可以汇报的完整数据；先写好总体目标与可接力计划。
+  user_instruction: 用户将当前目标收回到平台准备，随后明确“开始吧”“继续”；本次仅验证配置、完整记录与端到端交付。
   second_round_fix: two-pass identity-only replay index plus a publish memory log;
     no scientific input, cell, arm, deadline or seed was changed.
   third_round_fix: per-arm compaction of the recorded advertisement history to the
-    four fields the analysis reads (capped at the pre-declared 16 most recent
-    samples) plus sampled per-component payload accounting. The round-2 run died
-    with about 58.7 GiB resident before serialization against a 64 GiB container
-    limit. No scientific input, cell, arm, deadline or seed was changed.
+    four fields the analysis reads (capped at the pre-declared 16 most recent samples)
+    plus sampled per-component payload accounting. The round-2 run died with about
+    58.7 GiB resident before serialization against a 64 GiB container limit. No scientific
+    input, cell, arm, deadline or seed was changed.
   fourth_round_fix: the retained replay is only about 1.24 GB per arm while resident
     memory grows about 14 GB per arm, so collect garbage and call malloc_trim after
     each arm. No scientific input, cell, arm, deadline or seed was changed.
+  current_fix: Output-only arrived-history sharing replaces the failed lossy projections.
+    Complete replay restored; prior RSS-minus-JSON-size allocator diagnosis was unsupported.
+    Pure checks and bounded engineering storage probe precede one fixed representative
+    validation.
 post_probe_gate:
   status: PENDING_REAL_OUTPUT_ACCEPTANCE
   required_evidence:

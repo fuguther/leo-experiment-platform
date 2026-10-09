@@ -2545,6 +2545,9 @@ def _full_replay_structure(row):
         }
     if replay.get("captured") is not True:
         issues.append("captured is not true")
+    for marker in ("history_compaction", "analysis_projection"):
+        if marker in replay:
+            issues.append(f"{marker} is a lossy capture, not full replay")
     if replay.get("arm") != row.get("arm"):
         issues.append("replay arm differs from network row")
 

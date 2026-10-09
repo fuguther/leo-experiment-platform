@@ -1377,6 +1377,9 @@ class Kernel:
         # optional output-only per-hop decision snapshot sink (a list); when
         # None the recording code paths are never entered
         self.decision_sink = decision_sink
+        # One most-recent converted advertisement history per receiver and
+        # origin. This is output-only and never participates in routing.
+        self._recorded_advertisement_history_cache = {}
         # optional output-only decision lifecycle stream (a list of dicts).
         # Deliberately a SEPARATE sink: the per-hop decision rows are asserted
         # by shape and count in existing tests, so lifecycle milestones must
@@ -4236,7 +4239,8 @@ class Kernel:
                 # measurements instead of a single frozen value.  Output only.
                 "advertised_history": (
                     [] if self.decision_sink is None
-                    else self._advertisement_history(sat, int(origin), now)),
+                    else self._recorded_advertisement_history(
+                        sat, int(origin), now)),
             }
         # Compute and query pool state AT THE OBSERVATION INSTANT, from the
         # same helpers the online kernel path uses.  Without these the
@@ -4374,6 +4378,51 @@ class Kernel:
                 "advertised_downlink_resources": downlink,
             })
         return out
+
+    def _recorded_advertisement_history(self, sat: int, origin: int,
+                                        now: float) -> list:
+        """Reuse output-only history expansion while its inputs are unchanged.
+
+        The cache retains one version per (receiver, origin). Its key holds
+        the actual arrived CacheEntry objects and the origin's current peer
+        mapping, so arrivals, duplicate samples, future-arrival boundaries,
+        and topology rematches all invalidate it. CacheEntry payloads are
+        assumed immutable after insertion into LocalCache; a producer that
+        mutates payloads in place must add an explicit payload version here.
+        """
+        if self.decision_sink is None:
+            return []
+
+        sat = int(sat)
+        origin = int(origin)
+        arrived = tuple(
+            entry for entry in self.caches[sat].history_for(origin)
+            if entry.received_at <= now
+        )
+        origin_topology = tuple(sorted(
+            self.topo.get(origin, {}).items()))
+        key = (arrived, origin_topology)
+        slot = (sat, origin)
+        cached = self._recorded_advertisement_history_cache.get(slot)
+        if cached is not None and cached[0] == key:
+            # Keep each observation's list append/clear independent while
+            # sharing the converted rows and their nested resource records.
+            return list(cached[1])
+
+        # Reuse the authoritative conversion path so recorded and force=True
+        # rows keep exactly the same fields and filtering rules.
+        converted = self._advertisement_history(sat, origin, now)
+        if cached is not None and cached[0][1] == origin_topology:
+            # A new arrival changes the history key, but existing samples
+            # remain valid while the topology is unchanged. Reuse them by
+            # CacheEntry object identity so each arrival only retains new row
+            # objects; the converted rows above remain the parity oracle.
+            old_rows = dict(zip(cached[0][0], cached[1]))
+            converted = [old_rows.get(entry, row)
+                         for entry, row in zip(arrived, converted)]
+        self._recorded_advertisement_history_cache[slot] = (
+            key, tuple(converted))
+        return list(converted)
 
     # ------------------------------- T1-COMPLETE P8 per_flow / precomputed
     def _flow_key(self, pkt, sat: int):

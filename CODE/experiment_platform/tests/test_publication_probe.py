@@ -164,3 +164,101 @@ def test_fixed_fixture_default_is_substantial_and_all_rows_fit_hard_cap():
         prefix, row, suffix, publication_probe.MAX_ROWS)
     assert 50_000_000 <= default_size <= 200_000_000
     assert max_size <= publication_probe.MAX_OUTPUT_BYTES
+
+
+def test_history_probe_uses_kernel_objects_and_completes_production_round_trip(
+        tmp_path, monkeypatch):
+    from CODE.leo_sim import kernel as kernel_module
+
+    monkeypatch.setattr(kernel_module.Kernel, "__init__",
+                        lambda *args, **kwargs: pytest.fail(
+                            "history fixture must use Kernel.__new__"))
+    monkeypatch.setattr(kernel_module, "run_simulation",
+                        lambda *args, **kwargs: pytest.fail(
+                            "history fixture must not run a simulation"))
+    monkeypatch.setattr(publication_probe, "_peak_rss", lambda: {
+        "value": 9876, "unit": "KiB", "platform": "Linux"})
+    out_dir = tmp_path / "history"
+
+    report = publication_probe.run_history_probe(
+        out_dir, receivers=2, origins=2, history=3, downlink=2, queries=4)
+
+    assert report["not_scientific"] is True
+    assert report["scope"] == "engineering fixture; not a 96-satellite simulation"
+    assert report["simulator_calls"] == 0
+    assert report["arms"] == 4
+    assert report["dimensions"] == {
+        "receivers_per_arm": 2,
+        "origins_per_receiver": 2,
+        "initial_history_per_origin": 3,
+        "downlink_resources_per_entry": 2,
+        "record_queries_per_arm": 4,
+        "arrival_events_per_arm": 2,
+        "topology_rematches_per_arm": 1,
+    }
+    assert report["invalidation_checks"] == {
+        "arrival_1_changed_digest": True,
+        "arrival_2_changed_digest": True,
+        "topology_rematch_changed_digest": True,
+    }
+    assert report["history_count"] == 16
+    assert report["query_record_count"] == 16
+    assert report["query_reference_digest_count"] == 16
+    assert report["reference_digest_count"] == 32
+    assert report["record_queries"] == 32
+    assert report["benchmark_record_queries"] == 16
+    assert report["materialization_record_queries"] == 16
+    assert report["peak_rss_after_readback"] == report["peak_rss"]
+    assert "current_rss_after_source_release_kib" in report
+    assert report["equal"] is True
+    assert report["encoded_file_sha256"] == hashlib.sha256(
+        (out_dir / "fixture.json").read_bytes()).hexdigest()
+    assert report["peak_rss"] == {
+        "value": 9876, "unit": "KiB", "platform": "Linux"}
+
+    from CODE.experiment_platform import t1_suite
+    readback = t1_suite._inspect_result(out_dir / "fixture.json")
+    assert readback["parse_error"] is None
+    assert readback["sha256"] == report["encoded_file_sha256"]
+    payload = readback["payload"]
+    assert payload["schema"] == t1_tasks.SCHEMA_TASK
+    assert payload["task"] == "network_alignment"
+    arms = payload["document"]["arms"]
+    assert len(arms) == 4
+    assert all(len(arm["queries"]) == 4 for arm in arms)
+    assert all(len(arm["final_histories"]) == 4 for arm in arms)
+    assert all([row["query_index"] for row in arm["queries"]] == [0, 1, 2, 3]
+               for arm in arms)
+    assert all([len(row["samples"]) for row in arm["queries"]]
+               == [3, 4, 5, 5] for arm in arms)
+    assert all(len(history["samples"])
+               == (5 if history["receiver"] == 0 and history["origin"] == 0
+                   else 3)
+               for arm in arms for history in arm["final_histories"])
+    assert all(history["reference_sha256"]
+               for arm in arms for history in arm["queries"])
+    assert all(history["reference_sha256"]
+               for arm in arms for history in arm["final_histories"])
+
+
+def test_history_default_shape_and_mode_exclusion(tmp_path):
+    assert publication_probe.DEFAULT_HISTORY_RECEIVERS == 8
+    assert publication_probe.DEFAULT_HISTORY_ORIGINS == 12
+    assert publication_probe.DEFAULT_HISTORY_LENGTH == 64
+    assert publication_probe.DEFAULT_HISTORY_DOWNLINK == 99
+    assert publication_probe.DEFAULT_HISTORY_QUERIES == 20_000
+
+    with pytest.raises(SystemExit) as exc_info:
+        publication_probe.main([
+            "--out-dir", str(tmp_path / "excluded"), "--graph", "--history"])
+    assert exc_info.value.code == 2
+    assert not (tmp_path / "excluded").exists()
+
+
+def test_history_shape_rejects_incomplete_invalidation_queries_before_output(
+        tmp_path):
+    out_dir = tmp_path / "too-small"
+    with pytest.raises(publication_probe.ProbeError, match="queries"):
+        publication_probe.run_history_probe(
+            out_dir, receivers=2, origins=2, history=3, downlink=2, queries=3)
+    assert not out_dir.exists()

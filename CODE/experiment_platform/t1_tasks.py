@@ -1423,7 +1423,7 @@ REPLAY_SIZE_COMPONENTS = (
 
 
 def _compact_advertised_history(replay, *, cap=REPLAY_HISTORY_SAMPLE_CAP):
-    """Replace each recorded advertisement history with the analysis fields.
+    """Legacy lossy projection, prohibited in the full-capture production path.
 
     Mutates in place so the verbatim advertisements are freed for the next arm
     instead of accumulating across all four.
@@ -1509,7 +1509,7 @@ REPLAY_DROPPED_COMPONENTS = (
 
 
 def _compact_decision_rows(replay):
-    """Replace raw decision rows with the per-decision analysis record.
+    """Legacy lossy projection, prohibited in the full-capture production path.
 
     The nested shape of the fields the report reads is preserved, so the offline
     analysis is unchanged while the raw rows (and the whole control timeline)
@@ -1551,12 +1551,10 @@ def _compact_decision_rows(replay):
 
 
 def _release_arm_memory():
-    """Return the finished arm's freed arenas to the operating system.
+    """Collect unreachable objects; retained replay objects remain live.
 
-    Measured on the real cell: the RETAINED replay is only ~1.24 GB per arm,
-    yet resident memory grows by ~14 GB per arm and the fourth arm dies at the
-    64 GiB container limit.  The difference is allocator-retained memory from
-    the arm's transient objects.  glibc keeps freed arenas unless asked, so ask.
+    Expanded JSON byte estimates do not measure Python retained memory and
+    cannot establish that an RSS difference is allocator retention.
     """
     try:
         import gc
@@ -1588,6 +1586,7 @@ def network_alignment(resolved, rows, geometry, source,
         if arm not in NETWORK_ARMS:
             raise TaskError(f"unknown online arm {arm!r}")
         try:
+            _log_publish_memory(f"arm_{arm}_begin")
             row = _arm_row(
                 resolved, rows, geometry, arm, deadline_s=deadline_s,
                 window=window, source=source,
@@ -1595,14 +1594,13 @@ def network_alignment(resolved, rows, geometry, source,
                 simulator_call_guard=simulator_call_guard)
             replay = row.get("replay") if isinstance(row, dict) else None
             if isinstance(replay, dict) and replay.get("captured"):
-                # Compact and measure immediately, while this arm is the only
-                # raw replay alive: four raw arms cannot fit in the container.
-                replay["history_compaction"] = _compact_advertised_history(replay)
-                replay["analysis_projection"] = _compact_decision_rows(replay)
+                # Keep complete observations, history and physical resource
+                # events. Storage sharing must not discard audit evidence.
                 replay["size_estimate"] = _replay_size_estimate(replay)
                 _log_replay_size(arm, replay["size_estimate"])
             _release_arm_memory()
             arm_rows.append(row)
+            _log_publish_memory(f"arm_{arm}_retained")
         except Exception as exc:      # noqa: BLE001 - recorded, not lost
             failures.append({"arm": arm,
                              "reason": f"{type(exc).__name__}: {exc}"})
@@ -1619,7 +1617,7 @@ def network_alignment(resolved, rows, geometry, source,
             "captured_arms": [row["arm"] for row in arm_rows
                               if (row.get("replay") or {}).get("captured")],
             "rule": "capture all four arms only for the predeclared replay seed; no outcome-based arm or packet selection",
-            "history_rule": REPLAY_HISTORY_RULE,
+            "history_rule": "all recorded received-history samples and fields retained in arrival order",
             "size_estimate": {row.get("arm"): (row.get("replay") or {}).get(
                 "size_estimate") for row in arm_rows},
         },

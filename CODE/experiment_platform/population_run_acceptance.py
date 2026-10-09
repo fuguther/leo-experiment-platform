@@ -1001,14 +1001,10 @@ def _accept_run(run_dir: Path,
             arm_row, rows, deadline_s=DEADLINE_S,
             population_window=POPULATION_WINDOW_S,
             expected_stop_s=HORIZON_S)
-        _require(arm_results[arm_row["arm"]]["deadline_primary_loss"][
-            "status"] == "COMPUTED"
-                 and arm_results[arm_row["arm"]]["deadline_primary_loss"][
-                     "packets"] == EXPECTED_PACKETS,
+        d4 = arm_results[arm_row["arm"]]["deadline_primary_loss"]
+        _require(d4["status"] == "COMPUTED"
+                 and d4["packets"] == scope.expected_packets,
                  f"{arm_row['arm']} D4 is incomplete or interval-censored")
-        _require(arm_results[arm_row["arm"]]["deadline_primary_loss"][
-            "packets"] == scope.expected_packets,
-                 f"{arm_row['arm']} D4 packet count differs from selected scope")
 
     d4_pairs, latency_pairs = {}, {}
     for left_index, left in enumerate(ARMS):

@@ -472,12 +472,16 @@ def test_complete_run_metadata_reaches_independent_packet_recomputation(tmp_path
     monkeypatch.setattr(acceptance.release_protocol, 'verify_run_directory',
                         lambda *a, **kw: receipt)
     monkeypatch.setattr(acceptance, '_rebuild_trace', lambda *a: (_trace_rows(), 'trace', 'rows'))
-    monkeypatch.setattr(acceptance, 'EXPECTED_PACKETS', 3)
     monkeypatch.setattr(t1_suite, 'check_predicate', lambda *a: {'passed': True})
-    report = acceptance.accept_run(run)
+    selected_scope = acceptance.AcceptanceScope(
+        cell_id=acceptance.CELL_ID, expected_packets=3,
+        expected_resolved_config_sha256=acceptance.RESOLVED_CONFIG_SHA256)
+    assert acceptance.EXPECTED_PACKETS == 1236
+    report = acceptance.accept_run(run, selected_scope)
     assert report['status'] == 'ACCEPTED_DATA'
     assert report['claimable'] is False
     assert report['identity']['result_sha256'] == result_sha
+    assert report['arms']['candidate']['deadline_primary_loss']['packets'] == 3
     assert report['arms']['candidate']['deadline_primary_loss']['value'] == pytest.approx(2/3)
     assert all(v == 0 for v in report['pairwise']['D4_mean_change'].values())
     assert len(report['validator_sha256']) == 64

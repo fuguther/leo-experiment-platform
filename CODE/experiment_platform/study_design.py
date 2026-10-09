@@ -189,6 +189,62 @@ def compile_inputs(design_dir, population_raster):
     return result
 
 
+def _suite_parameters_for_profile(config, t1_suite):
+    """Copy every suite-managed parameter from the declared resolved profile."""
+    keys = set(t1_suite.DEFAULT_EXPERIMENT_PARAMETERS)
+    for derived, (source, _factor) in t1_suite.EXPERIMENT_PARAMETER_MULTIPLES.items():
+        keys.update((derived, source))
+
+    parameters = {}
+    for dotted in sorted(keys):
+        section, field = dotted.split(".", 1)
+        if section not in config or field not in config[section]:
+            raise ValueError(
+                f"declared profile is missing T1 suite parameter {dotted}")
+        parameters[dotted] = copy.deepcopy(config[section][field])
+
+    for derived, (source, factor) in t1_suite.EXPERIMENT_PARAMETER_MULTIPLES.items():
+        expected = float(parameters[source]) * float(factor)
+        if float(parameters[derived]) != expected:
+            raise ValueError(
+                f"declared profile {derived}={parameters[derived]!r} conflicts "
+                f"with its T1 suite derivation {source} * {factor}")
+    return parameters
+
+
+def _verify_materialized_suite_profiles(bundle, declared_config, bundle_dir):
+    """Fail closed if suite compilation changes any declared seed profile."""
+    checked = 0
+    for cell in bundle.get("cells", []):
+        if cell.get("group") != "b_round":
+            continue
+        args = list(cell.get("args") or [])
+        try:
+            raw_config_path = args[args.index("--config") + 1]
+        except (ValueError, IndexError) as exc:
+            raise ValueError(
+                f"materialized suite cell {cell.get('cell_id')} has no config") from exc
+        seed = cell.get("seed")
+        if seed is None:
+            raise ValueError(
+                f"materialized suite cell {cell.get('cell_id')} has no seed")
+        config_path = Path(raw_config_path)
+        if not config_path.is_absolute():
+            config_path = Path(bundle_dir) / config_path
+        expected = copy.deepcopy(declared_config)
+        expected.setdefault("scenario", {})["seed"] = int(seed)
+        expected_sha256 = config_mod.resolve_config(expected)["sha256"]
+        materialized = config_mod.load_config_file(str(config_path))
+        if (materialized["config"] != expected
+                or materialized["sha256"] != expected_sha256):
+            raise ValueError(
+                "materialized suite profile differs from declared profile: "
+                f"{cell.get('cell_id')}")
+        checked += 1
+    if checked == 0:
+        raise ValueError("suite bundle contains no materialized b_round profiles")
+
+
 def compile_suite_plans(design_dir, population_raster):
     """Materialize real suite bundles; keep technical blockers fail-closed."""
     from CODE.experiment_platform import t1_suite
@@ -209,6 +265,10 @@ def compile_suite_plans(design_dir, population_raster):
             name = block["block"]
             target = parent / name
             target.mkdir()
+            profile_path = design_dir / block["profile"]
+            profile_config = config_mod.load_config_file(
+                str(profile_path))["config"]
+            parameters = _suite_parameters_for_profile(profile_config, t1_suite)
             cell_id = f"b-{name}-network-seed-7"
             auth = {"stage": "cost_probe", "tier": "b_dev", "cell_ids": [cell_id],
                     "max_selected_cells": 1, "expected_simulator_calls": 4,
@@ -228,7 +288,8 @@ def compile_suite_plans(design_dir, population_raster):
                                "dev_seeds": [7]},
                 "b_round": {"scenarios": [{"id": name, "profile": str(design_dir / block["profile"]),
                                            "seeds": [7], "tasks": ["network_alignment"],
-                                           "arms": ARMS, "replay_seed": 7}]},
+                                           "arms": ARMS, "replay_seed": 7,
+                                           "parameters": parameters}]},
                 "budgets": {"cell_wall_s": 1800., "total_wall_s": 1800., "simulator_call_budget": 4},
                 "budget_note": "bounded proposal, not a measured cost guarantee; no launch in this compiler",
             }
@@ -241,6 +302,8 @@ def compile_suite_plans(design_dir, population_raster):
                 auth["cell_input_sha256"][cell_id] = t1_suite._cell_input_sha256(cell["input"])
             path.write_text(yaml.safe_dump(contract, sort_keys=False))
             bundle = t1_suite.compile_bundle(path, target / "bundle")
+            _verify_materialized_suite_profiles(
+                bundle, profile_config, target / "bundle")
             t1_suite.validate_bundle(target / "bundle")
             kwargs = dict(tier="b_dev", selected_cell_ids=[cell_id], append=False,
                           cells={c["cell_id"]: c for c in bundle["cells"]},

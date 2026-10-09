@@ -116,6 +116,13 @@ def _replay_check(result):
     return check["check"], check["passed"], check["observed"]
 
 
+@pytest.mark.parametrize("marker", ["history_compaction", "analysis_projection"])
+def test_full_capture_rejects_lossy_projection_even_when_counts_match(marker):
+    result = _result()
+    result['document']['arms'][0]['replay'][marker] = {'rows_kept': 1}
+    assert _replay_check(result)[1] is False
+
+
 @pytest.mark.parametrize("field", [
     "decision_rows",
     "timeline_rows",
