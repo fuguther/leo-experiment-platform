@@ -254,6 +254,16 @@ previous_supplement_runs:
   receipt_sha256: f9d6977d9952169b77c7e30c3667064e0af3bb2d93626cadf00da524740823ed
 - run_id: t1-lossless-population-acceptance-20261009-03
   calls: 4
-  simulator_wall_s: 1180.0
+  simulator_wall_s: 953.386541808
   status: failed_publication_out_of_memory_after_measurement
   receipt_sha256: 2b45a451ce66434746dcd064ed63db47cac6b1fa9d67efcba3244e8d4d13ff1e
+- run_id: t1-lossless-population-acceptance-20261009-04
+  calls: 4
+  simulator_wall_s: 856.480529337
+  status: failed_publication_out_of_memory_malloc_trim_ineffective
+  receipt_sha256: 2402f5d06184647e42f5bc6e95b469311963d7f49e77ca570e9636ee0d3349d3
+- run_id: t1-lossless-population-acceptance-20261009-05
+  calls: 4
+  simulator_wall_s: 831.413625995
+  status: failed_publication_out_of_memory_full_recording
+  receipt_sha256: 1c524a25c0e1441add3557d09629bb02c2fba092131b618d13a835268bcd362f
