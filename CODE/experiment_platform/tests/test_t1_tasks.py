@@ -452,7 +452,7 @@ def test_authorized_cprofile_stops_first_call_and_keeps_partial_ledger_non_green
     monkeypatch.setattr(t1_tasks, "run_task",
                         lambda *_args, **_kwargs:
                         {"status": "ok", "task": "network_alignment",
-                         "failed_units": 0})
+                         "failed_units": 0, "document": {"arms": []}})
     normal_status = t1_tasks.main([
         "--task", "network_alignment", "--config", "profile.yaml",
         "--out", str(normal_output), "--arms", ",".join(t1_tasks.NETWORK_ARMS),

@@ -15,7 +15,8 @@ SCHEMA = "t1-b5-results/v1"
 
 
 def _read(path):
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    from CODE.experiment_platform.replay_codec import read_document
+    return read_document(path)
 
 
 def collect_b_dev(run_dir, scenario_ids):

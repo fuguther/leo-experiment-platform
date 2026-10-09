@@ -16,8 +16,9 @@ class ReplayError(ValueError):
 
 def _read_json(path):
     try:
-        value = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        from CODE.experiment_platform.replay_codec import read_document
+        value = read_document(path)
+    except (OSError, ValueError) as exc:
         raise ReplayError(f"cannot read JSON result {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise ReplayError(f"result must be a JSON object: {path}")

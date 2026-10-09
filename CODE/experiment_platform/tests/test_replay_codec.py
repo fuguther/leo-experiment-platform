@@ -137,6 +137,28 @@ def test_encoder_rejects_container_cycles():
         _encode(value)
 
 
+def test_indexer_references_the_original_containers_instead_of_copying_them():
+    """A replay graph must never be duplicated just to serialize it.
+
+    The previous encoder copied every dictionary into key/value pairs and every
+    sequence into a same-length list, so a real 96-star replay doubled its own
+    memory and was killed by the container limit.  The indexer must return the
+    original objects.
+    """
+    shared = {"values": list(range(64))}
+    value = {"rows": [shared] * 500}
+
+    index_by_identity, containers = replay_codec._index_graph(value)
+
+    assert containers[0] is value
+    assert containers[1] is value["rows"]
+    assert containers[2] is shared
+    assert containers[3] is shared["values"]
+    assert len(containers) == 4
+    assert index_by_identity[id(value)] == 0
+    assert index_by_identity[id(shared)] == 2
+
+
 def test_stream_decoder_rejects_duplicate_json_object_fields():
     encoded = (
         '{"schema":"t1-lossless-json-graph/v1",'

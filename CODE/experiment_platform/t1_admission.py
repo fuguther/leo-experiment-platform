@@ -20,8 +20,9 @@ NOT_COMPUTABLE = "NOT_COMPUTABLE"
 
 def _read(path):
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        from CODE.experiment_platform.replay_codec import read_document
+        return read_document(path)
+    except (OSError, ValueError):
         return None
 
 

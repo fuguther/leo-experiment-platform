@@ -18,12 +18,6 @@ class _Reference:
     index: int
 
 
-@dataclass(slots=True)
-class _Node:
-    kind: str
-    content: list[Any]
-
-
 def _scalar(value: Any) -> bool:
     return value is None or type(value) in (bool, int, float, str)
 
@@ -49,70 +43,53 @@ def _normalize_key(key: Any) -> str:
     raise TypeError("JSON graph dictionary keys must be strings or integers")
 
 
-def _normalized_pairs(value: dict[Any, Any]) -> list[list[Any]]:
-    """Apply json.dumps/json.loads key normalization, rejecting normalization collisions."""
-    positions: dict[str, int] = {}
-    pairs: list[list[Any]] = []
-    for key, child in value.items():
-        normalized = _normalize_key(key)
-        if normalized not in positions:
-            positions[normalized] = len(pairs)
-            pairs.append([normalized, child])
-        else:
-            raise ValueError(f"dictionary keys collide after JSON normalization: {normalized!r}")
-    return pairs
+def _index_graph(root: Any) -> tuple[dict[int, int], list[Any]]:
+    """Index every distinct container in discovery order without copying it.
 
-
-def _graph(root: Any) -> tuple[Any, list[_Node]]:
-    nodes: list[_Node] = []
-    states: list[int] = []
+    Only identity bookkeeping and strong references are retained: a large replay
+    graph is walked twice instead of being duplicated node by node. The previous
+    implementation copied every dictionary into a list of key/value pairs and
+    every sequence into a same-length list, which is what pushed a real 96-star
+    replay past the container memory limit.
+    """
+    containers: list[Any] = []
     index_by_identity: dict[int, int] = {}
-    frames: list[tuple[int, Any, str]] = []
+    states = bytearray()
+    frames: list[tuple[int, Any, bool]] = []
 
-    def token(value: Any) -> Any:
+    def register(value: Any) -> None:
         if _scalar(value):
             _validate_scalar(value)
-            return value
+            return
         if type(value) not in (dict, list, tuple):
             raise TypeError(f"unsupported JSON graph value: {type(value).__name__}")
-
         identity = id(value)
         known = index_by_identity.get(identity)
         if known is not None:
             if states[known] == _VISITING:
                 raise ValueError("container cycle detected")
-            return _Reference(known)
-
-        index = len(nodes)
+            return
+        index = len(containers)
         index_by_identity[identity] = index
+        containers.append(value)
         states.append(_VISITING)
         if type(value) is dict:
-            node = _Node("dict", _normalized_pairs(value))
-            nodes.append(node)
-            frames.append((index, iter(enumerate(node.content)), "dict"))
+            frames.append((index, iter(value.items()), True))
         else:
-            node = _Node("list", [None] * len(value))
-            nodes.append(node)
-            frames.append((index, iter(enumerate(value)), "list"))
-        return _Reference(index)
+            frames.append((index, iter(value), False))
 
-    root_token = token(root)
+    register(root)
     while frames:
-        index, children, kind = frames[-1]
+        index, children, is_dict = frames[-1]
         try:
-            position, child = next(children)
+            item = next(children)
         except StopIteration:
             states[index] = _COMPLETE
             frames.pop()
             continue
+        register(item[1] if is_dict else item)
 
-        child_token = token(child[1] if kind == "dict" else child)
-        if kind == "dict":
-            nodes[index].content[position][1] = child_token
-        else:
-            nodes[index].content[position] = child_token
-
-    return root_token, nodes
+    return index_by_identity, containers
 
 
 def _write_json(stream: TextIO, encoder: json.JSONEncoder, value: Any) -> None:
@@ -132,40 +109,55 @@ def _write_token(stream: TextIO, encoder: json.JSONEncoder, value: Any) -> None:
 
 
 def dump_graph(value: Any, text_stream: TextIO) -> None:
-    """Write a compact object-graph JSON document without building its string."""
-    root, nodes = _graph(value)
+    """Write a compact object-graph JSON document without copying the graph."""
+    index_by_identity, containers = _index_graph(value)
     encoder = json.JSONEncoder(
         ensure_ascii=True,
         allow_nan=False,
         separators=(",", ":"),
     )
 
+    def token(child: Any) -> Any:
+        if _scalar(child):
+            _validate_scalar(child)
+            return child
+        index = index_by_identity.get(id(child))
+        if index is None:
+            raise ValueError("graph container was replaced during serialization")
+        return _Reference(index)
+
     text_stream.write('{"schema":"')
     text_stream.write(SCHEMA)
     text_stream.write('","root":')
-    _write_token(text_stream, encoder, root)
+    _write_token(text_stream, encoder, token(value))
     text_stream.write(',"nodes":[')
 
-    for index, node in enumerate(nodes):
+    for index, container in enumerate(containers):
         if index:
             text_stream.write(",")
-        if node.kind == "list":
-            text_stream.write('{"kind":"list","items":[')
-            for item_index, item in enumerate(node.content):
-                if item_index:
-                    text_stream.write(",")
-                _write_token(text_stream, encoder, item)
-            text_stream.write("]}")
-        else:
+        if type(container) is dict:
             text_stream.write('{"kind":"dict","pairs":[')
-            for pair_index, (key, item) in enumerate(node.content):
+            seen: set[str] = set()
+            for pair_index, (key, child) in enumerate(container.items()):
+                normalized = _normalize_key(key)
+                if normalized in seen:
+                    raise ValueError("dictionary keys collide after JSON"
+                                     f" normalization: {normalized!r}")
+                seen.add(normalized)
                 if pair_index:
                     text_stream.write(",")
                 text_stream.write("[")
-                _write_json(text_stream, encoder, key)
+                _write_json(text_stream, encoder, normalized)
                 text_stream.write(",")
-                _write_token(text_stream, encoder, item)
+                _write_token(text_stream, encoder, token(child))
                 text_stream.write("]")
+            text_stream.write("]}")
+        else:
+            text_stream.write('{"kind":"list","items":[')
+            for item_index, child in enumerate(container):
+                if item_index:
+                    text_stream.write(",")
+                _write_token(text_stream, encoder, token(child))
             text_stream.write("]}")
     text_stream.write("]}")
 
@@ -307,3 +299,11 @@ def decode_graph(parsed: Any) -> Any:
                 )
 
     return containers[root.index] if isinstance(root, _Reference) else root
+
+
+def read_document(path):
+    """Read either legacy JSON or the versioned lossless result storage."""
+    from pathlib import Path
+    with Path(path).open(encoding="utf-8") as stream:
+        parsed = json.load(stream, object_pairs_hook=_object_without_duplicate_keys)
+    return decode_graph(parsed) if isinstance(parsed, dict) and parsed.get("schema") == SCHEMA else parsed

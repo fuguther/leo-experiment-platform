@@ -43,6 +43,7 @@ import signal
 import statistics
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -1828,6 +1829,67 @@ def _write_json_pieces(value, stream, ancestors=None):
         ancestors.remove(identity)
 
 
+#: Poll interval for publish memory logging.  A killed serialization is the one
+#: failure that leaves no artifact behind, so the poll keeps a growth record in
+#: the captured stderr even when the process is later killed by the kernel.
+_PUBLISH_MEMORY_POLL_S = 15.0
+
+
+def _peak_rss_kib():
+    try:
+        import resource
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    except Exception:
+        return None
+
+
+def _current_rss_kib():
+    try:
+        with open("/proc/self/statm", encoding="ascii") as stream:
+            pages = int(stream.read().split()[1])
+        return pages * (os.sysconf("SC_PAGE_SIZE") // 1024)
+    except Exception:
+        return None
+
+
+def _log_publish_memory(stage):
+    """Never raise: this exists to explain a later silent kill."""
+    try:
+        print(json.dumps({"stage": stage,
+                          "current_rss_kib": _current_rss_kib(),
+                          "peak_rss_kib": _peak_rss_kib()},
+                         sort_keys=True), file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
+
+class _MemoryWatch:
+    """Log process memory while a large result is serialized."""
+
+    def __init__(self, stage, interval_s=_PUBLISH_MEMORY_POLL_S):
+        self.stage = stage
+        self.interval_s = interval_s
+        self._stop = threading.Event()
+        self._thread = None
+
+    def _sample(self):
+        while not self._stop.wait(self.interval_s):
+            _log_publish_memory(self.stage + "_memory")
+
+    def __enter__(self):
+        _log_publish_memory(self.stage + "_begin")
+        self._thread = threading.Thread(target=self._sample, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc_info):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+        _log_publish_memory(self.stage + "_end")
+        return False
+
+
 def publish(document, out):
     out = Path(out)
     if out.exists() or out.is_symlink():
@@ -1840,17 +1902,18 @@ def publish(document, out):
     handle, temporary = tempfile.mkstemp(prefix="." + out.name + ".",
                                          suffix=".tmp", dir=str(out.parent))
     try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            if (isinstance(document, dict)
-                    and document.get("schema") == SCHEMA_TASK
-                    and document.get("task") == "network_alignment"):
-                from CODE.experiment_platform.replay_codec import dump_graph
-                dump_graph(document, stream)
-            else:
-                _write_json_pieces(document, stream)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
+        with _MemoryWatch("publish"):
+            with os.fdopen(handle, "w", encoding="utf-8") as stream:
+                if (isinstance(document, dict)
+                        and document.get("schema") == SCHEMA_TASK
+                        and document.get("task") == "network_alignment"):
+                    from CODE.experiment_platform.replay_codec import dump_graph
+                    dump_graph(document, stream)
+                else:
+                    _write_json_pieces(document, stream)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
         os.replace(temporary, out)
     except BaseException:
         try:

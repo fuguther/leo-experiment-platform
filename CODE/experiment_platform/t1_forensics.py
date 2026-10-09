@@ -40,7 +40,8 @@ def _finite(value):
 
 def load_result(path):
     """Read one pulled cell result file (never an experiment)."""
-    payload = json.loads(pathlib.Path(path).read_text())
+    from CODE.experiment_platform.replay_codec import read_document
+    payload = read_document(path)
     if not isinstance(payload, dict):
         raise ValueError("cell result is not a JSON object: %s" % path)
     return payload
