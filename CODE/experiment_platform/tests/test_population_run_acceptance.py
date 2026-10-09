@@ -90,6 +90,32 @@ def test_recomputes_d4_and_delivered_latency_without_treating_censor_as_fate_los
     assert result["delivered_latency"]["p95_s"] == pytest.approx(2.9)
 
 
+
+
+def test_recompute_arm_reads_a_sidecar_exactly_like_the_raw_replay(tmp_path):
+    """Offline acceptance must reconcile identically from the sidecar."""
+    from CODE.experiment_platform import replay_sidecar
+    expected = acceptance.recompute_arm(
+        _arm(), _trace_rows(), deadline_s=4.0,
+        population_window=(2.0, 8.0), expected_stop_s=8.0)
+
+    wrapped = {"document": {"arms": [_arm()]}}
+    arms = wrapped["document"]["arms"]
+    for name in replay_sidecar.STREAMS:
+        arms[0]["replay"].setdefault(name, [])
+    result_path = tmp_path / "result.json"
+    replay_sidecar.write_sidecar(wrapped, result_path)
+    side_arm = arms[0]
+    assert side_arm["replay"]["sidecar"] == "result-replay.jsonl"
+    assert side_arm["replay"]["stop_time_s"] == 8.0
+
+    got = acceptance.recompute_arm(
+        side_arm, _trace_rows(), deadline_s=4.0,
+        population_window=(2.0, 8.0), expected_stop_s=8.0,
+        result_path=result_path)
+    assert got == expected
+
+
 def test_censor_before_deadline_retains_an_interval_instead_of_zero():
     result = acceptance.deadline_loss(
         "IN_SYSTEM_AT_STOP", emit_time_s=2.0, delivered_at_s=None,

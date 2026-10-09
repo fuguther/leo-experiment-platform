@@ -190,7 +190,7 @@ def _linear_percentile(values: list[float], quantile: float) -> float:
 
 def recompute_arm(arm_row: dict, trace_rows: list[dict], *, deadline_s: float,
                   population_window: tuple[float, float],
-                  expected_stop_s: float, sidecar_path=None) -> dict:
+                  expected_stop_s: float, result_path=None) -> dict:
     """Reconcile one arm's packet stream, fates and D4/E2E summaries."""
     if not isinstance(arm_row, dict):
         raise PopulationRunAcceptanceError("arm row is not a mapping")
@@ -232,13 +232,12 @@ def recompute_arm(arm_row: dict, trace_rows: list[dict], *, deadline_s: float,
 
     if replay.get("sidecar"):
         from CODE.experiment_platform import replay_sidecar
-        _require(sidecar_path is not None and Path(sidecar_path).is_file(),
+        side = replay_sidecar.sidecar_of(result_path, replay)
+        _require(result_path is not None and side.is_file(),
                  "declared replay sidecar is missing")
-        raw_events = replay_sidecar.resolve(sidecar_path, replay,
-                                            "packet_events")
-        fates_raw = replay_sidecar.resolve_mapping(sidecar_path, replay,
-                                                   "fates")
-        deliveries_raw = replay_sidecar.resolve_mapping(sidecar_path, replay,
+        raw_events = replay_sidecar.resolve(side, replay, "packet_events")
+        fates_raw = replay_sidecar.resolve_mapping(side, replay, "fates")
+        deliveries_raw = replay_sidecar.resolve_mapping(side, replay,
                                                         "deliveries")
     else:
         raw_events = replay.get("packet_events")
@@ -1015,9 +1014,7 @@ def _accept_run(run_dir: Path,
             arm_row, rows, deadline_s=DEADLINE_S,
             population_window=POPULATION_WINDOW_S,
             expected_stop_s=HORIZON_S,
-            sidecar_path=(Path(result_path).with_name(
-                str(reference.get("sidecar")))
-                if reference.get("sidecar") else None))
+            result_path=result_path)
         d4 = arm_results[arm_row["arm"]]["deadline_primary_loss"]
         _require(d4["status"] == "COMPUTED"
                  and d4["packets"] == scope.expected_packets,
