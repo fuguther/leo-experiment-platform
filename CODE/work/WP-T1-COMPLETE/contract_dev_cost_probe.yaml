@@ -1,5 +1,5 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: USER_AUTHORIZED_RECORDING_REPAIR_ACCEPTANCE_20261010_ROUND2
+campaign_stage: USER_AUTHORIZED_RECORDING_REPAIR_ACCEPTANCE_20261010_ROUND3
 purpose: small_region_four_arm_low_cost_smoke_with_same_population_trace_pipeline
 not_formal: true
 not_training: true
@@ -18,9 +18,9 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 197992e2c136887536ec2b99288940f912da203102ea272be75ec07baef776f1
+    execution_chain_sha256: 5a1d61778ddbbdc44efe1c2a1d0d662a24856159dbf5668868e3e348008344fa
     cell_input_sha256:
-      b-bounded_population_cost_smoke-network-seed-7: db354c0038c7726b3032f97ea58f8dbdc50d434d9935e97b75614af567398ee7
+      b-bounded_population_cost_smoke-network-seed-7: 3d42425b27a9b71f4b2bf6df64f7e9af966c37cdc9606fd4c946758c59d17a83
   release_ready: false
   reason: User authorized platform preparation and continuation. The candidate repair
     preserves complete replay and shares immutable arrived advertisement history in
@@ -34,11 +34,11 @@ input_identity:
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 197992e2c136887536ec2b99288940f912da203102ea272be75ec07baef776f1
+  source_execution_chain_sha256: 5a1d61778ddbbdc44efe1c2a1d0d662a24856159dbf5668868e3e348008344fa
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
-    b-bounded_population_cost_smoke-network-seed-7: db354c0038c7726b3032f97ea58f8dbdc50d434d9935e97b75614af567398ee7
+    b-bounded_population_cost_smoke-network-seed-7: 3d42425b27a9b71f4b2bf6df64f7e9af966c37cdc9606fd4c946758c59d17a83
 scenario:
   reference_geometry: selected 96-satellite, 12-plane small-study engineering geometry
   reference_is_global_platform_freeze: false
@@ -267,3 +267,7 @@ previous_supplement_runs:
   simulator_wall_s: 831.413625995
   status: failed_publication_out_of_memory_full_recording
   receipt_sha256: 1c524a25c0e1441add3557d09629bb02c2fba092131b618d13a835268bcd362f
+- run_id: t1-recording-acceptance-20261010-01
+  calls: 4
+  status: published_full_replay_then_post_publish_inspection_killed
+  receipt_sha256: c30a858550c2c261b854e329350a87ef1a370c9822a796d5700ad857a8e51f1d
