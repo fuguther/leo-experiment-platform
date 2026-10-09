@@ -371,3 +371,47 @@ def test_replay_gate_reports_structural_scope_without_claiming_event_replay():
     assert passed is True
     assert "structural" in detail["validation_scope"]
     assert detail["full_event_recomputation"] is False
+
+def test_full_replay_gate_accepts_a_streamed_sidecar(tmp_path):
+    """The gate must verify a line-delimited sidecar without decoding it."""
+    from CODE.experiment_platform import replay_sidecar
+    result = _result()
+    result_path = tmp_path / "result.json"
+    replay_sidecar.write_sidecar(result, result_path)
+    reference = result["document"]["arms"][0]["replay"]
+    assert reference["sidecar"] == "result-replay.jsonl"
+    assert reference["streams"]["decision_rows"] == 1
+
+    verdict = t1_suite.check_predicate(result, _PREDICATE,
+                                       result_path=result_path)
+    check = next(item for item in verdict["checks"]
+                 if "full-network" in item["check"])
+    assert check["passed"] is True, check["observed"]
+    assert "sidecar" in check["observed"]["validation_scope"]
+
+    # A tampered sidecar is caught by the recorded digest, without decoding.
+    target = tmp_path / "result-replay.jsonl"
+    target.write_text(target.read_text(encoding="utf-8").replace(
+        '"forward"', '"deliver"'), encoding="utf-8")
+    verdict = t1_suite.check_predicate(result, _PREDICATE,
+                                       result_path=result_path)
+    check = next(item for item in verdict["checks"]
+                 if "full-network" in item["check"])
+    assert check["passed"] is False
+
+
+def test_sidecar_reference_to_a_missing_file_is_refused(tmp_path):
+    """A declared sidecar that is not on disk must fail the gate."""
+    result = _result()
+    result["document"]["arms"][0]["replay"] = {
+        "captured": True, "arm": "candidate", "sidecar": "missing.jsonl",
+        "sha256": "0" * 64,
+        "streams": {"decision_rows": 1},
+        "mappings": {},
+    }
+    verdict = t1_suite.check_predicate(result, _PREDICATE,
+                                       result_path=tmp_path / "result.json")
+    check = next(item for item in verdict["checks"]
+                 if "full-network" in item["check"])
+    assert check["passed"] is False
+
