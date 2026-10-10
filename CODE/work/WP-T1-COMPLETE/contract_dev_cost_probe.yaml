@@ -1,5 +1,5 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: USER_AUTHORIZED_RECORDING_REPAIR_ACCEPTANCE_20261010_ROUND8
+campaign_stage: USER_AUTHORIZED_RECORDING_REPAIR_ACCEPTANCE_20261010_ROUND9
 purpose: small_region_four_arm_low_cost_smoke_with_same_population_trace_pipeline
 not_formal: true
 not_training: true
@@ -18,7 +18,7 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 2b9339d537ea6750270cefa00817e979fc2520c740d408afc0388da4a5f6c7a6
+    execution_chain_sha256: 627c464fbc3026d62888a2ac807ec3693a85e4d10ed1e4cab0503329f4bb8af1
     cell_input_sha256:
       b-bounded_population_cost_smoke-network-seed-7: 13cf10d56ee640134befa5fbd026329f45918261a3e8f7e87e43f65b94aa9d33
   release_ready: false
@@ -34,7 +34,7 @@ input_identity:
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 2b9339d537ea6750270cefa00817e979fc2520c740d408afc0388da4a5f6c7a6
+  source_execution_chain_sha256: 627c464fbc3026d62888a2ac807ec3693a85e4d10ed1e4cab0503329f4bb8af1
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
@@ -287,5 +287,13 @@ previous_supplement_runs:
     36.5 MB primary result + more than 1020 s of post-publish checks; the
     3600 s wall was hit at 06:49 while the gate was still running. Raise the
     cell wall to 5400 s and the outer timeout to 5700 s.
+- run_id: t1-sidecar-acceptance-20261010-07
+  calls: 4
+  status: predicate_failed_forward_mask_semantics
+  receipt_sha256: pending
+  note: the data chain completed in 2464.9 s (cell.json written, primary result
+    36,517,307 B decoded, gate evaluated). The predicate failed because the audit
+    logs every decision (2877) while masks exist only on forwards (2622); fixed in
+    4034296 by counting and scanning forwards only.
   note: sidecar 34173838906 bytes; primary result 7170591303 bytes; killed
     in the parent inspection. Audits moved to the sidecar afterwards.
