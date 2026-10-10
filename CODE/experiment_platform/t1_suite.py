@@ -2555,23 +2555,29 @@ def _sidecar_replay_structure(row, reference, result_path):
     if isinstance(audit_stream, dict):
         needed = {"N", "E", "S", "W"}
         complete = True
-        seen = 0
+        forwards = 0
         for payload in replay_sidecar.iter_indexed(
                 path, int(audit_stream.get("offset", 0)),
                 int(audit_stream.get("lines", audit_stream.get("count", 0)))):
             mask = ((payload.get("row") or {}).get("four_direction_audit") or {})
-            seen += 1
+            # The audit logs EVERY decision; a four-direction routing mask only
+            # exists on forward decisions.  Requiring one on all records, or
+            # comparing the all-decision count with scope.forward_decisions, was
+            # wrong and only became visible once a run reached the predicate.
+            if mask.get("decision_kind") != "forward":
+                continue
+            forwards += 1
             if (mask.get("direction_order") != ["N", "E", "S", "W"]
                     or set(mask.get("final_legal_mask") or {}) != needed):
                 complete = False
                 break
         scope = row.get("scope") if isinstance(row.get("scope"), dict) else {}
-        if (not complete
-                or seen != scope.get("forward_decisions")):
-            issues.append("sidecar routing decision records do not all carry a "
+        if not complete or forwards != scope.get("forward_decisions"):
+            issues.append("sidecar forward decision records do not all carry a "
                           "complete four-direction mask")
         else:
             detail["audit_masks_complete"] = True
+            detail["audit_forward_records"] = forwards
     if (facts["queue_subset_count"] != facts["timeline_subset_count"]
             or facts["queue_subset_digest"] != facts["timeline_subset_digest"]):
         issues.append("queue_state_events differs from the timeline subset")
@@ -3088,19 +3094,26 @@ def _check_task_predicate(result, require, *, result_path=None):
                     # above streams every mask and fails if any is incomplete.
                     complete_masks = True
                 else:
+                    records = [item for item in records
+                               if ((item.get("four_direction_audit") or {}).get(
+                                   "decision_kind") == "forward")]
                     complete_masks = all(
-                    (item.get("four_direction_audit") or {}).get(
-                        "direction_order") == ["N", "E", "S", "W"]
-                    and set((item.get("four_direction_audit") or {}).get(
-                        "final_legal_mask", {})) == {"N", "E", "S", "W"}
+                        (item.get("four_direction_audit") or {}).get(
+                            "direction_order") == ["N", "E", "S", "W"]
+                        and set((item.get("four_direction_audit") or {}).get(
+                            "final_legal_mask") or {}) == {"N", "E", "S", "W"}
                         for item in records)
+                sidecar_backed = bool((row.get("replay") or {}).get("sidecar"))
                 checks.append([f"arm {arm} logs every forward decision with all four directions",
-                               audit_log.get("decision_record_count")
-                               == scope.get("forward_decisions")
-                               and complete_masks,
-                               {"records": audit_log.get("decision_record_count"),
+                               (complete_masks if sidecar_backed
+                                else complete_masks
+                                and len(records) == scope.get("forward_decisions")),
+                               {"forward_records": (None if sidecar_backed
+                                                    else len(records)),
                                 "forward_decisions": scope.get("forward_decisions"),
-                                "all_masks_complete": complete_masks}])
+                                "all_masks_complete": complete_masks,
+                                "enforced_by": ("sidecar structure check"
+                                                if sidecar_backed else "local records")}])
             if require.get("require_full_replay"):
                 replay_ok, replay_detail = _full_replay_structure(
                     row, result_path=result_path)

@@ -45,6 +45,7 @@ def _result():
                     "decision_record_count": 1,
                     "decision_records": [{
                         "four_direction_audit": {
+                            "decision_kind": "forward",
                             "direction_order": ["N", "E", "S", "W"],
                             "final_legal_mask": {"N": True, "E": True,
                                                  "S": True, "W": True},
@@ -425,6 +426,34 @@ def test_full_replay_gate_accepts_a_streamed_sidecar(tmp_path):
     check = next(item for item in verdict["checks"]
                  if "full-network" in item["check"])
     assert check["passed"] is False
+
+
+def test_non_forward_audit_records_do_not_fail_the_mask_requirement(tmp_path):
+    """The audit logs every decision; masks exist on forwarding ones only.
+
+    A run reached the predicate and failed both the count comparison and the
+    mask scan because 2877 decision records were compared against 2622 forward
+    decisions."""
+    from CODE.experiment_platform import replay_sidecar
+    result = _result()
+    result["schema"] = "t1-task-result/v1"
+    arm = result["document"]["arms"][0]
+    for name in replay_sidecar.STREAMS:
+        arm["replay"].setdefault(name, [])
+    audit = arm["routing_audit_log"]
+    audit["decision_records"].append({
+        "four_direction_audit": {"decision_kind": "deliver"}})
+    audit["decision_record_count"] = 2
+    result_path = tmp_path / "result.json"
+    t1_tasks_from_test = __import__("CODE.experiment_platform.t1_tasks",
+                                    fromlist=["publish_network_result"])
+    t1_tasks_from_test.publish_network_result(result, result_path)
+
+    verdict = t1_suite.check_predicate(result, _PREDICATE,
+                                       result_path=result_path)
+    check = next(item for item in verdict["checks"]
+                 if "full-network" in item["check"])
+    assert check["passed"] is True, check["observed"]
 
 
 def test_sidecar_reference_to_a_missing_file_is_refused(tmp_path):
