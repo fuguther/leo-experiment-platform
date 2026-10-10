@@ -498,7 +498,8 @@ def test_complete_run_metadata_reaches_independent_packet_recomputation(tmp_path
     monkeypatch.setattr(acceptance.release_protocol, 'verify_run_directory',
                         lambda *a, **kw: receipt)
     monkeypatch.setattr(acceptance, '_rebuild_trace', lambda *a: (_trace_rows(), 'trace', 'rows'))
-    monkeypatch.setattr(t1_suite, 'check_predicate', lambda *a: {'passed': True})
+    monkeypatch.setattr(t1_suite, 'check_predicate',
+                        lambda *a, **k: {'passed': True})
     selected_scope = acceptance.AcceptanceScope(
         cell_id=acceptance.CELL_ID, expected_packets=3,
         expected_resolved_config_sha256=acceptance.RESOLVED_CONFIG_SHA256)

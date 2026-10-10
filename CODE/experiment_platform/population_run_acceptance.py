@@ -966,7 +966,11 @@ def _accept_run(run_dir: Path,
              "primary result is not a complete network_alignment result")
     _require(run_record.get("result_schema") == probe.get("schema"),
              "cell result schema differs from inspected primary result")
-    verdict = t1_suite.check_predicate(payload, run_record["predicate"])
+    # The replay streams and the routing audit records live in a sidecar next to
+    # the primary result, so the predicate must be able to resolve it: without
+    # the result path the sidecar checks cannot run and report a failure.
+    verdict = t1_suite.check_predicate(payload, run_record["predicate"],
+                                       result_path=result_path)
     _require(isinstance(verdict, dict) and verdict.get("passed") is True,
              "full primary result fails the compiled cell predicate")
 
