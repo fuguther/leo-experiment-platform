@@ -62,10 +62,10 @@ def find_run(root: Path, setting: str, arm: str) -> Path | None:
     """
     pattern = (f"*-oracle-{setting}-*" if arm == "oracle"
                else f"*-{setting}-{arm}-*")
-    for candidate in sorted(root.glob(pattern)):
-        if candidate.is_dir() and candidate.name.startswith("t1-"):
-            return candidate
-    return None
+    candidates = [p for p in sorted(root.glob(pattern)) if p.is_dir() and p.name.startswith("t1-")]
+    if len(candidates) > 1:
+        raise ValueError(f"ambiguous evidence for {setting}/{arm}: {candidates}")
+    return candidates[0] if candidates else None
 
 
 def load_arm(run_dir: Path):
@@ -77,6 +77,8 @@ def load_arm(run_dir: Path):
                     continue
                 ta = (row.get("observation_at_start") or {}).get("time_alignment") or {}
                 decisions[(row.get("pid"), row.get("decision_id"))] = {
+                    "sat": row["sat"],
+                    "t_decision_start": row["t_decision_start"],
                     "audit": ta,
                     "chosen": row.get("chosen"),
                     "applied_order": tuple(ta.get("applied_order") or ()),
@@ -120,51 +122,47 @@ def arm_outcome(arm_data, deadline_s=4.0):
 
 
 def sensitivity(per_arm):
-    """Per-decision ranking margin and cross-arm work shift, in seconds."""
+    """Relative winner/competitor perturbation on matched recorded contexts.
+
+    Requires matching satellite/time, complete score sets, and equal non-work
+    terms. This is descriptive projected evidence, not a frozen-world replay.
+    """
     arms = [a for a in ARMS if per_arm.get(a)]
-    if len(arms) < 2:
-        return []
-    keys = set(per_arm[arms[0]]["decisions"])
-    for a in arms[1:]:
-        keys &= set(per_arm[a]["decisions"])
+    if len(arms) != 4:
+        raise ValueError("sensitivity requires all four arms")
+    keys = set.intersection(*(set(per_arm[a]["decisions"]) for a in arms))
     rows = []
-    for key in keys:
-        blocks = [per_arm[a]["decisions"][key]["audit"] for a in arms]
+    for key in sorted(keys):
         entries = [per_arm[a]["decisions"][key] for a in arms]
-        margins = []
-        best_dir = None
-        for ta in blocks:
-            scores = ta.get("scores") or {}
-            vals = []
-            for direction, score in scores.items():
-                if not isinstance(score, dict):
-                    continue
-                total = score.get("total_s")
-                if score.get("missing") == [] and isinstance(total, (int, float)) \
-                        and math.isfinite(float(total)):
-                    vals.append((float(total), direction))
-            vals.sort()
-            if len(vals) >= 2:
-                margins.append(vals[1][0] - vals[0][0])
-                if best_dir is None:
-                    best_dir = vals[0][1]
-        if not margins or best_dir is None:
+        if len({(e["sat"], e["t_decision_start"]) for e in entries}) != 1:
             continue
-        works = []
-        for ta in blocks:
-            score = (ta.get("scores") or {}).get(best_dir)
-            if isinstance(score, dict):
-                work = (score.get("terms") or {}).get("resource_work_s")
-                if isinstance(work, (int, float)):
-                    works.append(float(work))
-        if len(works) < 2:
+        scores = [e["audit"].get("scores") or {} for e in entries]
+        dirs = set(scores[0])
+        if len(dirs) < 2 or any(set(s) != dirs for s in scores):
             continue
-        rows.append({"margin_s": min(margins),
-                     "work_shift_s": max(works) - min(works),
-                     "work_max_s": max(works),
-                     "chosen_differs": len({e["chosen"] for e in entries}) > 1,
-                     "order_differs": len({e["applied_order"] for e in entries}) > 1,
-                     "ranking_differs": len({e["ranking"] for e in entries}) > 1})
+        if any(s[d].get("missing") != [] or
+               not isinstance(s[d].get("total_s"), (int, float)) or
+               not math.isfinite(s[d]["total_s"]) or
+               not isinstance(s[d].get("terms", {}).get("resource_work_s"), (int, float))
+               for s in scores for d in dirs):
+            continue
+        terms = [{d: {k: v for k, v in s[d]["terms"].items() if k != "resource_work_s"}
+                  for d in dirs} for s in scores]
+        if any(t != terms[0] for t in terms[1:]):
+            continue
+        base = scores[0]
+        best = min(dirs, key=lambda d: (base[d]["total_s"], d))
+        for rival in sorted(dirs - {best}):
+            margin = base[rival]["total_s"] - base[best]["total_s"]
+            gap = base[best]["terms"]["resource_work_s"] - base[rival]["terms"]["resource_work_s"]
+            pressure = max(s[best]["terms"]["resource_work_s"] - s[rival]["terms"]["resource_work_s"] - gap
+                           for s in scores)
+            rows.append({"margin_s": margin, "work_shift_s": pressure,
+                         "packet_id": key[0], "decision_id": key[1], "rival": rival,
+                         "work_max_s": max(s[best]["terms"]["resource_work_s"] for s in scores),
+                         "chosen_differs": len({e["chosen"] for e in entries}) > 1,
+                         "order_differs": len({e["applied_order"] for e in entries}) > 1,
+                         "ranking_differs": len({e["ranking"] for e in entries}) > 1})
     return rows
 
 
@@ -175,19 +173,19 @@ def fig_sensitivity(datasets, out_path: Path):
     for (name, rows), color in zip(datasets, colors):
         if not rows:
             continue
-        xs = [r["margin_s"] for r in rows]
+        xs = [max(r["margin_s"], FLOOR) for r in rows]
         ys = [max(r["work_shift_s"], FLOOR) for r in rows]
         zero = sum(1 for r in rows if r["work_shift_s"] <= 0)
         ax.scatter(xs, ys, s=6, alpha=0.25, color=color,
                    label=f"{name} (n={len(rows)}, shift=0: {zero})")
-    lims = [1e-5, 3e-1]
+    lims = [FLOOR, max(3e-1, 1.2 * max((r["margin_s"] for _, rs in datasets for r in rs), default=0))]
     ax.plot(lims, lims, "k--", lw=1, label="shift = margin")
     ax.set_xscale("log"); ax.set_yscale("log")
-    ax.set_xlim(*lims); ax.set_ylim(FLOOR, 3e-1)
+    ax.set_xlim(*lims); ax.set_ylim(FLOOR, max(3e-1, 1.2 * max((r["work_shift_s"] for _, rs in datasets for r in rs), default=0)))
     ax.axhline(FLOOR, color="0.5", lw=0.8, ls=":")
-    ax.set_xlabel("ranking margin: 2nd best - best total (s)")
-    ax.set_ylabel("cross-policy work-estimate shift (s)\n(zero shift drawn at the 1e-6 floor)")
-    ax.set_title("State-time misalignment cannot flip a ranking\n(all points lie far below the diagonal)")
+    ax.set_xlabel("baseline margin: competitor - winner (s); zeros floored")
+    ax.set_ylabel("relative work shift: winner vs competitor (s)\n(zero shift drawn at the 1e-6 floor)")
+    ax.set_title("Comparable candidate pairs\n(excludes fallback and changed non-work terms)")
     ax.legend(fontsize=7, loc="lower right")
     ax.grid(alpha=0.3, which="both")
 
@@ -202,11 +200,11 @@ def fig_sensitivity(datasets, out_path: Path):
     ax.bar(range(len(labels)), fracs, color="#c0392b")
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=8)
-    ax.set_ylabel("share of decisions with a different chosen action")
+    ax.set_ylabel("share of pairs at action-disagreement decisions")
     ax.set_ylim(0, max(0.01, 1.15 * max(fracs) if fracs else 0.01))
-    ax.set_title("Where the policy actually changes the action")
+    ax.set_title("Action agreement in this filtered subset")
     for i, value in enumerate(fracs):
-        ax.text(i, value + 0.02, f"{value:.4%}", ha="center", fontsize=8)
+        ax.text(i, value + 0.0002, f"{value:.4%}", ha="center", fontsize=8)
     ax.grid(alpha=0.3, axis="y")
     fig.tight_layout()
     fig.savefig(out_path, dpi=170)
@@ -217,7 +215,7 @@ def fig_outcome(datasets_outcome, out_path: Path):
     names = [n for n in datasets_outcome]
     fig, axes = plt.subplots(1, 3, figsize=(12.5, 4.2))
     metrics = [("d4_fail", "D4 deadline miss ratio"),
-               ("mean_delay_s", "mean delivery delay (s)"),
+               ("mean_delay_s", "mean delay of delivered packets only (s)"),
                ("delivered", "delivered packets")]
     arm_names = list(ARMS) + (["oracle"] if any(
         "oracle" in datasets_outcome[name] for name in names) else [])
@@ -237,7 +235,7 @@ def fig_outcome(datasets_outcome, out_path: Path):
         ax.set_title(label)
         ax.grid(alpha=0.3, axis="y")
     axes[0].legend(fontsize=8)
-    fig.suptitle("Four query policies on the identical exogenous trace")
+    fig.suptitle("Same input; oracle changes information AND routing, not an isolated time bound")
     fig.tight_layout()
     fig.savefig(out_path, dpi=170)
     plt.close(fig)
@@ -264,7 +262,7 @@ def fig_funnel(cal_rows, out_path: Path):
     ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlabel("uplink queue area (bit*s)")
     ax.set_ylabel("ISL data queue area (bit*s)")
-    ax.set_title("Where the traffic is lost: access, not ISL")
+    ax.set_title("Queue-area observations (not a loss attribution)")
     ax.grid(alpha=0.3, which="both")
     fig.tight_layout()
     fig.savefig(out_path, dpi=170)
@@ -283,7 +281,7 @@ def main(argv=None) -> int:
 
     datasets = []
     outcomes = {}
-    summary = {"settings": {}}
+    summary = {"settings": {}, "sensitivity_unit": "winner/competitor pairs; matched local identity and non-work terms; not frozen-world replay"}
     for setting, label in SETTINGS.items():
         per_arm = {}
         for arm in ARMS:
@@ -303,7 +301,8 @@ def main(argv=None) -> int:
         flips = sum(1 for r in rows if r["chosen_differs"])
         summary["settings"][setting] = {
             "label": label,
-            "decisions": len(rows),
+            "candidate_pairs": len(rows),
+            "decisions": len({(r["packet_id"], r["decision_id"]) for r in rows}),
             "chosen_differs": flips,
             "chosen_differs_share": (flips / len(rows)) if rows else None,
             "order_differs": sum(1 for r in rows if r["order_differs"]),
