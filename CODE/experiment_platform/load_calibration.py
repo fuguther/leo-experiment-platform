@@ -44,6 +44,7 @@ OVERRIDE_FIELDS = {
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
                   "max_packets"},
     "links": {"rf_isl", "rate_model", "isl_rate_mbps"},
+    "routing": {"policy"},
     "scenario": {"duration_s", "seed"},
 }
 
@@ -118,6 +119,12 @@ def _validate_override_shape(overrides, cell_id: str) -> None:
                 and not isinstance(values["rf_isl"], dict):
             raise CalibrationError(
                 f"cell {cell_id}: links.rf_isl must be a mapping")
+        if group == "routing":
+            policy = values.get("policy")
+            if policy not in config_mod.VALID_POLICIES:
+                raise CalibrationError(
+                    f"cell {cell_id}: routing.policy must be one of "
+                    f"{sorted(config_mod.VALID_POLICIES)}, got {policy!r}")
 
 
 def _design_overrides(base_resolved: dict, overrides: dict) -> dict:
@@ -141,6 +148,13 @@ def _validate_effective_config(resolved: dict, contract: dict,
     if cfg["scenario"]["duration_s"] > contract["max_duration_s"]:
         raise CalibrationError(
             f"cell {cell_id}: scenario.duration_s exceeds contract cap")
+    cell = next((entry for entry in contract["cells"]
+                 if entry.get("id") == cell_id), None)
+    declared = ((cell or {}).get("overrides") or {}).get("routing") or {}
+    if "policy" in declared and cfg["routing"]["policy"] != declared["policy"]:
+        raise CalibrationError(
+            f"cell {cell_id}: declared routing.policy {declared['policy']!r} did "
+            f"not take effect (resolved {cfg['routing']['policy']!r})")
 
 
 def _validate_contract_document(document: dict) -> None:

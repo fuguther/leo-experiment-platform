@@ -135,7 +135,7 @@ def test_contract_overrides_cannot_exceed_frozen_bounds(tmp_path, monkeypatch,
 def test_contract_rejects_arbitrary_overrides(tmp_path, monkeypatch):
     contract_path = _write_contract(
         tmp_path / "contract.json",
-        _contract(overrides={"routing": {"policy": "oracle"}}))
+        _contract(overrides={"topology": {"matching": "markovian"}}))
     _free_disk(monkeypatch)
     with pytest.raises(lc.CalibrationError, match="unsupported override group"):
         lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
@@ -152,6 +152,29 @@ def test_output_exists_is_refused_without_modifying_it(tmp_path, monkeypatch):
     with pytest.raises(lc.CalibrationError, match="already exists"):
         lc.preflight(contract_path, "one", out_dir, REPO_ROOT)
     assert marker.read_text(encoding="utf-8") == "preserve"
+
+
+def test_routing_policy_override_is_accepted_and_applied(tmp_path, monkeypatch):
+    contract_path = _write_contract(
+        tmp_path / "contract.json",
+        _contract(overrides={"routing": {"policy": "oracle"}}))
+    _free_disk(monkeypatch)
+
+    result = lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
+
+    assert result["cell"] == "one"
+    raw, document, _base, cells = lc._read_contract(contract_path, REPO_ROOT)
+    assert cells["one"]["resolved"]["config"]["routing"]["policy"] == "oracle"
+
+
+def test_routing_policy_override_rejects_unknown_policy(tmp_path, monkeypatch):
+    contract_path = _write_contract(
+        tmp_path / "contract.json",
+        _contract(overrides={"routing": {"policy": "shortest"}}))
+    _free_disk(monkeypatch)
+
+    with pytest.raises(lc.CalibrationError, match="routing.policy must be one of"):
+        lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
 
 
 def test_missing_output_ancestors_are_created_inside_the_run_dir(
