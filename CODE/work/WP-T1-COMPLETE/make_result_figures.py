@@ -54,8 +54,16 @@ def _load_gzip_json(path: Path):
 
 
 def find_run(root: Path, setting: str, arm: str) -> Path | None:
-    for candidate in sorted(root.glob(f"*-{setting}-{arm}-*")):
-        if candidate.is_dir():
+    """Locate one arm's run directory.
+
+    The four query policies live in runs named <batch>-<setting>-<arm>-<date>;
+    the oracle bound is a separate batch whose runs are named
+    <batch>-oracle-<setting>-<date>.
+    """
+    pattern = (f"*-oracle-{setting}-*" if arm == "oracle"
+               else f"*-{setting}-{arm}-*")
+    for candidate in sorted(root.glob(pattern)):
+        if candidate.is_dir() and candidate.name.startswith("t1-"):
             return candidate
     return None
 
@@ -211,14 +219,17 @@ def fig_outcome(datasets_outcome, out_path: Path):
     metrics = [("d4_fail", "D4 deadline miss ratio"),
                ("mean_delay_s", "mean delivery delay (s)"),
                ("delivered", "delivered packets")]
+    arm_names = list(ARMS) + (["oracle"] if any(
+        "oracle" in datasets_outcome[name] for name in names) else [])
     for ax, (key, label) in zip(axes, metrics):
-        width = 0.2
-        for i, arm in enumerate(ARMS):
+        width = 0.8 / max(1, len(arm_names))
+        for i, arm in enumerate(arm_names):
             vals = []
             for name in names:
                 outcome = datasets_outcome[name].get(arm)
                 vals.append(None if outcome is None else outcome.get(key))
-            xs = [j + (i - 1.5) * width for j in range(len(names))]
+            offset = (i - (len(arm_names) - 1) / 2) * width
+            xs = [j + offset for j in range(len(names))]
             ax.bar(xs, [0 if v is None else v for v in vals], width,
                    label=arm)
         ax.set_xticks(range(len(names)))
@@ -284,7 +295,11 @@ def main(argv=None) -> int:
             continue
         rows = sensitivity(per_arm)
         datasets.append((f"{setting}", rows))
-        outcomes[setting] = {arm: arm_outcome(data) for arm, data in per_arm.items()}
+        outcomes[setting] = {arm: arm_outcome(per_arm[arm]) for arm in ARMS
+                             if arm in per_arm}
+        oracle_dir = find_run(root, setting, "oracle")
+        if oracle_dir is not None:
+            outcomes[setting]["oracle"] = arm_outcome(load_arm(oracle_dir))
         flips = sum(1 for r in rows if r["chosen_differs"])
         summary["settings"][setting] = {
             "label": label,
