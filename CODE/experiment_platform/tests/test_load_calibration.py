@@ -154,6 +154,31 @@ def test_output_exists_is_refused_without_modifying_it(tmp_path, monkeypatch):
     assert marker.read_text(encoding="utf-8") == "preserve"
 
 
+def test_missing_output_ancestors_are_created_inside_the_run_dir(
+        tmp_path, monkeypatch):
+    """The runner hands us a fresh run directory; inner paths do not exist."""
+    contract_path = _write_contract(tmp_path / "contract.json", _contract())
+    out_dir = tmp_path / "run" / "cal" / "one"
+    _free_disk(monkeypatch)
+
+    result = lc.preflight(contract_path, "one", out_dir, REPO_ROOT)
+
+    assert out_dir.parent.is_dir() and not out_dir.exists()
+    assert result["cell"] == "one"
+
+
+def test_symlinked_output_ancestor_is_refused(tmp_path, monkeypatch):
+    contract_path = _write_contract(tmp_path / "contract.json", _contract())
+    real = tmp_path / "outside"
+    real.mkdir()
+    link = tmp_path / "linked"
+    link.symlink_to(real, target_is_directory=True)
+    _free_disk(monkeypatch)
+
+    with pytest.raises(lc.CalibrationError, match="real directory|symlinked"):
+        lc.preflight(contract_path, "one", link / "cal" / "one", REPO_ROOT)
+
+
 def test_decision_projection_is_lossless_for_declared_fields_and_no_mutation(
         tmp_path, monkeypatch):
     row = _decision(8, [0.0, 0.0])

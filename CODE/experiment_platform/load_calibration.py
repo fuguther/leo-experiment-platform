@@ -220,12 +220,30 @@ def _read_contract(contract_path: Path, repo_root: Path):
 
 
 def _check_output_destination(out_dir: Path) -> int:
+    """Validate the destination and create any missing ancestor directories.
+
+    The destination itself must not exist.  The sanctioned runner hands the
+    entry point a fresh run directory whose inner directories do not exist yet,
+    so missing ancestors are created after every level is checked for symlinks;
+    no path component can silently redirect the output outside the run
+    directory.
+    """
     if out_dir.exists() or out_dir.is_symlink():
         raise CalibrationError(f"output destination already exists: {out_dir}")
+    missing = []
     parent = out_dir.parent
+    while not parent.exists():
+        if parent.is_symlink():
+            raise CalibrationError(f"refusing symlinked output parent: {parent}")
+        missing.append(parent)
+        if parent.parent == parent:
+            raise CalibrationError(f"no existing ancestor for output: {out_dir}")
+        parent = parent.parent
     if not parent.is_dir() or parent.is_symlink():
-        raise CalibrationError(f"output parent must be an existing real directory: {parent}")
-    free = shutil.disk_usage(parent).free
+        raise CalibrationError(f"output parent must be a real directory: {parent}")
+    for path in reversed(missing):
+        path.mkdir(mode=0o700)
+    free = shutil.disk_usage(out_dir.parent).free
     if free < MIN_FREE_BYTES:
         raise CalibrationError(
             f"less than 5 GiB free before run: {free} bytes available")
