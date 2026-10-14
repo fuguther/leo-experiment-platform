@@ -268,6 +268,534 @@
      "isl_rate_mbps": 2
     }
    }
+  },
+  {
+   "id": "hs_o20_s23_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 23
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s23_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 23
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s23_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 23
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s23_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 23
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s41_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 41
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s41_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 41
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s41_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 41
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s41_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 41
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s11_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 11
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s11_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 11
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s11_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 11
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s11_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 11
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s13_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 13
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s13_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 13
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s13_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 13
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s13_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 13
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
   }
  ]
 }
