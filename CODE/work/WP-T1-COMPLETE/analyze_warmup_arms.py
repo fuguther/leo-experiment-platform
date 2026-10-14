@@ -167,9 +167,25 @@ def main(argv=None) -> int:
         if works:
             shifts.append(max(works))
 
+    # Trajectory divergence does not show up as a different choice at the same
+    # decision: once two arms act differently the runs stop visiting the same
+    # decision instances, so the shared-key comparison above collapses to the
+    # common prefix. Count each arm's own decision set and the keys unique to
+    # one arm to expose that divergence instead of hiding it.
+    key_sets = {a: set(arms[a]["decisions"]) for a in ARMS}
+    union = set().union(*key_sets.values())
+    decision_sets = {
+        "per_arm_forward_decisions": {a: len(key_sets[a]) for a in ARMS},
+        "union_forward_decisions": len(union),
+        "shared_by_all_four": len(set.intersection(*key_sets.values())),
+        "unique_to_one_arm": {a: len(key_sets[a] - set().union(
+            *(key_sets[b] for b in ARMS if b != a))) for a in ARMS},
+    }
+
     report = {
         "schema": "warmup-four-arm/v1",
         "claimable": False,
+        "decision_sets": decision_sets,
         "fairness_filter": "same (sat, t_decision_start) and identical legal set in all four arms",
         "runs": {a: matches_name for a, matches_name in
                  ((a, sorted(root.glob(f"{args.run_prefix}-{a}-*"))[0].name) for a in ARMS)},
