@@ -796,6 +796,270 @@
      "isl_rate_mbps": 2
     }
    }
+  },
+  {
+   "id": "hs_o20_s7_adv2_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 7
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 2
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s7_adv2_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 7
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 2
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s7_adv2_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 7
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 2
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s7_adv2_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 7
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 2
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s7_adv8_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 7
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 8
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s7_adv8_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 7
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 8
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s7_adv8_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 7
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 8
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "hs_o20_s7_adv8_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 7
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 8
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
   }
  ]
 }
