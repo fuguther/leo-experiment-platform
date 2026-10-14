@@ -1,4 +1,22 @@
-## 本工作树最新复核（2026-10-13）
+## 本工作树最新（2026-10-14）：平台缺陷修复 + 走廊压力实验
+
+**本轮按用户指令连续推进，不再请求裁决。** 已完成四臂预热诊断（warmup，ISL 1 Mbps、业务 0—8 s、观察段 6—8 s、stop 12 s），并在此过程中查出并修复四个平台缺陷：
+
+1. **致命缺陷（会让正式实验全部空转）**：`t1_suite.DEFAULT_EXPERIMENT_PARAMETERS` 同时强制 `time_alignment.enabled=True` 与 `execution.compute_servers_per_satellite=2`。内核把多 server 的 work-ahead 标为 `multi_server_projection_not_encoded`，于是每个候选都缺 `peer_process_s`、没有候选能"完整评分"、四臂全部退回固定方向顺序——**开发层与确认层的每一个编译格都会静默输出四臂同值**。已把默认改为 1 并写明理由。
+2. 正式合同 `contract.yaml` 的三个 b_round 格（`fixed_hotspot` / `burst_hotspot` / `mlab_asym`）写着同样的矛盾组合，已改为 1。
+3. `config.resolve_config` 之前默默接受该组合；现在机制开启 + servers>1 直接 fail-loud。
+4. `CODE/leo_sim/tests/test_bp_heuristic.py` 导入顶层 `leo_sim` 包（本仓库布局下不存在），导致 pytest 整个套件无法收集；已修正。
+5. `audit_result_batch.outcome` 用严格字典相等比较 trace 与内核发射账本，三个包的 1e-17 秒（末位 ulp）差异会否掉整轮；已改为平台既有 1e-9 容差并记录实测最大偏差。
+
+**四臂预热结果**：机制覆盖率是目前最高（18510 个"≥2 完整候选"决策、10251 个非零工作量候选、每方向 7—9 条历史样本），但按修正后的公平过滤（同一 (sat, t_decision_start) 且四臂合法集完全一致）比较 **5964 个可比决策**：`resource_work_s` 有 2060 个决策跨臂不同、完整候选总时延有 2537 个决策跨臂不同，**但排序分歧 0、动作分歧 0**。逐格核对显示跨臂工作量位移约 0.5 ms，而最小排序余量约 4 ms——位移小一个数量级，机制即使活着也翻不动名次。
+
+**根因**：人口栅格把负载摊到全网，单条候选链路上的排队只有约 1 个包（10 kbit），工作量斜率约 3 ms/s。**已改用走廊 profile**（解析式单 OD，利用率 = offered/isl_rate 闭式），新增 `ALLOWED_PROFILES` 允许 smoke/corridor/frozen-branch 三档并写进 preflight/design/summary。合同 `corridor_queue_20261014.json`：10 Mbps 走廊、offered 12/30 Mbps（利用率 1.2 / 3.0）、12 s、128 名额、1 server，四臂各一。run `t1-corridor-{u12,u30}-{stale,now,common,candidate}-20261014-01` 已发射（release `66024f9…`）。
+
+**边界**：本轮全部为 diagnostic；四臂比较的公平过滤与容差修复都只是让比较成立，不构成任何收益结论。
+
+---
+
+## 历史复核（2026-10-13）
 
 截至 fb6cb0f 已有 38 次新诊断完成并回传。根离线复算全部 trace/发包/命运/交付/D4。修正分析图的相对评分比较与匹配条件，4 个反例回归测试通过；旧分析的否定性因果解释不采纳。
 
