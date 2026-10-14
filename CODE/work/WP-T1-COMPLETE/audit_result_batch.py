@@ -11,6 +11,14 @@ import json
 from pathlib import Path
 
 
+#: Same convention as population_run_acceptance.TOLERANCE and
+#: network_arm_acceptance._close: the trace compiler and the kernel clock agree
+#: to within a nanosecond but not always to the last ulp, so an exact dict
+#: comparison rejects every run that accumulates rounding (three packets at
+#: ~1e-17 s in t1-warmup-isl1-candidate-20261013-01).
+TOLERANCE = 1e-9
+
+
 def one(root, pattern):
     files = list(root.glob(pattern))
     if len(files) != 1:
@@ -43,8 +51,13 @@ def outcome(root):
     trace_path = one(root, 'cal/*/trace.jsonl.gz')
     trace = list(rows(trace_path))
     expected = {int(r['packet_id']): r['emit_time_s'] for r in trace}
-    if len(expected) != len(trace) or expected != emitted or not emitted:
+    if len(expected) != len(trace) or not emitted or set(expected) != set(emitted):
         raise ValueError('trace and emission ledger differ or empty')
+    max_skew = max(abs(expected[pid] - emitted[pid]) for pid in expected)
+    if max_skew > TOLERANCE:
+        raise ValueError(
+            f'trace and emission ledger differ by {max_skew} s, above the '
+            f'{TOLERANCE} s platform tolerance')
     stop = result['stop_time_s']
     if stop < max(emitted.values()) + 4:
         raise ValueError('D4 observation window not mature')
@@ -77,6 +90,7 @@ def outcome(root):
         'remote_backup': manifest.get('remote_backup', {}).get('status'),
         'trace_gzip_sha256': hashlib.sha256(trace_path.read_bytes()).hexdigest(),
         'offered': len(emitted), 'delivered': len(delays),
+        'trace_vs_ledger_max_skew_s': max_skew,
         'deadline_miss_count': failed, 'deadline_miss_ratio': failed / len(emitted),
         'delivered_only_mean_delay_s': sum(delays.values()) / len(delays) if delays else None,
         'capped_delay_D4': sum(min(delays.get(p, 4), 4) / 4 for p in emitted) / len(emitted),
@@ -95,7 +109,8 @@ def main():
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--inspect-holds', action='append', default=[])
     args = p.parse_args()
-    prefixes = ('t1-load-cal-', 't1-core-', 't1-age-', 't1-stress-', 't1-oracle-')
+    prefixes = ('t1-load-cal-', 't1-core-', 't1-age-', 't1-stress-',
+                't1-oracle-', 't1-warmup-')
     runs = sorted(d for d in args.evidence_root.iterdir() if d.is_dir()
                   and d.name.startswith(prefixes) and '-20261013-' in d.name)
     result = {'schema': 'independent-batch-audit/v1', 'claimable': False,

@@ -77,6 +77,7 @@ def load_arm(run_dir: Path):
                     continue
                 ta = (row.get("observation_at_start") or {}).get("time_alignment") or {}
                 decisions[(row.get("pid"), row.get("decision_id"))] = {
+                    "legal": tuple(row["observation_at_start"]["legal_directions"]),
                     "sat": row["sat"],
                     "t_decision_start": row["t_decision_start"],
                     "audit": ta,
@@ -137,8 +138,8 @@ def sensitivity(per_arm):
         if len({(e["sat"], e["t_decision_start"]) for e in entries}) != 1:
             continue
         scores = [e["audit"].get("scores") or {} for e in entries]
-        dirs = set(scores[0])
-        if len(dirs) < 2 or any(set(s) != dirs for s in scores):
+        dirs = set(entries[0]["legal"])
+        if len(dirs) < 2 or any(set(e["legal"]) != dirs for e in entries) or any(not dirs.issubset(s) for s in scores):
             continue
         if any(s[d].get("missing") != [] or
                not isinstance(s[d].get("total_s"), (int, float)) or

@@ -11,7 +11,7 @@ _spec.loader.exec_module(_module)
 
 
 def fixture():
-    entry = {'sat': 1, 't_decision_start': 2.0, 'chosen': 'N',
+    entry = {'legal': ('N', 'E'), 'sat': 1, 't_decision_start': 2.0, 'chosen': 'N',
              'applied_order': ('N', 'E'), 'ranking': ('N', 'E'),
              'audit': {'scores': {
                  'N': {'missing': [], 'total_s': 0.01,
