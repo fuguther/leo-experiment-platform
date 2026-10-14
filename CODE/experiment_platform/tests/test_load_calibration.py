@@ -119,6 +119,43 @@ def test_preflight_parses_config_and_boundaries_without_trace_or_kernel(
     assert not out_dir.exists()
 
 
+@pytest.mark.parametrize("declared", [12.0, 28.0, 60.0])
+def test_contract_accepts_a_declared_horizon_inside_the_envelope(
+        tmp_path, monkeypatch, declared):
+    """A warmed time-alignment window needs more than the frozen 12 s."""
+    document = _contract()
+    document["max_duration_s"] = declared
+    contract_path = _write_contract(tmp_path / "contract.json", document)
+    _free_disk(monkeypatch)
+
+    lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
+
+
+@pytest.mark.parametrize("declared", [11.9, 0, -1, 60.1, True, "12"])
+def test_contract_rejects_a_horizon_outside_the_envelope(
+        tmp_path, monkeypatch, declared):
+    document = _contract()
+    document["max_duration_s"] = declared
+    contract_path = _write_contract(tmp_path / "contract.json", document)
+    _free_disk(monkeypatch)
+
+    with pytest.raises(lc.CalibrationError, match="max_duration_s"):
+        lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
+
+
+def test_a_longer_declared_horizon_reaches_the_resolved_config(
+        tmp_path, monkeypatch):
+    document = _contract(overrides={"scenario": {"duration_s": 28}})
+    document["max_duration_s"] = 28.0
+    contract_path = _write_contract(tmp_path / "contract.json", document)
+    _free_disk(monkeypatch)
+
+    lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
+    _raw, _doc, _base, cells = lc._read_contract(contract_path, REPO_ROOT)
+
+    assert cells["one"]["resolved"]["config"]["scenario"]["duration_s"] == 28
+
+
 @pytest.mark.parametrize("overrides", [
     {"scenario": {"duration_s": 12.01}},
     {"execution": {"max_packets": 20001}},

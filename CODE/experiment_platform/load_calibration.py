@@ -40,6 +40,15 @@ ALLOWED_PROFILES = (
     "CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml",
 )
 ALLOWED_ARMS = ("stale", "now", "common", "candidate")
+#: Bounded envelope for a contract's declared simulation horizon.  12 s is the
+#: minimum because every earlier calibration contract used it; it is NOT a
+#: sufficient horizon for a time-alignment study, because at a 4 s advertise
+#: period the whole 12 s run is still inside "no state has arrived yet", which
+#: is a different phenomenon from "the state is stale".  A longer declared
+#: horizon is what makes a warmed evaluation window exist at all.  The upper
+#: bound keeps one diagnostic inside the wall clock and the output budget.
+MIN_DURATION_S = 12.0
+MAX_DURATION_S = 60.0
 MAX_OUTPUT_BYTES = 10 * 1024**3
 MIN_FREE_BYTES = 5 * 1024**3
 SUMMARY_RESERVE_BYTES = 1024 * 1024
@@ -194,8 +203,12 @@ def _validate_contract_document(document: dict) -> None:
         raise CalibrationError("contract max_packets must be 20000")
     if (isinstance(document["max_duration_s"], bool)
             or not isinstance(document["max_duration_s"], (int, float))
-            or float(document["max_duration_s"]) != 12.0):
-        raise CalibrationError("contract max_duration_s must be 12")
+            or not (MIN_DURATION_S <= float(document["max_duration_s"])
+                    <= MAX_DURATION_S)):
+        raise CalibrationError(
+            "contract max_duration_s must be a number between "
+            f"{MIN_DURATION_S:g} and {MAX_DURATION_S:g} seconds, got "
+            f"{document['max_duration_s']!r}")
     if not isinstance(document["cells"], list) or not document["cells"]:
         raise CalibrationError("contract cells must be a non-empty list")
 
