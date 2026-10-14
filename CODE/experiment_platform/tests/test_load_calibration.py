@@ -225,6 +225,36 @@ def test_contract_accepts_an_allowlisted_profile_and_rejects_others(
         lc.preflight(path2, "one", tmp_path / "new-run-2", REPO_ROOT)
 
 
+def test_the_hotspot_profile_is_allowlisted_and_actually_concentrates(
+        tmp_path, monkeypatch):
+    """The concentration profile must differ where it claims to, and nowhere else.
+
+    The uniform-gravity smoke profile leaves the queue a decision prices empty
+    in ~85% of candidate slots, so a state-time comparison has nothing to act
+    on there.  This checks the replacement really moves the two gravity fields
+    that concentrate destinations, and that nothing else that matters moved.
+    """
+    from CODE.leo_sim import config as config_mod
+
+    smoke = config_mod.load_config_file(str(REPO_ROOT / PROFILE))["config"]
+    hotspot = config_mod.load_config_file(
+        str(REPO_ROOT / "CODE/leo_sim/profiles/t1_hotspot_gravity.yaml"))["config"]
+    s, h = smoke["demand"], hotspot["demand"]
+
+    assert h["destination_population_exponent"] > s["destination_population_exponent"]
+    assert h["gravity_alpha"] < s["gravity_alpha"]
+    for key in ("mode", "source_population_exponent", "packet_bits",
+                "population_destination_sampler", "gravity_d_floor_km"):
+        assert h[key] == s[key], key
+    for key in ("num_satellites", "num_planes", "altitude_km", "inclination_deg"):
+        assert hotspot["scenario"][key] == smoke["scenario"][key], key
+
+    contract = dict(_contract(), base_profile="CODE/leo_sim/profiles/t1_hotspot_gravity.yaml")
+    path = _write_contract(tmp_path / "hotspot.json", contract)
+    _free_disk(monkeypatch)
+    assert lc.preflight(path, "one", tmp_path / "new-run", REPO_ROOT)["cell"] == "one"
+
+
 def test_routing_policy_override_rejects_unknown_policy(tmp_path, monkeypatch):
     contract_path = _write_contract(
         tmp_path / "contract.json",

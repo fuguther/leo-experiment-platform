@@ -38,6 +38,11 @@ ALLOWED_PROFILES = (
     BASE_PROFILE,
     "CODE/leo_sim/profiles/t1_pressure_corridor.yaml",
     "CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml",
+    # Destination-concentrated variant.  The uniform-gravity smoke profile
+    # leaves the queue a decision prices empty in 85% of candidate slots, so a
+    # state-time comparison has nothing to act on; this profile funnels demand
+    # into a few approach corridors without removing the substitutes.
+    "CODE/leo_sim/profiles/t1_hotspot_gravity.yaml",
 )
 ALLOWED_ARMS = ("stale", "now", "common", "candidate")
 #: Bounded envelope for a contract's declared simulation horizon.  12 s is the
