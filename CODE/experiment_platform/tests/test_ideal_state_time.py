@@ -28,6 +28,12 @@ def _snapshot():
         link_propagation_s={"E": 0.01, "W": 0.01},
         peer_process_s={"E": 0.0, "W": 0.0},
         remaining_prop_s={"E": 0.02, "W": 0.02},
+        # The scorer prices the TARGET resource's queue with the target
+        # resource's own rate, which is a different field from the local
+        # first-hop link_rate_bps.  Without it resource_work_s and
+        # resource_packet_tx_s are missing and every candidate falls back, so
+        # these ideal-state tests could no longer observe any term set.
+        resource_service_rate_bps={"E": 1e6, "W": 1e6},
         pkt_bits=1000.0, arm="candidate")
 
 
@@ -293,10 +299,18 @@ def test_a_truth_arm_uses_the_shared_scorer_and_marks_its_source():
     assert view["query_instants"] == {"E": snap.snapshot_at,
                                       "W": snap.snapshot_at}
     assert view["truth_inputs"]["E"]["source"] == "fixture"
-    # the shared scorer produced the same term set as the online path
-    terms = view["scores"]["E"]["terms"]
-    for name in ta.TERM_KEYS:
-        assert name in terms, name
+    # The shared scorer must produce the SAME term set as the online path on
+    # the same snapshot. Asserting every member of ta.TERM_KEYS is present
+    # cannot hold for an ISL fixture: terminal_tx_s is only ever priced for a
+    # downlink target resource, so that loop could only ever pass on a
+    # downlink snapshot and told us nothing about the two paths agreeing.
+    online, _online_detail = cmp.score_with_state(snap, targets,
+                                                  use_truth=False,
+                                                  truth_fn=flat_truth)
+    online_view = cmp.arm_view(online, _online_detail, "now", "fixture",
+                               {}, None)
+    assert set(view["scores"]["E"]["terms"]) == \
+        set(online_view["scores"]["E"]["terms"])
 
 
 # ----------------------------------------------------------- integration
