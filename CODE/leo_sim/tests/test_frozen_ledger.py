@@ -524,6 +524,12 @@ def test_the_record_fields_do_not_change_behavior_bit_for_bit(mode,
                for r in sink)
     assert [r["decision_id"] for r in sink] == \
         [r["decision_id"] for r in sink_off]
-    assert [(m["milestone"], m["decision_id"], m["at"]) for m in timeline] == \
-        [(m["milestone"], m["decision_id"], m["at"]) for m in timeline_off]
+    # queue_state rows are per-queue snapshots and carry no decision_id at all
+    # (every decision-lifecycle milestone does), so the projection must tolerate
+    # the key being absent instead of raising KeyError before it compares.
+    def _timeline_key(row):
+        return (row.get("milestone"), row.get("decision_id"), row.get("at"))
+
+    assert [_timeline_key(m) for m in timeline] == \
+        [_timeline_key(m) for m in timeline_off]
     assert timeline, "the fixture must exercise the timeline channel"

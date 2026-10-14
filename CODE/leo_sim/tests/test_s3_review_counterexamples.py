@@ -36,12 +36,15 @@ def _run(monkeypatch, *, ttl, query_delay, compute_delay):
 
     original_order = kernel.Kernel._score_order
 
-    def spy_order(self, pkt, sat, now, cands, own_q):
+    # The kernel grew keyword-only parameters (query_charge) after these spies
+    # were written; a bare signature makes every one of these tests die inside
+    # the spy instead of exercising the property they exist to check.
+    def spy_order(self, pkt, sat, now, cands, own_q, **kwargs):
         free = getattr(self, "_s3_free", {}).get(id(pkt))
         if free:
             violations.append((pkt.pid, round(float(now), 6)))
         scored.append(pkt.pid)
-        return original_order(self, pkt, sat, now, cands, own_q)
+        return original_order(self, pkt, sat, now, cands, own_q, **kwargs)
 
     monkeypatch.setattr(kernel.Kernel, "_score_order", spy_order)
 
@@ -56,11 +59,11 @@ def _run(monkeypatch, *, ttl, query_delay, compute_delay):
 
     original_ta = kernel.Kernel._time_aligned_order
 
-    def spy_ta(self, pkt, sat, now, cands, own_q, frozen_hit=None):
+    def spy_ta(self, pkt, sat, now, cands, own_q, frozen_hit=None, **kwargs):
         if frozen_hit is not None and frozen_hit["expires_at"] <= now:
             lapsed.append(pkt.pid)
         return original_ta(self, pkt, sat, now, cands, own_q,
-                           frozen_hit=frozen_hit)
+                           frozen_hit=frozen_hit, **kwargs)
 
     monkeypatch.setattr(kernel.Kernel, "_time_aligned_order", spy_ta)
 
