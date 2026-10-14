@@ -167,6 +167,27 @@ def test_routing_policy_override_is_accepted_and_applied(tmp_path, monkeypatch):
     assert cells["one"]["resolved"]["config"]["routing"]["policy"] == "oracle"
 
 
+def test_contract_accepts_an_allowlisted_profile_and_rejects_others(
+        tmp_path, monkeypatch):
+    # The corridor profile is a 600 s / 200000 packet scenario; a corridor cell
+    # must bring both back inside the contract's bounded envelope.
+    corridor = dict(_contract(overrides={
+        "scenario": {"duration_s": 12},
+        "execution": {"max_packets": 20000}}),
+        base_profile=lc.ALLOWED_PROFILES[1])
+    path = _write_contract(tmp_path / "corridor.json", corridor)
+    _free_disk(monkeypatch)
+
+    result = lc.preflight(path, "one", tmp_path / "new-run", REPO_ROOT)
+
+    assert result["cell"] == "one"
+
+    bogus = dict(_contract(), base_profile="CODE/leo_sim/profiles/nope.yaml")
+    path2 = _write_contract(tmp_path / "bogus.json", bogus)
+    with pytest.raises(lc.CalibrationError, match="base_profile must be one of"):
+        lc.preflight(path2, "one", tmp_path / "new-run-2", REPO_ROOT)
+
+
 def test_routing_policy_override_rejects_unknown_policy(tmp_path, monkeypatch):
     contract_path = _write_contract(
         tmp_path / "contract.json",

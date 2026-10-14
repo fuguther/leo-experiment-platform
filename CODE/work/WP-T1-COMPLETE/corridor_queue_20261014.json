@@ -1,0 +1,241 @@
+{
+ "schema": "load-calibration-contract/v1",
+ "base_profile": "CODE/leo_sim/profiles/t1_pressure_corridor.yaml",
+ "deadline_s": 4,
+ "max_packets": 20000,
+ "max_duration_s": 12,
+ "cells": [
+  {
+   "id": "corridor_u12_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12
+    },
+    "demand": {
+     "offered_mbps": 12,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 12
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 10
+    }
+   }
+  },
+  {
+   "id": "corridor_u12_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12
+    },
+    "demand": {
+     "offered_mbps": 12,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 12
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 10
+    }
+   }
+  },
+  {
+   "id": "corridor_u12_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12
+    },
+    "demand": {
+     "offered_mbps": 12,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 12
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 10
+    }
+   }
+  },
+  {
+   "id": "corridor_u12_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12
+    },
+    "demand": {
+     "offered_mbps": 12,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 12
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 10
+    }
+   }
+  },
+  {
+   "id": "corridor_u30_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12
+    },
+    "demand": {
+     "offered_mbps": 30,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 12
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 10
+    }
+   }
+  },
+  {
+   "id": "corridor_u30_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12
+    },
+    "demand": {
+     "offered_mbps": 30,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 12
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 10
+    }
+   }
+  },
+  {
+   "id": "corridor_u30_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12
+    },
+    "demand": {
+     "offered_mbps": 30,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 12
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 10
+    }
+   }
+  },
+  {
+   "id": "corridor_u30_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12
+    },
+    "demand": {
+     "offered_mbps": 30,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 12
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 10
+    }
+   }
+  }
+ ]
+}

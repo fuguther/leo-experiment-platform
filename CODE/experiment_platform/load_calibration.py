@@ -29,6 +29,16 @@ from CODE.leo_sim import kernel
 CONTRACT_SCHEMA = "load-calibration-contract/v1"
 DIAGNOSTIC_LABEL = "NOT_FULL_REPLAY_DIAGNOSTIC"
 BASE_PROFILE = "CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml"
+#: Profiles a diagnostic contract may select. The smoke profile spreads demand
+#: over the global population proxy; the corridor profile is the analytic
+#: single-OD pressure window whose directed ISL utilisation is min(1,
+#: offered_mbps / isl_rate_mbps) in closed form, which is the only shape in
+#: which the candidate resources can be driven into sustained queue growth.
+ALLOWED_PROFILES = (
+    BASE_PROFILE,
+    "CODE/leo_sim/profiles/t1_pressure_corridor.yaml",
+    "CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml",
+)
 ALLOWED_ARMS = ("stale", "now", "common", "candidate")
 MAX_OUTPUT_BYTES = 10 * 1024**3
 MIN_FREE_BYTES = 5 * 1024**3
@@ -164,8 +174,10 @@ def _validate_contract_document(document: dict) -> None:
         raise CalibrationError("contract has missing or unknown fields")
     if document["schema"] != CONTRACT_SCHEMA:
         raise CalibrationError("unsupported load calibration contract schema")
-    if document["base_profile"] != BASE_PROFILE:
-        raise CalibrationError("contract base_profile is not the frozen profile")
+    if document["base_profile"] not in ALLOWED_PROFILES:
+        raise CalibrationError(
+            f"contract base_profile must be one of {list(ALLOWED_PROFILES)}, "
+            f"got {document['base_profile']!r}")
     if (isinstance(document["deadline_s"], bool)
             or not isinstance(document["deadline_s"], (int, float))
             or float(document["deadline_s"]) != 4.0):
@@ -189,7 +201,7 @@ def _read_contract(contract_path: Path, repo_root: Path):
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise CalibrationError(f"contract is unreadable JSON: {exc}") from exc
     _validate_contract_document(document)
-    profile_path = repo_root / BASE_PROFILE
+    profile_path = repo_root / document["base_profile"]
     if not profile_path.is_file() or profile_path.is_symlink():
         raise CalibrationError(f"frozen base profile is unavailable: {profile_path}")
     try:
@@ -718,7 +730,7 @@ def run_calibration(contract_path: Path, cell_id: str, out_dir: Path,
         "minimum_free_bytes": MIN_FREE_BYTES,
         "free_bytes_at_start": free_bytes,
         "maximum_output_bytes": MAX_OUTPUT_BYTES,
-        "base_profile": BASE_PROFILE,
+        "base_profile": contract["base_profile"],
         "logical_config_sha256": resolved["sha256"],
         "input_bindings": binding,
         "arms": arms,
@@ -740,7 +752,7 @@ def run_calibration(contract_path: Path, cell_id: str, out_dir: Path,
         # design() is intentionally called only after the contract cell and
         # effective config have passed every boundary check above.
         design_resolved, rows, geometry, source = t1_tasks.design(
-            config_path=str(repo_root / BASE_PROFILE),
+            config_path=str(repo_root / contract["base_profile"]),
             overrides=selected["design_overrides"])
         if design_resolved["sha256"] != resolved["sha256"]:
             raise CalibrationError("design() resolved config differs from preflight config")
