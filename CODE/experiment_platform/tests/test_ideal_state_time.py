@@ -24,6 +24,8 @@ def _snapshot():
         legal_directions=("E", "W"),
         resources={"E": R_E, "W": R_W},
         egress_queue_bits={"E": 0.0, "W": 0.0},
+        # This fixture models idle first-hop servers; absent means unknown.
+        local_egress_in_service_s={"E": 0.0, "W": 0.0},
         link_rate_bps={"E": 1e6, "W": 1e6},
         link_propagation_s={"E": 0.01, "W": 0.01},
         peer_process_s={"E": 0.0, "W": 0.0},
