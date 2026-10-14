@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from leo_sim.bp_heuristic import choose_candidate
+from CODE.leo_sim.bp_heuristic import choose_candidate
 
 
 def candidate(direction, remaining_total_hops, *, terminal_sink=False):

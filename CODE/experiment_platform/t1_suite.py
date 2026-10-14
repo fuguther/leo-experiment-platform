@@ -374,7 +374,15 @@ DEFAULT_EXPERIMENT_PARAMETERS = {
     "time_alignment.query_delay_s": 0.000001,
     "async_routing.update_interval_s": 0.5,
     "async_routing.window_bins": 4,
-    "execution.compute_servers_per_satellite": 2,
+    # Must stay <= 1 while time_alignment is enabled (always, in this dict):
+    # kernel._processing_pool_advertisement marks multi-server work-ahead as
+    # "multi_server_projection_not_encoded", so with 2 servers every candidate
+    # carries peer_process_s as missing, no candidate ever scores complete and
+    # all four arms fall back to the fixed direction order. The suite would
+    # then report four identical arms for every cell while looking healthy.
+    # compute_delay_s is 0.1-1 ms against an offered load below 2 packet/s, so
+    # one server never becomes the bottleneck in these cells.
+    "execution.compute_servers_per_satellite": 1,
     "execution.compute_delay_s": 0.0001,
     "execution.decision_observation_mode": "frozen",
     "demand.offered_mbps": 0.5,

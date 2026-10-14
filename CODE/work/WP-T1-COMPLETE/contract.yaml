@@ -276,7 +276,11 @@ b_round:
       scenario.duration_s: 40.0
       time_alignment.enabled: true
       execution.compute_delay_s: 0.001
-      execution.compute_servers_per_satellite: 2
+      # Must stay <= 1 while time_alignment is enabled: the peer-processing
+      # advertisement cannot encode multi-server work-ahead, so every candidate
+      # would be scored incomplete and all arms would fall back to the fixed
+      # direction order (CONFIG_REQUIRES, CODE/leo_sim/config.py).
+      execution.compute_servers_per_satellite: 1
       links.isl_rate_mbps: 2.5
     analytic: 同一解析窗口按比例缩小：利用率 = offered/isl_rate = 2.0/2.5 = 0.8 不变，包数从 1440 降到 80。VM
       实测原始尺寸单臂 105 s，四臂/多支路必然超 120 s/cell。
@@ -296,7 +300,7 @@ b_round:
       links.isl_rate_mbps: 2.5
       access.unavailable_policy: queue
       execution.compute_delay_s: 0.001
-      execution.compute_servers_per_satellite: 2
+      execution.compute_servers_per_satellite: 1
       time_alignment.enabled: true
     max_branches: 3
     analytic: 基础利用率 0.8/2.5 = 0.32，突发窗内 2.4/2.5 = 0.96；突发是预声明的压力变换，不是实测突发（data/traffic/README.md
@@ -314,7 +318,7 @@ b_round:
       demand.burst_duration_s: 3.0
       demand.burst_multiplier: 3.0
       execution.compute_delay_s: 0.001
-      execution.compute_servers_per_satellite: 2
+      execution.compute_servers_per_satellite: 1
       time_alignment.enabled: true
     max_branches: 3
     status: VALIDITY_PRE_CHECK_PENDING

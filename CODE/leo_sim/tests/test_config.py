@@ -36,6 +36,32 @@ def test_profile_and_overrides_resolve():
         config.resolve_config(profile="nope")
 
 
+def test_time_alignment_rejects_multi_server_compute():
+    """A capacity knob that silently kills the mechanism must fail loud.
+
+    kernel._processing_pool_advertisement marks multi-server work-ahead as
+    "multi_server_projection_not_encoded", so with time_alignment enabled every
+    candidate carries peer_process_s as missing, no candidate scores complete,
+    and all four arms fall back to the fixed direction order without any error.
+    """
+    delay = {"compute_delay_s": 0.001}
+    ok = config.resolve_config({
+        "time_alignment": {"enabled": True},
+        "execution": dict(delay, compute_servers_per_satellite=1)})
+    assert ok["config"]["execution"]["compute_servers_per_satellite"] == 1
+
+    with pytest.raises(config.ConfigError,
+                       match="time_alignment.enabled requires"):
+        config.resolve_config({
+            "time_alignment": {"enabled": True},
+            "execution": dict(delay, compute_servers_per_satellite=2)})
+
+    off = config.resolve_config({
+        "time_alignment": {"enabled": False},
+        "execution": dict(delay, compute_servers_per_satellite=2)})
+    assert off["config"]["execution"]["compute_servers_per_satellite"] == 2
+
+
 @pytest.mark.parametrize("policy", ["info_queue", "info_physical"])
 def test_information_ladder_policies_are_valid_config_values(policy):
     resolved = config.resolve_config({"routing": {"policy": policy}})

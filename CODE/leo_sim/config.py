@@ -1118,6 +1118,23 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(
             "execution.compute_servers_per_satellite > 0 requires "
             "execution.compute_delay_s > 0")
+    if ta["enabled"] and servers > 1:
+        # Fail loud instead of silently disabling the research mechanism.
+        # _processing_pool_advertisement marks multi-server work-ahead as
+        # "multi_server_projection_not_encoded" (it refuses to collapse an
+        # unserialized assignment to an unjustified average), so every
+        # candidate would carry peer_process_s as missing, no candidate would
+        # ever score complete, and all four time-alignment arms would fall back
+        # to the fixed direction order while the configuration still looks
+        # like a legitimate capacity knob. Three calibration cells were spent
+        # this way on 2026-10-13 before the link was found.
+        raise ConfigError(
+            "time_alignment.enabled requires "
+            "execution.compute_servers_per_satellite <= 1: the peer-processing "
+            "advertisement schema cannot encode multi-server work-ahead, so "
+            "every candidate would be scored incomplete and every arm would "
+            "fall back to the fixed direction order. Use 1 (or 0), or disable "
+            "time_alignment for this run.")
     _validate_time_alignment(ta, ar)
 
 
