@@ -664,6 +664,114 @@
      "isl_rate_mbps": 0.5
     }
    }
+  },
+  {
+   "id": "warm_or_isl05_o20_s7",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 7
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 0.5
+    },
+    "routing": {
+     "policy": "oracle"
+    }
+   }
+  },
+  {
+   "id": "warm_or_isl1_o20_s7",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 7
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 1
+    },
+    "routing": {
+     "policy": "oracle"
+    }
+   }
+  },
+  {
+   "id": "warm_or_isl2_o20_s7",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 7
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "oracle"
+    }
+   }
   }
  ]
 }
