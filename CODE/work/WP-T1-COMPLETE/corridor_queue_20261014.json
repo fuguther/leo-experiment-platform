@@ -23,6 +23,10 @@
     "access": {
      "slots_per_satellite": 128
     },
+    "control_plane": {
+     "advertise_interval_s": 0.5,
+     "vis_k": 8
+    },
     "execution": {
      "compute_servers_per_satellite": 1,
      "compute_delay_s": 0.001,
@@ -51,6 +55,10 @@
     },
     "access": {
      "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.5,
+     "vis_k": 8
     },
     "execution": {
      "compute_servers_per_satellite": 1,
@@ -81,6 +89,10 @@
     "access": {
      "slots_per_satellite": 128
     },
+    "control_plane": {
+     "advertise_interval_s": 0.5,
+     "vis_k": 8
+    },
     "execution": {
      "compute_servers_per_satellite": 1,
      "compute_delay_s": 0.001,
@@ -109,6 +121,10 @@
     },
     "access": {
      "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.5,
+     "vis_k": 8
     },
     "execution": {
      "compute_servers_per_satellite": 1,
@@ -139,6 +155,10 @@
     "access": {
      "slots_per_satellite": 128
     },
+    "control_plane": {
+     "advertise_interval_s": 0.5,
+     "vis_k": 8
+    },
     "execution": {
      "compute_servers_per_satellite": 1,
      "compute_delay_s": 0.001,
@@ -167,6 +187,10 @@
     },
     "access": {
      "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.5,
+     "vis_k": 8
     },
     "execution": {
      "compute_servers_per_satellite": 1,
@@ -197,6 +221,10 @@
     "access": {
      "slots_per_satellite": 128
     },
+    "control_plane": {
+     "advertise_interval_s": 0.5,
+     "vis_k": 8
+    },
     "execution": {
      "compute_servers_per_satellite": 1,
      "compute_delay_s": 0.001,
@@ -225,6 +253,10 @@
     },
     "access": {
      "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.5,
+     "vis_k": 8
     },
     "execution": {
      "compute_servers_per_satellite": 1,

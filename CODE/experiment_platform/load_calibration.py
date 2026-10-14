@@ -47,7 +47,7 @@ SUMMARY_RESERVE_BYTES = 1024 * 1024
 OVERRIDE_FIELDS = {
     "access": {"slots_per_satellite", "uplink_rate_mbps",
                "downlink_rate_mbps"},
-    "control_plane": {"advertise_interval_s"},
+    "control_plane": {"advertise_interval_s", "vis_k"},
     "demand": {"offered_mbps", "packet_bits", "emission_start_s",
                "emission_end_s", "burst_start_s", "burst_duration_s",
                "burst_multiplier"},
@@ -129,6 +129,12 @@ def _validate_override_shape(overrides, cell_id: str) -> None:
                 and not isinstance(values["rf_isl"], dict):
             raise CalibrationError(
                 f"cell {cell_id}: links.rf_isl must be a mapping")
+        if group == "control_plane" and "vis_k" in values:
+            hops = values["vis_k"]
+            if isinstance(hops, bool) or not isinstance(hops, int) or hops < 1:
+                raise CalibrationError(
+                    f"cell {cell_id}: control_plane.vis_k must be a positive "
+                    f"integer, got {hops!r}")
         if group == "routing":
             policy = values.get("policy")
             if policy not in config_mod.VALID_POLICIES:
