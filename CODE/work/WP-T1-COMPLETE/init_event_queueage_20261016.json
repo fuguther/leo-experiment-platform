@@ -951,45 +951,6 @@
    }
   },
   {
-   "id": "qc_o20_adv4_s71_candidate",
-   "arms": [
-    "candidate"
-   ],
-   "overrides": {
-    "scenario": {
-     "duration_s": 28,
-     "seed": 71
-    },
-    "demand": {
-     "offered_mbps": 20,
-     "packet_bits": 120000,
-     "emission_start_s": 0,
-     "emission_end_s": 24
-    },
-    "access": {
-     "slots_per_satellite": 128
-    },
-    "control_plane": {
-     "advertise_interval_s": 4
-    },
-    "execution": {
-     "compute_servers_per_satellite": 1,
-     "compute_delay_s": 0.001,
-     "max_packets": 20000
-    },
-    "links": {
-     "rate_model": "constant",
-     "isl_rate_mbps": 2
-    },
-    "routing": {
-     "policy": "known_serving"
-    },
-    "time_alignment": {
-     "arm": "candidate"
-    }
-   }
-  },
-  {
    "id": "qc_o20_adv4_s72_stale",
    "arms": [
     "stale"
@@ -1103,45 +1064,6 @@
     },
     "time_alignment": {
      "arm": "common"
-    }
-   }
-  },
-  {
-   "id": "qc_o20_adv4_s72_candidate",
-   "arms": [
-    "candidate"
-   ],
-   "overrides": {
-    "scenario": {
-     "duration_s": 28,
-     "seed": 72
-    },
-    "demand": {
-     "offered_mbps": 20,
-     "packet_bits": 120000,
-     "emission_start_s": 0,
-     "emission_end_s": 24
-    },
-    "access": {
-     "slots_per_satellite": 128
-    },
-    "control_plane": {
-     "advertise_interval_s": 4
-    },
-    "execution": {
-     "compute_servers_per_satellite": 1,
-     "compute_delay_s": 0.001,
-     "max_packets": 20000
-    },
-    "links": {
-     "rate_model": "constant",
-     "isl_rate_mbps": 2
-    },
-    "routing": {
-     "policy": "known_serving"
-    },
-    "time_alignment": {
-     "arm": "candidate"
     }
    }
   },
@@ -1261,45 +1183,7 @@
      "arm": "common"
     }
    }
-  },
-  {
-   "id": "qc_o20_adv4_s73_candidate",
-   "arms": [
-    "candidate"
-   ],
-   "overrides": {
-    "scenario": {
-     "duration_s": 28,
-     "seed": 73
-    },
-    "demand": {
-     "offered_mbps": 20,
-     "packet_bits": 120000,
-     "emission_start_s": 0,
-     "emission_end_s": 24
-    },
-    "access": {
-     "slots_per_satellite": 128
-    },
-    "control_plane": {
-     "advertise_interval_s": 4
-    },
-    "execution": {
-     "compute_servers_per_satellite": 1,
-     "compute_delay_s": 0.001,
-     "max_packets": 20000
-    },
-    "links": {
-     "rate_model": "constant",
-     "isl_rate_mbps": 2
-    },
-    "routing": {
-     "policy": "known_serving"
-    },
-    "time_alignment": {
-     "arm": "candidate"
-    }
-   }
   }
- ]
+ ],
+ "dedup_note": "qc_*_candidate is identical to p1_*_known (policy known_serving, time_alignment.arm candidate); the duplicate was removed before launch"
 }
