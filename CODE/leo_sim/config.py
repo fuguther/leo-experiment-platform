@@ -172,11 +172,15 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "advertisement_protocol_version": int,
         "priority": str,  # nonpreemptive_priority (only supported mode)
         # CONTROL-INIT (optional): emit one extra report per satellite at this
-        # instant, before the periodic schedule's first interval.  Real control
-        # packets on real links, wire cost included; used to give every node a
-        # complete initial view so startup information loss can be separated
-        # from ongoing update lag.
+        # instant, on its OWN schedule, without shifting the periodic grid.
+        # Real control packets on real links, wire cost included.
         "initial_sync_burst_s": (int, float),
+        # EVENT-ADVERT (deployable alternative): a satellite reports when its
+        # own serving set changes, rate limited by the declared minimum
+        # interval, with changes inside the window merged into the next
+        # allowed report.
+        "event_advert_enabled": bool,
+        "event_advert_min_interval_s": (int, float),
     },
     "routing": {
         "policy": str,  # hop|delay|capacity|oracle|info_queue|info_physical|known_serving

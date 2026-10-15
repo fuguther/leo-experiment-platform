@@ -1256,6 +1256,26 @@ class Kernel:
         # difference against the plain periodic schedule is attributable to the
         # timing of the first report rather than to a cost subsidy.
         self._initial_sync_burst_s = self.cfg_cp.get("initial_sync_burst_s")
+        # WARMUP: a declared, deterministic traffic prefix.  Associations are
+        # demand-driven, so a serving relationship only exists once an endpoint
+        # has asked for it; a warm-up is therefore the only legal way to have
+        # every arm start the measured window with established associations and
+        # a populated cache.  The warm-up rows are the SAME rows for every arm
+        # (the trace is exogenous), so the prefix is identical by construction.
+        self._warmup_until_s = float(self.cfg_dm.get("warmup_until_s") or 0.0)
+        # EVENT-ADVERT: the deployable alternative to the periodic schedule.
+        # A satellite emits an extra report when ITS OWN serving set changes
+        # (an association becomes active, or a link is released).  The trigger
+        # uses only facts the source node knows about itself, the report is a
+        # normal control packet on the normal links, and the rate limiter is
+        # fixed in configuration, so the extra cost is real and countable.
+        self._event_advert_min_interval_s = float(
+            self.cfg_cp.get("event_advert_min_interval_s") or 0.0)
+        self._event_advert_enabled = bool(
+            self.cfg_cp.get("event_advert_enabled", False))
+        self._last_event_advert_at = {}
+        self._event_advert_pending = set()
+        self._event_adverts_emitted = 0
         # STAGED-POLICY: run the configured policy until this instant, then
         # switch to the declared one.  Both arms of a common-prefix contrast
         # share the identical prefix bit for bit, which is what makes the
@@ -1653,6 +1673,8 @@ class Kernel:
             "control_tx_started": 0,
             "control_tx_completed": 0,
             "control_initialized": bool(self.cfg_cp["enabled"]),
+            "event_adverts_emitted": 0,
+            "serving_changes_seen": 0,
             "ge_initialized": self.ge_enabled,
             "mbb_events": 0,
             "learning_initialized": (self.learner is not None
@@ -3448,22 +3470,29 @@ class Kernel:
                     self._decide(pkt, s)
 
     def _control_advertiser(self, sat: int):
-        interval = self.cfg_cp["advertise_interval_s"]
+        """Periodic reports at 0, interval, 2*interval, ... plus one optional
+        pre-scheduled initial report.
+
+        The initial report is scheduled INDEPENDENTLY: emitting it must not move
+        the periodic schedule.  The first version did move it (0.05, 4.05, 8.05
+        instead of 0, 4, 8), which made the "initial synchronisation" arm differ
+        from the baseline in its whole control schedule rather than only in
+        having one extra early report.
+        """
+        interval = float(self.cfg_cp["advertise_interval_s"])
         burst = self._initial_sync_burst_s
-        first = True
+        next_periodic = 0.0
+        next_burst = None if burst is None else max(0.0, float(burst))
         while True:
-            # The periodic schedule fires at t=0 as before.  When an initial
-            # sync burst is declared, the origin additionally emits one report
-            # at that instant so every node's first usable view of the whole
-            # constellation is complete before the first data decision.
-            if burst is not None and first:
-                first = False
+            if next_burst is not None and next_burst <= next_periodic + 1e-12:
+                # the extra report fires on its OWN schedule and is consumed
+                # once; the periodic grid below is never shifted by it
+                yield self.env.timeout(max(0.0, next_burst - self.env.now))
                 self._advertise(sat)
-                if float(burst) > 0.0:
-                    yield self.env.timeout(float(burst))
-                    continue
+                next_burst = None
+            yield self.env.timeout(max(0.0, next_periodic - self.env.now))
             self._advertise(sat)
-            yield self.env.timeout(interval)
+            next_periodic += interval
 
     # --------------------------------------------------------------- control
     def _ctrl_audit(self, milestone: str, **fields) -> None:
@@ -3835,6 +3864,7 @@ class Kernel:
         if acq <= 0:
             link.state = "active"
             self._poke(self.uplinks[sat].wake)
+            self._serving_changed(sat)
         else:
             self.env.process(self._activate_after_delay(ep, link))
 
@@ -3844,6 +3874,7 @@ class Kernel:
             link.state = "active"
             self._poke(self.uplinks[link.sat].wake)
             self._poke(self.downlinks[link.sat].wake)
+            self._serving_changed(link.sat)
 
     def _release(self, ep: TrafficEndpoint, sat: int, now: float, reason: str):
         link = ep.links.pop(sat, None)
@@ -3857,6 +3888,42 @@ class Kernel:
         self.handover_events.append({"t": now, "endpoint": ep.cell,
                                      "type": "release", "sat": sat,
                                      "reason": reason})
+        self._serving_changed(sat)
+
+    def _serving_changed(self, sat: int) -> None:
+        """One satellite's serving set changed; schedule one rate-limited report.
+
+        Merging rule (fixed in configuration, not chosen per run): at most one
+        event-triggered report per satellite per
+        control_plane.event_advert_min_interval_s.  Changes arriving inside the
+        window are merged into the next allowed report, so a handover burst
+        cannot turn into a flood.
+        """
+        if not self._event_advert_enabled:
+            return
+        self.mech["serving_changes_seen"] += 1
+        now = self.env.now
+        last = self._last_event_advert_at.get(sat)
+        if last is None or now - last >= self._event_advert_min_interval_s > 0:
+            self._last_event_advert_at[sat] = now
+            self._advertise(sat)
+            self._event_adverts_emitted += 1
+            self.mech["event_adverts_emitted"] += 1
+            return
+        if sat in self._event_advert_pending:
+            return
+        self._event_advert_pending.add(sat)
+        self.env.process(self._deferred_event_advert(sat))
+
+    def _deferred_event_advert(self, sat: int):
+        wait = (self._last_event_advert_at.get(sat, self.env.now)
+                + self._event_advert_min_interval_s - self.env.now)
+        yield self.env.timeout(max(0.0, wait))
+        self._event_advert_pending.discard(sat)
+        self._last_event_advert_at[sat] = self.env.now
+        self._advertise(sat)
+        self._event_adverts_emitted += 1
+        self.mech["event_adverts_emitted"] += 1
 
     def _on_link_retired(self, ep: TrafficEndpoint, sat: int):
         """An in-flight service hit the hard retirement deadline: the link

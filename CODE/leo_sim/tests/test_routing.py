@@ -485,10 +485,18 @@ def test_initial_sync_burst_emits_one_extra_report_per_satellite():
         return min(r["at"] for r in gen), len(gen)
     t_plain, n_plain_rows = first_gen(plain_rows)
     t_burst, n_burst_rows = first_gen(burst_rows)
-    # both schedules still open at t=0 (that is the historical behaviour), but
-    # the burst arm issues one extra report per satellite at the declared
-    # instant, so it must have strictly more generations in the same horizon
-    assert abs(t_plain) < 1e-9 and abs(t_burst) < 1e-9, (t_plain, t_burst)
+    # The periodic grid is 0, 2, 4 in BOTH arms.  An earlier version let the
+    # extra report shift the whole grid to 0.5, 2.5, 4.5, which silently made
+    # the "sync" arm differ in its entire control schedule; this asserts the
+    # grid explicitly.
+    def grid(rows):
+        return sorted({round(r["at"], 3) for r in rows
+                       if r.get("milestone") == "ctrl_advert_generated"})
+    assert t_plain == 0.0, t_plain
+    assert grid(plain_rows) == [0.0, 2.0, 4.0], grid(plain_rows)
+    assert 0.5 in grid(burst_rows), grid(burst_rows)
+    for t in (0.0, 2.0, 4.0):
+        assert t in grid(burst_rows), (t, grid(burst_rows))
     assert n_burst_rows > n_plain_rows, (n_plain_rows, n_burst_rows)
 
 
