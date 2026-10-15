@@ -1,0 +1,1305 @@
+{
+ "schema": "load-calibration-contract/v1",
+ "base_profile": "CODE/leo_sim/profiles/t1_hotspot_gravity.yaml",
+ "deadline_s": 4,
+ "max_packets": 20000,
+ "max_duration_s": 28,
+ "cells": [
+  {
+   "id": "p1_o20_adv4_s71_per",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 71
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s71_burst",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 71
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4,
+     "initial_sync_burst_s": 0.05
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s71_event",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 71
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4,
+     "event_advert_enabled": true,
+     "event_advert_min_interval_s": 0.5
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s71_known",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 71
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s72_per",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 72
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s72_burst",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 72
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4,
+     "initial_sync_burst_s": 0.05
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s72_event",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 72
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4,
+     "event_advert_enabled": true,
+     "event_advert_min_interval_s": 0.5
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s72_known",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 72
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s73_per",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 73
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s73_burst",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 73
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4,
+     "initial_sync_burst_s": 0.05
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s73_event",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 73
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4,
+     "event_advert_enabled": true,
+     "event_advert_min_interval_s": 0.5
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s73_known",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 73
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s74_per",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 74
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s74_burst",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 74
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4,
+     "initial_sync_burst_s": 0.05
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s74_event",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 74
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4,
+     "event_advert_enabled": true,
+     "event_advert_min_interval_s": 0.5
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s74_known",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 74
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s75_per",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 75
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s75_burst",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 75
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4,
+     "initial_sync_burst_s": 0.05
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s75_event",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 75
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4,
+     "event_advert_enabled": true,
+     "event_advert_min_interval_s": 0.5
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s75_known",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 75
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s76_per",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 76
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s76_burst",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 76
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4,
+     "initial_sync_burst_s": 0.05
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s76_event",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 76
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4,
+     "event_advert_enabled": true,
+     "event_advert_min_interval_s": 0.5
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    }
+   }
+  },
+  {
+   "id": "p1_o20_adv4_s76_known",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 76
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "qc_o20_adv4_s71_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 71
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "arm": "stale"
+    }
+   }
+  },
+  {
+   "id": "qc_o20_adv4_s71_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 71
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "arm": "now"
+    }
+   }
+  },
+  {
+   "id": "qc_o20_adv4_s71_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 71
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "arm": "common"
+    }
+   }
+  },
+  {
+   "id": "qc_o20_adv4_s71_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 71
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "arm": "candidate"
+    }
+   }
+  },
+  {
+   "id": "qc_o20_adv4_s72_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 72
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "arm": "stale"
+    }
+   }
+  },
+  {
+   "id": "qc_o20_adv4_s72_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 72
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "arm": "now"
+    }
+   }
+  },
+  {
+   "id": "qc_o20_adv4_s72_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 72
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "arm": "common"
+    }
+   }
+  },
+  {
+   "id": "qc_o20_adv4_s72_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 72
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "arm": "candidate"
+    }
+   }
+  },
+  {
+   "id": "qc_o20_adv4_s73_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 73
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "arm": "stale"
+    }
+   }
+  },
+  {
+   "id": "qc_o20_adv4_s73_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 73
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "arm": "now"
+    }
+   }
+  },
+  {
+   "id": "qc_o20_adv4_s73_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 73
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "arm": "common"
+    }
+   }
+  },
+  {
+   "id": "qc_o20_adv4_s73_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 28,
+     "seed": 73
+    },
+    "demand": {
+     "offered_mbps": 20,
+     "packet_bits": 120000,
+     "emission_start_s": 0,
+     "emission_end_s": 24
+    },
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    },
+    "execution": {
+     "compute_servers_per_satellite": 1,
+     "compute_delay_s": 0.001,
+     "max_packets": 20000
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "arm": "candidate"
+    }
+   }
+  }
+ ]
+}
