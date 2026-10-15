@@ -1,6 +1,23 @@
 # 本工作树状态：负载校准与时间处理验证
 
-范围：仅本 checkout，分支 `codex/20261013-load-calibration`；工作区级状态仍以工作区根 STATUS 为准。更新：2026-10-14。
+范围：仅本 checkout，分支 `codex/20261013-load-calibration`；工作区级状态仍以工作区根 STATUS 为准。更新：2026-10-16。
+
+## 2026-10-16 夜间实验的实现与证据（本工作树）
+
+- HEAD `aed0dfefee6d2d3dfd7bdf2685678c32b13fc336`，工作树干净。本轮改动全部在
+  `CODE/leo_sim/{routing,config,kernel}.py` 与 `CODE/leo_sim/tests/test_routing.py`。
+- **干预范围固定**：新增 `_serving_source()` 作为唯一在服集合入口，由**有效策略**切换；
+  四个 `choose_next_hop` 调用点、`_candidate_resource_map`、`_estimate_at_start` 全部改用它。
+  修正前 known 臂 3.07% 决策全候选 fallback，修正后 1.32%。
+- **新增实验面**：`control_plane.initial_sync_burst_s`（等成本初始同步，真实控制报文并计费）、
+  `routing.staged_policy` + `staged_policy_at_s`（共同前缀后切换策略）。
+- **新增策略** `known_serving`（统一版）；`hop_known_serving` 保留为已发布混合版身份。
+- 测试：`test_routing.py` 25 项（含"每个策略端到端跑一遍"的回归，用于防止调用点 NameError 再次漏网）、
+  `test_config.py` 30 项全过。
+- 合同：`CODE/work/WP-T1-COMPLETE/night_startup_vs_live_20261016.json`（30 格）。
+  结果与边界见工作区 `汇报材料/状态时间错位_20261016早间汇报.md`。
+- 失败记录：release `fe90f3cc…` 上 30 格因 `_candidate_resource_map` 内 `NameError` 全部
+  FAILED_CLOSED（内核已启动，计入调用预算）；修复后以 release `aed0dfef…` 重跑 30 格全部完成。
 
 ## 已完成
 
