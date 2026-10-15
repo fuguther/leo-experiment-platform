@@ -5226,6 +5226,7 @@ class Kernel:
                       else self.cfg_learning.get("obs_hops")) \
             if self.learner is not None else None
         target_dst = pkt.dst if dst is None else dst
+        policy = self._effective_routing_policy()
         # Serving-set source is a POLICY property, not a per-callsite choice.
         # For the authoritative-serving policies the routing decision already
         # used the true set; letting the resource map fall back to the cache
@@ -5317,7 +5318,7 @@ class Kernel:
                     "propagation_s": propagation}
                 continue
             cands, route_status = routing.choose_next_hop(
-                self.cfg_rt["policy"], peer, target_dst, now, self.geometry,
+                policy, peer, target_dst, now, self.geometry,
                 self.topo, self.caches[sat], advertised_q, self.isl_rate_bps,
                 model.propagation_delay_s,
                 oracle_targets=([s for s in serving if s != peer]

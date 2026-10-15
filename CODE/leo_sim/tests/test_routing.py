@@ -526,3 +526,35 @@ def test_staged_policy_does_not_change_the_prefix():
     def prefix(res):
         return [e for e in res.get("packet_events", []) if e["at"] < 1.5]
     assert prefix(a) == prefix(b)
+
+def test_every_policy_runs_the_kernel_end_to_end():
+    """A policy that resolves must also produce a finished simulation.
+
+    The pure routing-library tests cannot catch a NameError inside a kernel
+    call site; this one deliberately runs every accepted policy (and both
+    staged targets) through run_simulation so a broken call path fails loudly
+    here instead of on the VM.
+    """
+    geo = StaticGeometry(3,
+                         neighbors_map={0: {"E": 1}, 1: {"W": 0, "E": 2},
+                                       2: {"W": 1}},
+                         visible=lambda s, lat, lon, t: True)
+    cases = [("hop", {"policy": "hop"}),
+             ("known_serving", {"policy": "known_serving"}),
+             ("switch_to_known", {"policy": "hop",
+                                  "staged_policy": "known_serving",
+                                  "staged_policy_at_s": 1.0}),
+             ("switch_to_oracle", {"policy": "hop",
+                                   "staged_policy": "oracle",
+                                   "staged_policy_at_s": 1.0})]
+    for tag, rt in cases:
+        cfg = make_cfg({"scenario": {"num_satellites": 3, "num_planes": 1,
+                                     "duration_s": 3.0},
+                        "control_plane": {"enabled": True, "vis_k": 3,
+                                          "initial_sync_burst_s": 0.05},
+                        "routing": rt})
+        rows = []
+        res = kernel.run_simulation(cfg, [row(1, 0.2, A, B)], geometry=geo,
+                                    timeline_sink=rows, control_audit=True)
+        assert res["mechanism_counters"]["control_snapshots"] > 0, tag
+        assert res["fate_counts"]["DELIVERED"] >= 0, tag
