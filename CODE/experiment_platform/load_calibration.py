@@ -72,6 +72,13 @@ OVERRIDE_FIELDS = {
     "links": {"rf_isl", "rate_model", "isl_rate_mbps"},
     "routing": {"policy", "staged_policy", "staged_policy_at_s"},
     "scenario": {"duration_s", "seed"},
+    # The queue-state-age experiment (taskbook 5.4) varies ONLY the instant the
+    # resource state is queried, so the time-alignment arm has to be a contract
+    # override.  The whitelist below is the full set of keys the four-arm
+    # comparison is allowed to differ in; nothing else may be overridden here.
+    "time_alignment": {"arm", "predictor", "common_rule",
+                       "common_horizon_s", "history_limit",
+                       "execution_mode"},
 }
 
 
