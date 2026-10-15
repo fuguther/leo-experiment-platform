@@ -1184,6 +1184,5 @@
     }
    }
   }
- ],
- "dedup_note": "qc_*_candidate is identical to p1_*_known (policy known_serving, time_alignment.arm candidate); the duplicate was removed before launch"
+ ]
 }
