@@ -5262,7 +5262,8 @@ class Kernel:
                 self.topo, self.caches[sat], advertised_q, self.isl_rate_bps,
                 model.propagation_delay_s,
                 oracle_targets=([s for s in serving if s != peer]
-                                if self.cfg_rt["policy"] == "oracle" else None),
+                                if self.cfg_rt["policy"] in
+                                ("oracle", "hop_known_serving") else None),
                 best_only=False,
                 reverse_adj=self._routing_reverse_adj,
                 sorted_adj=self._routing_sorted_rev_adj,
@@ -5382,11 +5383,12 @@ class Kernel:
             return None, "chosen_direction_has_no_peer"
         policy = self.cfg_rt["policy"]
         cache_hops = None
-        if policy == "oracle":
-            # The labeled oracle has perfect global current knowledge by
-            # contract, and the kernel already hands it the true serving set
-            # at decision time; the estimate stays inside that same contract
-            # instead of pretending the oracle is cache-limited.
+        if policy in ("oracle", "hop_known_serving"):
+            # oracle: perfect global current knowledge by contract.
+            # hop_known_serving: the equal-cost information intervention; the
+            # authoritative serving set is used for candidate admission and
+            # path metric, so the downstream estimate uses the same fact
+            # rather than mixing known admission with cached prediction.
             serving = self._serving_sats(pkt.dst)
             is_destination = peer in serving
             targets = [s for s in serving if s != peer]
@@ -5666,7 +5668,8 @@ class Kernel:
                 model.propagation_delay_s,
                 oracle_targets=([s for s in self._serving_sats(pkt.dst)
                                  if s != peer]
-                                if self.cfg_rt["policy"] == "oracle" else None),
+                                if self.cfg_rt["policy"] in
+                                ("oracle", "hop_known_serving") else None),
                 best_only=False,
                 reverse_adj=self._routing_reverse_adj,
                 sorted_adj=self._routing_sorted_rev_adj)
@@ -6358,7 +6361,8 @@ class Kernel:
                 model.propagation_delay_s,
                 oracle_targets=([s for s in self._serving_sats(pkt.dst)
                                  if s != sat]
-                                if self.cfg_rt["policy"] == "oracle" else None),
+                                if self.cfg_rt["policy"] in
+                                ("oracle", "hop_known_serving") else None),
                 best_only=False,
                 reverse_adj=self._routing_reverse_adj,
                 sorted_adj=self._routing_sorted_rev_adj,
@@ -6625,7 +6629,8 @@ class Kernel:
             # oracle_targets is consumed only by the oracle policy; compute it
             # only there instead of scanning serving satellites every decision
             oracle_targets=([s for s in self._serving_sats(pkt.dst) if s != sat]
-                            if self.cfg_rt["policy"] == "oracle" else None),
+                            if self.cfg_rt["policy"] in
+                            ("oracle", "hop_known_serving") else None),
             # learning must choose among ALL local legal directions: the
             # heuristic only orders candidates, it never pre-clips the
             # learner's action set (otherwise DDQN is a tie-breaker over the
@@ -6649,7 +6654,8 @@ class Kernel:
             self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             return
         if status == "no_info":
-            if not self.cfg_cp["enabled"] and self.cfg_rt["policy"] != "oracle":
+            if not self.cfg_cp["enabled"] and self.cfg_rt["policy"] not in (
+                    "oracle", "hop_known_serving"):
                 no_info_action, no_info_kind = "fail", "fail"
                 no_info_reason = "control_plane_disabled"
             else:

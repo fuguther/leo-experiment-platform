@@ -355,3 +355,73 @@ def test_integration_hop_vs_delay_paths_differ():
     assert r_delay["fates"][1] == "DELIVERED"
     assert r_hop["deliveries"][1]["path"] == [0, 2]
     assert r_delay["deliveries"][1]["path"] == [0, 1, 2]
+
+# --- equal-cost information intervention (hop_known_serving) ---------------
+# hop_known_serving must behave exactly like "hop" except that the serving set
+# comes from the caller's authoritative set instead of the received cache.
+# A test that only checks "it finds a route" would pass for the old policy too,
+# so these cases make the two disagree on purpose.
+
+KNOWN_TOPO = {
+    0: {"E": 1, "N": 4},
+    1: {"W": 0, "E": 3},
+    3: {"W": 1},
+    4: {"S": 0},
+}
+
+
+def test_known_serving_uses_the_authoritative_set_not_the_cache():
+    geo = StaticGeometry(5, neighbors_map=KNOWN_TOPO)
+    topo = _topo(geo)
+    # the cache advertises only satellite 4 (1 hop from 0); the true serving
+    # set is satellite 3, which is 2 hops away.  Plain "hop" must take the
+    # advertised shortcut; hop_known_serving must ignore it.
+    cache = _cache_with([
+        (4, {"visible_cells": [B], "isl_queue_bits": {}}, 0.0, 0.01, 10.0)])
+    dirs_hop, status_hop = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458)
+    assert status_hop == "ok"
+    assert dirs_hop[0] == "N"          # heads to the advertised server 4
+    dirs_known, status_known = routing.choose_next_hop(
+        "hop_known_serving", 0, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458, oracle_targets=[3])
+    assert status_known == "ok"
+    assert dirs_known[0] == "E"        # heads to the true server 3
+
+
+def test_known_serving_works_with_an_empty_cache():
+    geo = StaticGeometry(5, neighbors_map=KNOWN_TOPO)
+    topo = _topo(geo)
+    empty = _cache_with([])
+    dirs, status = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo, empty, {}, 1e9,
+        lambda km: km / 299_792.458)
+    assert status == "no_info" and dirs == []
+    dirs2, status2 = routing.choose_next_hop(
+        "hop_known_serving", 0, B, 1.0, geo, topo, empty, {}, 1e9,
+        lambda km: km / 299_792.458, oracle_targets=[3])
+    assert status2 == "ok" and dirs2[0] == "E"
+
+
+def test_hop_known_serving_is_accepted_by_config_validation():
+    from CODE.leo_sim import config as config_mod
+    assert "hop_known_serving" in config_mod.VALID_POLICIES
+    cfg = make_cfg({"routing": {"policy": "hop_known_serving"}})
+    assert cfg["config"]["routing"]["policy"] == "hop_known_serving"
+
+
+def test_hop_known_serving_prices_every_candidate_at_unit_cost():
+    """The policy must not silently become a delay/capacity policy."""
+    geo = StaticGeometry(5, neighbors_map=KNOWN_TOPO)
+    topo = _topo(geo)
+    cache = _cache_with([])
+    known, _ = routing.choose_next_hop(
+        "hop_known_serving", 0, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458, oracle_targets=[3])
+    hop, _ = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo,
+        _cache_with([(3, {"visible_cells": [B], "isl_queue_bits": {}},
+                      0.0, 0.01, 10.0)]), {}, 1e9,
+        lambda km: km / 299_792.458)
+    assert known == hop

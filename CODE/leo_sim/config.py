@@ -302,6 +302,12 @@ VALID_ASSOCIATION = {"bbm", "mbb"}
 VALID_UNAVAILABLE_POLICIES = {"reject", "queue"}
 VALID_POLICIES = {
     "hop", "delay", "capacity", "oracle", "info_queue", "info_physical",
+    # Equal-cost information intervention: unit-hop routing, but candidate
+    # admission and the path metric use the TRUE current serving set instead
+    # of the received advertisement.  Control-plane traffic, decision cadence,
+    # scorer and path cost stay identical to "hop", so a difference isolates
+    # the effect of stale state rather than of a different deployment policy.
+    "hop_known_serving",
 }
 VALID_CONTRACTS = {"C1", "C3", "C4", "C5", "C6", "C7", "GAT", "MPNN"}
 VALID_ALGORITHMS = {"none", "ddqn", "qlearning"}

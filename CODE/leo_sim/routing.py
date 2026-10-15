@@ -201,11 +201,17 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
     """
     if policy not in (
             "hop", "delay", "capacity", "oracle",
-            "info_queue", "info_physical"):
+            "info_queue", "info_physical", "hop_known_serving"):
         raise ValueError(f"unknown routing policy {policy!r}")
 
-    if policy == "oracle":
-        # analysis upper bound: caller passes the true current serving sats.
+    if policy in ("oracle", "hop_known_serving"):
+        # The caller supplies the TRUE current serving set.  For
+        # hop_known_serving this is the ONLY difference from "hop": the
+        # candidate admission rule already checked _serving_sats, so routing
+        # consumes that same fact instead of a possibly stale advertisement.
+        # Control-plane cost, decision cadence, scorer and path cost are
+        # untouched, which is what makes the contrast an equal-cost
+        # information intervention rather than a deployment-policy change.
         advertised_targets = list(oracle_targets or [])
     else:
         advertised_targets = destinations_in_cache(
@@ -253,7 +259,7 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
             return None
         return float(value)
 
-    if policy in ("hop", "info_queue", "info_physical"):
+    if policy in ("hop", "info_queue", "info_physical", "hop_known_serving"):
         # unit-cost policy: multi-source BFS over the reverse adjacency is
         # exactly Dijkstra with weight 1.0, with no heap/tolerance overhead
         bfs_dist = _multi_source_bfs(adj, targets)
@@ -301,7 +307,8 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
                 return float("inf")
             return c + qb / rate
 
-    if policy not in ("hop", "info_queue", "info_physical"):
+    if policy not in ("hop", "info_queue", "info_physical",
+                      "hop_known_serving"):
         # dist[x] = forward cost from x to the nearest target; the search
         # expands backward from targets, so the forward edge cost is evaluated
         # reversed.
@@ -311,7 +318,7 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
         return [], "unreachable"
     scored = []
     for d, n in sorted(topo.get(sat, {}).items()):
-        if policy == "hop":
+        if policy in ("hop", "hop_known_serving"):
             w = 1.0
         elif policy == "info_queue":
             # F0: only the current satellite's own direction queue is
