@@ -201,10 +201,11 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
     """
     if policy not in (
             "hop", "delay", "capacity", "oracle",
-            "info_queue", "info_physical", "hop_known_serving"):
+            "info_queue", "info_physical", "hop_known_serving",
+            "known_serving"):
         raise ValueError(f"unknown routing policy {policy!r}")
 
-    if policy in ("oracle", "hop_known_serving"):
+    if policy in ("oracle", "hop_known_serving", "known_serving"):
         # The caller supplies the TRUE current serving set.  For
         # hop_known_serving this is the ONLY difference from "hop": the
         # candidate admission rule already checked _serving_sats, so routing
@@ -259,7 +260,8 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
             return None
         return float(value)
 
-    if policy in ("hop", "info_queue", "info_physical", "hop_known_serving"):
+    if policy in ("hop", "info_queue", "info_physical", "hop_known_serving",
+                  "known_serving"):
         # unit-cost policy: multi-source BFS over the reverse adjacency is
         # exactly Dijkstra with weight 1.0, with no heap/tolerance overhead
         bfs_dist = _multi_source_bfs(adj, targets)
@@ -308,7 +310,7 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
             return c + qb / rate
 
     if policy not in ("hop", "info_queue", "info_physical",
-                      "hop_known_serving"):
+                      "hop_known_serving", "known_serving"):
         # dist[x] = forward cost from x to the nearest target; the search
         # expands backward from targets, so the forward edge cost is evaluated
         # reversed.
@@ -318,7 +320,7 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
         return [], "unreachable"
     scored = []
     for d, n in sorted(topo.get(sat, {}).items()):
-        if policy in ("hop", "hop_known_serving"):
+        if policy in ("hop", "hop_known_serving", "known_serving"):
             w = 1.0
         elif policy == "info_queue":
             # F0: only the current satellite's own direction queue is

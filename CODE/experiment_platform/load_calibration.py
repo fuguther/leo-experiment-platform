@@ -61,14 +61,15 @@ SUMMARY_RESERVE_BYTES = 1024 * 1024
 OVERRIDE_FIELDS = {
     "access": {"slots_per_satellite", "uplink_rate_mbps",
                "downlink_rate_mbps"},
-    "control_plane": {"advertise_interval_s", "vis_k"},
+    "control_plane": {"advertise_interval_s", "vis_k",
+                      "initial_sync_burst_s"},
     "demand": {"offered_mbps", "packet_bits", "emission_start_s",
                "emission_end_s", "burst_start_s", "burst_duration_s",
                "burst_multiplier"},
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
                   "max_packets"},
     "links": {"rf_isl", "rate_model", "isl_rate_mbps"},
-    "routing": {"policy"},
+    "routing": {"policy", "staged_policy", "staged_policy_at_s"},
     "scenario": {"duration_s", "seed"},
 }
 

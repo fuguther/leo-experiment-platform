@@ -171,10 +171,22 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "packet_bits": int,
         "advertisement_protocol_version": int,
         "priority": str,  # nonpreemptive_priority (only supported mode)
+        # CONTROL-INIT (optional): emit one extra report per satellite at this
+        # instant, before the periodic schedule's first interval.  Real control
+        # packets on real links, wire cost included; used to give every node a
+        # complete initial view so startup information loss can be separated
+        # from ongoing update lag.
+        "initial_sync_burst_s": (int, float),
     },
     "routing": {
-        "policy": str,  # hop|delay|capacity|oracle|info_queue|info_physical
+        "policy": str,  # hop|delay|capacity|oracle|info_queue|info_physical|known_serving
         "max_hops": int,  # data-packet loop cap
+        # STAGED-POLICY (optional): the configured policy runs until
+        # staged_policy_at_s, then the effective policy becomes staged_policy.
+        # Two runs that differ only in staged_policy share an identical prefix,
+        # which is what removes inherited queue history from the contrast.
+        "staged_policy": str,
+        "staged_policy_at_s": (int, float),
         # RESTRICTED-ROUTING DIAGNOSTIC (default False = historical routing).
         # When true, only the candidate directions that achieve the minimum
         # remaining hop count to a node this satellite has actually been told
@@ -308,6 +320,11 @@ VALID_POLICIES = {
     # scorer and path cost stay identical to "hop", so a difference isolates
     # the effect of stale state rather than of a different deployment policy.
     "hop_known_serving",
+    # Same intervention with the serving-set source unified across EVERY
+    # consumer (admission, resource map, ETA targets, scoring).  hop_known_serving
+    # is the earlier, mixed-source version and is kept only so its published
+    # runs keep their identity.
+    "known_serving",
 }
 VALID_CONTRACTS = {"C1", "C3", "C4", "C5", "C6", "C7", "GAT", "MPNN"}
 VALID_ALGORITHMS = {"none", "ddqn", "qlearning"}
@@ -925,6 +942,11 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError("only nonpreemptive_priority control is supported")
     if rt["policy"] not in VALID_POLICIES:
         raise ConfigError(f"routing.policy must be one of {sorted(VALID_POLICIES)}")
+    staged = rt.get("staged_policy")
+    if staged not in (None, "", "known_serving", "oracle"):
+        raise ConfigError(
+            "routing.staged_policy must be known_serving or oracle, "
+            f"got {staged!r}")
     if rt["max_hops"] < 1:
         raise ConfigError("routing.max_hops must be >= 1")
     if rt["contract"] not in VALID_CONTRACTS:

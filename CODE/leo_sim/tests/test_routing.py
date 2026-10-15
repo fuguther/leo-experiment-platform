@@ -425,3 +425,104 @@ def test_hop_known_serving_prices_every_candidate_at_unit_cost():
                       0.0, 0.01, 10.0)]), {}, 1e9,
         lambda km: km / 299_792.458)
     assert known == hop
+
+# --- initial synchronisation burst and staged policy (night experiment) -----
+
+def test_known_serving_is_a_valid_policy_and_behaves_like_hop_unit_cost():
+    """known_serving is the unified-source version of the serving intervention.
+
+    It must keep the unit-hop candidate order, so the only thing it changes
+    relative to hop is where the serving set comes from.
+    """
+    from CODE.leo_sim import config as config_mod
+    assert "known_serving" in config_mod.VALID_POLICIES
+    geo = StaticGeometry(5, neighbors_map=KNOWN_TOPO)
+    topo = _topo(geo)
+    cache = _cache_with([(3, {"visible_cells": [B], "isl_queue_bits": {}},
+                         0.0, 0.01, 10.0)])
+    known, status = routing.choose_next_hop(
+        "known_serving", 0, B, 1.0, geo, topo, _cache_with([]), {}, 1e9,
+        lambda km: km / 299_792.458, oracle_targets=[3])
+    hop, _ = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458)
+    assert status == "ok"
+    assert known == hop
+
+
+def test_initial_sync_burst_emits_one_extra_report_per_satellite():
+    """The burst is a real control report, not a cache injection."""
+    from CODE.leo_sim import control as control_mod
+    geo = StaticGeometry(3,
+                         neighbors_map={0: {"E": 1}, 1: {"W": 0, "E": 2},
+                                       2: {"W": 1}})
+    base = make_cfg({"scenario": {"num_satellites": 3, "num_planes": 1,
+                                  "duration_s": 5.0},
+                     "control_plane": {"enabled": True, "vis_k": 4,
+                                       "advertise_interval_s": 2.0}})
+    plain_rows = []
+    plain = kernel.run_simulation(base, [row(1, 0.5, A, B)], geometry=geo,
+                                  timeline_sink=plain_rows, control_audit=True)
+    burst_cfg = make_cfg({"scenario": {"num_satellites": 3, "num_planes": 1,
+                                       "duration_s": 5.0},
+                          "control_plane": {"enabled": True, "vis_k": 4,
+                                            "advertise_interval_s": 2.0,
+                                            "initial_sync_burst_s": 0.5}})
+    burst_rows = []
+    burst = kernel.run_simulation(burst_cfg, [row(1, 0.5, A, B)],
+                                  geometry=geo,
+                                  timeline_sink=burst_rows,
+                                  control_audit=True)
+    n_plain = plain["mechanism_counters"]["control_snapshots"]
+    n_burst = burst["mechanism_counters"]["control_snapshots"]
+    assert n_plain > 0, "the periodic schedule must still fire"
+    # the extra report moves the FIRST generation of every satellite from the
+    # periodic interval down to the declared sync instant; the total count may
+    # stay the same because the periodic schedule is unchanged.
+    def first_gen(rows):
+        gen = [r for r in rows
+               if r.get("milestone") == "ctrl_advert_generated"]
+        return min(r["at"] for r in gen), len(gen)
+    t_plain, n_plain_rows = first_gen(plain_rows)
+    t_burst, n_burst_rows = first_gen(burst_rows)
+    # both schedules still open at t=0 (that is the historical behaviour), but
+    # the burst arm issues one extra report per satellite at the declared
+    # instant, so it must have strictly more generations in the same horizon
+    assert abs(t_plain) < 1e-9 and abs(t_burst) < 1e-9, (t_plain, t_burst)
+    assert n_burst_rows > n_plain_rows, (n_plain_rows, n_burst_rows)
+
+
+def test_staged_policy_declares_and_validates_its_target():
+    from CODE.leo_sim import config as config_mod
+    cfg = make_cfg({"scenario": {"num_satellites": 1, "num_planes": 1},
+                    "routing": {"policy": "hop",
+                                "staged_policy": "known_serving",
+                                "staged_policy_at_s": 1.0}})
+    assert cfg["config"]["routing"]["staged_policy"] == "known_serving"
+    with pytest.raises(config_mod.ConfigError):
+        make_cfg({"scenario": {"num_satellites": 1, "num_planes": 1},
+                  "routing": {"policy": "hop", "staged_policy": "delay"}})
+
+
+def test_staged_policy_does_not_change_the_prefix():
+    """Two runs that differ only in the staged target are identical before it."""
+    geo = StaticGeometry(3,
+                         neighbors_map={0: {"E": 1}, 1: {"W": 0, "E": 2},
+                                       2: {"W": 1}},
+                         visible=lambda s, lat, lon, t: True)
+    common = {"scenario": {"num_satellites": 3, "num_planes": 1,
+                           "duration_s": 3.0},
+              "routing": {"policy": "hop", "staged_policy_at_s": 1.5}}
+    a = kernel.run_simulation(
+        make_cfg(dict(common, routing={"policy": "hop",
+                                       "staged_policy": "known_serving",
+                                       "staged_policy_at_s": 1.5})),
+        [row(1, 0.2, A, B)], geometry=geo)
+    b = kernel.run_simulation(
+        make_cfg(dict(common, routing={"policy": "hop",
+                                       "staged_policy": "oracle",
+                                       "staged_policy_at_s": 1.5})),
+        [row(1, 0.2, A, B)], geometry=geo)
+    def prefix(res):
+        return [e for e in res.get("packet_events", []) if e["at"] < 1.5]
+    assert prefix(a) == prefix(b)

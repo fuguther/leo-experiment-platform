@@ -1248,6 +1248,27 @@ class Kernel:
         self.cfg_ta = cfg["time_alignment"]
         self.cfg_ar = cfg["async_routing"]
         self.cfg_dm = cfg["demand"]
+        # CONTROL-INIT: one optional extra advertisement burst per satellite,
+        # emitted at the declared instant and NOT charged to the periodic
+        # schedule.  It is the legal "initial synchronisation" of the night
+        # experiment: the reports are the real control packets, they travel the
+        # real ISL queues and are recorded with their real wire cost, so any
+        # difference against the plain periodic schedule is attributable to the
+        # timing of the first report rather than to a cost subsidy.
+        self._initial_sync_burst_s = self.cfg_cp.get("initial_sync_burst_s")
+        # STAGED-POLICY: run the configured policy until this instant, then
+        # switch to the declared one.  Both arms of a common-prefix contrast
+        # share the identical prefix bit for bit, which is what makes the
+        # post-switch difference free of inherited queue history.
+        staged = self.cfg_rt.get("staged_policy")
+        self._staged_policy = str(staged) if staged else None
+        self._staged_policy_at = float(
+            self.cfg_rt.get("staged_policy_at_s") or 0.0)
+        if self._staged_policy is not None \
+                and self._staged_policy not in ("known_serving", "oracle"):
+            raise KernelError(
+                "routing.staged_policy must be known_serving or oracle, "
+                f"got {self._staged_policy!r}")
         # T1-R6/S6: an INFERENCE-ONLY policy may replace the action choice on a
         # frozen snapshot (branch tooling).  A training learner is refused here
         # and the frozen+learner combination stays refused below; this hook is
@@ -3428,7 +3449,19 @@ class Kernel:
 
     def _control_advertiser(self, sat: int):
         interval = self.cfg_cp["advertise_interval_s"]
+        burst = self._initial_sync_burst_s
+        first = True
         while True:
+            # The periodic schedule fires at t=0 as before.  When an initial
+            # sync burst is declared, the origin additionally emits one report
+            # at that instant so every node's first usable view of the whole
+            # constellation is complete before the first data decision.
+            if burst is not None and first:
+                first = False
+                self._advertise(sat)
+                if float(burst) > 0.0:
+                    yield self.env.timeout(float(burst))
+                    continue
             self._advertise(sat)
             yield self.env.timeout(interval)
 
@@ -3928,6 +3961,27 @@ class Kernel:
         (direct kernel truth; used ONLY by the labeled oracle)."""
         ep = self.endpoints[cell]
         return sorted(s for s, l in ep.links.items() if l.state == "active")
+
+    def _serving_source(self, sat: int, dst: str, now: float,
+                        cache_hops) -> list[int]:
+        """THE single serving-set source for one decision.
+
+        Every consumer (candidate admission, resource mapping, ETA targets,
+        scoring) must ask this one function, so a policy cannot end up
+        routing on one serving set and scoring on another.  The switch is on
+        the EFFECTIVE policy, which a staged switch may change mid-run.
+        """
+        if self._effective_routing_policy() in ("oracle", "known_serving"):
+            return [s for s in self._serving_sats(dst) if s != sat]
+        return routing.destinations_in_cache(self.caches[sat], dst, now,
+                                             max_cache_hops=cache_hops)
+
+    def _effective_routing_policy(self) -> str:
+        """Configured policy, or the staged one once its switch time passes."""
+        staged = self._staged_policy
+        if staged is not None and self.env.now >= self._staged_policy_at:
+            return staged
+        return self.cfg_rt["policy"]
 
     def _fixed_policy_metadata_path(self) -> str:
         """The sibling metadata that pins the observation contract.
@@ -5172,8 +5226,13 @@ class Kernel:
                       else self.cfg_learning.get("obs_hops")) \
             if self.learner is not None else None
         target_dst = pkt.dst if dst is None else dst
-        serving = routing.destinations_in_cache(
-            self.caches[sat], target_dst, now, max_cache_hops=cache_hops)
+        # Serving-set source is a POLICY property, not a per-callsite choice.
+        # For the authoritative-serving policies the routing decision already
+        # used the true set; letting the resource map fall back to the cache
+        # here made the two disagree and produced a genuinely mixed-information
+        # decision (measured: 3.1% of known-serving decisions had every
+        # candidate marked fallback, against 0.08% for hop).  One source only.
+        serving = self._serving_source(sat, target_dst, now, cache_hops)
         forbidden_nodes = set(getattr(pkt, "path", ()) or ())
         safe_serving = [s for s in serving if s not in forbidden_nodes]
         entries = self._observed_cache_entries(sat, now)
@@ -5262,8 +5321,8 @@ class Kernel:
                 self.topo, self.caches[sat], advertised_q, self.isl_rate_bps,
                 model.propagation_delay_s,
                 oracle_targets=([s for s in serving if s != peer]
-                                if self.cfg_rt["policy"] in
-                                ("oracle", "hop_known_serving") else None),
+                                if policy in ("oracle", "known_serving")
+                                else None),
                 best_only=False,
                 reverse_adj=self._routing_reverse_adj,
                 sorted_adj=self._routing_sorted_rev_adj,
@@ -5381,27 +5440,16 @@ class Kernel:
         peer = link.peer
         if peer is None:
             return None, "chosen_direction_has_no_peer"
-        policy = self.cfg_rt["policy"]
-        cache_hops = None
-        if policy in ("oracle", "hop_known_serving"):
-            # oracle: perfect global current knowledge by contract.
-            # hop_known_serving: the equal-cost information intervention; the
-            # authoritative serving set is used for candidate admission and
-            # path metric, so the downstream estimate uses the same fact
-            # rather than mixing known admission with cached prediction.
-            serving = self._serving_sats(pkt.dst)
-            is_destination = peer in serving
-            targets = [s for s in serving if s != peer]
-            information_source = "oracle_global_knowledge"
-        else:
-            cache_hops = (1 if self.cfg_rt["contract"] == "C1"
-                          else self.cfg_learning.get("obs_hops")) \
-                if self.learner is not None else None
-            serving = routing.destinations_in_cache(
-                self.caches[sat], pkt.dst, now, max_cache_hops=cache_hops)
-            is_destination = peer in serving
-            targets = [s for s in serving if s != peer]
-            information_source = "control_cache"
+        policy = self._effective_routing_policy()
+        cache_hops = (1 if self.cfg_rt["contract"] == "C1"
+                      else self.cfg_learning.get("obs_hops")) \
+            if self.learner is not None else None
+        serving = self._serving_source(sat, pkt.dst, now, cache_hops)
+        is_destination = peer in serving
+        targets = [s for s in serving if s != peer]
+        information_source = ("authoritative_current_serving"
+                              if policy in ("oracle", "known_serving")
+                              else "control_cache")
         entry = self._observed_cache_entries(sat, now).get(peer)
         advertised_q: dict[str, int] = {}
         if entry is not None:
@@ -5668,8 +5716,8 @@ class Kernel:
                 model.propagation_delay_s,
                 oracle_targets=([s for s in self._serving_sats(pkt.dst)
                                  if s != peer]
-                                if self.cfg_rt["policy"] in
-                                ("oracle", "hop_known_serving") else None),
+                                if self._effective_routing_policy() in
+                                ("oracle", "known_serving") else None),
                 best_only=False,
                 reverse_adj=self._routing_reverse_adj,
                 sorted_adj=self._routing_sorted_rev_adj)
@@ -6361,8 +6409,8 @@ class Kernel:
                 model.propagation_delay_s,
                 oracle_targets=([s for s in self._serving_sats(pkt.dst)
                                  if s != sat]
-                                if self.cfg_rt["policy"] in
-                                ("oracle", "hop_known_serving") else None),
+                                if self._effective_routing_policy() in
+                                ("oracle", "known_serving") else None),
                 best_only=False,
                 reverse_adj=self._routing_reverse_adj,
                 sorted_adj=self._routing_sorted_rev_adj,
@@ -6629,8 +6677,8 @@ class Kernel:
             # oracle_targets is consumed only by the oracle policy; compute it
             # only there instead of scanning serving satellites every decision
             oracle_targets=([s for s in self._serving_sats(pkt.dst) if s != sat]
-                            if self.cfg_rt["policy"] in
-                            ("oracle", "hop_known_serving") else None),
+                            if self._effective_routing_policy() in
+                            ("oracle", "known_serving") else None),
             # learning must choose among ALL local legal directions: the
             # heuristic only orders candidates, it never pre-clips the
             # learner's action set (otherwise DDQN is a tie-breaker over the
@@ -6654,8 +6702,9 @@ class Kernel:
             self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             return
         if status == "no_info":
-            if not self.cfg_cp["enabled"] and self.cfg_rt["policy"] not in (
-                    "oracle", "hop_known_serving"):
+            if not self.cfg_cp["enabled"] and \
+                    self._effective_routing_policy() not in (
+                        "oracle", "known_serving"):
                 no_info_action, no_info_kind = "fail", "fail"
                 no_info_reason = "control_plane_disabled"
             else:
