@@ -2,7 +2,24 @@
 
 范围：仅本 checkout，分支 `codex/20261013-load-calibration`；工作区级状态仍以工作区根 STATUS 为准。更新：2026-10-16。
 
-## 2026-10-16 夜间实验的实现与证据（本工作树）
+## 2026-10-16 第二批（rt7，最新）：初始化证伪、可部署事件通告、队列年龄 pilot
+
+- HEAD 本轮终态 `831562c6233572ea0c1d183f42236b8aeaca26a4`，工作树干净；本轮改动：
+  `CODE/leo_sim/kernel.py`（advertiser 独立日程、`_serving_changed`/事件通告、计数器）、
+  `CODE/leo_sim/config.py`（`event_advert_enabled` / `event_advert_min_interval_s`）、
+  `CODE/experiment_platform/load_calibration.py`（允许 `time_alignment` 覆盖组）、
+  `CODE/leo_sim/tests/test_routing.py`（断言周期栅格为 0/2/4、事件通告计数）。
+- **周期栅格不再被初始报文平移**：`initial_sync_burst_s` 现在走独立日程，测试断言
+  plain=[0,2,4] 且 burst 同时包含 0/2/4 与 0.5。上一版把它平移成 0.5/2.5/4.5。
+- **事件触发通告**：`_serving_changed(sat)` 在关联变为 active 或链路 release 时调用，
+  经 `event_advert_min_interval_s` 限频、窗内变更合并为下一条；计数器
+  `serving_changes_seen` / `event_adverts_emitted` 已暴露。seed 71 实测 167 次变更 → 67 条报文。
+- 合同：`CODE/work/WP-T1-COMPLETE/init_event_queueage_20261016.json`（33 格）。
+- 烟测纪律：两次单格烟测分别被"未知顶层字段"和"未支持的覆盖组"以 fail-closed 拦下，
+  均在发射批次之前，零无效内核调用；对应校验缺口已补。
+- 结果与边界见工作区 `汇报材料/状态时间错位_20261016早间汇报.md` §七。
+
+## 2026-10-16 夜间实验的实现与证据（上一批）
 
 - HEAD `aed0dfefee6d2d3dfd7bdf2685678c32b13fc336`，工作树干净。本轮改动全部在
   `CODE/leo_sim/{routing,config,kernel}.py` 与 `CODE/leo_sim/tests/test_routing.py`。
