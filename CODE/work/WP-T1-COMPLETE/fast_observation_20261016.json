@@ -19,7 +19,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 2,
-          "emission_end_s": 8
+          "emission_end_s": 8,
+          "burst_start_s": 2.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -61,7 +62,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -103,7 +105,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -145,7 +148,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -187,7 +191,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -229,7 +234,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -271,7 +277,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -313,7 +320,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -355,7 +363,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -397,7 +406,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -439,7 +449,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -481,7 +492,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -523,7 +535,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -565,7 +578,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -607,7 +621,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -649,7 +664,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -691,7 +707,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -733,7 +750,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -775,7 +793,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -817,7 +836,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -859,7 +879,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -901,7 +922,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -943,7 +965,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -985,7 +1008,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
@@ -1027,7 +1051,8 @@
           "offered_mbps": 20,
           "packet_bits": 120000,
           "emission_start_s": 5,
-          "emission_end_s": 125
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
         },
         "access": {
           "slots_per_satellite": 128
