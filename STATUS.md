@@ -2,7 +2,24 @@
 
 范围：仅本 checkout，分支 `codex/20261013-load-calibration`；工作区级状态仍以工作区根 STATUS 为准。更新：2026-10-16。
 
-## 2026-10-16 第二批（rt7，最新）：初始化证伪、可部署事件通告、队列年龄 pilot
+## 2026-10-16 队列状态年龄实验（rtA，最新，本轮唯一任务）
+
+- HEAD `00f756829ed62bff299990d310b097348b11fcaf`，工作树干净。改动：
+  `CODE/leo_sim/config.py`（`min_observation_age_s` 字段与默认 None）、
+  `CODE/leo_sim/kernel.py`（快照构建时按 `measured_at <= t0 - a` 扣留样本；
+  `observation_age` 审计块用预测器自身的 `order_history`/`_latest_by_resource` 构造，
+  并整体包在 try/except 里——诊断错误绝不改变决策）、
+  `CODE/experiment_platform/load_calibration.py`（`time_alignment` 覆盖组新增该字段）、
+  `CODE/leo_sim/tests/test_routing.py`（3 个新测试：扣留改变读入值、配置默认与解析、
+  审计在无映射方向上不崩）。`test_routing.py` + `test_config.py` 58 passed。
+- 合同：`CODE/work/WP-T1-COMPLETE/queue_age_main_20261016.json`（18 格，看结果前冻结：
+  seeds 81–86 × a ∈ {0, 2, 6} s，服务信息固定 `known_serving`，预测器 `hold_last`，arm `stale`）。
+- 结果：`a=2−a=0` = +3.50 pp [+0.58, +6.42]，`a=6−a=0` = +8.62 pp [+6.70, +10.55]，均 6/6 同向；
+  机制核验 [12,24) 窗口 70.3% 读入值不同 / 86.8% 评分不同。
+- 两次失败已定位并修复：rt8 两次是合同未进 release（校验拒绝、未启动内核）；
+  rt9 两次是 `resource_for(d)` 为 None 时审计调用 `.as_tuple()`（内核已启动，计入预算）。
+
+## 2026-10-16 第二批（rt7）：初始化证伪、可部署事件通告、队列年龄 pilot
 
 - HEAD 本轮终态 `831562c6233572ea0c1d183f42236b8aeaca26a4`，工作树干净；本轮改动：
   `CODE/leo_sim/kernel.py`（advertiser 独立日程、`_serving_changed`/事件通告、计数器）、
