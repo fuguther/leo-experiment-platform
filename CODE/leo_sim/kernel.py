@@ -5142,38 +5142,56 @@ class Kernel:
         # "what was read" and "what is recorded" cannot drift apart.
         age_audit = None
         if self._min_observation_age_s is not None:
-            ordered = _ta.order_history(probe.history, probe.snapshot_at)
-            grouped = _ta._latest_by_resource(ordered) if ordered else {}
-            per_dir = {}
-            for d in probe.legal_directions:
-                res = probe.resource_for(d)
-                series = list(grouped.get(res.as_tuple(), ()))
-                used = series[-1] if series else None
-                per_dir[d] = {
-                    "resource": (None if res is None else res.as_tuple()),
-                    "samples_available": len(series),
-                    "used_measured_at": (None if used is None
-                                         else float(used.measured_at)),
-                    "used_actual_age_s": (
-                        None if used is None
-                        else float(probe.snapshot_at) - float(used.measured_at)),
-                    "used_queue_bits": (None if used is None
-                                        else float(used.queue_bits)),
-                    "used_rate_bps": (None if used is None
-                                      else used.rate_bps),
+            # The audit is DIAGNOSTIC: it must never change what the decision
+            # does.  A direction without a mapped resource legitimately has
+            # resource_for(d) is None, and an instrument that raised on that
+            # took the whole run down (measured once, rt9 pilot).  Errors are
+            # caught and recorded, never propagated.
+            try:
+                ordered = _ta.order_history(probe.history, probe.snapshot_at)
+                grouped = _ta._latest_by_resource(ordered) if ordered else {}
+                per_dir = {}
+                for d in probe.legal_directions:
+                    res = probe.resource_for(d)
+                    key = None if res is None else res.as_tuple()
+                    series = list(grouped.get(key, ())) if key is not None else []
+                    used = series[-1] if series else None
+                    per_dir[d] = {
+                        "resource": key,
+                        "samples_available": len(series),
+                        "used_measured_at": (None if used is None
+                                             else float(used.measured_at)),
+                        "used_actual_age_s": (
+                            None if used is None
+                            else float(probe.snapshot_at)
+                            - float(used.measured_at)),
+                        "used_queue_bits": (None if used is None
+                                            else float(used.queue_bits)),
+                        "used_rate_bps": (None if used is None
+                                          else used.rate_bps),
+                    }
+                age_audit = {
+                    "schema": "leo-sim-observation-age/v1",
+                    "declared_min_observation_age_s": float(
+                        self._min_observation_age_s),
+                    "snapshot_at": float(probe.snapshot_at),
+                    "cutoff_measured_at": float(probe.snapshot_at)
+                    - float(self._min_observation_age_s),
+                    "per_direction": per_dir,
+                    "rule": "withhold samples with measured_at > snapshot_at "
+                            "- a; no sample is modified; insufficient history "
+                            "uses the predictor's normal hold-last behaviour "
+                            "on what remains",
                 }
-            age_audit = {
-                "schema": "leo-sim-observation-age/v1",
-                "declared_min_observation_age_s": float(
-                    self._min_observation_age_s),
-                "snapshot_at": float(probe.snapshot_at),
-                "cutoff_measured_at": float(probe.snapshot_at)
-                - float(self._min_observation_age_s),
-                "per_direction": per_dir,
-                "rule": "withhold samples with measured_at > snapshot_at - a; "
-                        "no sample is modified; insufficient history uses the "
-                        "predictor's normal hold-last behaviour on what remains",
-            }
+            except Exception as exc:  # diagnostic only, never fatal
+                age_audit = {
+                    "schema": "leo-sim-observation-age/v1",
+                    "declared_min_observation_age_s": float(
+                        self._min_observation_age_s),
+                    "snapshot_at": float(probe.snapshot_at),
+                    "error": "%s: %s" % (type(exc).__name__, exc),
+                    "per_direction": {},
+                }
         audit = {
             "schema": "leo-sim-time-alignment-at-start/v1",
             "enabled": True,

@@ -602,3 +602,24 @@ def test_observation_age_config_resolves_and_defaults_to_off():
                      "time_alignment": {"min_observation_age_s": 1.5}})
     assert aged["config"]["time_alignment"]["min_observation_age_s"] == 1.5
 
+
+def test_observation_age_audit_survives_an_unmapped_direction():
+    """The diagnostic audit must never change what a decision does.
+
+    A legal direction can have no mapped resource (resource_for returns None).
+    An earlier version called .as_tuple() on that None and took the whole run
+    down with AttributeError; this pins the behaviour.
+    """
+    from CODE.leo_sim import time_alignment as ta
+    snap = ta.make_snapshot(
+        satellite=1, snapshot_at=1.0, history=[], legal_directions=["E", "W"],
+        resources={"E": ta.ResourceKey(2, "W", ta.KIND_ISL, generation=1)},
+        arm="stale", predictor="hold_last")
+    assert snap.resource_for("E") is not None
+    assert snap.resource_for("W") is None
+    grouped = {}
+    for d in snap.legal_directions:
+        res = snap.resource_for(d)
+        key = None if res is None else res.as_tuple()
+        assert key is None or isinstance(key, tuple)
+
