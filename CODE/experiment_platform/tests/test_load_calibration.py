@@ -119,7 +119,7 @@ def test_preflight_parses_config_and_boundaries_without_trace_or_kernel(
     assert not out_dir.exists()
 
 
-@pytest.mark.parametrize("declared", [12.0, 28.0, 60.0])
+@pytest.mark.parametrize("declared", [12.0, 28.0, 60.0, 300.0])
 def test_contract_accepts_a_declared_horizon_inside_the_envelope(
         tmp_path, monkeypatch, declared):
     """A warmed time-alignment window needs more than the frozen 12 s."""
@@ -131,7 +131,7 @@ def test_contract_accepts_a_declared_horizon_inside_the_envelope(
     lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
 
 
-@pytest.mark.parametrize("declared", [11.9, 0, -1, 60.1, True, "12"])
+@pytest.mark.parametrize("declared", [11.9, 0, -1, 300.1, True, "12"])
 def test_contract_rejects_a_horizon_outside_the_envelope(
         tmp_path, monkeypatch, declared):
     document = _contract()
@@ -143,30 +143,118 @@ def test_contract_rejects_a_horizon_outside_the_envelope(
         lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
 
 
+@pytest.mark.parametrize("declared", [1, 20000, 100000])
+def test_contract_accepts_packet_caps_inside_the_envelope(
+        tmp_path, monkeypatch, declared):
+    document = _contract(overrides={"execution": {"max_packets": declared}})
+    document["max_packets"] = declared
+    contract_path = _write_contract(tmp_path / "contract.json", document)
+    _free_disk(monkeypatch)
+
+    result = lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
+
+    assert result["max_packets"] == declared
+
+
+@pytest.mark.parametrize("declared", [0, -1, 100001, True, 1.0, "1"])
+def test_contract_rejects_a_packet_cap_outside_the_integer_envelope(
+        tmp_path, monkeypatch, declared):
+    document = _contract()
+    document["max_packets"] = declared
+    contract_path = _write_contract(tmp_path / "contract.json", document)
+    _free_disk(monkeypatch)
+
+    with pytest.raises(lc.CalibrationError, match="max_packets"):
+        lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
+
+
+def test_default_contract_keeps_the_20000_packet_cap():
+    assert _contract()["max_packets"] == 20000
+
+
+@pytest.mark.parametrize("declared", [28.0, 300.0])
 def test_a_longer_declared_horizon_reaches_the_resolved_config(
-        tmp_path, monkeypatch):
-    document = _contract(overrides={"scenario": {"duration_s": 28}})
-    document["max_duration_s"] = 28.0
+        tmp_path, monkeypatch, declared):
+    document = _contract(overrides={"scenario": {"duration_s": declared}})
+    document["max_duration_s"] = declared
     contract_path = _write_contract(tmp_path / "contract.json", document)
     _free_disk(monkeypatch)
 
     lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
     _raw, _doc, _base, cells = lc._read_contract(contract_path, REPO_ROOT)
 
-    assert cells["one"]["resolved"]["config"]["scenario"]["duration_s"] == 28
+    assert cells["one"]["resolved"]["config"]["scenario"]["duration_s"] == declared
 
 
 @pytest.mark.parametrize("overrides", [
     {"scenario": {"duration_s": 12.01}},
     {"execution": {"max_packets": 20001}},
 ])
-def test_contract_overrides_cannot_exceed_frozen_bounds(tmp_path, monkeypatch,
-                                                         overrides):
+def test_contract_overrides_cannot_exceed_declared_bounds(tmp_path, monkeypatch,
+                                                           overrides):
     contract_path = _write_contract(tmp_path / "contract.json",
                                     _contract(overrides=overrides))
     _free_disk(monkeypatch)
     with pytest.raises(lc.CalibrationError, match="exceeds contract cap"):
         lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
+
+
+def test_execution_packet_cap_cannot_exceed_the_declared_100000_cap(
+        tmp_path, monkeypatch):
+    document = _contract(overrides={"execution": {"max_packets": 100001}})
+    document["max_packets"] = 100000
+    contract_path = _write_contract(tmp_path / "contract.json", document)
+    _free_disk(monkeypatch)
+
+    with pytest.raises(lc.CalibrationError, match="max_packets exceeds contract cap"):
+        lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
+
+
+def test_effective_duration_cannot_exceed_the_declared_300_second_cap(
+        tmp_path, monkeypatch):
+    document = _contract(overrides={"scenario": {"duration_s": 300.1}})
+    document["max_duration_s"] = 300.0
+    contract_path = _write_contract(tmp_path / "contract.json", document)
+    _free_disk(monkeypatch)
+
+    with pytest.raises(lc.CalibrationError, match="duration_s exceeds contract cap"):
+        lc.preflight(contract_path, "one", tmp_path / "new-run", REPO_ROOT)
+
+
+def test_compiled_trace_above_declared_packet_cap_fails_without_truncation(
+        tmp_path, monkeypatch):
+    document = _contract(overrides={"execution": {"max_packets": 2}})
+    document["max_packets"] = 2
+    contract_path = _write_contract(tmp_path / "contract.json", document)
+    out_dir = tmp_path / "run"
+    _free_disk(monkeypatch)
+    base = config_mod.load_config_file(str(REPO_ROOT / PROFILE))
+    rows = _fake_trace() + [copy.deepcopy(_fake_trace()[0])]
+    kernel_calls = []
+
+    def fake_design(*, config_path, overrides):
+        cfg = copy.deepcopy(base["config"])
+        lc._deep_merge(cfg, overrides)
+        return config_mod.resolve_config(cfg), rows, object(), {
+            "trace_sha256": "a" * 64,
+            "rows_digest": "b" * 64,
+            "rows": len(rows),
+            "native_population": {"population_sha256": "c" * 64},
+        }
+
+    monkeypatch.setattr(lc.t1_tasks, "design", fake_design)
+    monkeypatch.setattr(lc.kernel, "run_simulation",
+                        lambda *_args, **_kwargs: kernel_calls.append(True))
+
+    summary = lc.run_calibration(contract_path, "one", out_dir,
+                                 repo_root=REPO_ROOT)
+
+    assert summary["status"] == "FAILED_CLOSED"
+    assert ("compiled trace has 3 packets above contract max_packets"
+            in summary["error"]["message"])
+    assert summary["trace"] is None
+    assert not (out_dir / "trace.jsonl.gz").exists()
+    assert kernel_calls == []
 
 
 def test_contract_rejects_arbitrary_overrides(tmp_path, monkeypatch):

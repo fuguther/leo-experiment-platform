@@ -50,10 +50,12 @@ ALLOWED_ARMS = ("stale", "now", "common", "candidate")
 #: sufficient horizon for a time-alignment study, because at a 4 s advertise
 #: period the whole 12 s run is still inside "no state has arrived yet", which
 #: is a different phenomenon from "the state is stale".  A longer declared
-#: horizon is what makes a warmed evaluation window exist at all.  The upper
-#: bound keeps one diagnostic inside the wall clock and the output budget.
+#: horizon is what makes a warmed evaluation window exist at all. The ceiling
+#: keeps the declared horizon finite; serialized output is bounded separately.
 MIN_DURATION_S = 12.0
-MAX_DURATION_S = 60.0
+MAX_DURATION_S = 300.0
+MIN_PACKET_CAP = 1
+MAX_PACKET_CAP = 100_000
 MAX_OUTPUT_BYTES = 10 * 1024**3
 MIN_FREE_BYTES = 5 * 1024**3
 SUMMARY_RESERVE_BYTES = 1024 * 1024
@@ -72,10 +74,10 @@ OVERRIDE_FIELDS = {
     "links": {"rf_isl", "rate_model", "isl_rate_mbps"},
     "routing": {"policy", "staged_policy", "staged_policy_at_s"},
     "scenario": {"duration_s", "seed"},
-    # The queue-state-age experiment (taskbook 5.4) varies ONLY the instant the
-    # resource state is queried, so the time-alignment arm has to be a contract
-    # override.  The whitelist below is the full set of keys the four-arm
-    # comparison is allowed to differ in; nothing else may be overridden here.
+    # Queue-state-age comparisons vary admissible measurement age
+    # (min_observation_age_s) alongside time-alignment query behavior.  Keep
+    # those related controls in this explicit whitelist; nothing else may be
+    # overridden by the four-arm comparison.
     "time_alignment": {"arm", "predictor", "common_rule",
                        "common_horizon_s", "history_limit",
                        "execution_mode", "min_observation_age_s"},
@@ -213,8 +215,12 @@ def _validate_contract_document(document: dict) -> None:
         raise CalibrationError("contract deadline_s must be the frozen D4=4")
     if (isinstance(document["max_packets"], bool)
             or not isinstance(document["max_packets"], int)
-            or document["max_packets"] != 20000):
-        raise CalibrationError("contract max_packets must be 20000")
+            or not (MIN_PACKET_CAP <= document["max_packets"]
+                    <= MAX_PACKET_CAP)):
+        raise CalibrationError(
+            "contract max_packets must be an integer between "
+            f"{MIN_PACKET_CAP} and {MAX_PACKET_CAP}, "
+            f"got {document['max_packets']!r}")
     if (isinstance(document["max_duration_s"], bool)
             or not isinstance(document["max_duration_s"], (int, float))
             or not (MIN_DURATION_S <= float(document["max_duration_s"])
