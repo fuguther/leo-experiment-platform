@@ -78,7 +78,7 @@ OVERRIDE_FIELDS = {
     # comparison is allowed to differ in; nothing else may be overridden here.
     "time_alignment": {"arm", "predictor", "common_rule",
                        "common_horizon_s", "history_limit",
-                       "execution_mode"},
+                       "execution_mode", "min_observation_age_s"},
 }
 
 

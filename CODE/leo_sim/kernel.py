@@ -1263,6 +1263,13 @@ class Kernel:
         # a populated cache.  The warm-up rows are the SAME rows for every arm
         # (the trace is exogenous), so the prefix is identical by construction.
         self._warmup_until_s = float(self.cfg_dm.get("warmup_until_s") or 0.0)
+        # Minimum source-measurement age of the same-resource workload the
+        # predictor is allowed to see.  None = the historical behaviour (any
+        # received sample).  A finite value is the controlled observation-age
+        # intervention: it withholds fresher samples WITHOUT modifying them.
+        raw_age = self.cfg_ta.get("min_observation_age_s")
+        self._min_observation_age_s = (None if raw_age in (None, "")
+                                       else float(raw_age))
         # EVENT-ADVERT: the deployable alternative to the periodic schedule.
         # A satellite emits an extra report when ITS OWN serving set changes
         # (an association becomes active, or a link is released).  The trigger
@@ -4831,6 +4838,16 @@ class Kernel:
             target_bits = float(self.cfg_dm["packet_bits"])
         target_dst = (pkt.dst if (pkt is not None and dst is None) else
                       (dst if dst is not None else None))
+        # OBSERVATION-AGE INTERVENTION.  min_observation_age_s = a means the
+        # snapshot must only contain samples whose SOURCE MEASUREMENT is at
+        # least a seconds old, i.e. measured_at <= t0 - a.  Only the age of the
+        # same-resource workload observation changes: the resource identity,
+        # the generation filter, the workload definition, the scorer, the
+        # candidate set, the control schedule and the physical model are all
+        # untouched.  a = None (the default) keeps the historical behaviour.
+        age_cutoff = None
+        if self._min_observation_age_s is not None:
+            age_cutoff = float(now) - float(self._min_observation_age_s)
         cand_map = self._candidate_resource_map(pkt, sat, now, cands,
                                                 force=True, dst=target_dst)
         legal = []
@@ -4905,6 +4922,13 @@ class Kernel:
                     sample_rate = (rec.get("advertised_isl_rate_bps")
                                    or {}).get(resource_direction)
                 if advertised_bits is None:
+                    continue
+                if age_cutoff is not None \
+                        and float(rec["generated_at"]) > age_cutoff:
+                    # too fresh for this arm: the observation is deliberately
+                    # not offered to the predictor.  The sample is not
+                    # modified, only withheld; the arm's own past state is
+                    # still what remains.
                     continue
                 history.append(_ta.StateSample(
                     key, float(rec["generated_at"]), float(rec["received_at"]),
@@ -5111,11 +5135,51 @@ class Kernel:
             # the inference policy owns the ACTION; the scorer still supplies
             # the fallback ordering behind it
             order = [policy_choice] + [d for d in order if d != policy_choice]
+        # OBSERVATION-AGE AUDIT.  For every candidate, record the source
+        # measurement instant of the sample the predictor will actually use and
+        # the workload value that sample carries.  This is built with the SAME
+        # helpers the predictor uses (order_history / _latest_by_resource), so
+        # "what was read" and "what is recorded" cannot drift apart.
+        age_audit = None
+        if self._min_observation_age_s is not None:
+            ordered = _ta.order_history(probe.history, probe.snapshot_at)
+            grouped = _ta._latest_by_resource(ordered) if ordered else {}
+            per_dir = {}
+            for d in probe.legal_directions:
+                res = probe.resource_for(d)
+                series = list(grouped.get(res.as_tuple(), ()))
+                used = series[-1] if series else None
+                per_dir[d] = {
+                    "resource": (None if res is None else res.as_tuple()),
+                    "samples_available": len(series),
+                    "used_measured_at": (None if used is None
+                                         else float(used.measured_at)),
+                    "used_actual_age_s": (
+                        None if used is None
+                        else float(probe.snapshot_at) - float(used.measured_at)),
+                    "used_queue_bits": (None if used is None
+                                        else float(used.queue_bits)),
+                    "used_rate_bps": (None if used is None
+                                      else used.rate_bps),
+                }
+            age_audit = {
+                "schema": "leo-sim-observation-age/v1",
+                "declared_min_observation_age_s": float(
+                    self._min_observation_age_s),
+                "snapshot_at": float(probe.snapshot_at),
+                "cutoff_measured_at": float(probe.snapshot_at)
+                - float(self._min_observation_age_s),
+                "per_direction": per_dir,
+                "rule": "withhold samples with measured_at > snapshot_at - a; "
+                        "no sample is modified; insufficient history uses the "
+                        "predictor's normal hold-last behaviour on what remains",
+            }
         audit = {
             "schema": "leo-sim-time-alignment-at-start/v1",
             "enabled": True,
             "arm": arm,
             "predictor": probe.predictor,
+            "observation_age": age_audit,
             "common_rule": rule,
             "common_horizon_s": horizon,
             "common_horizon_status": (

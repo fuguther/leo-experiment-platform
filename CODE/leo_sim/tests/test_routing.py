@@ -566,3 +566,39 @@ def test_every_policy_runs_the_kernel_end_to_end():
                                     timeline_sink=rows, control_audit=True)
         assert res["mechanism_counters"]["control_snapshots"] > 0, tag
         assert res["fate_counts"]["DELIVERED"] >= 0, tag
+
+# --- observation-age intervention (this round) -----------------------------
+
+def test_observation_age_withholds_fresh_samples_without_touching_them():
+    """A deterministic queue change: the age window must change the read value.
+
+    The same resource, the same units, the same predictor; only the minimum
+    age of the source measurement changes.  The fresher sample is WITHHELD,
+    never rewritten, so the remaining value is the branch own past state.
+    """
+    from CODE.leo_sim import time_alignment as ta
+    res = ta.ResourceKey(7, "E", ta.KIND_ISL, generation=3)
+    hist = [ta.StateSample(res, 0.0, 0.01, 1000.0, 1e6),
+            ta.StateSample(res, 2.0, 2.01, 5000.0, 1e6),
+            ta.StateSample(res, 4.0, 4.01, 9000.0, 1e6)]
+    fresh = ta.predict_resource(hist, snapshot_at=4.5, target_at=4.5,
+                                method="hold_last", resource=res)
+    assert fresh.predicted_bits == 9000.0
+    # withhold anything measured after 4.5 - 1.0 = 3.5 s
+    withheld = [s for s in hist if s.measured_at <= 3.5]
+    aged = ta.predict_resource(withheld, snapshot_at=4.5, target_at=4.5,
+                               method="hold_last", resource=res)
+    assert aged.predicted_bits == 5000.0
+    assert len(withheld) == 2, "the fresh sample must be absent, not edited"
+    # and the value really is the age of the source measurement
+    assert 4.5 - withheld[-1].measured_at == 2.5
+
+
+def test_observation_age_config_resolves_and_defaults_to_off():
+    from CODE.leo_sim import config as config_mod
+    base = make_cfg({"scenario": {"num_satellites": 1, "num_planes": 1}})
+    assert base["config"]["time_alignment"]["min_observation_age_s"] is None
+    aged = make_cfg({"scenario": {"num_satellites": 1, "num_planes": 1},
+                     "time_alignment": {"min_observation_age_s": 1.5}})
+    assert aged["config"]["time_alignment"]["min_observation_age_s"] == 1.5
+

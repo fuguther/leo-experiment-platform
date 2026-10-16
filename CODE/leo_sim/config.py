@@ -293,6 +293,13 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "execution_mode": str,  # per_packet|per_flow|precomputed|async_point|async_window
         "per_flow_ttl_s": (int, float),
         "query_delay_s": (int, float),
+        # OBSERVATION-AGE INTERVENTION.  Minimum age (seconds) of the SOURCE
+        # MEASUREMENT of the same-resource workload the predictor may read:
+        # samples with measured_at > t0 - min_observation_age_s are withheld
+        # (not modified).  None keeps the historical behaviour.  Resource
+        # identity, generation filter, workload definition, scorer, candidate
+        # set, control schedule and physical model are unaffected.
+        "min_observation_age_s": (int, float, type(None)),
     },
     "async_routing": {
         "enabled": bool,
@@ -536,6 +543,10 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "execution_mode": "per_packet",
         "per_flow_ttl_s": 0.5,
         "query_delay_s": 0.000001,
+        # None = read every received sample (historical behaviour).  A finite
+        # value is the observation-age intervention: samples whose source
+        # measurement is younger than this are withheld from the predictor.
+        "min_observation_age_s": None,
     },
     "async_routing": {
         "enabled": False,
