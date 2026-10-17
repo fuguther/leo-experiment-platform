@@ -1,4 +1,24 @@
-# 本工作树状态：场景与负载校准（scene-cal，2026-10-18）
+# 本工作树状态：场景与负载校准 + 2026-10-19 夜间场景族
+
+范围：仅 `worktrees/.t1-scene-calibration` / `codex/20261018-scene-calibration`；工作区级入口仍是 `topic/STATUS.md`。
+
+## 2026-10-19 夜间轮（最新）
+
+- 用户点出的五项校准问题：逐星 CPU、逐网关、静态↔实际一致、窗口敏感性、控制占用两种口径 →
+  前四项（第 4 项部分）+ 第 5 项已处置，证据见 INDEPENDENT-REVIEW.md §12.1。
+  静态 spec 与运行 resolved_config **13 项逐字段全等**。
+- 新增声明式 demand 程序（S1 平稳 / S2 OD 独立突发 / S3 相关热点）与诊断流开关（timeline 可关，
+  单格产物 700 MB → 230 MB）。release 链：`2de8cdb` → `65a6f9f`（wave1 合同）→ `e81890c`（原子写 + 稳定种子）。
+- 首轮实测 4 格完成（S1/S2/S3 低载 + S1 中载短窗），ISL 排队 0.29–2.82 ms，尾丢 0，
+  低载三场景无差别（有效零效应）。
+- **未完成**：S/O/F/A 四主条件、10 seed、预测器比较、十类图。原因是单格 0.124 s/包
+  且 `Kernel.run()` 停止后归约 >1 h 未定位。9 格仍在跑（中/高载、窗口 1.20 s、缓冲 5/100 ms）。
+- 预算：本轮真实内核启动 **5/60**（8 格 fail-closed 且 kernel_call_count=0 不计入）。
+- 失败：tcsv 交错写 + `tuple.__hash__` 随机种子（已修，见 §12.5 与 PLAN-20261019.md）。
+- 证据：批量启动器发的诊断批次**无根回执**（与 rtE/rtS 同），未做 verified pull；
+  派生表在 VM 只读生成。
+
+## 2026-10-18 校准轮（历史）
 
 范围：仅 `worktrees/.t1-scene-calibration` / `codex/20261018-scene-calibration`；工作区级入口仍是 `topic/STATUS.md`，本文件只记本工作树任务。
 
