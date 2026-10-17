@@ -300,6 +300,14 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # identity, generation filter, workload definition, scorer, candidate
         # set, control schedule and physical model are unaffected.
         "min_observation_age_s": (int, float, type(None)),
+        # STATE-SOURCE INTERVENTION (single factor).  "advertised" keeps the
+        # historical behaviour: the target resource work-ahead is the newest
+        # advertisement this node ACTUALLY RECEIVED, hence stale by
+        # construction.  "ideal_current" replaces ONLY that value source with
+        # the kernel own TRUE current state of the SAME resource at the
+        # decision instant.  Identity, generation filter, candidate set,
+        # scorer, control schedule and physical model are untouched.
+        "state_source": str,  # advertised | ideal_current
     },
     "async_routing": {
         "enabled": bool,
@@ -546,7 +554,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         # None = read every received sample (historical behaviour).  A finite
         # value is the observation-age intervention: samples whose source
         # measurement is younger than this are withheld from the predictor.
-        "min_observation_age_s": None,
+        "min_observation_age_s": None, "state_source": "advertised",
     },
     "async_routing": {
         "enabled": False,

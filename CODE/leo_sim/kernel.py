@@ -4864,6 +4864,7 @@ class Kernel:
         # Preserve the already-computed legal/min-hop baseline order for the
         # shared unknown-information fallback; scoring may reorder only when
         # the required observations are complete.
+        used_state = {}
         for direction in cands:
             cr = cand_map.get(str(direction))
             if not isinstance(cr, dict) or cr.get("status") not in (
@@ -4901,6 +4902,37 @@ class Kernel:
             if link is not None:
                 local_in_service[str(direction)] = self._isl_in_service_s(
                     link, now)
+            src = str((self.cfg_ta or {}).get("state_source") or "advertised")
+            if src not in ("advertised", "ideal_current"):
+                raise ValueError(
+                    'time_alignment.state_source must be advertised or ideal_current, got %r' % (src,))
+            if src == "ideal_current" and key.kind == _ta.KIND_ISL:
+                res_link = self.isls[int(cr["peer"])].get(
+                    str(cr["egress_direction"]))
+                ideal_state = None
+                if (res_link is not None
+                        and int(res_link.gen) == int(key.generation)):
+                    ideal_state = self._isl_resource_state_advertisement(
+                        res_link, now)
+                ideal_bits = (None if ideal_state is None
+                              else ideal_state.get("work_ahead_bits_proxy"))
+                if ideal_bits is not None:
+                    history.append(_ta.StateSample(
+                        key, float(now), float(now), float(ideal_bits),
+                        None if ideal_state.get("rate_bps") is None
+                        else float(ideal_state["rate_bps"])))
+                    used_state[str(direction)] = {
+                        "source": "ideal_current",
+                        "resource_id": "isl:%d:%d" % (
+                            int(cr["peer"]), int(res_link.peer)),
+                        "generation": int(key.generation),
+                        "bits": float(ideal_bits),
+                        "measured_at": float(now),
+                        "received_at": float(now),
+                        "used_at": float(now),
+                        "queued_bits": int(res_link.data_bits + res_link.ctrl_bits),
+                    }
+                continue
             for rec in self._advertisement_history(sat, int(cr["peer"]), now,
                                                    force=True):
                 if key.kind == _ta.KIND_DOWNLINK:
@@ -4934,6 +4966,21 @@ class Kernel:
                     key, float(rec["generated_at"]), float(rec["received_at"]),
                     float(advertised_bits),
                     None if sample_rate is None else float(sample_rate)))
+                if (str(direction) not in used_state
+                        or float(rec["generated_at"]) >=
+                        used_state[str(direction)]["measured_at"]):
+                    used_state[str(direction)] = {
+                        "source": "advertised",
+                        "resource_id": "isl:%d:%d" % (
+                            int(cr["peer"]),
+                            self.topo.get(int(cr["peer"]), {}).get(
+                                str(cr["egress_direction"]), -1)),
+                        "generation": int(key.generation),
+                        "bits": float(advertised_bits),
+                        "measured_at": float(rec["generated_at"]),
+                        "received_at": float(rec["received_at"]),
+                        "used_at": float(now),
+                    }
         def _finite_pairs(values):
             return {d: float(v) for d, v in values.items()
                     if v is not None and isinstance(v, (int, float))
@@ -4993,6 +5040,7 @@ class Kernel:
                 record, peer_arrival_at)
             if projected is not None:
                 peer_process[direction] = projected
+        self._ta_used_state = used_state
         return _ta.make_snapshot(
             satellite=int(sat), snapshot_at=float(now), history=tuple(history),
             legal_directions=tuple(legal), resources=resources,
@@ -5197,6 +5245,8 @@ class Kernel:
             "enabled": True,
             "arm": arm,
             "predictor": probe.predictor,
+            "state_source": str((self.cfg_ta or {}).get("state_source") or "advertised"),
+            "used_state": dict(getattr(self, "_ta_used_state", {}) or {}),
             "observation_age": age_audit,
             "common_rule": rule,
             "common_horizon_s": horizon,
