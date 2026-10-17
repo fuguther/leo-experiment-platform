@@ -4925,7 +4925,8 @@ class Kernel:
                         "source": "ideal_current",
                         "resource_id": "isl:%d:%d" % (
                             int(cr["peer"]), int(res_link.peer)),
-                        "generation": int(key.generation),
+                        "generation": (None if key.generation is None
+                                       else int(key.generation)),
                         "bits": float(ideal_bits),
                         "measured_at": float(now),
                         "received_at": float(now),
@@ -4966,9 +4967,10 @@ class Kernel:
                     key, float(rec["generated_at"]), float(rec["received_at"]),
                     float(advertised_bits),
                     None if sample_rate is None else float(sample_rate)))
-                if (str(direction) not in used_state
-                        or float(rec["generated_at"]) >=
-                        used_state[str(direction)]["measured_at"]):
+                if (key.kind == _ta.KIND_ISL
+                        and (str(direction) not in used_state
+                             or float(rec["generated_at"]) >=
+                             used_state[str(direction)]["measured_at"])):
                     used_state[str(direction)] = {
                         "source": "advertised",
                         "resource_id": "isl:%d:%d" % (
