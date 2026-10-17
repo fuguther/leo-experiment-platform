@@ -78,9 +78,13 @@ OVERRIDE_FIELDS = {
     # (min_observation_age_s) alongside time-alignment query behavior.  Keep
     # those related controls in this explicit whitelist; nothing else may be
     # overridden by the four-arm comparison.
+    # "state_source" selects WHERE the target-resource work-ahead comes from
+    # (advertised receipt vs the kernel current truth).  It is the single factor
+    # of the stale-vs-true-state closed-loop test; "enabled" is its switch.
     "time_alignment": {"arm", "predictor", "common_rule",
                        "common_horizon_s", "history_limit",
-                       "execution_mode", "min_observation_age_s"},
+                       "execution_mode", "min_observation_age_s",
+                       "state_source", "enabled"},
 }
 
 
