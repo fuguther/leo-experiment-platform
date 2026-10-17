@@ -296,6 +296,35 @@ def path_edges(pred, src, dst):
     return list(zip(path, path[1:]))
 
 
+def first_alternative_s(adj, dist, src, dst, used_edges):
+    """Length of the shortest s->t walk that avoids ALL edges of the reference
+    path.  Banning the whole path (not one edge at a time) is what answers the
+    question the study actually asks: if this ISL corridor is congested, does a
+    route that does not touch ANY of it still exist, and how much longer is it?
+
+    Returns None when banning the corridor disconnects the pair.  This is a
+    LOWER bound on the detour a hop-by-hop policy could take; it is not an
+    ECMP split and no traffic is assigned to it.
+    """
+    banned = set(used_edges)
+    dd = {src: 0.0}
+    pq = [(0.0, src)]
+    while pq:
+        d, u = heapq.heappop(pq)
+        if d > dd.get(u, float("inf")) + 1e-15:
+            continue
+        if u == dst:
+            return d
+        for v, w in adj[u]:
+            if (u, v) in banned:
+                continue
+            nd = d + w
+            if nd < dd.get(v, float("inf")) - 1e-15:
+                dd[v] = nd
+                heapq.heappush(pq, (nd, v))
+    return None
+
+
 # --------------------------------------------------------------------------
 # control-plane load
 # --------------------------------------------------------------------------
@@ -384,6 +413,7 @@ def calibrate(spec):
     cap_acc = {}
     win_rows = []
     od_report = {}
+    alt_acc = {}
     zero_hop_w = 0.0
     unroutable_w = 0.0
     hops_w = 0.0
@@ -419,6 +449,10 @@ def calibrate(spec):
                 zero_hop_w += w
                 continue
             pair_w[(a, best)] = pair_w.get((a, best), 0.0) + w
+        adj_w = {s: [(n, topology.range_km(s, n, t) / C_KM_S) for n in nb.values()]
+                 for s, nb in topo.items()}
+        for s in adj_w:
+            adj_w[s].sort()
         for (a, b), w in pair_w.items():
             path = path_edges(pred, a, b)
             if path is None:
@@ -429,6 +463,13 @@ def calibrate(spec):
             hops_w += w * len(path)
             routed_w += w
             stretch_w += w * (dist[a][b] * C_KM_S)
+            alt = first_alternative_s(adj_w, dist, a, b, path) if len(path) > 1 else None
+            rec = alt_acc.setdefault((a, b), dict(weight_s=0.0, ref_s=dist[a][b],
+                                                  alt_windows=0, alt_sum_s=0.0))
+            rec["weight_s"] += w
+            if alt is not None:
+                rec["alt_windows"] += 1
+                rec["alt_sum_s"] += alt
             od_report.setdefault((a, b), {"weight_s": 0.0, "hops": len(path),
                                           "prop_s": dist[a][b]})
             od_report[(a, b)]["weight_s"] += w
@@ -558,6 +599,23 @@ def calibrate(spec):
                     num_nodes=num_nodes, control=dict(cp),
                     cells=len(cells), od_pairs=len(od)),
         od_sum=od_sum,
+        alternatives=dict(
+            routed_pairs=len(alt_acc),
+            pairs_with_no_alternative=sum(1 for r in alt_acc.values()
+                                          if r["alt_windows"] == 0),
+            median_alternative_stretch=(
+                sorted((r["alt_sum_s"] / r["alt_windows"]) / r["ref_s"]
+                       for r in alt_acc.values() if r["alt_windows"])
+                [len([r for r in alt_acc.values() if r["alt_windows"]]) // 2]
+                if any(r["alt_windows"] for r in alt_acc.values()) else None),
+            per_pair={f"{a}->{b}": dict(
+                reference_s=r["ref_s"],
+                alternative_s=(r["alt_sum_s"] / r["alt_windows"]
+                               if r["alt_windows"] else None),
+                stretch=((r["alt_sum_s"] / r["alt_windows"]) / r["ref_s"]
+                         if r["alt_windows"] else None),
+                windows_with_alternative=r["alt_windows"], windows=n_win)
+                for (a, b), r in sorted(alt_acc.items())}),
         traffic_split=dict(zero_hop_weight=zero_hop_w / n_win_f,
                            unroutable_weight=unroutable_w / n_win_f,
                            routed_weight=routed_w / n_win_f,
@@ -715,6 +773,105 @@ def selftest():
 
 
 # --------------------------------------------------------------------------
+# OD-scope comparison: the evidence that the OD definition, not the link rate,
+# decides whether the ISL mesh is used at all.
+# --------------------------------------------------------------------------
+SCOPE_BASE = dict(
+    provider="constellation",
+    geometry=dict(num_satellites=96, num_planes=12, altitude_km=800.0,
+                  inclination_deg=53.0, min_elevation_deg=10.0, max_isl_km=6000.0,
+                  geometry_epoch_s=0.0, dynamic=True),
+    packet_bits=12000,
+    links={"rate_mbps": 1000.0, "queue_bits": 20000000},
+    control_plane={"packet_bits": 8000, "interval_s": 0.05, "vis_k": 2},
+    access_layer={"uplink_mbps": 10000.0, "downlink_mbps": 10000.0, "gateways": 4},
+    compute_delay_s=0.00005, compute_servers_per_satellite=1,
+    buffer_taus_s=[0.005, 0.02, 0.1],
+    horizon_s=12.0, window_s=1.0, representative_hop_km=5488.4)
+
+#: Declared gateway coordinates.  Every scenario below uses the same geometry,
+#: the same links and the same control plane; only the OD definition changes.
+SCOPE_GATEWAYS = {
+    "beijing": (39.90, 116.40), "shanghai": (31.20, 121.50), "tokyo": (35.70, 139.70),
+    "london": (51.50, -0.13), "frankfurt": (50.10, 8.68), "newyork": (40.70, -74.00),
+    "sydney": (-33.87, 151.20), "mumbai": (19.10, 72.90),
+    "singapore": (1.35, 103.80), "saopaulo": (-23.55, -46.63),
+}
+
+
+def _uniform_od(cells, weights):
+    tot = sum(weights[c["id"]] for c in cells)
+    n = len(cells)
+    return {f"{s['id']},{d['id']}": (weights[s["id"]] / tot) / (n - 1)
+            for s in cells for d in cells if d["id"] != s["id"]}
+
+
+def scope_specs(population_path=None, repo_root=None):
+    """The five OD scopes compared in review §11.3, all other settings equal."""
+    spec = {}
+    g = SCOPE_GATEWAYS
+
+    def cells(ids, weights=None):
+        weights = weights or {i: 1.0 for i in ids}
+        return [{"id": i, "lat": g[i][0], "lon": g[i][1], "weight": weights[i]}
+                for i in ids]
+
+    spec["B_global10_uniform"] = dict(
+        SCOPE_BASE, cells=cells(list(g)), od_weights=_uniform_od(cells(list(g)), {i: 1.0 for i in g}))
+    spec["C_3gw_uniform"] = dict(
+        SCOPE_BASE, cells=cells(["beijing", "london", "newyork"]),
+        od_weights=_uniform_od(cells(["beijing", "london", "newyork"]),
+                               {i: 1.0 for i in ("beijing", "london", "newyork")}))
+    spec["D_2gw_equal"] = dict(
+        SCOPE_BASE, cells=cells(["beijing", "london"]),
+        od_weights=_uniform_od(cells(["beijing", "london"]),
+                               {"beijing": 1.0, "london": 1.0}))
+    sel = cells(["beijing", "london", "newyork"],
+                {"beijing": 4.0, "london": 1.0, "newyork": 1.0})
+    spec["E_trunk_v1_selected"] = dict(
+        SCOPE_BASE, cells=sel,
+        od_weights=_uniform_od(sel, {"beijing": 4.0, "london": 1.0, "newyork": 1.0}))
+    if population_path is not None:
+        from leo_sim import population as population_mod
+        table = population_mod.load_population_regions(
+            population_path, 1.0, lat_bounds_deg=[20.0, 30.0],
+            lon_bounds_deg=[100.0, 110.0], source_root=repo_root)
+        spec["A_existing_region_population_gravity"] = dict(
+            SCOPE_BASE,
+            cells=[{"id": f"r{i}", "lat": r.lat, "lon": r.lon, "weight": r.population}
+                   for i, r in enumerate(table.regions)],
+            source_population_exponent=1.0, destination_population_exponent=3.0,
+            gravity_alpha=0.5, gravity_d_floor_km=100.0)
+    return spec
+
+
+def scope_comparison(population_path=None, repo_root=None):
+    rows = []
+    for name, spec in scope_specs(population_path, repo_root).items():
+        res = calibrate(spec)
+        lc = res["link_coefficients"]
+        ts = res["traffic_split"]
+        R = {t["target_rho"]: t["R_mbps"] for t in res["tiers"]}
+        rows.append(dict(
+            scenario=name, cells=res["inputs"]["cells"],
+            od_pairs=res["inputs"]["od_pairs"],
+            zero_hop_weight=round(ts["zero_hop_weight"], 4),
+            unroutable_weight=round(ts["unroutable_weight"], 4),
+            mean_isl_hops=round(ts["mean_isl_hops"], 2),
+            max_b_e=round(lc["max_b_e"], 4),
+            service_edges=lc["directed_edges"],
+            max_c_e_bit_s=lc["max_c_e_bit_s"],
+            R020_mbps=round(R[0.2], 1), R050_mbps=round(R[0.5], 1),
+            R095_mbps=round(R[0.95], 1),
+            network_packets_s_at_095=round(R[0.95] * 1e6 / spec["packet_bits"]),
+            median_alternative_stretch=(
+                round(res["alternatives"]["median_alternative_stretch"], 3)
+                if res["alternatives"]["median_alternative_stretch"] is not None else None),
+            pairs_without_alternative=res["alternatives"]["pairs_with_no_alternative"]))
+    return sorted(rows, key=lambda r: r["max_b_e"])
+
+
+# --------------------------------------------------------------------------
 def _load_spec(path):
     text = Path(path).read_text(encoding="utf-8")
     if path.endswith(".json"):
@@ -729,9 +886,23 @@ def main(argv=None):
     p.add_argument("--spec", required=True)
     p.add_argument("--out", required=True)
     sub.add_parser("selftest")
+    sc = sub.add_parser("scope-comparison")
+    sc.add_argument("--population", default=None,
+                    help="population raster path; omit to skip the regional scope")
+    sc.add_argument("--repo-root", default=None)
+    sc.add_argument("--out", default=None)
     args = ap.parse_args(argv)
     if args.cmd == "selftest":
         return selftest()
+    if args.cmd == "scope-comparison":
+        rows = scope_comparison(args.population,
+                                Path(args.repo_root) if args.repo_root else REPO_ROOT)
+        text = json.dumps(rows, indent=1) + chr(10)
+        if args.out:
+            Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.out).write_text(text, encoding="utf-8")
+        print(text)
+        return 0
     spec = _load_spec(args.spec)
     result = calibrate(spec)
     out = write_outputs(result, args.out, spec)
