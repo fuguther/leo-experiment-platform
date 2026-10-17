@@ -318,7 +318,7 @@ def materialize_trace_program(cell_id: str, program: dict) -> dict:
     """
     digest = prog_mod.program_digest(program)
     out = TRACE_PROGRAM_ROOT / f"{cell_id}-{digest[:16]}.csv"
-    if out.exists():
+    if out.exists() and prog_mod.is_complete(out):
         return {"path": str(out), "rows": None, "sha256": digest,
                 "cached": True, "program_digest": digest}
     rows = prog_mod.generate(program)

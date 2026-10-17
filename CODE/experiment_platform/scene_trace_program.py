@@ -38,7 +38,9 @@ import csv
 import hashlib
 import json
 import math
+import os
 import random
+import zlib
 from pathlib import Path
 
 SCHEMA = "scene-trace-program/v1"
@@ -188,7 +190,11 @@ def generate(program: dict):
         d_lat, d_lon = cells[dst_id]
         w = weights[od]
         base = w * R / L                       # packets/s at multiplier 1
-        gen = random.Random((seed, od).__hash__() & 0xFFFFFFFF)
+        # STABLE per-OD seed.  tuple.__hash__ is randomised per process
+        # (PYTHONHASHSEED), so an earlier version produced a DIFFERENT trace
+        # for the same declared program on every run -- the file was cached
+        # by program digest, so the first process won and nobody noticed.
+        gen = random.Random(zlib.crc32(od.encode("utf-8")) ^ (seed * 0x9E3779B1))
         spec = mult[od]
         if spec == 1.0:
             intervals = [(t0, t1, False, 1.0)]
@@ -221,20 +227,58 @@ def generate(program: dict):
     rows.sort(key=lambda r: (r["emit_time_s"], r["packet_id"]))
     for i, r in enumerate(rows, start=1):
         r["packet_id"] = i
+    if len({r["packet_id"] for r in rows}) != len(rows):
+        raise TraceProgramError("generated duplicate packet ids")
     return rows
 
 
+FIELDS = ["packet_id", "emit_time_s", "src_lat", "src_lon", "dst_lat",
+          "dst_lon", "bits"]
+
+
 def write_csv(rows, path) -> dict:
+    """Write atomically.
+
+    An earlier version opened the destination directly.  When the batch
+    launcher started several cells at once, two writers on the same
+    content-addressed path interleaved their rows and produced lines with 12
+    fields instead of 7 (observed: 'csv row 320: invalid endpoint
+    coordinates').  Writing to a private temporary file and renaming makes the
+    visible file either absent or complete, so a concurrent reader can never
+    see a half-written trace.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as fh:
-        wr = csv.DictWriter(fh, fieldnames=["packet_id", "emit_time_s", "src_lat",
-                                            "src_lon", "dst_lat", "dst_lon", "bits"])
-        wr.writeheader()
-        for r in rows:
-            wr.writerow(r)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with temporary.open("w", newline="", encoding="utf-8") as fh:
+            wr = csv.DictWriter(fh, fieldnames=FIELDS)
+            wr.writeheader()
+            for r in rows:
+                wr.writerow(r)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     return {"path": str(path), "rows": len(rows), "sha256": digest}
+
+
+def is_complete(path) -> bool:
+    """A trace file is usable only if it starts with the declared header and
+    ends on a row boundary."""
+    path = Path(path)
+    try:
+        with path.open("rb") as fh:
+            head = fh.readline().decode("utf-8").strip().split(",")
+            if head != FIELDS:
+                return False
+            fh.seek(-1, os.SEEK_END)
+            return fh.read(1) == b"\\n"
+    except (OSError, UnicodeError):
+        return False
 
 
 def program_digest(program: dict) -> str:
