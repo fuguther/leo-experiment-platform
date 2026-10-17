@@ -21,6 +21,7 @@ import sys
 import time
 from pathlib import Path
 
+from CODE.experiment_platform import scene_trace_program as prog_mod
 from CODE.experiment_platform import t1_tasks
 from CODE.leo_sim import config as config_mod
 from CODE.leo_sim import kernel
@@ -75,7 +76,11 @@ OVERRIDE_FIELDS = {
     "control_plane": {"advertise_interval_s", "vis_k",
                       "initial_sync_burst_s", "event_advert_enabled",
                       "event_advert_min_interval_s"},
-    "demand": {"offered_mbps", "packet_bits", "emission_start_s",
+    # mode and csv_path are injected ONLY by the declared trace_program path
+    # below, never typed by a cell: a cell that names its own CSV could smuggle
+    # in a trace the calibration never saw.
+    "demand": {"mode", "csv_path", "offered_mbps", "packet_bits",
+               "emission_start_s",
                "emission_end_s", "burst_start_s", "burst_duration_s",
                "burst_multiplier"},
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
@@ -214,11 +219,24 @@ def _validate_effective_config(resolved: dict, contract: dict,
             f"not take effect (resolved {cfg['routing']['policy']!r})")
 
 
+DIAGNOSTIC_CHANNELS = ("timeline", "decisions", "control_audit")
+
+
 def _validate_contract_document(document: dict) -> None:
     expected = {"schema", "base_profile", "deadline_s", "max_packets",
-                "max_duration_s", "cells"}
-    if not isinstance(document, dict) or set(document) != expected:
+                "max_duration_s", "cells", "diagnostics"}
+    if not isinstance(document, dict) or not set(document) <= expected \
+            or not expected - {"diagnostics"} <= set(document):
         raise CalibrationError("contract has missing or unknown fields")
+    if "diagnostics" in document:
+        d = document["diagnostics"]
+        if not isinstance(d, dict) or not set(d) <= set(DIAGNOSTIC_CHANNELS):
+            raise CalibrationError(
+                f"contract diagnostics may only name {list(DIAGNOSTIC_CHANNELS)}")
+        for key, value in d.items():
+            if not isinstance(value, bool):
+                raise CalibrationError(
+                    f"contract diagnostics.{key} must be a boolean")
     if document["schema"] != CONTRACT_SCHEMA:
         raise CalibrationError("unsupported load calibration contract schema")
     if document["base_profile"] not in ALLOWED_PROFILES:
@@ -249,6 +267,66 @@ def _validate_contract_document(document: dict) -> None:
         raise CalibrationError("contract cells must be a non-empty list")
 
 
+def diagnostics_for(contract: dict, cell: dict) -> dict:
+    """Which diagnostic streams this cell writes.
+
+    The 2026-10-18 calibration round showed a single 12 s cell emitting 11.7 M
+    timeline rows and 441 MB of decision rows, and spending longer in
+    post-run reduction than in the simulation.  The timeline stream is a
+    per-resource queue-state record that NONE of this study's metrics read:
+    the ISL core decomposition is recomputed from packet_events +
+    link_service_windows, which live in result.json.gz and are produced
+    whether or not a timeline sink is attached.  Turning it off is therefore a
+    logging decision, not a measurement decision.
+
+    Defaults keep the historical behaviour (everything on) so existing
+    contracts and tests are unaffected; a contract opts out explicitly.
+    """
+    keys = ("timeline", "decisions", "control_audit")
+    out = {k: True for k in keys}
+    for scope, block in (("contract", contract.get("diagnostics") or {}),
+                         ("cell", cell.get("diagnostics") or {})):
+        unknown = set(block) - set(keys)
+        if unknown:
+            raise CalibrationError(
+                f"{scope} {cell.get('id')!r}: unknown diagnostics "
+                f"{sorted(unknown)}; allowed {list(keys)}")
+        for k, v in block.items():
+            if not isinstance(v, bool):
+                raise CalibrationError(
+                    f"{scope} {cell.get('id')!r}: diagnostics.{k} must be a boolean")
+    out.update(contract.get("diagnostics") or {})
+    out.update(cell.get("diagnostics") or {})
+    if not out["timeline"] and not out["decisions"]:
+        raise CalibrationError(
+            f"cell {cell.get('id')!r}: the kernel needs at least one sink; "
+            "timeline and decisions cannot both be disabled")
+    return out
+
+
+TRACE_PROGRAM_ROOT = Path(os.environ.get("T1_TRACE_PROGRAM_ROOT",
+                                        "/tmp/t1-trace-programs"))
+
+
+def materialize_trace_program(cell_id: str, program: dict) -> dict:
+    """Write one declared trace program to a content-addressed CSV.
+
+    The path is derived from the program digest, so the same program always
+    resolves to the same file and the run's resolved config is stable.  The
+    CSV is emitted OUTSIDE the release (the release is immutable) and its
+    sha256 is bound into the trace manifest by the trace compiler itself.
+    """
+    digest = prog_mod.program_digest(program)
+    out = TRACE_PROGRAM_ROOT / f"{cell_id}-{digest[:16]}.csv"
+    if out.exists():
+        return {"path": str(out), "rows": None, "sha256": digest,
+                "cached": True, "program_digest": digest}
+    rows = prog_mod.generate(program)
+    info = prog_mod.write_csv(rows, out)
+    info.update(cached=False, program_digest=digest)
+    return info
+
+
 def _read_contract(contract_path: Path, repo_root: Path):
     try:
         raw = contract_path.read_bytes()
@@ -267,8 +345,13 @@ def _read_contract(contract_path: Path, repo_root: Path):
     seen = set()
     validated = {}
     for cell in document["cells"]:
-        if not isinstance(cell, dict) or set(cell) != {"id", "arms", "overrides"}:
-            raise CalibrationError("each cell must contain exactly id, arms, overrides")
+        if (not isinstance(cell, dict)
+                or not {"id", "arms", "overrides"} <= set(cell)
+                or not set(cell) <= {"id", "arms", "overrides",
+                                    "trace_program", "diagnostics"}):
+            raise CalibrationError(
+                "each cell must contain id, arms, overrides and at most "
+                "trace_program/diagnostics")
         cell_id = cell["id"]
         if (not isinstance(cell_id, str)
                 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", cell_id)):
@@ -283,6 +366,20 @@ def _read_contract(contract_path: Path, repo_root: Path):
                 or len(set(arms)) != len(arms)):
             raise CalibrationError(
                 f"cell {cell_id}: arms must be unique names from {ALLOWED_ARMS}")
+        if "trace_program" in cell:
+            # The declared stochastic program IS the demand: it is materialised
+            # to a CSV here, before config resolution, so the resolved config
+            # the run executes names the exact trace it will read.  A cell may
+            # not name a CSV directly -- that would let a trace the calibration
+            # never saw into the run.
+            info = materialize_trace_program(cell_id, cell["trace_program"])
+            demand = cell["overrides"].setdefault("demand", {})
+            if "csv_path" in demand or demand.get("mode") not in (None, "csv"):
+                raise CalibrationError(
+                    f"cell {cell_id}: trace_program and an explicit demand "
+                    "mode/csv_path are mutually exclusive")
+            demand["mode"] = "csv"
+            demand["csv_path"] = info["path"]
         _validate_override_shape(cell["overrides"], cell_id)
         normalized = _design_overrides(base_resolved, cell["overrides"])
         cfg = copy.deepcopy(base_resolved["config"])
@@ -763,6 +860,7 @@ def run_calibration(contract_path: Path, cell_id: str, out_dir: Path,
     selected = cells[cell_id]
     cell = selected["cell"]
     resolved = selected["resolved"]
+    diagnostics = diagnostics_for(contract, cell)
     budget = _OutputBudget()
     arms = []
     error = None
@@ -790,6 +888,7 @@ def run_calibration(contract_path: Path, cell_id: str, out_dir: Path,
         "input_bindings": binding,
         "arms": arms,
         "kernel_call_count": 0,
+        "diagnostics": dict(diagnostics),
         "error": None,
     }
     try:
@@ -853,10 +952,12 @@ def run_calibration(contract_path: Path, cell_id: str, out_dir: Path,
                 "error": None,
             }
             arms.append(arm_summary)
-            timeline_sink = _JsonlSink(arm_dir / "timeline.jsonl.gz", budget,
-                                       "timeline")
-            decision_sink = _JsonlSink(arm_dir / "decisions.jsonl.gz", budget,
-                                       "decision")
+            timeline_sink = (_JsonlSink(arm_dir / "timeline.jsonl.gz", budget,
+                                        "timeline")
+                             if diagnostics["timeline"] else None)
+            decision_sink = (_JsonlSink(arm_dir / "decisions.jsonl.gz", budget,
+                                        "decision")
+                             if diagnostics["decisions"] else None)
             result = None
             sink_error = None
             try:
@@ -865,18 +966,22 @@ def run_calibration(contract_path: Path, cell_id: str, out_dir: Path,
                 result = kernel.run_simulation(
                     arm_resolved, rows, geometry=geometry,
                     decision_sink=decision_sink, timeline_sink=timeline_sink,
-                    control_audit=True)
+                    control_audit=diagnostics["control_audit"])
             except Exception as exc:
                 sink_error = exc
             finally:
                 for sink in (timeline_sink, decision_sink):
+                    if sink is None:
+                        continue
                     try:
                         sink.close()
                     except Exception as exc:
                         if sink_error is None:
                             sink_error = exc
-            arm_summary["timeline"] = timeline_sink.summary()
-            arm_summary["decisions"] = decision_sink.summary()
+            arm_summary["timeline"] = (timeline_sink.summary()
+                                       if timeline_sink is not None else None)
+            arm_summary["decisions"] = (decision_sink.summary()
+                                        if decision_sink is not None else None)
             if sink_error is not None:
                 arm_summary["error"] = _summary_error(sink_error)
                 error = sink_error
