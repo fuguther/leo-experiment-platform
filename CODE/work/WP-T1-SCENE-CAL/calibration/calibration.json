@@ -159,16 +159,16 @@
    "max_lambda_per_satellite": 103095.00000000003,
    "mean_hops": 3.444444444444442,
    "nodes_with_decisions": 12,
-   "servers": 32,
-   "service_capacity_per_satellite": 640000.0,
-   "service_s": 5e-05,
+   "servers": 1,
+   "service_capacity_per_satellite": 1000000.0,
+   "service_s": 1e-06,
    "tiers": [
     {
      "hotspot_satellite": 90,
      "max_lambda_per_satellite": 18720.000000000004,
      "mean_lambda_all_satellites": 895.5555555555557,
      "network_packets_s": 24960.00000000001,
-     "rho_cpu_hotspot": 0.02925000000000001,
+     "rho_cpu_hotspot": 0.018720000000000004,
      "target_rho": 0.2
     },
     {
@@ -176,7 +176,7 @@
      "max_lambda_per_satellite": 46845.00000000001,
      "mean_lambda_all_satellites": 2241.0416666666665,
      "network_packets_s": 62460.00000000002,
-     "rho_cpu_hotspot": 0.07319531250000001,
+     "rho_cpu_hotspot": 0.046845000000000005,
      "target_rho": 0.5
     },
     {
@@ -184,7 +184,7 @@
      "max_lambda_per_satellite": 65595.00000000001,
      "mean_lambda_all_satellites": 3138.0324074074074,
      "network_packets_s": 87460.00000000003,
-     "rho_cpu_hotspot": 0.10249218750000003,
+     "rho_cpu_hotspot": 0.06559500000000001,
      "target_rho": 0.7
     },
     {
@@ -192,7 +192,7 @@
      "max_lambda_per_satellite": 79657.50000000001,
      "mean_lambda_all_satellites": 3810.7754629629635,
      "network_packets_s": 106210.00000000004,
-     "rho_cpu_hotspot": 0.12446484375000003,
+     "rho_cpu_hotspot": 0.0796575,
      "target_rho": 0.85
     },
     {
@@ -200,7 +200,7 @@
      "max_lambda_per_satellite": 89032.50000000001,
      "mean_lambda_all_satellites": 4259.270833333333,
      "network_packets_s": 118710.00000000004,
-     "rho_cpu_hotspot": 0.13911328125000003,
+     "rho_cpu_hotspot": 0.08903250000000001,
      "target_rho": 0.95
     },
     {
@@ -208,7 +208,7 @@
      "max_lambda_per_satellite": 103095.00000000003,
      "mean_lambda_all_satellites": 4932.01388888889,
      "network_packets_s": 137460.00000000006,
-     "rho_cpu_hotspot": 0.16108593750000005,
+     "rho_cpu_hotspot": 0.10309500000000002,
      "target_rho": 1.1
     }
    ]
@@ -252,7 +252,7 @@
  },
  "od_sum": 1.0,
  "schema": "scene-load-calibration/v1",
- "spec_digest": "0402dbd50d389b4f4319f251bc6b4d727ca9f329209043f7e2d69a66cdb7c5f1",
+ "spec_digest": "78095b74c4c48fae025be9ada84efae5d093609dddf8dbb9e2338513940e2b4d",
  "tiers": [
   {
    "R_bit_s": 299520000.0000001,

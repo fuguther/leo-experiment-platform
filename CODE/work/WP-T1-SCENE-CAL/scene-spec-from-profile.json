@@ -29,8 +29,8 @@
    "weight": 1.0
   }
  ],
- "compute_delay_s": 5e-05,
- "compute_servers_per_satellite": 32,
+ "compute_delay_s": 1e-06,
+ "compute_servers_per_satellite": 1,
  "control_plane": {
   "interval_s": 0.05,
   "packet_bits": 8000,

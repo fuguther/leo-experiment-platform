@@ -121,14 +121,21 @@ execution:
   # 50 us per decision with ONE server gives 20000 decisions/s per satellite.
   # The reference paths concentrate on satellite 90, whose decision arrival
   # rate is 89033 /s at rho=0.95 and 103095 /s at rho=1.10 -- so the OLD
-  # setting was 4.5x oversubscribed and the live probe confirmed it (84% of
-  # decisions queued, median wait 8.2 ms, p99 238 ms, max 296 ms).  Compute,
-  # not the ISL, was the bottleneck.  32 servers is a DECLARED IDEALISATION
-  # of a non-binding compute plane (rho_cpu_hotspot <= 0.161 at rho=1.10); the
-  # per-satellite arrival rate is reported so a deployment study can
-  # substitute a real service time instead of inheriting this number.
-  compute_delay_s: 0.00005
-  compute_servers_per_satellite: 32
+  # setting was 4.5x oversubscribed, and the live probe tkfx/tkprobe confirmed
+  # it (84% of decisions queued, median wait 8.2 ms, p99 238 ms, max 296 ms)
+  # while the busiest ISL sat at 2.5%.  Compute, not the ISL, was the
+  # bottleneck.
+  #
+  # The capacity is expressed as a SERVICE TIME with one server, not as extra
+  # servers, because the load-calibration harness forces
+  # time_alignment.enabled = true (load_calibration.py) and the platform then
+  # refuses compute_servers_per_satellite > 1.  1 us per decision is a DECLARED
+  # IDEALISATION of a non-binding compute plane: rho_cpu_hotspot <= 0.103 at
+  # the overload boundary.  The per-satellite arrival rate is reported in
+  # calibration.json so a deployment study substitutes its own service time
+  # instead of inheriting this one.
+  compute_delay_s: 0.000001
+  compute_servers_per_satellite: 1
   decision_observation_mode: frozen
   max_events: 200000000
   max_entities: 10000
@@ -136,11 +143,11 @@ execution:
   available_capacity_interval_s: 1.0
   node_process_delay_s: 0.0
 time_alignment:
-  # DISABLED on purpose: the platform caps compute_servers_per_satellite at 1
-  # whenever time_alignment is enabled, and this round is load calibration,
-  # not a state-alignment comparison.  Leaving it on would force the compute
-  # bottleneck back in.
-  enabled: false
+  # Left ENABLED because the calibration harness forces it on regardless; the
+  # compute plane is therefore expressed as a service time above.  This round
+  # is load calibration, not a state-alignment comparison, so the arm and
+  # predictor below are inert for the calibration result.
+  enabled: true
   arm: now
   predictor: hold_last
   history_limit: 8
