@@ -1,3 +1,25 @@
+# 本工作树状态：场景与负载校准（scene-cal，2026-10-18）
+
+范围：仅 `worktrees/.t1-scene-calibration` / `codex/20261018-scene-calibration`；工作区级入口仍是 `topic/STATUS.md`，本文件只记本工作树任务。
+
+**任务**：为现有 LEO 星间路由实验算出一套物理一致、成本可承受的流量配置，并做有界诊断。不训练预测器，不启动正式矩阵，不按算法胜负选场景。结论与证据写在 `.diag-ta-20261002/study-design-20261009/review-20261017/INDEPENDENT-REVIEW.md` §11（本轮唯一结论入口，未新建竞争文档）。
+
+**交付物**：`CODE/experiment_platform/scene_load_calibration.py`（参考路径→b_e/c_e→R(ρ) 计算器，含手算自检、逐星/逐网关容量、OD 口径对比、替代路径）、`CODE/experiment_platform/analyze_scene_calibration.py`、profile `t1_scene_trunk_v1.yaml` 与其突发变体、合同 `scene_calibration_{stationary,burst}_20261018.json`、`CODE/work/WP-T1-SCENE-CAL/`。
+
+**版本身份**：`dac3387`（v1 静态标定与 release）→ `8267451`（scope 对比/分析器）→ `8992128`（逐星容量纠正）→ `3cfdd8f`（计算面改为 1 µs 服务时间）。各版 release 见 review §11.1/§11.7。分支已推送 origin。
+
+**已验收**：计算面纠正（决策排队 83.8%→2.6%，等待 p99 238 ms→0.67 µs；同格 12 s 仿真跑完）。
+
+**未完成/未验证**：六档×三 seed 与平稳/突发矩阵**未运行**（用户指示暂停追加；只完成一个探针）；参考路由与执行路由不一致已量化但未纠正；接入与缓冲未做仿真敏感性；探针的 `summary.json` 在本轮结束时仍在结果归约阶段（>1 h），故**回传（verified pull）未完成**。
+
+**预算**：真实内核启动 19/24，余 5。被平台 fail-closed、`kernel_call_count=0` 的 1 次不计入。批 A 的 17 个 run 目录保留未删、无结果、run-id 不复用。
+
+**维护检查**：`python3 -B CODE/scripts/maintenance_check.py --repo .` → 0 error / 1 warning（外置备份与依赖锁未核验，属预期）。
+
+---
+
+## 分支基底历史（不代表本工作树当前结果）
+
 # 本工作树状态：长业务与50ms邻居状态对照
 
 范围：仅 .t1-fast-observation / codex/20261016-fast-observation，工作区入口仍是topic/STATUS.md。基于3a3bc0a创建，原负载校准工作树保持不变。
