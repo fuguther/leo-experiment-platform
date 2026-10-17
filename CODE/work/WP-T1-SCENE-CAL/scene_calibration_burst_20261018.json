@@ -35,11 +35,6 @@
     },
     "routing": {
      "policy": "known_serving"
-    },
-    "time_alignment": {
-     "predictor": "hold_last",
-     "history_limit": 8,
-     "min_observation_age_s": null
     }
    }
   },
@@ -73,11 +68,6 @@
     },
     "routing": {
      "policy": "known_serving"
-    },
-    "time_alignment": {
-     "predictor": "hold_last",
-     "history_limit": 8,
-     "min_observation_age_s": null
     }
    }
   },
@@ -111,11 +101,6 @@
     },
     "routing": {
      "policy": "known_serving"
-    },
-    "time_alignment": {
-     "predictor": "hold_last",
-     "history_limit": 8,
-     "min_observation_age_s": null
     }
    }
   }

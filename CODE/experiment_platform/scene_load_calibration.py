@@ -414,6 +414,7 @@ def calibrate(spec):
     win_rows = []
     od_report = {}
     alt_acc = {}
+    dec_node = {}
     zero_hop_w = 0.0
     unroutable_w = 0.0
     hops_w = 0.0
@@ -470,6 +471,10 @@ def calibrate(spec):
             if alt is not None:
                 rec["alt_windows"] += 1
                 rec["alt_sum_s"] += alt
+            # one forwarding decision per path EDGE, charged to its sender:
+            # the ingress decides the first hop; the egress does not forward.
+            for node, _peer in path:
+                dec_node[node] = dec_node.get(node, 0.0) + w
             od_report.setdefault((a, b), {"weight_s": 0.0, "hops": len(path),
                                           "prop_s": dist[a][b]})
             od_report[(a, b)]["weight_s"] += w
@@ -545,40 +550,61 @@ def calibrate(spec):
             drain_time_s=bits / rate_bps,
             fits_declared_queue_bits=(bits <= cap_bits) if "queue_bits" in links else None)
 
-    # access: same business, aggregated at the gateway
-    gw = ac.get("gateways", 1)
-    checks["access"] = []
+    # ---- access, PER GATEWAY (not a uniform split by gateway count)
+    src_share = {c["id"]: 0.0 for c in cells}
+    dst_share = {c["id"]: 0.0 for c in cells}
+    for (a_id, b_id), w in od.items():
+        src_share[a_id] = src_share.get(a_id, 0.0) + w
+        dst_share[b_id] = dst_share.get(b_id, 0.0) + w
+    up_bps = float(ac["uplink_mbps"]) * 1e6
+    down_bps = float(ac["downlink_mbps"]) * 1e6
+    checks["access"] = dict(
+        per_cell_source_share={k: round(v, 6) for k, v in src_share.items()},
+        per_cell_destination_share={k: round(v, 6) for k, v in dst_share.items()},
+        uplink_mbps=ac["uplink_mbps"], downlink_mbps=ac["downlink_mbps"],
+        tiers=[])
     for row in tier_rows:
         if not row.get("feasible"):
             continue
         R = row["R_bit_s"]
-        checks["access"].append(dict(
+        worst_up = max(src_share.values()) * R
+        worst_down = max(dst_share.values()) * R
+        checks["access"]["tiers"].append(dict(
             target_rho=row["target_rho"], R_bit_s=R,
-            per_gateway_bit_s=R / max(1, gw),
-            uplink_util=(R / max(1, gw)) / (float(ac["uplink_mbps"]) * 1e6),
-            downlink_util=(R / max(1, gw)) / (float(ac["downlink_mbps"]) * 1e6)))
+            worst_gateway_uplink_bit_s=worst_up,
+            worst_gateway_downlink_bit_s=worst_down,
+            worst_uplink_util=worst_up / up_bps,
+            worst_downlink_util=worst_down / down_bps,
+            uplink_binding_cell=max(src_share, key=src_share.get),
+            downlink_binding_cell=max(dst_share, key=dst_share.get)))
 
-    # compute: decision arrival rate per satellite
+    # ---- compute, PER SATELLITE (the hotspot, not the 96-satellite average)
     mean_hops = (hops_w / routed_w) if routed_w > 0 else 0.0
+    servers = int(spec.get("compute_servers_per_satellite", 1))
+    service_s = float(spec.get("compute_delay_s", 0.001))
+    checks["compute"] = dict(
+        nodes_with_decisions=len(dec_node),
+        mean_hops=mean_hops, servers=servers, service_s=service_s,
+        service_capacity_per_satellite=(servers / service_s if service_s else None),
+        tiers=[])
     for row in tier_rows:
         if not row.get("feasible"):
             continue
-        network_pkt_s = row["packet_rate_network"]
-        decisions_s = network_pkt_s * max(mean_hops, 1.0)
-        lam_v = decisions_s / num_nodes
-        servers = int(spec.get("compute_servers_per_satellite", 1))
-        service_s = float(spec.get("compute_delay_s", 0.001))
-        checks["compute"][str(row["target_rho"])] = dict(
-            mean_hops=mean_hops,
-            network_packets_s=network_pkt_s,
-            decisions_s=decisions_s,
-            lambda_per_satellite=lam_v,
-            servers=servers, service_s=service_s,
-            service_capacity_per_satellite=servers / service_s if service_s else None,
-            rho_cpu=(lam_v * service_s / servers) if (servers and service_s) else None)
+        pkt_s = row["packet_rate_network"]
+        # dec_node accumulates per window: normalise exactly like b_e
+        lam = {v: pkt_s * (share / n_win_f) for v, share in dec_node.items()}
+        hot_v = max(lam, key=lam.get) if lam else None
+        hot = lam[hot_v] if hot_v is not None else 0.0
+        checks["compute"]["tiers"].append(dict(
+            target_rho=row["target_rho"], network_packets_s=pkt_s,
+            mean_lambda_all_satellites=(pkt_s * sum(dec_node.values()) / n_win_f
+                                    / num_nodes),
+            max_lambda_per_satellite=hot,
+            hotspot_satellite=hot_v,
+            rho_cpu_hotspot=(hot * service_s / servers) if (servers and service_s) else None))
     checks["compute"]["max_lambda_per_satellite"] = max(
-        (v["lambda_per_satellite"] for k, v in checks["compute"].items()
-         if isinstance(v, dict)), default=0.0)
+        (t["max_lambda_per_satellite"] for t in checks["compute"]["tiers"]),
+        default=0.0)
 
     result = dict(
         schema=SCHEMA,
@@ -771,6 +797,68 @@ def selftest():
                      indent=1))
     return 0 if not failures else 1
 
+
+def spec_from_profile(profile_path, repo_root=None, **overrides):
+    """Build a calibration spec FROM the profile the runs actually use.
+
+    The 2026-10-18 review found the static numbers and the executed profile had
+    drifted apart: the spec carried 128 compute servers at 1 ms while the
+    profile carried 1 at 50 us.  Deriving the spec from the profile removes that
+    whole class of error -- geometry, links, control, access and compute have
+    exactly one source of truth.
+    """
+    import yaml
+    prof = yaml.safe_load(Path(profile_path).read_text(encoding="utf-8"))
+    sc, ep, dm = prof["scenario"], prof["endpoints"], prof["demand"]
+    lk, cp, ac = prof["links"], prof["control_plane"], prof["access"]
+    ex = prof["execution"]
+    sites = ep.get("sites") or []
+    if not sites:
+        raise CalibrationError(
+            "spec_from_profile needs endpoints.sites; expand a "
+            "population_gravity profile to its resolved cell list first")
+    cells = [{"id": s["name"], "lat": float(s["lat"]), "lon": float(s["lon"]),
+              "weight": float(s.get("demand_weight", 1.0))} for s in sites]
+    spec = dict(
+        provider="constellation",
+        geometry=dict(num_satellites=int(sc["num_satellites"]),
+                      num_planes=int(sc["num_planes"]),
+                      altitude_km=float(sc["altitude_km"]),
+                      inclination_deg=float(sc["inclination_deg"]),
+                      min_elevation_deg=float(sc["min_elevation_deg"]),
+                      max_isl_km=float(lk["max_isl_km"]),
+                      geometry_epoch_s=float(sc.get("geometry_epoch_s", 0.0)),
+                      dynamic=True),
+        cells=cells,
+        packet_bits=int(dm["packet_bits"]),
+        links={"rate_mbps": float(lk["isl_rate_mbps"]),
+               "queue_bits": float(lk["isl_queue_bits"])},
+        control_plane={"packet_bits": int(cp["packet_bits"]),
+                       "interval_s": float(cp["advertise_interval_s"]),
+                       "vis_k": int(cp["vis_k"])},
+        access_layer={"uplink_mbps": float(ac["uplink_rate_mbps"]),
+                      "downlink_mbps": float(ac["downlink_rate_mbps"]),
+                      "gateways": len(cells)},
+        compute_delay_s=float(ex["compute_delay_s"]),
+        compute_servers_per_satellite=int(ex["compute_servers_per_satellite"]),
+        buffer_taus_s=[0.005, 0.02, 0.1],
+        horizon_s=float(sc["duration_s"]),
+        window_s=float(prof["topology"]["recompute_interval_s"] or 1.0),
+        representative_hop_km=5488.4,
+    )
+    if dm.get("mode") in ("uniform", "burst", "diurnal"):
+        pairs = od_weights_uniform_destinations(cells)
+        spec["od_weights"] = {cells[i]["id"] + "," + cells[j]["id"]: w
+                              for (i, j), w in pairs.items()}
+    else:
+        spec.update(
+            source_population_exponent=float(dm["source_population_exponent"]),
+            destination_population_exponent=float(
+                dm["destination_population_exponent"]),
+            gravity_alpha=float(dm["gravity_alpha"]),
+            gravity_d_floor_km=float(dm["gravity_d_floor_km"]))
+    spec.update(overrides)
+    return spec
 
 # --------------------------------------------------------------------------
 # OD-scope comparison: the evidence that the OD definition, not the link rate,
