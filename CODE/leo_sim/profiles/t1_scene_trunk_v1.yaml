@@ -1,0 +1,135 @@
+config_version: leo-sim-config/v1
+# T1-SCENE-TRUNK-V1: the calibrated main-scene candidate for the ISL routing
+# study, produced by CODE/experiment_platform/scene_load_calibration.py.
+#
+# WHY THIS SHAPE
+# --------------
+# Every parameter below is either (a) a device/literature-anchored value with
+# the anchor named inline, or (b) an explicitly labelled modelling assumption.
+# Nothing here was chosen because a routing method wins on it.
+#
+#   * Geometry is the FULL existing 96/12/8 Walker at 800 km, unchanged --
+#     no sparsification, no re-densification, no "equivalent" claim.
+#   * ISL effective net rate 1 Gbps (DESIGN CHOICE, see the calibration
+#     report).  With 1500 B packets the per-hop serialization is 12 us against
+#     a 18.31 ms in-plane propagation time: ratio 1 : 1526, so serialization
+#     is far below propagation, which is the property the old 2 Mbps /
+#     120000 bit scene violated (60 ms serialization vs 18.3 ms propagation).
+#     max_isl_km is left at the family value 6000 km.  The 96/12/8 Walker has
+#     an in-plane chord of 5488.4 km, so a 3500 km equipment range would REMOVE
+#     every in-plane ISL and disconnect the constellation; 1 Gbps is therefore
+#     read as a conservative rate for an 8000 km-class optical terminal, NOT
+#     as the TESAT SCOT30 1.25 Gbps / 3500 km pairing.
+#   * Demand: 3 declared gateway sites on 3 continents with demand_weight
+#     4:1:1 (MODELLING ASSUMPTION, gateway aggregation), destinations uniform
+#     over the other sites.  This is the OD scope the calibration script
+#     selected: zero-hop traffic fraction 0.000, mean 3.44 ISL hops, reference
+#     bottleneck load coefficient max_e b_e = 0.6667 on one directed ISL.
+#     It replaces the 10x10 degree regional population scene, whose b_e max
+#     was 0.0398 -- there, no affordable injection rate can load a 1 Gbps link.
+#   * Access is deliberately NOT the bottleneck: 10 Gbps gateway up/downlink
+#     with a finite source queue.  Predicted utilisation at the busiest
+#     gateway is 1.0% (rho=0.20) to 5.5% (rho=1.10).  (MODELLING ASSUMPTION.)
+#   * Compute is a DECLARED NEAR-IDEAL plane: 1 server at 50 us per decision
+#     (a lookup / analytic scorer, NOT neural inference).  The scene measures
+#     the decision arrival rate lambda_v; at the achieved lambda_v <= 4932 /s
+#     the utilisation is <= 24.7%, so compute never pre-empts the ISL.  The
+#     OLD setting (1 server, 1 ms) would be 493% utilised at exactly this
+#     load, which is the "raising the link rate silently moves the bottleneck
+#     to the CPU" failure.  Real on-board inference cost is out of scope and
+#     is reported as a table over candidate service times, never assumed.
+#   * Buffer: 20 Mbit at 1 Gbps = 20 ms of drain time (a SENSITIVITY DESIGN
+#     VALUE, not a device measurement).  5 / 20 / 100 ms are swept by
+#     overriding links.isl_queue_bits to 5e6 / 2e7 / 1e8.
+scenario:
+  name: t1-scene-trunk-v1
+  duration_s: 12.0
+  time_step_s: 0.1
+  num_satellites: 96
+  num_planes: 12
+  altitude_km: 800.0
+  inclination_deg: 53.0
+  min_elevation_deg: 10.0
+  geometry_epoch_s: 0.0
+  seed: 101
+endpoints:
+  grid_deg: 0.25
+  aggregation_deg: 1.0
+  sites:
+    - {name: beijing, lat: 39.90, lon: 116.40, demand_weight: 4.0}
+    - {name: london, lat: 51.50, lon: -0.13, demand_weight: 1.0}
+    - {name: newyork, lat: 40.70, lon: -74.00, demand_weight: 1.0}
+# Stationary base.  The burst variant is t1_scene_trunk_burst_v1.yaml, which
+# is generated from this file by changing exactly the four demand lines marked
+# "BURST-VARIANT" below (a test asserts the two files stay identical
+# elsewhere, so the OD definition cannot drift between arms).
+demand:
+  mode: uniform          # BURST-VARIANT: burst
+  offered_mbps: 749.5    # BURST-VARIANT: same base rate, cells override it
+  packet_bits: 12000
+  emission_start_s: 2.0
+  emission_end_s: 2.7
+  # BURST-VARIANT adds here:
+  #   burst_start_s: 2.0
+  #   burst_duration_s: 0.010
+  #   burst_multiplier: 2.0
+  research_deadline_s: null
+  deadline_s: null
+  temporal_model: constant
+access:
+  unavailable_policy: queue
+  slots_per_satellite: 8
+  uplink_rate_mbps: 10000.0
+  downlink_rate_mbps: 10000.0
+  uplink_queue_bits: 1000000000
+  downlink_queue_bits: 1000000000
+  holding_queue_bits: 1000000000
+  association: bbm
+  hysteresis_deg: 0.0
+  min_dwell_s: 0.0
+  acquisition_delay_s: 0.1
+  idle_release_s: 1.0
+  slot_lease_s: 10.0
+  drr_quantum_bits: 1000000
+links:
+  rate_model: constant
+  isl_rate_mbps: 1000.0
+  isl_queue_bits: 20000000
+  max_isl_km: 6000.0
+  geometry_loss: true
+  ge_enabled: false
+  isl_dirs: [N, S, E, W]
+topology:
+  recompute_interval_s: 1.0
+  matching: markovian
+control_plane:
+  enabled: true
+  advertisement_protocol_version: 2
+  advertise_interval_s: 0.05
+  ttl_s: 10.0
+  vis_k: 2
+  packet_bits: 8000
+  priority: nonpreemptive_priority
+routing:
+  policy: known_serving
+  max_hops: 64
+  learning_enabled: false
+learning:
+  algorithm: none
+execution:
+  compute_delay_s: 0.00005
+  compute_servers_per_satellite: 1
+  decision_observation_mode: frozen
+  max_events: 200000000
+  max_entities: 10000
+  max_packets: 100000
+  available_capacity_interval_s: 1.0
+  node_process_delay_s: 0.0
+time_alignment:
+  enabled: true
+  arm: now
+  predictor: hold_last
+  history_limit: 8
+outputs:
+  out_dir: leo_sim_out/t1-scene-trunk-v1
+  plotting: false
