@@ -308,6 +308,12 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # decision instant.  Identity, generation filter, candidate set,
         # scorer, control schedule and physical model are untouched.
         "state_source": str,  # advertised | ideal_current
+        # Diagnostics only.  When set, candidate scores are quantised to this
+        # many SIGNIFICANT digits before the visible_order tie-break sees them,
+        # so mirror-symmetric candidates (whose scores differ only by float
+        # accumulation noise) actually tie and the deterministic break becomes
+        # reachable.  None = historical sort key, byte for byte.
+        "tie_sig_digits": (int, type(None)),
     },
     "async_routing": {
         "enabled": bool,
@@ -555,6 +561,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         # value is the observation-age intervention: samples whose source
         # measurement is younger than this are withheld from the predictor.
         "min_observation_age_s": None, "state_source": "advertised",
+        "tie_sig_digits": None,
     },
     "async_routing": {
         "enabled": False,
