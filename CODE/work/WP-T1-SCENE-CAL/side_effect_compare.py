@@ -37,7 +37,8 @@ def main(base_dir, intv_dir):
         elif bn == 0 and qn > 0:
             verdict = "*** HARMED ***"; harmed += 1
         elif bn > 0 and qn > 0:
-            verdict = "still failing"
+            # a partial reduction is not the same as no effect; say so
+            verdict = f"reduced {100*(bn-qn)/bn:.1f}%"
         else:
             verdict = ""
         if verdict or bn or qn:
