@@ -4,6 +4,16 @@
 
 ## 2026-10-19 夜间轮（最新）
 
+**第二十八轮补充（P0/F/A 判据执行：零差异）**：
+- `sc-blin-r050-p0fa-s111`（corridor ρ=0.50，0.35 s 窗，预测器 **`bounded_linear`**）完成：
+  三臂 capped loss **全部 = 0.06156324637109916**、未按期全 0、包数 14 423 全同；
+  **决策差异 common vs candidate = 0/63 642，now vs candidate = 0/63 642**。
+- 且与同场景 `stale` 臂的值相同 ⇒ **corridor 上 S = P0 = F = A，一次决策都没变。**
+- ⇒ 用户 §四 的 F/A 问题有直接答案：**A 相对 P0/F 无可测增量**；
+  且判据是在换成外推预测器之后执行的，不是"预测器不够强"。
+- 与 §12.20 离线结论（三者误差 0.89–1.17 倍）**两条独立路径给出同一结论**。
+- 机制解释：corridor 后填充窗队列仅 3.04–11.80 ms，不足以改变排序；失败由入口并列 + 防环决定。
+
 **第二十七轮补充（只读定位，§12.34 的待确认项落定）**：
 - `kernel.py:5075 _time_aligned_order` 文档字符串即 "Reorder the legal forward candidates with the shared scorer"；
   决策审计的 `applied_order` 实测为 `["E","W","N","S"]` 而分数 `E=W=0.0614 < N=S=0.1465`
