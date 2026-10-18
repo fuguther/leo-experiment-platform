@@ -1,0 +1,287 @@
+{
+ "schema": "load-calibration-contract/v1",
+ "base_profile": "CODE/leo_sim/profiles/t1_scene_trunk_v1.yaml",
+ "deadline_s": 4,
+ "max_packets": 100000,
+ "max_duration_s": 160,
+ "diagnostics": {
+  "timeline": false,
+  "control_audit": false
+ },
+ "cells": [
+  {
+   "id": "sc-rep-r050-w035-s112b",
+   "arms": [
+    "stale"
+   ],
+   "trace_program": {
+    "schema": "scene-trace-program/v1",
+    "model": "s1_stationary",
+    "cells": {
+     "beijing": [
+      39.9,
+      116.4
+     ],
+     "london": [
+      51.5,
+      -0.13
+     ],
+     "newyork": [
+      40.7,
+      -74.0
+     ]
+    },
+    "od_weights": {
+     "beijing,london": 0.3333333333333333,
+     "beijing,newyork": 0.3333333333333333,
+     "london,beijing": 0.08333333333333333,
+     "london,newyork": 0.08333333333333333,
+     "newyork,beijing": 0.08333333333333333,
+     "newyork,london": 0.08333333333333333
+    },
+    "packet_bits": 12000,
+    "emission_start_s": 2.0,
+    "emission_end_s": 2.35,
+    "seed": 112,
+    "total_mbps": 749.5200000000002
+   },
+   "diagnostics": {
+    "timeline": false
+   },
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 112
+    },
+    "demand": {
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.35
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "predictor": "hold_last",
+     "history_limit": 8,
+     "state_source": "advertised"
+    }
+   }
+  },
+  {
+   "id": "sc-rep-r050-w035-s112q",
+   "arms": [
+    "stale"
+   ],
+   "trace_program": {
+    "schema": "scene-trace-program/v1",
+    "model": "s1_stationary",
+    "cells": {
+     "beijing": [
+      39.9,
+      116.4
+     ],
+     "london": [
+      51.5,
+      -0.13
+     ],
+     "newyork": [
+      40.7,
+      -74.0
+     ]
+    },
+    "od_weights": {
+     "beijing,london": 0.3333333333333333,
+     "beijing,newyork": 0.3333333333333333,
+     "london,beijing": 0.08333333333333333,
+     "london,newyork": 0.08333333333333333,
+     "newyork,beijing": 0.08333333333333333,
+     "newyork,london": 0.08333333333333333
+    },
+    "packet_bits": 12000,
+    "emission_start_s": 2.0,
+    "emission_end_s": 2.35,
+    "seed": 112,
+    "total_mbps": 749.5200000000002
+   },
+   "diagnostics": {
+    "timeline": false
+   },
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 112
+    },
+    "demand": {
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.35
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "predictor": "hold_last",
+     "history_limit": 8,
+     "state_source": "advertised",
+     "tie_sig_digits": 9
+    }
+   }
+  },
+  {
+   "id": "sc-rep-r050-w035-s113b",
+   "arms": [
+    "stale"
+   ],
+   "trace_program": {
+    "schema": "scene-trace-program/v1",
+    "model": "s1_stationary",
+    "cells": {
+     "beijing": [
+      39.9,
+      116.4
+     ],
+     "london": [
+      51.5,
+      -0.13
+     ],
+     "newyork": [
+      40.7,
+      -74.0
+     ]
+    },
+    "od_weights": {
+     "beijing,london": 0.3333333333333333,
+     "beijing,newyork": 0.3333333333333333,
+     "london,beijing": 0.08333333333333333,
+     "london,newyork": 0.08333333333333333,
+     "newyork,beijing": 0.08333333333333333,
+     "newyork,london": 0.08333333333333333
+    },
+    "packet_bits": 12000,
+    "emission_start_s": 2.0,
+    "emission_end_s": 2.35,
+    "seed": 113,
+    "total_mbps": 749.5200000000002
+   },
+   "diagnostics": {
+    "timeline": false
+   },
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 113
+    },
+    "demand": {
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.35
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "predictor": "hold_last",
+     "history_limit": 8,
+     "state_source": "advertised"
+    }
+   }
+  },
+  {
+   "id": "sc-rep-r050-w035-s113q",
+   "arms": [
+    "stale"
+   ],
+   "trace_program": {
+    "schema": "scene-trace-program/v1",
+    "model": "s1_stationary",
+    "cells": {
+     "beijing": [
+      39.9,
+      116.4
+     ],
+     "london": [
+      51.5,
+      -0.13
+     ],
+     "newyork": [
+      40.7,
+      -74.0
+     ]
+    },
+    "od_weights": {
+     "beijing,london": 0.3333333333333333,
+     "beijing,newyork": 0.3333333333333333,
+     "london,beijing": 0.08333333333333333,
+     "london,newyork": 0.08333333333333333,
+     "newyork,beijing": 0.08333333333333333,
+     "newyork,london": 0.08333333333333333
+    },
+    "packet_bits": 12000,
+    "emission_start_s": 2.0,
+    "emission_end_s": 2.35,
+    "seed": 113,
+    "total_mbps": 749.5200000000002
+   },
+   "diagnostics": {
+    "timeline": false
+   },
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 113
+    },
+    "demand": {
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.35
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "time_alignment": {
+     "predictor": "hold_last",
+     "history_limit": 8,
+     "state_source": "advertised",
+     "tie_sig_digits": 9
+    }
+   }
+  }
+ ]
+}
