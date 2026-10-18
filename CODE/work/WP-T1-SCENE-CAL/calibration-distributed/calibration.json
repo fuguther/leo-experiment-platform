@@ -1,0 +1,699 @@
+{
+ "alternatives": {
+  "median_alternative_stretch": 1.1063518941980595,
+  "pairs_with_no_alternative": 1,
+  "per_pair": {
+   "25->50": {
+    "alternative_s": 0.04891820686073139,
+    "reference_s": 0.04066221949984655,
+    "stretch": 1.2030382862134712,
+    "windows": 12,
+    "windows_with_alternative": 7
+   },
+   "25->55": {
+    "alternative_s": 0.06731523123547856,
+    "reference_s": 0.06727050853377169,
+    "stretch": 1.0006648188438239,
+    "windows": 12,
+    "windows_with_alternative": 7
+   },
+   "25->7": {
+    "alternative_s": 0.06731523123547857,
+    "reference_s": 0.06727050853377167,
+    "stretch": 1.0006648188438243,
+    "windows": 12,
+    "windows_with_alternative": 7
+   },
+   "25->89": {
+    "alternative_s": 0.06642165114569605,
+    "reference_s": 0.04087405263227871,
+    "stretch": 1.6250321871250444,
+    "windows": 12,
+    "windows_with_alternative": 7
+   },
+   "29->10": {
+    "alternative_s": 0.07530466049044998,
+    "reference_s": 0.06982561023605413,
+    "stretch": 1.0784676315161907,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "29->18": {
+    "alternative_s": 0.06512353510678263,
+    "reference_s": 0.06237403191269905,
+    "stretch": 1.0440808956831888,
+    "windows": 12,
+    "windows_with_alternative": 8
+   },
+   "29->25": {
+    "alternative_s": 0.0732299381191253,
+    "reference_s": 0.0732299381191253,
+    "stretch": 1.0,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "29->3": {
+    "alternative_s": 0.06741194138878055,
+    "reference_s": 0.06715089270384426,
+    "stretch": 1.0038874938876479,
+    "windows": 12,
+    "windows_with_alternative": 4
+   },
+   "29->35": {
+    "alternative_s": 0.046860789821579374,
+    "reference_s": 0.04683348221763232,
+    "stretch": 1.000583078657704,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "29->59": {
+    "alternative_s": 0.07759825210762956,
+    "reference_s": 0.07748902169184133,
+    "stretch": 1.0014096244010233,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "29->85": {
+    "alternative_s": 0.07133772415387103,
+    "reference_s": 0.05109256579034836,
+    "stretch": 1.3962446992111537,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "3->29": {
+    "alternative_s": 0.06735243134561285,
+    "reference_s": 0.06727050853377166,
+    "stretch": 1.0012178116923267,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "3->35": {
+    "alternative_s": 0.0664224785112353,
+    "reference_s": 0.04087405263227869,
+    "stretch": 1.6250524289529522,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "3->74": {
+    "alternative_s": 0.04912673103371853,
+    "reference_s": 0.040664793750030584,
+    "stretch": 1.2080900086621387,
+    "windows": 12,
+    "windows_with_alternative": 1
+   },
+   "3->82": {
+    "alternative_s": 0.038799126053814796,
+    "reference_s": 0.03321064117649148,
+    "stretch": 1.1682739230364267,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "3->85": {
+    "alternative_s": 0.05710661058359612,
+    "reference_s": 0.05705199537570196,
+    "stretch": 1.0009572883040199,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "3->91": {
+    "alternative_s": null,
+    "reference_s": 0.010218513158069662,
+    "stretch": null,
+    "windows": 12,
+    "windows_with_alternative": 0
+   },
+   "43->10": {
+    "alternative_s": 0.059290767577848257,
+    "reference_s": 0.04811379782320164,
+    "stretch": 1.2323027958781672,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "43->18": {
+    "alternative_s": 0.04901519179424767,
+    "reference_s": 0.04066221949984656,
+    "stretch": 1.2054234224581033,
+    "windows": 12,
+    "windows_with_alternative": 8
+   },
+   "43->25": {
+    "alternative_s": 0.057051893272132385,
+    "reference_s": 0.05151812570627281,
+    "stretch": 1.1074139924540343,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "43->29": {
+    "alternative_s": 0.05712150067175085,
+    "reference_s": 0.05702212675044829,
+    "stretch": 1.001742725621888,
+    "windows": 12,
+    "windows_with_alternative": 9
+   },
+   "43->33": {
+    "alternative_s": 0.06450400103734022,
+    "reference_s": 0.04406700126684,
+    "stretch": 1.4637710573212719,
+    "windows": 12,
+    "windows_with_alternative": 4
+   },
+   "43->37": {
+    "alternative_s": 0.046838454689347296,
+    "reference_s": 0.046833482217632325,
+    "stretch": 1.0001061734357455,
+    "windows": 12,
+    "windows_with_alternative": 3
+   },
+   "43->55": {
+    "alternative_s": 0.08068181548204344,
+    "reference_s": 0.08068151644248037,
+    "stretch": 1.0000037064197136,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "43->59": {
+    "alternative_s": 0.05151872378539898,
+    "reference_s": 0.020437026316139355,
+    "stretch": 2.5208522506385407,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "74->10": {
+    "alternative_s": 0.0596150189033453,
+    "reference_s": 0.029806313293420296,
+    "stretch": 2.0000802620733786,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "74->58": {
+    "alternative_s": 0.05699717596066866,
+    "reference_s": 0.01490315664671016,
+    "stretch": 3.8245035808068666,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "74->85": {
+    "alternative_s": 0.06511355703989699,
+    "reference_s": 0.06237403191269905,
+    "stretch": 1.0439209241921747,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "74->91": {
+    "alternative_s": 0.038799126053814796,
+    "reference_s": 0.03321064117649148,
+    "stretch": 1.1682739230364267,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "74->95": {
+    "alternative_s": 0.07535937780191372,
+    "reference_s": 0.06982561023605413,
+    "stretch": 1.0792512596331347,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "85->58": {
+    "alternative_s": 0.08549576394100299,
+    "reference_s": 0.07727718855940921,
+    "stretch": 1.1063518941980595,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "85->74": {
+    "alternative_s": 0.06508610475874352,
+    "reference_s": 0.06237488999609374,
+    "stretch": 1.043466445597252,
+    "windows": 12,
+    "windows_with_alternative": 1
+   },
+   "85->82": {
+    "alternative_s": 0.07256543440281513,
+    "reference_s": 0.054922453589343986,
+    "stretch": 1.3212343888601186,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "85->91": {
+    "alternative_s": 0.04686078982157938,
+    "reference_s": 0.04683348221763231,
+    "stretch": 1.0005830786577041,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "85->95": {
+    "alternative_s": 0.06450377063505051,
+    "reference_s": 0.04406654738291771,
+    "stretch": 1.4637809056049453,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "91->58": {
+    "alternative_s": 0.05929076757784826,
+    "reference_s": 0.04811379782320164,
+    "stretch": 1.2323027958781674,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "91->74": {
+    "alternative_s": 0.03885364886573946,
+    "reference_s": 0.033212357343280825,
+    "stretch": 1.1698551976949603,
+    "windows": 12,
+    "windows_with_alternative": 1
+   },
+   "91->82": {
+    "alternative_s": 0.02855330529179806,
+    "reference_s": 0.02575906285313641,
+    "stretch": 1.1084760907100089,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "91->85": {
+    "alternative_s": 0.04686078982157938,
+    "reference_s": 0.0468334822176323,
+    "stretch": 1.0005830786577046,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "91->95": {
+    "alternative_s": 0.07322993811912527,
+    "reference_s": 0.07322993811912529,
+    "stretch": 0.9999999999999998,
+    "windows": 12,
+    "windows_with_alternative": 12
+   }
+  },
+  "routed_pairs": 40
+ },
+ "checks": {
+  "access": {
+   "downlink_mbps": 10000.0,
+   "per_cell_destination_share": {
+    "beijing": 0.125,
+    "frankfurt": 0.125,
+    "london": 0.125,
+    "newyork": 0.125,
+    "saopaulo": 0.125,
+    "shanghai": 0.125,
+    "sydney": 0.125,
+    "tokyo": 0.125
+   },
+   "per_cell_source_share": {
+    "beijing": 0.125,
+    "frankfurt": 0.125,
+    "london": 0.125,
+    "newyork": 0.125,
+    "saopaulo": 0.125,
+    "shanghai": 0.125,
+    "sydney": 0.125,
+    "tokyo": 0.125
+   },
+   "tiers": [
+    {
+     "R_bit_s": 1116415999.9999995,
+     "downlink_binding_cell": "beijing",
+     "target_rho": 0.2,
+     "uplink_binding_cell": "beijing",
+     "worst_downlink_util": 0.01395519999999999,
+     "worst_gateway_downlink_bit_s": 139551999.9999999,
+     "worst_gateway_uplink_bit_s": 139551999.9999999,
+     "worst_uplink_util": 0.01395519999999999
+    },
+    {
+     "R_bit_s": 2796415999.999999,
+     "downlink_binding_cell": "beijing",
+     "target_rho": 0.5,
+     "uplink_binding_cell": "beijing",
+     "worst_downlink_util": 0.034955199999999985,
+     "worst_gateway_downlink_bit_s": 349551999.9999998,
+     "worst_gateway_uplink_bit_s": 349551999.9999998,
+     "worst_uplink_util": 0.034955199999999985
+    },
+    {
+     "R_bit_s": 3916415999.9999986,
+     "downlink_binding_cell": "beijing",
+     "target_rho": 0.7,
+     "uplink_binding_cell": "beijing",
+     "worst_downlink_util": 0.04895519999999997,
+     "worst_gateway_downlink_bit_s": 489551999.9999997,
+     "worst_gateway_uplink_bit_s": 489551999.9999997,
+     "worst_uplink_util": 0.04895519999999997
+    },
+    {
+     "R_bit_s": 4756415999.999998,
+     "downlink_binding_cell": "beijing",
+     "target_rho": 0.85,
+     "uplink_binding_cell": "beijing",
+     "worst_downlink_util": 0.059455199999999965,
+     "worst_gateway_downlink_bit_s": 594551999.9999996,
+     "worst_gateway_uplink_bit_s": 594551999.9999996,
+     "worst_uplink_util": 0.059455199999999965
+    },
+    {
+     "R_bit_s": 5316415999.999998,
+     "downlink_binding_cell": "beijing",
+     "target_rho": 0.95,
+     "uplink_binding_cell": "beijing",
+     "worst_downlink_util": 0.06645519999999996,
+     "worst_gateway_downlink_bit_s": 664551999.9999996,
+     "worst_gateway_uplink_bit_s": 664551999.9999996,
+     "worst_uplink_util": 0.06645519999999996
+    },
+    {
+     "R_bit_s": 6156415999.999998,
+     "downlink_binding_cell": "beijing",
+     "target_rho": 1.1,
+     "uplink_binding_cell": "beijing",
+     "worst_downlink_util": 0.07695519999999996,
+     "worst_gateway_downlink_bit_s": 769551999.9999996,
+     "worst_gateway_uplink_bit_s": 769551999.9999996,
+     "worst_uplink_util": 0.07695519999999996
+    }
+   ],
+   "uplink_mbps": 10000.0
+  },
+  "buffer": {
+   "0.005": {
+    "bits": 5000000.0,
+    "bytes": 625000.0,
+    "drain_time_s": 0.005,
+    "fits_declared_queue_bits": true,
+    "packets": 416.6666666666667
+   },
+   "0.02": {
+    "bits": 20000000.0,
+    "bytes": 2500000.0,
+    "drain_time_s": 0.02,
+    "fits_declared_queue_bits": true,
+    "packets": 1666.6666666666667
+   },
+   "0.1": {
+    "bits": 100000000.0,
+    "bytes": 12500000.0,
+    "drain_time_s": 0.1,
+    "fits_declared_queue_bits": false,
+    "packets": 8333.333333333334
+   }
+  },
+  "compute": {
+   "max_lambda_per_satellite": 143527.55555555547,
+   "mean_hops": 3.631666666666665,
+   "nodes_with_decisions": 54,
+   "servers": 1,
+   "service_capacity_per_satellite": 1000000.0,
+   "service_s": 1e-06,
+   "tiers": [
+    {
+     "hotspot_satellite": 90,
+     "max_lambda_per_satellite": 26027.55555555554,
+     "mean_lambda_all_satellites": 3142.4004629629617,
+     "network_packets_s": 93034.66666666663,
+     "rho_cpu_hotspot": 0.02602755555555554,
+     "target_rho": 0.2
+    },
+    {
+     "hotspot_satellite": 90,
+     "max_lambda_per_satellite": 65194.22222222219,
+     "mean_lambda_all_satellites": 7871.1331018518495,
+     "network_packets_s": 233034.6666666666,
+     "rho_cpu_hotspot": 0.06519422222222218,
+     "target_rho": 0.5
+    },
+    {
+     "hotspot_satellite": 90,
+     "max_lambda_per_satellite": 91305.33333333328,
+     "mean_lambda_all_satellites": 11023.621527777774,
+     "network_packets_s": 326367.9999999999,
+     "rho_cpu_hotspot": 0.09130533333333328,
+     "target_rho": 0.7
+    },
+    {
+     "hotspot_satellite": 90,
+     "max_lambda_per_satellite": 110888.6666666666,
+     "mean_lambda_all_satellites": 13387.987847222217,
+     "network_packets_s": 396367.9999999998,
+     "rho_cpu_hotspot": 0.1108886666666666,
+     "target_rho": 0.85
+    },
+    {
+     "hotspot_satellite": 90,
+     "max_lambda_per_satellite": 123944.22222222216,
+     "mean_lambda_all_satellites": 14964.23206018518,
+     "network_packets_s": 443034.6666666665,
+     "rho_cpu_hotspot": 0.12394422222222215,
+     "target_rho": 0.95
+    },
+    {
+     "hotspot_satellite": 90,
+     "max_lambda_per_satellite": 143527.55555555547,
+     "mean_lambda_all_satellites": 17328.598379629624,
+     "network_packets_s": 513034.6666666665,
+     "rho_cpu_hotspot": 0.14352755555555546,
+     "target_rho": 1.1
+    }
+   ]
+  },
+  "max_control_bit_s": 640000.0,
+  "max_control_util": 0.00064,
+  "per_hop_propagation_s": 0.018307331800855378,
+  "serialization_over_propagation": 0.0006554750921944464,
+  "serialization_s": 1.2e-05
+ },
+ "definitions": {
+  "R_semantics": "network-wide total injection rate (bit/s); equals demand.offered_mbps * 1e6 in the simulator",
+  "capacity": "per-window effective capacity = rate * window; a link present for only part of a window contributes only that part",
+  "criterion": "R(rho) = min over (window, directed edge with b_e>0) of (rho*C_e - c_e)/b_e",
+  "reference_routing": "single minimum-propagation-delay path per OD; predecessor tie-break = smallest satellite id; no equal-cost multipath splitting"
+ },
+ "inputs": {
+  "cells": 8,
+  "control": {
+   "interval_s": 0.05,
+   "packet_bits": 8000,
+   "vis_k": 2
+  },
+  "horizon_s": 12.0,
+  "num_nodes": 96,
+  "od_pairs": 56,
+  "packet_bits": 12000,
+  "rate_mbps": 1000.0,
+  "window_s": 1.0,
+  "windows": 12
+ },
+ "link_coefficients": {
+  "directed_edges": 101,
+  "max_b_e": 0.17857142857142863,
+  "max_b_e_edge": [
+   74,
+   82
+  ],
+  "max_c_e_bit_s": 640000.0,
+  "sum_b_e": 3.2425595238095233
+ },
+ "od_sum": 1.0,
+ "schema": "scene-load-calibration/v1",
+ "spec_digest": "8e2f6583948501a341b26c46c6fbd6194bf3507f5c6c5b4f3b3a28095259dea8",
+ "tiers": [
+  {
+   "R_bit_s": 1116415999.9999995,
+   "R_mbps": 1116.4159999999995,
+   "bottleneck_b_e": 0.17857142857142863,
+   "bottleneck_c_e_bit_s": 640000.0,
+   "bottleneck_capacity_bit_s": 1000000000.0,
+   "bottleneck_control_util": 0.00064,
+   "bottleneck_edge": [
+    74,
+    82
+   ],
+   "feasible": true,
+   "infeasible_link_count": 0,
+   "infeasible_links": [],
+   "packet_rate_bottleneck": 16613.333333333332,
+   "packet_rate_network": 93034.66666666663,
+   "target_rho": 0.2
+  },
+  {
+   "R_bit_s": 2796415999.999999,
+   "R_mbps": 2796.4159999999993,
+   "bottleneck_b_e": 0.17857142857142863,
+   "bottleneck_c_e_bit_s": 640000.0,
+   "bottleneck_capacity_bit_s": 1000000000.0,
+   "bottleneck_control_util": 0.00064,
+   "bottleneck_edge": [
+    74,
+    82
+   ],
+   "feasible": true,
+   "infeasible_link_count": 0,
+   "infeasible_links": [],
+   "packet_rate_bottleneck": 41613.333333333336,
+   "packet_rate_network": 233034.6666666666,
+   "target_rho": 0.5
+  },
+  {
+   "R_bit_s": 3916415999.9999986,
+   "R_mbps": 3916.4159999999983,
+   "bottleneck_b_e": 0.17857142857142863,
+   "bottleneck_c_e_bit_s": 640000.0,
+   "bottleneck_capacity_bit_s": 1000000000.0,
+   "bottleneck_control_util": 0.00064,
+   "bottleneck_edge": [
+    74,
+    82
+   ],
+   "feasible": true,
+   "infeasible_link_count": 0,
+   "infeasible_links": [],
+   "packet_rate_bottleneck": 58280.0,
+   "packet_rate_network": 326367.9999999999,
+   "target_rho": 0.7
+  },
+  {
+   "R_bit_s": 4756415999.999998,
+   "R_mbps": 4756.415999999998,
+   "bottleneck_b_e": 0.17857142857142863,
+   "bottleneck_c_e_bit_s": 640000.0,
+   "bottleneck_capacity_bit_s": 1000000000.0,
+   "bottleneck_control_util": 0.00064,
+   "bottleneck_edge": [
+    74,
+    82
+   ],
+   "feasible": true,
+   "infeasible_link_count": 0,
+   "infeasible_links": [],
+   "packet_rate_bottleneck": 70780.0,
+   "packet_rate_network": 396367.9999999998,
+   "target_rho": 0.85
+  },
+  {
+   "R_bit_s": 5316415999.999998,
+   "R_mbps": 5316.415999999998,
+   "bottleneck_b_e": 0.17857142857142863,
+   "bottleneck_c_e_bit_s": 640000.0,
+   "bottleneck_capacity_bit_s": 1000000000.0,
+   "bottleneck_control_util": 0.00064,
+   "bottleneck_edge": [
+    74,
+    82
+   ],
+   "feasible": true,
+   "infeasible_link_count": 0,
+   "infeasible_links": [],
+   "packet_rate_bottleneck": 79113.33333333333,
+   "packet_rate_network": 443034.6666666665,
+   "target_rho": 0.95
+  },
+  {
+   "R_bit_s": 6156415999.999998,
+   "R_mbps": 6156.415999999998,
+   "bottleneck_b_e": 0.17857142857142863,
+   "bottleneck_c_e_bit_s": 640000.0,
+   "bottleneck_capacity_bit_s": 1000000000.0,
+   "bottleneck_control_util": 0.00064,
+   "bottleneck_edge": [
+    74,
+    82
+   ],
+   "feasible": true,
+   "infeasible_link_count": 0,
+   "infeasible_links": [],
+   "packet_rate_bottleneck": 91613.33333333333,
+   "packet_rate_network": 513034.6666666665,
+   "target_rho": 1.1
+  }
+ ],
+ "traffic_split": {
+  "mean_isl_hops": 3.631666666666665,
+  "routed_weight": 0.8928571428571446,
+  "unroutable_weight": 0.0,
+  "zero_hop_weight": 0.10714285714285715
+ },
+ "windows": [
+  {
+   "edges": 384,
+   "end": 1.0,
+   "od_pairs": 34,
+   "start": 0.0,
+   "window": 0
+  },
+  {
+   "edges": 384,
+   "end": 2.0,
+   "od_pairs": 34,
+   "start": 1.0,
+   "window": 1
+  },
+  {
+   "edges": 384,
+   "end": 3.0,
+   "od_pairs": 34,
+   "start": 2.0,
+   "window": 2
+  },
+  {
+   "edges": 384,
+   "end": 4.0,
+   "od_pairs": 34,
+   "start": 3.0,
+   "window": 3
+  },
+  {
+   "edges": 384,
+   "end": 5.0,
+   "od_pairs": 34,
+   "start": 4.0,
+   "window": 4
+  },
+  {
+   "edges": 384,
+   "end": 6.0,
+   "od_pairs": 34,
+   "start": 5.0,
+   "window": 5
+  },
+  {
+   "edges": 384,
+   "end": 7.0,
+   "od_pairs": 34,
+   "start": 6.0,
+   "window": 6
+  },
+  {
+   "edges": 384,
+   "end": 8.0,
+   "od_pairs": 30,
+   "start": 7.0,
+   "window": 7
+  },
+  {
+   "edges": 384,
+   "end": 9.0,
+   "od_pairs": 30,
+   "start": 8.0,
+   "window": 8
+  },
+  {
+   "edges": 384,
+   "end": 10.0,
+   "od_pairs": 30,
+   "start": 9.0,
+   "window": 9
+  },
+  {
+   "edges": 384,
+   "end": 11.0,
+   "od_pairs": 30,
+   "start": 10.0,
+   "window": 10
+  },
+  {
+   "edges": 384,
+   "end": 12.0,
+   "od_pairs": 33,
+   "start": 11.0,
+   "window": 11
+  }
+ ]
+}
