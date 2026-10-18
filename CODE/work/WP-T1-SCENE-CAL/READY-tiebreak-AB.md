@@ -56,10 +56,21 @@ def _key(s):
 scores.sort(key=_key)
 ```
 
-NOTE: the exact plumbing of `tie_sig_digits` from `cfg_ta` into `plan_decision` is
-**not** specified above - that is the one part the preparing session did not finish reading.
-Find how `cfg_ta` values reach `plan_decision` (the same path `common_rule` uses) and thread
-it the same way. **Do not guess.**
+**Plumbing (RESOLVED 2026-10-19 - the preparing session finished this reading).**
+`tie_sig_digits` travels exactly the way `common_rule` does:
+
+1. `time_alignment.py:207 class ObservationSnapshot` - add a field next to `common_rule`
+   (declared at line 235): `tie_sig_digits: int | None = None`
+2. `time_alignment.py:366` - the snapshot builder takes `common_rule: str = "median_eta"`.
+   Add a sibling parameter `tie_sig_digits=None`, validate it the way `common_rule` is
+   validated at 386-388, and assign it at line 430 alongside `common_rule=common_rule`.
+3. `kernel.py _build_ta_snapshot` - it already passes `self.cfg_ta["common_rule"]`;
+   pass `self.cfg_ta.get("tie_sig_digits")` on the same call.
+4. Then the `_key` closure above can simply read `snapshot.tie_sig_digits`; drop the
+   `getattr`/`extra` guessing.
+
+With `tie_sig_digits` left unset the key is byte-identical to today, so every existing cell
+keeps its identity and only the two new cells change.
 
 **3. `CODE/leo_sim/tests/test_time_alignment.py`** - add:
 
