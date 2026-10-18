@@ -85,6 +85,21 @@ def metrics(rows, result, summary):
             gaps.append(scores[1] - scores[0])
     spread = [max(x[0] for x in v) - min(x[0] for x in v)
               for v in per_dec.values() if len(v) >= 2]
+    # THE headline metric: would PERFECT state change the chosen candidate?
+    # Corrected score = current score - the state term the router used + the
+    # state term the truth implies (bits / declared 1 Gbps).  Fallback
+    # candidates keep their fallback rank, exactly as the router treats them.
+    oracle_flips = 0
+    oracle_eligible = 0
+    for v in per_dec.values():
+        usable = [x for x in v if x[3] is not None and x[4] is not None]
+        if len(usable) < 2:
+            continue
+        oracle_eligible += 1
+        current = min(usable, key=lambda x: x[3])
+        corrected = min(usable, key=lambda x: x[3] - x[4] + x[0] / 1e9)
+        if current[0] != corrected[0] or current[1] != corrected[1]:
+            oracle_flips += 1
     chosen_not_empty = 0
     saved = []
     for v in per_dec.values():
@@ -135,6 +150,8 @@ def metrics(rows, result, summary):
             "state_potential_share_pct": (
                 _pct(_median(potential_s), _median(total_s))
                 if potential_s and total_s else None),
+            "oracle_flip_pct": _pct(oracle_flips, oracle_eligible),
+            "oracle_eligible_decisions": oracle_eligible,
             "chosen_not_emptiest_pct": _pct(chosen_not_empty, n_dec),
             "savable_bits_mean": (statistics.fmean(saved) if saved else None)},
         "observability": {
@@ -175,9 +192,13 @@ def verdicts(m, arm_b=None):
     v.append(("状态项有分量（观测已用）", (share or 0) >= 10,
               ("当前状态项占评分 %.3f%% (>=10%%)" % share) if share is not None
               else "无法计算 (>=10%)"))
-    v.append(("状态项有分量（完美状态的上限）", (pot or 0) >= 10,
-              ("完美状态可占评分 %.2f%% (>=10%%)" % pot) if pot is not None
-              else "无法计算 (>=10%)"))
+    flip = l["oracle_flip_pct"]
+    v.append(("完美状态能翻转决策", (flip or 0) >= 5,
+              ("翻转率 %.2f%% (>=5%%)" % flip) if flip is not None
+              else "翻转率未知 (>=5%)"))
+    # The median-based potential share is deliberately NOT a verdict: it is
+    # dominated by the many decisions with a small backlog and hides the tail.
+    # The oracle flip rate above is the decision-level question that matters.
     miss = o["truth_pos_but_obs_zero_pct"]
     v.append(("积压可被观测", (miss is not None) and miss <= 20,
               ("漏看率 %.1f%% (<=20%%)" % miss) if miss is not None
@@ -222,6 +243,8 @@ def page(label, m, vs):
                % (l["state_share_pct"] or 0, l["state_potential_share_pct"] or 0))
     out.append("| | 前两名评分差中位 | %.2f ms |"
                % (l["top2_score_gap_ms_median"] or 0))
+    out.append("| | **完美状态会翻转选择** | **%.2f%%** (%d 条可比决策) |"
+               % (l["oracle_flip_pct"] or 0, l["oracle_eligible_decisions"] or 0))
     out.append("| | 选中不是最空 | %.1f%%（均值可省 %.0f bit） |"
                % (l["chosen_not_emptiest_pct"] or 0, l["savable_bits_mean"] or 0))
     out.append("| ⑤ 观测 | 真值>0 却被漏看 | **%.1f%%** |"
