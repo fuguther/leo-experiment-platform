@@ -2,6 +2,34 @@
 
 范围：仅 `worktrees/.t1-scene-calibration` / `codex/20261018-scene-calibration`；工作区级入口仍是 `topic/STATUS.md`。
 
+## 2026-10-19 深夜轮（接手执行：探针 + 人口轨迹）
+
+**已交付**
+- **同一次运行内的预测—真值探针**（`CODE/leo_sim/target_probe.py`，默认关闭，契约 `diagnostics.truth_probe`）。
+  在决策提交后按预测自己的 `resource_id`+generation 定位资源，于 `eval_target` 时刻由事件调度唤醒读取
+  `queued(data+ctrl) + 在服剩余`；缺失全记原因。核验脚本 `probe_labels.py`（覆盖/一致性/对应/误差/样本分离）。
+- **人口业务轨迹**：`population_od_program.py` 产出人口加权 93 OD、149 格、8 477 子格位置的
+  `s1_stationary` 外生 trace（5 827 包、逐字节可复现、格心落点 0），并给出 149 格接入映射 CSV。
+
+**实跑（release `2c4f4161…` commit `2c4f4161`，远端备份 pending）**
+- `scpt-sc-probe-truth-s111-20261019-17`（rc=0，870 s）：47 755 行探针，覆盖 98.45%，
+  sampled/resource/generation/eta 对应**全 0 不一致**，predicted/rate 与评分一致 0/47 014；
+  `hold_last` 带符号误差 **−489.0 bit**（n=47 014），标签非零 4.55% 而预测非零 2.01%。
+- **探针不干扰**：run 16（stride=1 截断 4 万）与 run 17（stride=4 全窗）业务结果**逐位相同**
+  （7 212 包 / 188 NO_ROUTE / 7 024 送达 / 队列面积一致）。
+- `scpp-pop-probe-r020-s111-20261019-18`（rc=0，807 s）：**接入主导** ——
+  access 等待 268.5 s、最长 3.90 s、`IN_SYSTEM_AT_STOP 1 397/5 827 = 24%`，
+  holding 面积 7.94e7 vs isl_data 2.58e4 bit·s。
+
+**判定**
+- 探针（交付一）**已通过**既定核验；其 4 万行首版因上限造成时间偏样本，已作废并改为确定性 1/stride 抽样。
+- 人口场景（交付二）**trace/映射/生成核验通过**，但**“接入等待不主导”验收未通过** ⇒
+  **不启动 S/O/N 与人口性能结论**，先解除接入瓶颈。
+- 预算：本轮内核启动 **3 次**（41→43/60），余 **17**。（一次人口发射被 batch runner 以“另一批在跑”拒绝，未启内核、不计费。）
+
+**证据**：`三端文件与同步治理/evidence/t1probe-20261019/<run-id>/`；
+结论文档 `CODE/work/WP-T1-SCENE-CAL/PROBE-RESULTS-20261019.md`、`PREDICTION-PROBE.md`、`POPULATION-TRACE.md`。
+
 ## 2026-10-19 夜间轮（最新）
 
 **第 41 轮（用户新指令：回到人口网格业务主场景）**

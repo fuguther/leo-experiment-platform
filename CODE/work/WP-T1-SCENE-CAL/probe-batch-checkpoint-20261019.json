@@ -7,10 +7,10 @@
  ],
  "probe": {
   "cells": 1,
-  "wall_s": 1800,
-  "peak_rss_mb": 1500,
-  "output_gb": 1.5,
-  "note": "cell A is launched alone as the probe; cell B follows only after A's summary.json exists"
+  "wall_s": 890,
+  "peak_rss_mb": 917,
+  "output_gb": 0.12,
+  "note": "measured on scpt-sc-probe-truth-s111-20261019-16 (rc=0, 885 s, 917 MB RSS, 64 MB run dir)"
  },
  "capacity": {
   "cores": 24,
@@ -35,9 +35,9 @@
   "mode": "diagnostic",
   "probe": {
    "cells": 1,
-   "wall_s": 1800,
-   "peak_rss_mb": 1500,
-   "output_gb": 1.5
+   "wall_s": 890,
+   "peak_rss_mb": 917,
+   "output_gb": 0.12
   },
   "capacity": {
    "cores": 24,
@@ -54,7 +54,7 @@
    "min_free_mem_mb": 12000,
    "watchdog": true
   },
-  "note": "two small cells, run one at a time; the first is the probe and the second starts only after the first writes summary.json",
+  "note": "the batch runner refuses a second live load_calibration batch, so the two cells run sequentially; concurrency 1 matches what actually happens",
   "cost_desc": [
    "sc-probe-truth-s111",
    "pop-probe-r020-s111"
@@ -62,6 +62,12 @@
   "estimated_costs_s": {
    "sc-probe-truth-s111": 1800,
    "pop-probe-r020-s111": 1500
+  },
+  "measured": {
+   "probe_wall_s": 890,
+   "probe_peak_rss_mb": 917,
+   "probe_output_gb": 0.12,
+   "source": "run scpt-sc-probe-truth-s111-20261019-16, batch ledger scpt-20261019-16.tsv"
   }
  },
  "measured": {
