@@ -4,6 +4,16 @@
 
 ## 2026-10-19 夜间轮（最新）
 
+**第三十四轮补充（tie-break 干预 A 格：一次 fail-closed + 修复 + 已重发）**：
+- 首次发射 `sctb-20261019-11` **5 秒内 rc=2**：`unknown field time_alignment.tie_sig_digits`。
+  根因：我只把键加进**合同允许集**，漏了 **`config.py` 的每分组严格 schema**。
+  **未消耗预算**（`kernel_call_count = 0`，护栏按设计工作：未声明的键到不了内核）。
+- 修复：在 `config.py` 的 `time_alignment` schema 与默认值各加 `tie_sig_digits`（都是 None）。
+  **107 个本地测试通过**。
+- 已重发：`sctc-20261019-12`（新 release `3a53588`、新 tag、新 run-id），
+  12:20 起在跑（config + decisions 已落盘）。
+- 判据不变：该 OD 的 `NO_ROUTE` 与基线 **194/5 236 = 3.7%** 对比，**正负都报**。
+
 **第三十三轮补充（收尾检查，2026-10-19）**：
 - 分支 `codex/20261018-scene-calibration`，HEAD `fdddaf2`，**工作区干净、无未推送提交**。
 - **改动范围自查**：最近 25 个提交只触及 `CODE/work/WP-T1-SCENE-CAL/*`（本任务工作包）与
