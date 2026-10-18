@@ -92,6 +92,45 @@ def _load(program: dict) -> dict:
         raise TraceProgramError(
             f"od_weights must sum to 1, got {sum(weights.values())!r}")
     p["od_weights"] = weights
+    # OPTIONAL intra-cell positions.  A 2-degree population cell is about
+    # 222 km across, so collapsing all of its population onto the cell centre
+    # invents an access hotspot.  When a program declares intra_cell, every
+    # packet draws its own source and destination sub-position from that
+    # cell's declared weights.  Absent the key, the byte stream is exactly the
+    # historical one.
+    intra = p.get("intra_cell") or {}
+    if intra:
+        if not isinstance(intra, dict):
+            raise TraceProgramError("intra_cell must be an object")
+        cleaned = {}
+        for cell_id, entries in intra.items():
+            if cell_id not in p["cells"]:
+                raise TraceProgramError(
+                    f"intra_cell names an undeclared cell {cell_id!r}")
+            if not isinstance(entries, list) or not entries:
+                raise TraceProgramError(
+                    f"intra_cell[{cell_id!r}] must be a non-empty list")
+            rows = []
+            total = 0.0
+            for entry in entries:
+                if not isinstance(entry, (list, tuple)) or len(entry) != 3:
+                    raise TraceProgramError(
+                        f"intra_cell[{cell_id!r}] entries must be [lat, lon, w]")
+                lat, lon, weight = (float(entry[0]), float(entry[1]),
+                                    float(entry[2]))
+                if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+                    raise TraceProgramError(
+                        f"intra_cell[{cell_id!r}] coordinate out of range")
+                if not math.isfinite(weight) or weight <= 0.0:
+                    raise TraceProgramError(
+                        f"intra_cell[{cell_id!r}] weight must be positive")
+                rows.append((lat, lon, weight))
+                total += weight
+            if abs(total - 1.0) > 1e-6:
+                raise TraceProgramError(
+                    f"intra_cell[{cell_id!r}] weights must sum to 1, got {total!r}")
+            cleaned[cell_id] = tuple(rows)
+        p["intra_cell"] = cleaned
     if model != "s1_stationary":
         # The burst is declared by its DURATION and its CYCLE, not by p
         # directly: p is then DERIVED as burst_duration / cycle, so "how long
@@ -132,6 +171,18 @@ def _load(program: dict) -> dict:
                 raise TraceProgramError(
                     f"s3 migration group not in od_weights: {unknown}")
     return p
+
+
+def _draw_intra(entries, gen) -> tuple[float, float]:
+    """One deterministic sub-cell position from a declared weight table."""
+    u = gen.random()
+    acc = 0.0
+    for lat, lon, weight in entries:
+        acc += weight
+        if u <= acc:
+            return lat, lon
+    last = entries[-1]
+    return last[0], last[1]
 
 
 def _two_state_intervals(gen: random.Random, start: float, end: float,
@@ -182,6 +233,7 @@ def generate(program: dict):
                 "migration_groups is declared but the migration schedule is not "
                 "implemented; refusing rather than silently ignoring it")
 
+    intra = p.get("intra_cell") or {}
     rows = []
     pid = 0
     for od in ods:
@@ -221,9 +273,19 @@ def generate(program: dict):
                         break
                 if gen.random() < rate / majorant:
                     pid += 1
+                    # Intra-cell position: drawn per packet, so the cell is
+                    # represented by its population, not by one point.
+                    if src_id in intra:
+                        p_s_lat, p_s_lon = _draw_intra(intra[src_id], gen)
+                    else:
+                        p_s_lat, p_s_lon = s_lat, s_lon
+                    if dst_id in intra:
+                        p_d_lat, p_d_lon = _draw_intra(intra[dst_id], gen)
+                    else:
+                        p_d_lat, p_d_lon = d_lat, d_lon
                     rows.append(dict(packet_id=pid, emit_time_s=t,
-                                     src_lat=s_lat, src_lon=s_lon,
-                                     dst_lat=d_lat, dst_lon=d_lon, bits=L))
+                                     src_lat=p_s_lat, src_lon=p_s_lon,
+                                     dst_lat=p_d_lat, dst_lon=p_d_lon, bits=L))
     rows.sort(key=lambda r: (r["emit_time_s"], r["packet_id"]))
     for i, r in enumerate(rows, start=1):
         r["packet_id"] = i

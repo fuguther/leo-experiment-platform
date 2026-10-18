@@ -1,0 +1,74 @@
+{
+ "access_map": {
+  "cells": 151,
+  "cells_with_multiple_best_sats": 25,
+  "cells_with_switches": 8,
+  "geometry": {
+   "alt_km": 800.0,
+   "incl_deg": 53.0,
+   "min_elev_deg": 10.0,
+   "planes": 12,
+   "sats": 96
+  },
+  "max_distinct_best_sats": 3,
+  "median_visible": 2,
+  "path": "CODE/work/WP-T1-SCENE-CAL/population_access_map_2deg_20261019.csv"
+ },
+ "program_digest": "85d79dd5c37d741a7b5e079c3f6d1bce91b95e2fc64905fe8d1e7972d54a6a4d",
+ "raster": {
+  "aggregation_deg": 2.0,
+  "path": "CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif",
+  "positive_cells": 4938,
+  "sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+  "total_population": 7969444350.355793
+ },
+ "sampling": {
+  "cells": 151,
+  "cells_with_subcells": 151,
+  "dropped_zero_packet_ods": [
+   "G2:48:87,G2:55:117",
+   "G2:39:59,G2:65:124",
+   "G2:56:147,G2:76:148",
+   "G2:51:129,G2:54:113",
+   "G2:49:106,G2:64:105",
+   "G2:59:36,G2:68:105",
+   "G2:51:106,G2:52:139"
+  ],
+  "od_pairs": 89,
+  "seed": 20261019,
+  "subcells_total": 8819,
+  "weight_sum": 1.0
+ },
+ "schema": "population-od-program-report/v1",
+ "trace": {
+  "byte_identical_rerun": true,
+  "center_exact_fraction": 0.0,
+  "center_exact_packets": 0,
+  "distinct_od_realised": 89,
+  "rows": 6030,
+  "sha256": "b96251fb19cb39d5c673481e0fda127eb253780250d9148f524924a49aca86b7",
+  "sha256_second_run": "b96251fb19cb39d5c673481e0fda127eb253780250d9148f524924a49aca86b7",
+  "top_od": [
+   {
+    "od": "G2:56:134,G2:57:135",
+    "packets": 519
+   },
+   {
+    "od": "G2:57:135,G2:56:134",
+    "packets": 500
+   },
+   {
+    "od": "G2:56:146,G2:58:133",
+    "packets": 359
+   },
+   {
+    "od": "G2:65:151,G2:56:134",
+    "packets": 348
+   },
+   {
+    "od": "G2:58:133,G2:56:146",
+    "packets": 344
+   }
+  ]
+ }
+}

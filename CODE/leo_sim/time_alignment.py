@@ -796,6 +796,12 @@ class CandidateScore:
     missing: tuple
     fallback: bool
     tie_key: tuple
+    # The two FACTORS of resource_work_s, kept separate so a log can show what
+    # the predictor returned (bits) and what rate the scorer divided it by,
+    # instead of only their quotient.  Additive with defaults: every existing
+    # construction and every existing terms dict is unchanged.
+    predicted_bits: float | None = None
+    service_rate_bps: float | None = None
 
 
 @dataclass(frozen=True)
@@ -917,12 +923,18 @@ def score_candidates(snapshot: ObservationSnapshot, predictions, etas) -> Scored
         if missing:
             scores.append(CandidateScore(direction, resource, math.inf, terms,
                                          tuple(sorted(set(missing))), True,
-                                         (visible_order[direction], direction)))
+                                         (visible_order[direction], direction),
+                                         predicted_bits=(
+                                             None if prediction is None
+                                             else prediction.predicted_bits),
+                                         service_rate_bps=service_rate))
             continue
         total = float(sum(terms.values()))
         scores.append(CandidateScore(direction, resource, total, terms, (),
                                      False,
-                                     (0, visible_order[direction], direction)))
+                                     (0, visible_order[direction], direction),
+                                     predicted_bits=prediction.predicted_bits,
+                                     service_rate_bps=service_rate))
     # Diagnostics-only quantisation: collapse scores that differ below the
     # requested number of significant digits so the visible_order tie-break
     # below can actually fire.  tie_sig_digits is None on every historical

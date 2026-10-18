@@ -1231,7 +1231,8 @@ class Kernel:
     def __init__(self, resolved: dict, rows: list[dict], geometry=None,
                  learning_out_dir=None, decision_sink=None, timeline_sink=None,
                  forced_actions=None, control_audit=False,
-                 inference_policy=None):
+                 inference_policy=None, target_probe_path=None,
+                 target_probe_max=None):
         cfg = resolved["config"]
         self.resolved = resolved
         self.cfg_sc = cfg["scenario"]
@@ -1433,6 +1434,17 @@ class Kernel:
         # by shape and count in existing tests, so lifecycle milestones must
         # never be appended to decision_sink.  When None no row is built.
         self.timeline_sink = timeline_sink
+        # SAME-RUN PREDICTION -> TRUTH PROBE (audit only, default off).
+        # When a path is given, one probe object samples the live directed-ISL
+        # resource at each decision's evaluation target instant.  It is created
+        # after the environment exists and is started from run(); nothing in
+        # routing, learning, access, metrics or the fate ledger reads it.
+        self.target_probe = None
+        if target_probe_path is not None:
+            from . import target_probe as _target_probe
+            self.target_probe = _target_probe.TargetProbe(
+                self, target_probe_path, max_samples=target_probe_max,
+                note="same-run probe; truth read at the decision's eval target")
         # per-decision identity; allocated only when a sink can record it
         self._decision_seq = 0
         # T1-COUNTERFACTUAL-REPLAY: strictly opt-in override of the action
@@ -5294,6 +5306,10 @@ class Kernel:
                     "terms": dict(s.terms),
                     "missing": list(s.missing),
                     "fallback": s.fallback,
+                    # The two factors of resource_work_s, recorded separately:
+                    # resource_work_s = predicted_bits / service_rate_bps.
+                    "predicted_bits": s.predicted_bits,
+                    "service_rate_bps": s.service_rate_bps,
                 } for s in scored.scores},
             "execution_mode": self.exec_mode,
             "cache_hit": None,
@@ -5811,6 +5827,18 @@ class Kernel:
             "candidate_truth": info_audit["candidate_truth"],
             "cache_entries": info_audit["cache_entries"],
         }
+        if self.target_probe is not None:
+            # The audit that MATTERS is the one persisted with the decision.
+            # Some call sites hand the scorer audit through the observation
+            # instead of the ta_audit argument, so take whichever exists and
+            # never invent one.
+            effective_ta = (ta_audit if ta_audit
+                            else (observation_record or {}).get("time_alignment"))
+            self._enqueue_target_probe(
+                pkt, sat, kind, candidates, chosen, committed_at,
+                decision_id=decision_id, ta_audit=effective_ta,
+                direction_audit=direction_audit,
+                decision_started_at=decision_started_at)
         self.decision_sink.append({
             "t": committed_at,
             # When computation consumed simulated time these two differ:
@@ -5841,6 +5869,84 @@ class Kernel:
             "estimate_at_start": estimate,
             "truth_at_commit": truth_at_commit,
         })
+
+    def _enqueue_target_probe(self, pkt, sat: int, kind: str,
+                              candidates, chosen, committed_at: float, *,
+                              decision_id, ta_audit, direction_audit,
+                              decision_started_at):
+        """Queue one audit row per candidate direction for the same-run probe.
+
+        Called only after the action is committed, and only when a probe was
+        explicitly requested.  It reads the decision's own audit objects; it
+        does not build a snapshot, score anything, or touch any resource.
+        """
+        probe = self.target_probe
+        if probe is None or not ta_audit:
+            return
+        used = ta_audit.get("used_state") or {}
+        etas = ta_audit.get("eta_targets") or {}
+        queries = ta_audit.get("query_targets") or {}
+        scores = ta_audit.get("scores") or {}
+        details = (direction_audit or {}).get("candidate_details") or {}
+        rows = []
+        for direction in candidates:
+            score = scores.get(direction) or {}
+            detail = details.get(direction) or {}
+            state = used.get(direction) or {}
+            resource_id = state.get("resource_id")
+            generation = state.get("generation")
+            identity_source = "used_state" if resource_id is not None else None
+            if resource_id is None and detail.get("resource_id"):
+                # The prediction carried no identity (no advertisement was
+                # received for this resource), but the live audit did.  The
+                # two are recorded separately so a consumer can SEE that this
+                # row's identity did not come from the predictor.
+                resource_id = detail.get("resource_id")
+                identity_source = "live_audit_not_used_by_predictor"
+                if generation is None and detail.get("generation") is not None:
+                    generation = detail.get("generation")
+                    identity_source = ("live_audit_not_used_by_predictor"
+                                       " (resource_id+generation)")
+            peer = detail.get("peer")
+            rows.append({
+                "schema": "leo-sim-target-probe-decision/v1",
+                "decision_id": decision_id,
+                "pid": pkt.pid,
+                "sat": int(sat),
+                "kind": str(kind),
+                "chosen": str(chosen),
+                "selected": bool(direction == chosen),
+                "direction": str(direction),
+                "candidate_directions": [str(c) for c in candidates],
+                "t_commit_s": float(committed_at),
+                "t_decision_start_s": (float(committed_at)
+                                       if decision_started_at is None
+                                       else float(decision_started_at)),
+                "arm": ta_audit.get("arm"),
+                "predictor": ta_audit.get("predictor"),
+                "state_source": ta_audit.get("state_source"),
+                "snapshot_at_s": ta_audit.get("snapshot_at"),
+                "resource_id": resource_id,
+                "resource_peer": (None if peer is None else int(peer)),
+                "identity_source": identity_source,
+                "generation": (None if generation is None else int(generation)),
+                "state_bits": state.get("bits"),
+                "state_queued_bits": state.get("queued_bits"),
+                "state_source_used": state.get("source"),
+                "state_measured_at_s": state.get("measured_at"),
+                "state_received_at_s": state.get("received_at"),
+                "state_used_at_s": state.get("used_at"),
+                "algo_query_target_s": queries.get(direction),
+                "eval_target_s": etas.get(direction),
+                "predicted_bits": score.get("predicted_bits"),
+                "service_rate_bps": score.get("service_rate_bps"),
+                "predicted_work_s": (score.get("terms") or {}).get(
+                    "resource_work_s"),
+                "score_total_s": score.get("total_s"),
+                "score_missing": list(score.get("missing") or ()),
+                "fallback": bool(score.get("fallback")),
+            })
+        probe.enqueue(rows)
 
     def _in_service_remaining(self, link, now: float):
         """In-service work on one ISL egress, with an honest method label.
@@ -7214,6 +7320,10 @@ class Kernel:
         interrupted = False
         error = None
         events = 0
+        # The audit sampler must exist before the first event so its pending
+        # list can grow during the run.  It only reads; see target_probe.py.
+        if self.target_probe is not None:
+            self.target_probe.start()
         try:
             while True:
                 # simpy.peek() returns inf when the queue is empty; no
@@ -7461,13 +7571,21 @@ class Kernel:
 def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
                          learning_out_dir=None, decision_sink=None,
                          timeline_sink=None, forced_actions=None,
-                         control_audit=False, inference_policy=None) -> dict:
+                         control_audit=False, inference_policy=None,
+                         target_probe_path=None, target_probe_max=None) -> dict:
     kern = Kernel(resolved, rows, geometry=geometry,
                   learning_out_dir=learning_out_dir,
                   decision_sink=decision_sink, timeline_sink=timeline_sink,
                   forced_actions=forced_actions, control_audit=control_audit,
-                  inference_policy=inference_policy)
-    return kern.run()
+                  inference_policy=inference_policy,
+                  target_probe_path=target_probe_path,
+                  target_probe_max=target_probe_max)
+    result = kern.run()
+    if kern.target_probe is not None:
+        # Written AFTER the simulation stops, so an interrupted run still
+        # carries whatever was sampled before the stop.
+        result["target_probe"] = kern.target_probe.write()
+    return result
 
 
 _SIMULATION_CALL_SEQUENCE = 0
@@ -7488,7 +7606,8 @@ def _write_simulation_call_event(path, event):
 def run_simulation(resolved: dict, rows: list[dict], geometry=None,
                    learning_out_dir=None, decision_sink=None,
                    timeline_sink=None, forced_actions=None,
-                   control_audit=False, inference_policy=None) -> dict:
+                   control_audit=False, inference_policy=None,
+                   target_probe_path=None, target_probe_max=None) -> dict:
     """Run the kernel and, inside a metered T1 cell, record real call edges.
 
     The ledger is opt-in so ordinary library use stays unchanged.  A configured
@@ -7504,7 +7623,9 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
             learning_out_dir=learning_out_dir,
             decision_sink=decision_sink, timeline_sink=timeline_sink,
             forced_actions=forced_actions, control_audit=control_audit,
-            inference_policy=inference_policy)
+            inference_policy=inference_policy,
+            target_probe_path=target_probe_path,
+            target_probe_max=target_probe_max)
 
     _SIMULATION_CALL_SEQUENCE += 1
     sequence = _SIMULATION_CALL_SEQUENCE
@@ -7522,7 +7643,9 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
             learning_out_dir=learning_out_dir,
             decision_sink=decision_sink, timeline_sink=timeline_sink,
             forced_actions=forced_actions, control_audit=control_audit,
-            inference_policy=inference_policy)
+            inference_policy=inference_policy,
+            target_probe_path=target_probe_path,
+            target_probe_max=target_probe_max)
     except BaseException as exc:
         ended_ns = time.perf_counter_ns()
         _write_simulation_call_event(

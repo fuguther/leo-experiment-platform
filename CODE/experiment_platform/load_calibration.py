@@ -223,7 +223,8 @@ def _validate_effective_config(resolved: dict, contract: dict,
             f"not take effect (resolved {cfg['routing']['policy']!r})")
 
 
-DIAGNOSTIC_CHANNELS = ("timeline", "decisions", "control_audit")
+DIAGNOSTIC_CHANNELS = ("timeline", "decisions", "control_audit",
+                      "truth_probe", "truth_probe_max")
 
 
 def _validate_contract_document(document: dict) -> None:
@@ -238,6 +239,13 @@ def _validate_contract_document(document: dict) -> None:
             raise CalibrationError(
                 f"contract diagnostics may only name {list(DIAGNOSTIC_CHANNELS)}")
         for key, value in d.items():
+            if key == "truth_probe_max":
+                if (not isinstance(value, int) or isinstance(value, bool)
+                        or value <= 0):
+                    raise CalibrationError(
+                        "contract diagnostics.truth_probe_max must be a "
+                        "positive integer")
+                continue
             if not isinstance(value, bool):
                 raise CalibrationError(
                     f"contract diagnostics.{key} must be a boolean")
@@ -286,8 +294,11 @@ def diagnostics_for(contract: dict, cell: dict) -> dict:
     Defaults keep the historical behaviour (everything on) so existing
     contracts and tests are unaffected; a contract opts out explicitly.
     """
-    keys = ("timeline", "decisions", "control_audit")
-    out = {k: True for k in keys}
+    keys = ("timeline", "decisions", "control_audit", "truth_probe",
+            "truth_probe_max")
+    # truth_probe is OPT-IN and its keys appear ONLY when a contract declares
+    # them, so every existing contract keeps the exact same diagnostics dict.
+    out = {"timeline": True, "decisions": True, "control_audit": True}
     for scope, block in (("contract", contract.get("diagnostics") or {}),
                          ("cell", cell.get("diagnostics") or {})):
         unknown = set(block) - set(keys)
@@ -296,11 +307,25 @@ def diagnostics_for(contract: dict, cell: dict) -> dict:
                 f"{scope} {cell.get('id')!r}: unknown diagnostics "
                 f"{sorted(unknown)}; allowed {list(keys)}")
         for k, v in block.items():
+            if k == "truth_probe_max":
+                if (not isinstance(v, int) or isinstance(v, bool) or v <= 0):
+                    raise CalibrationError(
+                        f"{scope} {cell.get('id')!r}: "
+                        "diagnostics.truth_probe_max must be a positive integer")
+                out[k] = v
+                continue
             if not isinstance(v, bool):
                 raise CalibrationError(
                     f"{scope} {cell.get('id')!r}: diagnostics.{k} must be a boolean")
-    out.update(contract.get("diagnostics") or {})
-    out.update(cell.get("diagnostics") or {})
+    declared = {}
+    declared.update(contract.get("diagnostics") or {})
+    declared.update(cell.get("diagnostics") or {})
+    for key in ("timeline", "decisions", "control_audit"):
+        if key in declared:
+            out[key] = declared[key]
+    if "truth_probe" in declared or "truth_probe_max" in declared:
+        out["truth_probe"] = bool(declared.get("truth_probe", False))
+        out["truth_probe_max"] = declared.get("truth_probe_max")
     if not out["timeline"] and not out["decisions"]:
         raise CalibrationError(
             f"cell {cell.get('id')!r}: the kernel needs at least one sink; "
@@ -967,10 +992,23 @@ def run_calibration(contract_path: Path, cell_id: str, out_dir: Path,
             try:
                 arm_summary["kernel_called"] = True
                 summary["kernel_call_count"] += 1
+                # SAME-RUN TARGET PROBE (declared, default off).  The probe
+                # samples the live resource at each decision's evaluation
+                # target instant; it is written next to the decision stream so
+                # prediction and truth share one run identity.
+                probe_kwargs = {}
+                if diagnostics.get("truth_probe"):
+                    probe_kwargs = {
+                        "target_probe_path": str(
+                            arm_dir / "target_probe.jsonl"),
+                        "target_probe_max": diagnostics.get(
+                            "truth_probe_max"),
+                    }
                 result = kernel.run_simulation(
                     arm_resolved, rows, geometry=geometry,
                     decision_sink=decision_sink, timeline_sink=timeline_sink,
-                    control_audit=diagnostics["control_audit"])
+                    control_audit=diagnostics["control_audit"],
+                    **probe_kwargs)
             except Exception as exc:
                 sink_error = exc
             finally:
@@ -1003,6 +1041,7 @@ def run_calibration(contract_path: Path, cell_id: str, out_dir: Path,
             arm_summary["natural_end"] = result.get("natural_end")
             arm_summary["stop_time_s"] = result.get("stop_time_s")
             arm_summary["kernel_error"] = result.get("error")
+            arm_summary["target_probe"] = result.get("target_probe")
             arm_summary["queue_area_bits_s"] = result.get("queue_area_bits_s")
             arm_summary["access"] = result.get("access")
             arm_summary["mechanisms"] = result.get("mechanisms")
