@@ -1,0 +1,73 @@
+{
+ "batch_id": "scpt-20261019-16",
+ "mode": "diagnostic",
+ "cells": [
+  "sc-probe-truth-s111",
+  "pop-probe-r020-s111"
+ ],
+ "probe": {
+  "cells": 1,
+  "wall_s": 1800,
+  "peak_rss_mb": 1500,
+  "output_gb": 1.5,
+  "note": "cell A is launched alone as the probe; cell B follows only after A's summary.json exists"
+ },
+ "capacity": {
+  "cores": 24,
+  "reserve_cores": 4,
+  "mem_limit_gb": 628,
+  "reserve_mem_gb": 16,
+  "disk_free_gb": 254,
+  "per_cell_gb": 1.5
+ },
+ "concurrency": 1,
+ "ordering": [
+  "sc-probe-truth-s111",
+  "pop-probe-r020-s111"
+ ],
+ "guards": {
+  "min_free_gb": 45,
+  "min_free_mem_mb": 12000,
+  "watchdog": true
+ },
+ "scheduling": {
+  "batch_id": "scpt-20261019-16",
+  "mode": "diagnostic",
+  "probe": {
+   "cells": 1,
+   "wall_s": 1800,
+   "peak_rss_mb": 1500,
+   "output_gb": 1.5
+  },
+  "capacity": {
+   "cores": 24,
+   "reserve_cores": 4,
+   "mem_limit_gb": 628,
+   "reserve_mem_gb": 16,
+   "disk_free_gb": 254,
+   "per_cell_gb": 1.5
+  },
+  "concurrency": 1,
+  "ordering": "cost_desc",
+  "guards": {
+   "min_free_gb": 45,
+   "min_free_mem_mb": 12000,
+   "watchdog": true
+  },
+  "note": "two small cells, run one at a time; the first is the probe and the second starts only after the first writes summary.json",
+  "cost_desc": [
+   "sc-probe-truth-s111",
+   "pop-probe-r020-s111"
+  ],
+  "estimated_costs_s": {
+   "sc-probe-truth-s111": 1800,
+   "pop-probe-r020-s111": 1500
+  }
+ },
+ "measured": {
+  "cgroup_quota_vcpu": 24,
+  "disk_free_gb": 253,
+  "mem_free_mb": 65425,
+  "source": "run_batch_parallel_v2.sh preflight output on the VM, 2026-10-19"
+ }
+}

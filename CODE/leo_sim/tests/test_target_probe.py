@@ -201,3 +201,44 @@ def test_probe_is_deterministic(tmp_path):
     assert a.read_text() == b.read_text()
     assert res_a["target_probe"]["rows"] == res_b["target_probe"]["rows"]
     assert res_a["fate_counts"] == res_b["fate_counts"]
+
+def test_out_of_order_targets_are_each_read_at_their_own_instant(tmp_path):
+    """Regression: an unsorted queue made the sampler sleep past earlier
+    targets (2508/6313 rows read 8 us to 10.9 ms late)."""
+    class Link:
+        sat = 0
+        peer = 1
+        gen = 1
+        retired = False
+        data_bits = 0
+        ctrl_bits = 0
+        _svc_phase = "idle"
+        _tx_started_at = None
+        _service_rate_bps = None
+        current = None
+
+    class Stub:
+        horizon = 10.0
+
+        def _link_rate(self, kind, now, sat, peer=None):
+            return 1000.0
+
+    stub = Stub()
+    stub.env = simpy.Environment()
+    stub.isls = {0: {"E": Link()}}
+    stub._isl_resource_state_advertisement = types.MethodType(
+        kernel.Kernel._isl_resource_state_advertisement, stub)
+    probe = TargetProbe(stub, str(tmp_path / "p.jsonl"))
+    probe.start()
+    base = {"sat": 0, "direction": "E", "resource_id": "isl:0:1",
+            "resource_peer": 1, "generation": 1, "predicted_bits": 0.0,
+            "service_rate_bps": 1000.0, "decision_id": 1, "pid": 1,
+            "kind": "forward", "chosen": "E", "selected": True,
+            "candidate_directions": ["E"]}
+    probe.enqueue([dict(base, eval_target_s=1.0, decision_id=1),
+                   dict(base, eval_target_s=0.4, decision_id=2)])
+    stub.env.run(until=2.0)
+    sampled = sorted(r["sampled_at_s"] for r in probe.records)
+    assert sampled == [0.4, 1.0]
+    assert all(abs(r["sampled_at_s"] - r["eval_target_s"]) < 1e-12
+               for r in probe.records)
