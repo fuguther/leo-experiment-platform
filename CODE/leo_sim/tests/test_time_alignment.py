@@ -407,3 +407,24 @@ def test_analytic_drain_without_a_rate_falls_back_and_says_so():
     assert got.method == "hold_last"
     assert got.predicted_bits == 5000.0
 
+
+
+# ---- tie-break diagnostics: score quantisation ---------------------------
+
+def test_tie_digits_default_is_none_and_leaves_the_key_alone():
+    """None must mean 'historical behaviour'.  Every existing test above runs
+    with the setting absent; this pins the helper that guards it."""
+    assert ta._tie_digits("tie_sig_digits", None) is None
+
+
+def test_tie_digits_accepts_a_sane_explicit_value():
+    for v in (1, 6, 9, 15):
+        assert ta._tie_digits("tie_sig_digits", v) == v
+
+
+def test_tie_digits_refuses_anything_ambiguous():
+    """A typo must fail loudly rather than silently change routing."""
+    for bad in (True, False, 0, 16, -1, 6.0, "9", [9]):
+        with pytest.raises(ta.TimeAlignmentError):
+            ta._tie_digits("tie_sig_digits", bad)
+

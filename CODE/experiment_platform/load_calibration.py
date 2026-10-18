@@ -101,7 +101,11 @@ OVERRIDE_FIELDS = {
     "time_alignment": {"arm", "predictor", "common_rule",
                        "common_horizon_s", "history_limit",
                        "execution_mode", "min_observation_age_s",
-                       "state_source", "enabled"},
+                       "state_source", "enabled",
+                       # Diagnostics-only score quantisation, used by the
+                       # tie-break A/B intervention.  Absent keeps the
+                       # historical sort key exactly.
+                       "tie_sig_digits"},
 }
 
 

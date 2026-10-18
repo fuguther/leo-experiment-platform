@@ -5065,6 +5065,9 @@ class Kernel:
             history_limit=int(self.cfg_ta["history_limit"]),
             common_horizon_s=common_horizon_s,
             common_rule=str(self.cfg_ta["common_rule"]),
+            # Diagnostics-only.  Absent means None, which leaves the sort key
+            # byte-identical to every historical run.
+            tie_sig_digits=self.cfg_ta.get("tie_sig_digits"),
             query_delay_s=float(self.cfg_ta["query_delay_s"]),
             provenance=(scope,))
 

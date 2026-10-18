@@ -97,6 +97,22 @@ def _finite(name: str, value) -> float:
     return v
 
 
+def _tie_digits(name: str, value):
+    """Validate the diagnostics-only score quantisation setting.
+
+    None keeps the historical sort key exactly.  An explicit integer is a
+    deliberate intervention and must be sane, so a typo cannot silently change
+    routing: integers only, 1..15 significant digits.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TimeAlignmentError(f"{name} must be an int or None, got {value!r}")
+    if not 1 <= value <= 15:
+        raise TimeAlignmentError(f"{name} must be within 1..15, got {value!r}")
+    return int(value)
+
+
 def _direction_index(direction: str) -> int:
     try:
         return DIRECTION_ORDER.index(direction)
@@ -233,6 +249,12 @@ class ObservationSnapshot:
     history_limit: int
     common_horizon_s: float | None
     common_rule: str
+    # Diagnostics only.  When set, scores are quantised to this many significant
+    # digits BEFORE the existing visible_order tie-break sees them, so that
+    # mirror-symmetric candidates (whose scores differ only by float
+    # accumulation noise) actually tie and the deterministic break becomes
+    # reachable.  None leaves the sort key byte-identical to the historical path.
+    tie_sig_digits: int | None
     query_delay_s: float
     provenance: tuple = ()
     resource_service_rate_bps: tuple = ()
@@ -364,6 +386,7 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
                   max_resource_queue_bits=None, arm: str = "candidate",
                   predictor: str = "bounded_linear", history_limit: int = 8,
                   common_horizon_s=None, common_rule: str = "median_eta",
+                  tie_sig_digits=None,
                   query_delay_s: float = 0.0, provenance=(),
                   query_wait_s: float = 0.0,
                   query_service_s: float = 0.0,
@@ -428,6 +451,7 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
         history_limit=int(history_limit),
         common_horizon_s=horizon,
         common_rule=common_rule,
+        tie_sig_digits=_tie_digits("tie_sig_digits", tie_sig_digits),
         query_delay_s=_finite("query_delay_s", query_delay_s),
         provenance=tuple(str(p) for p in provenance),
         resource_service_rate_bps=_pairs(
@@ -899,9 +923,19 @@ def score_candidates(snapshot: ObservationSnapshot, predictions, etas) -> Scored
         scores.append(CandidateScore(direction, resource, total, terms, (),
                                      False,
                                      (0, visible_order[direction], direction)))
-    scores.sort(key=lambda s: (s.fallback,
-                               0.0 if s.fallback else s.total_s,
-                               visible_order[s.direction], s.direction))
+    # Diagnostics-only quantisation: collapse scores that differ below the
+    # requested number of significant digits so the visible_order tie-break
+    # below can actually fire.  tie_sig_digits is None on every historical
+    # path, in which case this key is exactly the original one.
+    _digits = getattr(snapshot, "tie_sig_digits", None)
+
+    def _sort_key(s):
+        value = 0.0 if s.fallback else s.total_s
+        if _digits:
+            value = float(f"{value:.{int(_digits)}e}")
+        return (s.fallback, value, visible_order[s.direction], s.direction)
+
+    scores.sort(key=_sort_key)
     return ScoredCandidates(
         ranking=tuple(s.direction for s in scores),
         scores=tuple(scores),
