@@ -1,0 +1,45 @@
+{
+ "batch_id": "schot-20261019-21",
+ "mode": "diagnostic",
+ "measured": {
+  "source": "hot cells of batch schot-20261019-20 ran 345-355 s each on the VM",
+  "vm_cgroup_quota_vcpu": 24,
+  "disk_free_gb": 252,
+  "mem_free_mb": 65425
+ },
+ "scheduling": {
+  "batch_id": "schot-20261019-21",
+  "mode": "diagnostic",
+  "probe": {
+   "cells": 1,
+   "wall_s": 420,
+   "peak_rss_mb": 1500,
+   "output_gb": 0.5,
+   "note": "same trace as the measured hot cells; only the advertisement interval changed"
+  },
+  "capacity": {
+   "cores": 24,
+   "reserve_cores": 4,
+   "mem_limit_gb": 628,
+   "reserve_mem_gb": 16,
+   "disk_free_gb": 252,
+   "per_cell_gb": 0.5
+  },
+  "concurrency": 2,
+  "ordering": "cost_desc",
+  "cost_desc": [
+   "hot-obs5ms-candidate",
+   "hot-obs5ms-stale"
+  ],
+  "estimated_costs_s": {
+   "hot-obs5ms-candidate": 420,
+   "hot-obs5ms-stale": 420
+  },
+  "guards": {
+   "min_free_gb": 45,
+   "min_free_mem_mb": 12000,
+   "watchdog": true
+  },
+  "note": "observation-rate calibration: does a 5 ms advertisement interval make the backlog visible and the arms diverge"
+ }
+}

@@ -1,0 +1,148 @@
+{
+ "base_profile": "CODE/leo_sim/profiles/t1_scene_trunk_v1.yaml",
+ "cells": [
+  {
+   "arms": [
+    "stale"
+   ],
+   "diagnostics": {
+    "timeline": false
+   },
+   "id": "hot-obs5ms-stale",
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 8
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.005,
+     "vis_k": 2
+    },
+    "demand": {
+     "emission_end_s": 2.35,
+     "emission_start_s": 2.0,
+     "packet_bits": 120000
+    },
+    "execution": {
+     "max_packets": 40000
+    },
+    "links": {
+     "isl_queue_bits": 20000000,
+     "isl_rate_mbps": 1000.0,
+     "rate_model": "constant"
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "scenario": {
+     "duration_s": 6.0,
+     "seed": 111
+    },
+    "time_alignment": {
+     "history_limit": 8,
+     "predictor": "bounded_linear",
+     "state_source": "advertised"
+    }
+   },
+   "trace_program": {
+    "cells": {
+     "beijing": [
+      39.9,
+      116.4
+     ],
+     "london": [
+      51.5,
+      -0.13
+     ]
+    },
+    "emission_end_s": 2.35,
+    "emission_start_s": 2.0,
+    "model": "s1_stationary",
+    "od_weights": {
+     "beijing,london": 0.5,
+     "london,beijing": 0.5
+    },
+    "packet_bits": 120000,
+    "schema": "scene-trace-program/v1",
+    "seed": 111,
+    "total_mbps": 1600.0
+   }
+  },
+  {
+   "arms": [
+    "candidate"
+   ],
+   "diagnostics": {
+    "timeline": false
+   },
+   "id": "hot-obs5ms-candidate",
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 8
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.005,
+     "vis_k": 2
+    },
+    "demand": {
+     "emission_end_s": 2.35,
+     "emission_start_s": 2.0,
+     "packet_bits": 120000
+    },
+    "execution": {
+     "max_packets": 40000
+    },
+    "links": {
+     "isl_queue_bits": 20000000,
+     "isl_rate_mbps": 1000.0,
+     "rate_model": "constant"
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "scenario": {
+     "duration_s": 6.0,
+     "seed": 111
+    },
+    "time_alignment": {
+     "history_limit": 8,
+     "predictor": "bounded_linear",
+     "state_source": "advertised"
+    }
+   },
+   "trace_program": {
+    "cells": {
+     "beijing": [
+      39.9,
+      116.4
+     ],
+     "london": [
+      51.5,
+      -0.13
+     ]
+    },
+    "emission_end_s": 2.35,
+    "emission_start_s": 2.0,
+    "model": "s1_stationary",
+    "od_weights": {
+     "beijing,london": 0.5,
+     "london,beijing": 0.5
+    },
+    "packet_bits": 120000,
+    "schema": "scene-trace-program/v1",
+    "seed": 111,
+    "total_mbps": 1600.0
+   }
+  }
+ ],
+ "deadline_s": 4,
+ "diagnostics": {
+  "control_audit": false,
+  "timeline": false,
+  "truth_probe": true,
+  "truth_probe_max": 120000,
+  "truth_probe_stride": 1
+ },
+ "max_duration_s": 60,
+ "max_packets": 40000,
+ "schema": "load-calibration-contract/v1"
+}
