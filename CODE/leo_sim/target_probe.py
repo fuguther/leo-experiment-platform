@@ -65,10 +65,17 @@ SCHEMA = "leo-sim-target-probe/v1"
 class TargetProbe:
     """Audit-only recorder. One instance per kernel run (or None)."""
 
-    def __init__(self, kernel, path, *, max_samples=None, note=None):
+    def __init__(self, kernel, path, *, max_samples=None, note=None,
+                 stride=1):
         self.kernel = kernel
         self.path = str(path)
         self.note = note
+        # Deterministic 1-in-stride statistical sample over the monotone
+        # candidate stream.  A hard max_samples alone would keep only the
+        # EARLIEST rows: the first probe run hit the cap at 40 000 of 191 023
+        # candidates and therefore described the first 55 ms of the run only.
+        self.stride = max(1, int(stride))
+        self._seq = 0
         # Largest number of DIRECTION records the probe will schedule.  The
         # cap is on records, not on decisions, and every dropped record is
         # counted in dropped_overflow.
@@ -81,7 +88,8 @@ class TargetProbe:
         # 2508/6313 rows were read 8 us to 10.9 ms late).
         self._targets = []
         self.records = []
-        self.counters = {"enqueued": 0, "sampled": 0, "dropped_overflow": 0}
+        self.counters = {"enqueued": 0, "sampled": 0, "dropped_overflow": 0,
+                         "skipped_by_stride": 0}
         self.reasons = {}
         self.started = False
         self.finished = False
@@ -103,6 +111,10 @@ class TargetProbe:
                 # No evaluation instant => no label can ever be taken.  Record
                 # the reason instead of inventing an instant.
                 self._reason("no_eval_target")
+                continue
+            self._seq += 1
+            if self.stride > 1 and (self._seq % self.stride):
+                self.counters["skipped_by_stride"] += 1
                 continue
             if (self.max_samples is not None
                     and self.counters["enqueued"] >= self.max_samples):
@@ -279,6 +291,11 @@ class TargetProbe:
             "sampler_exited": bool(self._exited),
             "sampler_parked_at_stop": bool(self._parked),
             "enqueued": self.counters["enqueued"],
+            "stride": int(self.stride),
+            "skipped_by_stride": self.counters["skipped_by_stride"],
+            "sampling_rule": ("deterministic 1-in-stride over the monotone "
+                              "candidate stream; the overflow cap is a hard "
+                              "stop on top of it"),
             "sampled": self.counters["sampled"],
             "dropped_overflow": self.counters["dropped_overflow"],
             "reason_counts": dict(sorted(self.reasons.items())),

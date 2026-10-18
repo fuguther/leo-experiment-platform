@@ -103,10 +103,54 @@ def sample_pairs(regions, n_pairs: int, seed: int, max_tries: int = 200000):
     return pairs, ids, index, alias
 
 
+def coverage_filter(regions, t0: float, t1: float, min_visible: int,
+                    step_s: float = 0.05, incl_deg: float = 53.0,
+                    sats: int = 96, planes: int = 12, alt_km: float = 800.0,
+                    min_elev: float = 10.0):
+    """Drop cells with NO accessible satellite at any instant of the window.
+
+    This is a declared SCENE constraint, not a performance filter: a cell whose
+    ground point never sees a satellite above the mask cannot associate at all,
+    so its packets would measure the constellation coverage gap rather than
+    routing.  The excluded population is reported, never silently removed.
+    """
+    from CODE.leo_sim import model
+    geo = model.Constellation(sats, planes, alt_km, incl_deg, min_elev, 6000.0)
+    times = []
+    t = t0
+    while t <= t1 + 1e-12:
+        times.append(t)
+        t += step_s
+    kept, dropped = [], []
+    for region in regions:
+        visible = min(sum(1 for s in range(sats)
+                          if geo.ground_visible(s, region.lat, region.lon, now))
+                      for now in times)
+        if visible >= min_visible:
+            kept.append(region)
+        else:
+            dropped.append((region, visible))
+    return kept, dropped, times
+
+
 def build_program(raster_path: str, agg_deg: float, n_pairs: int, seed: int,
-                  total_mbps: float, packet_bits: int, t0: float, t1: float):
+                  total_mbps: float, packet_bits: int, t0: float, t1: float,
+                  min_visible: int = 1):
     table = population.load_population_regions(raster_path, agg_deg)
-    regions = table.regions
+    regions, dropped_regions, coverage_times = coverage_filter(
+        table.regions, t0, t1, min_visible)
+    coverage = {
+        "min_visible_required": int(min_visible),
+        "sample_instants": len(coverage_times),
+        "cells_before": len(table.regions),
+        "cells_after": len(regions),
+        "excluded_cells": len(dropped_regions),
+        "excluded_population": float(sum(r.population for r, _v in dropped_regions)),
+        "total_population": float(sum(r.population for r in table.regions)),
+        "excluded_examples": [
+            {"cell": r.grid_id, "lat": round(r.lat, 3), "lon": round(r.lon, 3),
+             "min_visible": int(v)} for r, v in dropped_regions[:10]],
+    }
     pairs, ids, index, _alias = sample_pairs(regions, n_pairs, seed)
     total_pop = float(sum(r.population for r in regions))
     prob = [r.population / total_pop for r in regions]
@@ -142,7 +186,7 @@ def build_program(raster_path: str, agg_deg: float, n_pairs: int, seed: int,
         "total_mbps": float(total_mbps),
         "intra_cell": intra,
     }
-    return program, table
+    return program, table, coverage
 
 
 def access_map(program: dict, lat0=53.0, sats=96, planes=12, alt=800.0,
@@ -208,7 +252,7 @@ def main() -> int:
     ap.add_argument("--out-access-map", default=None)
     args = ap.parse_args()
 
-    program, table = build_program(
+    program, table, coverage = build_program(
         args.raster, args.agg_deg, args.od_pairs, args.seed,
         args.total_mbps, args.packet_bits,
         args.emission_start_s, args.emission_end_s)
@@ -268,6 +312,7 @@ def main() -> int:
                      "cells_with_subcells": len(program["intra_cell"]),
                      "subcells_total": sum(len(v) for v in
                                            program["intra_cell"].values())},
+        "coverage_filter": coverage,
         "program_digest": digest,
         "trace": {"rows": len(rows), "sha256": info["sha256"],
                   "sha256_second_run": info2["sha256"],

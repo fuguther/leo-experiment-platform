@@ -31,7 +31,8 @@ OVERRIDES = {
 }
 
 
-def contract(cell_id: str, trace_program: dict, arms, max_packets: int) -> dict:
+def contract(cell_id: str, trace_program: dict, arms, max_packets: int,
+             stride: int = 1) -> dict:
     overrides = json.loads(json.dumps(OVERRIDES))
     # The effective execution cap must not exceed the contract cap.
     overrides.setdefault("execution", {})["max_packets"] = max_packets
@@ -42,7 +43,8 @@ def contract(cell_id: str, trace_program: dict, arms, max_packets: int) -> dict:
         "max_packets": max_packets,
         "max_duration_s": 60,
         "diagnostics": {"timeline": False, "control_audit": False,
-                        "truth_probe": True, "truth_probe_max": 40000},
+                        "truth_probe": True, "truth_probe_max": 60000,
+                        "truth_probe_stride": int(stride)},
         "cells": [{
             "id": cell_id,
             "arms": list(arms),
@@ -68,10 +70,13 @@ def main() -> int:
                "seed": 111, "total_mbps": 250.0}
     # 250 Mbps over the 0.35 s window is 7292 packets; the cap leaves room for
     # Poisson jitter and is still small enough for a fast probe.
-    a = contract("sc-probe-truth-s111", scene_a, ["candidate"], 10000)
+    # The census is ~191 000 candidate rows over 55 ms.  A plain cap kept only
+    # the EARLIEST 40 000 (the first 55 ms sample was time-biased), so the
+    # probe takes a deterministic 1-in-4 statistical sample instead.
+    a = contract("sc-probe-truth-s111", scene_a, ["candidate"], 10000, stride=4)
     (HERE / "scene_probe_truth_20261019.json").write_text(
         json.dumps(a, indent=1, sort_keys=True) + "\n")
-    b = contract("pop-probe-r020-s111", pop, ["candidate"], 20000)
+    b = contract("pop-probe-r020-s111", pop, ["candidate"], 20000, stride=1)
     (HERE / "scene_population_probe_20261019.json").write_text(
         json.dumps(b, indent=1, sort_keys=True) + "\n")
     print(json.dumps({

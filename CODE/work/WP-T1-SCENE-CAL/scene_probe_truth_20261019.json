@@ -78,7 +78,8 @@
   "control_audit": false,
   "timeline": false,
   "truth_probe": true,
-  "truth_probe_max": 40000
+  "truth_probe_max": 60000,
+  "truth_probe_stride": 4
  },
  "max_duration_s": 60,
  "max_packets": 10000,

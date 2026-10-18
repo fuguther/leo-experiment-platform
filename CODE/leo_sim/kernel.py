@@ -1232,7 +1232,7 @@ class Kernel:
                  learning_out_dir=None, decision_sink=None, timeline_sink=None,
                  forced_actions=None, control_audit=False,
                  inference_policy=None, target_probe_path=None,
-                 target_probe_max=None):
+                 target_probe_max=None, target_probe_stride=None):
         cfg = resolved["config"]
         self.resolved = resolved
         self.cfg_sc = cfg["scenario"]
@@ -1444,6 +1444,7 @@ class Kernel:
             from . import target_probe as _target_probe
             self.target_probe = _target_probe.TargetProbe(
                 self, target_probe_path, max_samples=target_probe_max,
+                stride=(target_probe_stride or 1),
                 note="same-run probe; truth read at the decision's eval target")
         # per-decision identity; allocated only when a sink can record it
         self._decision_seq = 0
@@ -7572,14 +7573,16 @@ def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
                          learning_out_dir=None, decision_sink=None,
                          timeline_sink=None, forced_actions=None,
                          control_audit=False, inference_policy=None,
-                         target_probe_path=None, target_probe_max=None) -> dict:
+                         target_probe_path=None, target_probe_max=None,
+                         target_probe_stride=None) -> dict:
     kern = Kernel(resolved, rows, geometry=geometry,
                   learning_out_dir=learning_out_dir,
                   decision_sink=decision_sink, timeline_sink=timeline_sink,
                   forced_actions=forced_actions, control_audit=control_audit,
                   inference_policy=inference_policy,
                   target_probe_path=target_probe_path,
-                  target_probe_max=target_probe_max)
+                  target_probe_max=target_probe_max,
+                  target_probe_stride=target_probe_stride)
     result = kern.run()
     if kern.target_probe is not None:
         # Written AFTER the simulation stops, so an interrupted run still
@@ -7607,7 +7610,8 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
                    learning_out_dir=None, decision_sink=None,
                    timeline_sink=None, forced_actions=None,
                    control_audit=False, inference_policy=None,
-                   target_probe_path=None, target_probe_max=None) -> dict:
+                   target_probe_path=None, target_probe_max=None,
+                   target_probe_stride=None) -> dict:
     """Run the kernel and, inside a metered T1 cell, record real call edges.
 
     The ledger is opt-in so ordinary library use stays unchanged.  A configured
@@ -7625,7 +7629,8 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
             forced_actions=forced_actions, control_audit=control_audit,
             inference_policy=inference_policy,
             target_probe_path=target_probe_path,
-            target_probe_max=target_probe_max)
+            target_probe_max=target_probe_max,
+            target_probe_stride=target_probe_stride)
 
     _SIMULATION_CALL_SEQUENCE += 1
     sequence = _SIMULATION_CALL_SEQUENCE
@@ -7645,7 +7650,8 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
             forced_actions=forced_actions, control_audit=control_audit,
             inference_policy=inference_policy,
             target_probe_path=target_probe_path,
-            target_probe_max=target_probe_max)
+            target_probe_max=target_probe_max,
+            target_probe_stride=target_probe_stride)
     except BaseException as exc:
         ended_ns = time.perf_counter_ns()
         _write_simulation_call_event(

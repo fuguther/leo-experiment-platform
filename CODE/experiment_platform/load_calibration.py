@@ -224,7 +224,8 @@ def _validate_effective_config(resolved: dict, contract: dict,
 
 
 DIAGNOSTIC_CHANNELS = ("timeline", "decisions", "control_audit",
-                      "truth_probe", "truth_probe_max")
+                      "truth_probe", "truth_probe_max",
+                      "truth_probe_stride")
 
 
 def _validate_contract_document(document: dict) -> None:
@@ -239,12 +240,11 @@ def _validate_contract_document(document: dict) -> None:
             raise CalibrationError(
                 f"contract diagnostics may only name {list(DIAGNOSTIC_CHANNELS)}")
         for key, value in d.items():
-            if key == "truth_probe_max":
+            if key in ("truth_probe_max", "truth_probe_stride"):
                 if (not isinstance(value, int) or isinstance(value, bool)
                         or value <= 0):
                     raise CalibrationError(
-                        "contract diagnostics.truth_probe_max must be a "
-                        "positive integer")
+                        f"contract diagnostics.{key} must be a positive integer")
                 continue
             if not isinstance(value, bool):
                 raise CalibrationError(
@@ -295,7 +295,7 @@ def diagnostics_for(contract: dict, cell: dict) -> dict:
     contracts and tests are unaffected; a contract opts out explicitly.
     """
     keys = ("timeline", "decisions", "control_audit", "truth_probe",
-            "truth_probe_max")
+            "truth_probe_max", "truth_probe_stride")
     # truth_probe is OPT-IN and its keys appear ONLY when a contract declares
     # them, so every existing contract keeps the exact same diagnostics dict.
     out = {"timeline": True, "decisions": True, "control_audit": True}
@@ -307,11 +307,11 @@ def diagnostics_for(contract: dict, cell: dict) -> dict:
                 f"{scope} {cell.get('id')!r}: unknown diagnostics "
                 f"{sorted(unknown)}; allowed {list(keys)}")
         for k, v in block.items():
-            if k == "truth_probe_max":
+            if k in ("truth_probe_max", "truth_probe_stride"):
                 if (not isinstance(v, int) or isinstance(v, bool) or v <= 0):
                     raise CalibrationError(
                         f"{scope} {cell.get('id')!r}: "
-                        "diagnostics.truth_probe_max must be a positive integer")
+                        f"diagnostics.{k} must be a positive integer")
                 out[k] = v
                 continue
             if not isinstance(v, bool):
@@ -323,9 +323,11 @@ def diagnostics_for(contract: dict, cell: dict) -> dict:
     for key in ("timeline", "decisions", "control_audit"):
         if key in declared:
             out[key] = declared[key]
-    if "truth_probe" in declared or "truth_probe_max" in declared:
+    if ("truth_probe" in declared or "truth_probe_max" in declared
+            or "truth_probe_stride" in declared):
         out["truth_probe"] = bool(declared.get("truth_probe", False))
         out["truth_probe_max"] = declared.get("truth_probe_max")
+        out["truth_probe_stride"] = declared.get("truth_probe_stride")
     if not out["timeline"] and not out["decisions"]:
         raise CalibrationError(
             f"cell {cell.get('id')!r}: the kernel needs at least one sink; "
@@ -1003,6 +1005,8 @@ def run_calibration(contract_path: Path, cell_id: str, out_dir: Path,
                             arm_dir / "target_probe.jsonl"),
                         "target_probe_max": diagnostics.get(
                             "truth_probe_max"),
+                        "target_probe_stride": diagnostics.get(
+                            "truth_probe_stride"),
                     }
                 result = kernel.run_simulation(
                     arm_resolved, rows, geometry=geometry,

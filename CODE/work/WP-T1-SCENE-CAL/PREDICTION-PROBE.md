@@ -97,3 +97,16 @@ work_ahead_bits        = queued_bits + in_service_remaining
 - `link_service_windows` 不含 generation，故离线重建仍无法核验“同一资源”——这正是 in-run 探针存在的理由；
   两条路径的一致性比较放在正式探针之后。
 - 探针写入是每臂一个 JSONL；大格（10 万包 × 4 方向）需要 `truth_probe_max` 上限保护，本轮取 40 000。
+## 第一次 VM 探针（run `scpt-sc-probe-truth-s111-20261019-16`）暴露的抽样偏差
+
+- 该 run 于 2026-10-19 18:32 发射、18:47 完成（rc=0，890 s）。探针写盘 **40 000 条**，
+  但 `dropped_overflow = 151 023`——整格候选行是 **191 023**。
+- 上限按入队顺序截断，因此这 40 000 条**只覆盖 2.110–2.165 s（约 55 ms）**，
+  是**按时间的系统性偏样本**，不能代表整窗。
+- 处置：探针增加**确定性 1/stride 抽样**（单调计数取模，不消费业务随机数），
+  上限只作硬停止，summary 同时记录 `stride`、`skipped_by_stride`、`sampling_rule`。
+  该 run 的探针数据**标记为时间偏样本，不作为结论证据**；正式证据用新 run-id 重跑。
+
+## 第二次 VM 探针（重跑，stride=4）
+
+见 `PROBE-RESULTS-20261019.md`（跑完后填）。
