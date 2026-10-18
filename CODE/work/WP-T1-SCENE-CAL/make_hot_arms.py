@@ -16,7 +16,7 @@ CITIES = {"beijing": [39.9, 116.4], "london": [51.5, -0.13]}
 ARMS = ("stale", "now", "common", "candidate")
 
 
-def main() -> int:
+def build(predictor: str, tag: str, arms=ARMS) -> dict:
     od = {"beijing,london": 0.5, "london,beijing": 0.5}
     program = {"schema": "scene-trace-program/v1", "model": "s1_stationary",
                "cells": CITIES, "od_weights": od, "packet_bits": 120000,
@@ -32,13 +32,13 @@ def main() -> int:
                   "rate_model": "constant"},
         "control_plane": {"advertise_interval_s": 0.05, "vis_k": 2},
         "routing": {"policy": "known_serving"},
-        "time_alignment": {"predictor": "hold_last", "history_limit": 8,
+        "time_alignment": {"predictor": predictor, "history_limit": 8,
                            "state_source": "advertised"},
     }
     cells = []
-    for arm in ARMS:
+    for arm in arms:
         cells.append({
-            "id": "hot-a-%s" % arm, "arms": [arm],
+            "id": "hot-%s-%s" % (tag, arm), "arms": [arm],
             "trace_program": json.loads(json.dumps(program)),
             "diagnostics": {"timeline": False},
             "overrides": json.loads(json.dumps(overrides)),
@@ -50,10 +50,14 @@ def main() -> int:
                            "truth_probe": True, "truth_probe_max": 120000,
                            "truth_probe_stride": 1},
            "cells": cells}
-    (HERE / "scene_hot_arms_20261019.json").write_text(
-        json.dumps(doc, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    print("cells:", [c["id"] for c in cells],
-          "packets~", 1600e6 * 0.35 / 120000)
+    return doc
+
+
+def main() -> int:
+    bl = build("bounded_linear", "bl")
+    (HERE / "scene_hot_arms_bl_20261019.json").write_text(
+        json.dumps(bl, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    print("bounded_linear cells:", [c["id"] for c in bl["cells"]])
     return 0
 
 
