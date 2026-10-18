@@ -365,3 +365,45 @@ def test_enabling_time_alignment_changes_the_config_identity():
     base = _resolve()
     enabled = _resolve(time_alignment={"enabled": True})
     assert base["sha256"] != enabled["sha256"]
+
+
+# ---- declared baselines: zero and analytic_drain -------------------------
+
+def test_zero_is_a_named_method_not_a_silent_zero():
+    """The module refuses silent zeros; 'zero' is a DECLARED method whose
+    error is attributable in the output."""
+    assert "zero" in ta.PREDICTORS
+    result = ta.predict_resource([_sample(8000.0, 1.0)], 1.2, 2.0, method="zero")
+    assert result.predicted_bits == 0.0
+    assert result.method == "zero"
+    assert result.missing_reason is None
+
+
+def test_analytic_drain_drains_at_the_observed_rate():
+    assert "analytic_drain" in ta.PREDICTORS
+    # 8000 bits queued at 1.0 s, link drains 8000 bit/s
+    history = [_sample(8000.0, 1.0, rate=8000.0)]
+    quarter = ta.predict_resource(history, 1.2, 1.25, method="analytic_drain")
+    assert quarter.predicted_bits == pytest.approx(6000.0)
+    half = ta.predict_resource(history, 1.2, 1.5, method="analytic_drain")
+    assert half.predicted_bits == pytest.approx(4000.0)
+    # fully drained never goes negative
+    empty = ta.predict_resource(history, 1.2, 5.0, method="analytic_drain")
+    assert empty.predicted_bits == 0.0
+
+
+def test_analytic_drain_cannot_grow_a_queue():
+    """Arrival-blind by construction: it may never predict MORE than was
+    measured.  That limitation is the point of the baseline."""
+    history = [_sample(5000.0, 1.0, rate=8000.0)]
+    for target in (1.2, 1.3, 1.5, 3.0):
+        got = ta.predict_resource(history, 1.2, max(target, 1.2), method="analytic_drain")
+        assert got.predicted_bits <= 5000.0
+
+
+def test_analytic_drain_without_a_rate_falls_back_and_says_so():
+    history = [_sample(5000.0, 1.0, rate=None)]
+    got = ta.predict_resource(history, 1.2, 2.0, method="analytic_drain")
+    assert got.method == "hold_last"
+    assert got.predicted_bits == 5000.0
+

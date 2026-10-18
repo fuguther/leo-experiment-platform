@@ -42,7 +42,13 @@ VALID_KINDS = (KIND_ISL, KIND_DOWNLINK)
 DIRECTION_ORDER = ("N", "E", "S", "W")
 
 ARMS = ("stale", "now", "common", "candidate")
-PREDICTORS = ("hold_last", "bounded_linear")
+# zero and analytic_drain are DECLARED baselines, not silent zeros:
+#   zero            assume every resource is empty (answers "is state worth
+#                   anything at all against a policy that ignores it");
+#   analytic_drain  the last measured backlog drains at the observed rate and
+#                   nothing new arrives -- arrival-blind, so it can only ever
+#                   predict a DECREASING queue, and it says so by name.
+PREDICTORS = ("hold_last", "bounded_linear", "zero", "analytic_drain")
 ETA_METHOD_EXACT = "exact_terms"
 ETA_METHOD_DEFAULT_PEER = "default_peer_process"
 ETA_METHOD_MISSING = "missing"
@@ -493,6 +499,13 @@ def predict_resource(history, snapshot_at: float, target_at: float,
         raise TimeAlignmentError(f"method must be one of {PREDICTORS}, got {method!r}")
     if history_limit < 1:
         raise TimeAlignmentError("history_limit must be >= 1")
+    if method == "zero":
+        # The declared 'assume empty' baseline needs NO history: that is exactly
+        # what it claims.  Keeping it behind the history gate would make it
+        # report no_received_history and turn the baseline into a different
+        # experiment whenever the cache is cold.
+        res = resource if resource is not None else _placeholder_resource()
+        return ResourcePrediction(res, snap, target, 0.0, "zero")
     if max_queue_bits is not None:
         max_queue_bits = _finite("max_queue_bits", max_queue_bits)
         if max_queue_bits < 0:
@@ -517,6 +530,16 @@ def predict_resource(history, snapshot_at: float, target_at: float,
                                   missing_reason="non_positive_rate")
     if method == "hold_last":
         value = last.queue_bits
+    elif method == "analytic_drain":
+        rate = last.rate_bps
+        if rate is None or rate <= 0:
+            # No known service rate means no defensible drain; fall back and
+            # record that we did rather than invent a rate.
+            value = last.queue_bits
+            method = "hold_last"
+        else:
+            elapsed = max(0.0, target - last.measured_at)
+            value = max(0.0, last.queue_bits - float(rate) * elapsed)
     else:
         if len(series) < 2:
             value = last.queue_bits
