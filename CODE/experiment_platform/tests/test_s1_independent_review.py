@@ -43,6 +43,10 @@ def test_real_expiry_path_removes_control_packet_from_timeline_backlog():
         ctrl_ledger=SimpleNamespace(record=lambda *a: failures.append(a)))
     owner._fail = lambda *a, **kw: Kernel._fail(owner, *a, **kw)
     owner._timeline_ctrl = lambda *a, **kw: Kernel._timeline_ctrl(owner, *a, **kw)
+    # ISLLink._expire_waiting also records the queue state it leaves behind; this
+    # fake owner has no queue-area ledger, so it records nothing.  The timeline
+    # row this check reads is the one _timeline_ctrl writes just above.
+    owner._record_isl_queue_state = lambda *a, **kw: None
     packet = ControlPacket(1, 0, 1, 0, 1, 1, 100, {})
     link = SimpleNamespace(k=owner, sat=0, peer=1,
                           ctrl_q=deque([packet]), data_q=deque(),

@@ -236,11 +236,28 @@ def test_every_arm_queries_the_same_instant_the_online_run_did(tmp_path):
 
 def test_the_arms_are_measured_on_different_instants(tmp_path):
     """The stale arm queries the last measurement, so its target must differ
-    from the projected arms the moment an advertisement exists."""
-    doc = _bench(tmp_path)
+    from the projected arms the moment an advertisement exists.
+
+    The fixture has to be a protocol-v2 scenario.  A v1 advertisement carries no
+    egress generation, so the received history is empty and every arm falls back
+    to the snapshot instant (that is what scripted_scenarios documents for the
+    older fixtures: "no_received_history").  same_flow is one of those v1
+    fixtures, so it cannot express the very distinction this check is about;
+    flat_v2 is the v2 negative control.
+    """
+    out = tmp_path / "bench.json"
+    done = _run("--scenario", "flat_v2", "--iterations", "100",
+                "--rounds", "2", "--warmup", "10", "--pool-sweep", "0,1",
+                "--out", str(out))
+    assert done.returncode == 0, done.stdout + done.stderr
+    doc = json.loads(out.read_text())
     stale = doc["arms"]["stale"]["alignment"]["online_query_targets"]
     now = doc["arms"]["now"]["alignment"]["online_query_targets"]
     assert stale != now, (stale, now)
+    # the stale arm queries the LAST MEASUREMENT, so it is behind the decision
+    # instant for every direction that has received history at all.
+    assert all(stale[direction] < now[direction] for direction in stale), (
+        stale, now)
 
 
 def test_the_observation_build_phase_uses_the_kernel_builder(tmp_path):

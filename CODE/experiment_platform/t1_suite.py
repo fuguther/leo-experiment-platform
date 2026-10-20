@@ -1047,7 +1047,14 @@ def _dev_cells(contract, bundle_dir):
     cells.append(exec_cell(
         "dev-two-factor-packet1500-pool2",
         ["--scenario", "same_flow", "--packet-bits", str(1500 * 8),
-         "--compute-servers", "2", "--service-s", "0.05"],
+         "--compute-servers", "2", "--service-s", "0.05",
+         # The second factor here is the COMPUTE POOL, so the time-alignment
+         # mechanism is switched off for this cell out loud: config validation
+         # refuses the mechanism with more than one compute server (the peer
+         # advertisement schema cannot encode multi-server work-ahead), and a
+         # dev cell that swept the pool while the mechanism was silently
+         # disabled (or silently refused) would prove neither.
+         "--time-alignment", "off"],
         "two-factor: largest packet x two compute servers",
         {"per_packet": {"compute_servers": 2, "packet_bits": 1500 * 8}}))
     cells.append(exec_cell(

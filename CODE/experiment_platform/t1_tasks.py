@@ -2082,8 +2082,15 @@ def publish_network_result(document, out):
     sidecar name, its sha256, the per-stream counts and the byte-offset index.
     """
     from CODE.experiment_platform import replay_sidecar
-    if any((row.get("replay") or {}).get("captured") is True
-           for row in document["document"]["arms"]):
+    # Only a network result carries per-arm rows.  branch_alignment and
+    # execution_modes publish offline results with their own shapes, and a
+    # missing "arms" key is not a capture: reading it as one crashed the
+    # branch_alignment task before it could publish anything.
+    driver = document.get("document") or {}
+    arms = driver.get("arms")
+    rows = arms.values() if isinstance(arms, dict) else (arms or [])
+    if any((row or {}).get("replay", {}).get("captured") is True
+           for row in rows):
         manifest = replay_sidecar.write_sidecar(document, out)
         document["document"].setdefault(
             "replay_capture", {})["sidecar"] = manifest

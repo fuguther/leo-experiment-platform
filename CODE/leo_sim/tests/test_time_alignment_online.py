@@ -219,7 +219,13 @@ def test_compute_fifo_throttles_two_od_flows_before_fast_shared_isl():
                                and event.get("queue") == "isl"
                                and event.get("link_id") == "isl:0:1"]
     assert control_result["control"]["counters"]["entered_queue"] > 0
-    assert control_result["control"]["bits"]["offered"] == 17_216
+    # Two v2 advertisements, each priced by the wire constants in kernel:
+    #   base 8_000 + one ISL resource record (192) + the processing block (416)
+    #   = 8_608 for satellite 1, which serves no cell;
+    # satellite 0 additionally carries one GSL record (3*64+8 = 200) per served
+    # cell, and it serves the two source cells, so it is 8_608 + 2*200 = 9_008.
+    # (The earlier 17_216 predates the downlink_resource records on the v2 wire.)
+    assert control_result["control"]["bits"]["offered"] == 8_608 + 9_008
     assert control_admissions
     control_service = [event for event in control_timeline
                        if event.get("milestone") == "service_start"

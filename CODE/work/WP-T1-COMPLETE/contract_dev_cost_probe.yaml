@@ -1,5 +1,5 @@
 schema: t1-controlled-cost-probe/v1
-campaign_stage: USER_AUTHORIZED_RECORDING_REPAIR_ACCEPTANCE_20261010_ROUND9
+campaign_stage: USER_AUTHORIZED_RECORDING_REPAIR_ACCEPTANCE_20261010_ROUND10
 purpose: small_region_four_arm_low_cost_smoke_with_same_population_trace_pipeline
 not_formal: true
 not_training: true
@@ -18,9 +18,9 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 627c464fbc3026d62888a2ac807ec3693a85e4d10ed1e4cab0503329f4bb8af1
+    execution_chain_sha256: 096a8e3d2d1e36fdb4f881d11a73a0a076c42732ac8dcd399a806d27d34f3e70
     cell_input_sha256:
-      b-bounded_population_cost_smoke-network-seed-7: 13cf10d56ee640134befa5fbd026329f45918261a3e8f7e87e43f65b94aa9d33
+      b-bounded_population_cost_smoke-network-seed-7: f70251c852a060386b01616a6a0fc1eb64907972be702805d4f27443c0bdf9fd
   release_ready: false
   reason: User authorized platform preparation and continuation. The candidate repair
     preserves complete replay and shares immutable arrived advertisement history in
@@ -28,17 +28,23 @@ design_readiness:
     and scope-dependent packet validation are checked. A representative recording/storage
     fixture must pass before one fixed same-input four-arm acceptance. Previous failed
     runs remain preserved. No automatic unchanged retry, training, or formal claim.
+    ROUND10 (2026-10-21) re-binds the same authorization to the execution chain
+    the branch now compiles. The platform-side correctness fixes (receipt
+    mechanism counters, replay sidecar, branch_alignment publication) changed
+    the chain after ROUND9, and a stale pin must not be presented as a live
+    authorization. Scope is unchanged -- ONE cost-probe cell, four simulator
+    calls, release_ready=false.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 627c464fbc3026d62888a2ac807ec3693a85e4d10ed1e4cab0503329f4bb8af1
+  source_execution_chain_sha256: 096a8e3d2d1e36fdb4f881d11a73a0a076c42732ac8dcd399a806d27d34f3e70
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
-    b-bounded_population_cost_smoke-network-seed-7: 13cf10d56ee640134befa5fbd026329f45918261a3e8f7e87e43f65b94aa9d33
+    b-bounded_population_cost_smoke-network-seed-7: f70251c852a060386b01616a6a0fc1eb64907972be702805d4f27443c0bdf9fd
 scenario:
   reference_geometry: selected 96-satellite, 12-plane small-study engineering geometry
   reference_is_global_platform_freeze: false

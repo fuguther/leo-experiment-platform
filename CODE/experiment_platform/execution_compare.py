@@ -425,6 +425,13 @@ def main(argv=None):
     parser.add_argument("--window-bins", type=int, default=None)
     parser.add_argument("--query-delay-s", type=float, default=None,
                         help="shared per-satellite query service time")
+    parser.add_argument("--time-alignment", choices=("on", "off"), default="on",
+                        help="run the comparison with the time-alignment "
+                             "mechanism on (default) or explicitly OFF: "
+                             "config validation refuses the mechanism with "
+                             "more than one compute server, so a cell that "
+                             "sweeps the compute pool has to switch it off "
+                             "out loud instead of silently")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -454,6 +461,10 @@ def main(argv=None):
     if args.query_delay_s is not None:
         overrides.setdefault("time_alignment", {})[
             "query_delay_s"] = float(args.query_delay_s)
+    if args.time_alignment == "off":
+        # Explicit, recorded: the mechanism is off for this comparison, which
+        # is what makes a multi-server compute pool a legal configuration.
+        overrides.setdefault("time_alignment", {})["enabled"] = False
     try:
         resolved, rows, geometry, source = _design(args.config, args.scenario,
                                                    args.root)

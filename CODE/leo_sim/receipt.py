@@ -125,6 +125,13 @@ MECHANISM_COUNTER_KEYS = {
     "ge_gsl_queries", "ge_isl_queries", "ge_waits", "ge_failures",
     "control_snapshots", "control_registered", "control_entered_queue",
     "control_tx_started", "control_tx_completed", "control_initialized",
+    # 645e8c0 added event-triggered advertisement (an announcement emitted on a
+    # serving change, off the periodic grid) and Kernel.mech records both
+    # counters unconditionally.  This set IS the schema the exact-key check
+    # below enforces, so omitting them made every receipt written after that
+    # commit fail self-verification.  Both are plain non-negative integers; no
+    # research mechanism, field or value changes by declaring them here.
+    "event_adverts_emitted", "serving_changes_seen",
     "ge_initialized", "mbb_events", "learning_initialized",
     "learning_decisions", "learning_transitions", "learning_train_steps",
     "learning_discarded_at_stop", "learning_discarded_at_rematch",

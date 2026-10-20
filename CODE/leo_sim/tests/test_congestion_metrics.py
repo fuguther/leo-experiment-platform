@@ -21,6 +21,10 @@ def _convert_run_to_legacy_v1(out, receipt_schema="leo-sim-receipt/v3"):
     contract = manifest["provenance_contract"]
     for key in ("simulation_horizon_s", "emission_end_s", "drain_s"):
         contract.pop(key)
+    # A genuine pre-research-deadline artifact declares four provenance units;
+    # the current compiler always emits the fifth (research_deadline) unit, so a
+    # real v1 downgrade has to drop it instead of only renaming the schema.
+    (contract.get("units") or {}).pop("research_deadline", None)
     contract["schema"] = "leo-sim-trace-provenance/v1"
     resolved = json.loads((out / "resolved_config.json").read_text())
     resolved["config"]["demand"].pop("emission_end_s")

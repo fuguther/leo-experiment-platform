@@ -591,8 +591,12 @@ def test_regional_population_trace_respects_two_second_warmup_and_burst(
     assert rows
     assert min(row["emit_time_s"] for row in rows) >= 2.0
     assert max(row["emit_time_s"] for row in rows) < 4.0
-    assert captured == {"lat_bounds_deg": [5.0, 50.0],
-                        "lon_bounds_deg": [65.0, 140.0],
+    # The loader must receive the region the PROFILE declares.  This profile is
+    # the small four-arm cost smoke: a0d9289 narrowed it from the original
+    # 5..50 N / 65..140 E region to the 20..30 N / 100..110 E one, which is the
+    # region the contract and every recorded cost-probe cell use.
+    assert captured == {"lat_bounds_deg": [20.0, 30.0],
+                        "lon_bounds_deg": [100.0, 110.0],
                         "source_root": Path.cwd()}
     contract = manifest["provenance_contract"]
     assert contract["traffic_transform"]["burst"] == {

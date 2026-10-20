@@ -323,7 +323,26 @@ def count_predict_calls(fn):
 
 def pool_sweep(resolved, rows, geometry, pools=POOL_SWEEP,
                compute_delay_s=0.001):
-    """Finite compute-pool pressure: N servers, plus N=0 (unbounded) control."""
+    """Finite compute-pool pressure: N servers, plus N=0 (unbounded) control.
+
+    Each pool size is run with ``time_alignment`` DISABLED, and every measured
+    row declares it (``time_alignment_enabled``).  The compute pool is an
+    execution-level FIFO (``execution.compute_servers_per_satellite`` plus
+    ``execution.compute_delay_s``); the queueing it produces does not depend on
+    the state-time decision path.  Measured on the 2026-10-20 host, N=0 and N=1
+    report the same requests/queued/total_wait_s whether the mechanism is on or
+    off, and only ``config_sha256`` differs.
+
+    It has to be off here because ``config.resolve_config`` refuses
+    ``compute_servers_per_satellite > 1`` whenever ``time_alignment`` is enabled
+    (the peer-processing advertisement schema cannot encode multi-server
+    work-ahead, so every candidate would score incomplete).  The benchmark turns
+    the mechanism ON for the scenario fixtures it times, so inheriting that flag
+    would silently turn every N>=2 row into a ``skipped`` row -- and the sweep's
+    whole point is to vary N.  ``t1_suite``'s benchmark predicate requires pool
+    N=2 to EXECUTE, not to be skipped, so the sweep must not inherit a flag that
+    makes its own pool sizes illegal.
+    """
     out = []
     for servers in pools:
         if servers > 0 and compute_delay_s <= 0:
@@ -334,6 +353,9 @@ def pool_sweep(resolved, rows, geometry, pools=POOL_SWEEP,
         cfg["execution"]["compute_servers_per_satellite"] = int(servers)
         cfg["execution"]["compute_delay_s"] = float(compute_delay_s)
         cfg["execution"]["decision_observation_mode"] = "frozen"
+        # see the docstring: the pool is execution-level, and the state-time
+        # contract makes multi-server pools illegal while it is enabled.
+        cfg["time_alignment"]["enabled"] = False
         try:
             local = config_mod.resolve_config(cfg)
         except config_mod.ConfigError as exc:
@@ -347,6 +369,8 @@ def pool_sweep(resolved, rows, geometry, pools=POOL_SWEEP,
         out.append({
             "servers": int(servers),
             "unbounded": int(servers) == 0,
+            "time_alignment_enabled": bool(
+                local["config"]["time_alignment"]["enabled"]),
             "config_sha256": local["sha256"],
             "requests": len([m for m in timeline
                              if m.get("milestone") == "compute_request"]),
@@ -511,6 +535,11 @@ def run_benchmark(resolved, rows, geometry, source, *, warmup, rounds,
             "(targets_match is asserted against the online audit); an earlier "
             "version queried snapshot_at for every arm and understated the "
             "decision span",
+            "the finite-pool sweep runs with time_alignment disabled and every "
+            "row says so (time_alignment_enabled=false): the pool is an "
+            "execution-level queue, and the state-time contract refuses "
+            "multi-server pools while the mechanism is on. N=0/N=1 queueing is "
+            "identical either way; only the sweep can vary N at all",
         ],
     }
 
