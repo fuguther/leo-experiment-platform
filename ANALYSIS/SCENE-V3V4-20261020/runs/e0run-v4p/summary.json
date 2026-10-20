@@ -1,0 +1,74 @@
+{
+ "run": "e0run-v4p",
+ "source_dir": "/tmp/e0run-v4p",
+ "note": "",
+ "manifest": {
+  "trace_sha256": "7c0d0243e09210a67c303778852f621a15539140358899ae1f7eac9c97a4a9aa",
+  "trace_identity_sha256": "b2c793d3de81f15839a0d572592b605f9a0fee0c489ebc746c5b54d6571fe0b5",
+  "offered_packets": 30211,
+  "offered_bits": 241688000,
+  "input_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+  "realized_offered_mbps": 24.1688,
+  "simulation_horizon_s": 10.0
+ },
+ "receipt": {
+  "schema": "leo-sim-receipt/v5",
+  "code_sha256": "57cca0eda33994844cf072c91914545708b53837957d829af248ab9ad1a8b011",
+  "config_sha256": "d0c2a86b13c9f1000f41776e88affad471de317ed500e155b9ec55c711206a8d",
+  "seed": 7,
+  "horizon_s": 10.0,
+  "conservation_ok": true,
+  "fate_counts": {
+   "ACCESS_QUEUE_OVERFLOW": 0,
+   "ACCESS_REJECTED": 0,
+   "DATA_DEADLINE_EXPIRED": 0,
+   "DELIVERED": 503,
+   "GEOMETRY_LOSS_IN_FLIGHT": 0,
+   "HOLDING_QUEUE_OVERFLOW": 0,
+   "IN_SYSTEM_AT_STOP": 29708,
+   "ISL_QUEUE_OVERFLOW": 0,
+   "NO_ROUTE": 0,
+   "RANDOM_OUTAGE_IN_FLIGHT": 0
+  },
+  "totals": {
+   "delivered_bits": 4024000,
+   "in_system_bits_at_stop": 237664000,
+   "offered_bits": 241688000,
+   "terminal_loss_bits": 0
+  },
+  "events_processed": 206429,
+  "research_eligible": false
+ },
+ "resolved_config": {
+  "scenario": {
+   "name": "t1-grid-multiod-v4",
+   "num_satellites": 24,
+   "num_planes": 3,
+   "altitude_km": 550.0,
+   "inclination_deg": 53.0,
+   "duration_s": 10.0,
+   "seed": 7
+  },
+  "demand": {
+   "mode": "population_gravity",
+   "offered_mbps": 24.0,
+   "packet_bits": 8000,
+   "destination_population_exponent": 1
+  },
+  "links": {
+   "isl_rate_mbps": 10.0,
+   "isl_queue_bits": 1000000,
+   "max_isl_km": 6000.0
+  },
+  "control_plane": {
+   "advertise_interval_s": 0.2,
+   "enabled": true,
+   "packet_bits": 8000,
+   "priority": "nonpreemptive_priority",
+   "ttl_s": 10.0,
+   "vis_k": 2
+  }
+ },
+ "trace_sha256_recomputed": "7c0d0243e09210a67c303778852f621a15539140358899ae1f7eac9c97a4a9aa",
+ "trace_sha256_matches_manifest": true
+}

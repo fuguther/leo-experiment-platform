@@ -1,0 +1,55 @@
+# v4：网格端点 + 多 OD 对（2026-10-20）
+# 目的：不是两个手工站点，而是按人口网格自动生成 OD 对，让更多星间链路承载流量。
+config_version: leo-sim-config/v1
+scenario:
+  name: t1-grid-multiod-v4
+  duration_s: 30.0
+  time_step_s: 0.1
+  num_satellites: 24
+  num_planes: 3
+  seed: 7
+  min_elevation_deg: 5
+endpoints:
+  grid_deg: 0.25
+  aggregation_deg: 5
+demand:
+  mode: population_gravity
+  population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
+  offered_mbps: 24.0
+  packet_bits: 8000
+  source_population_exponent: 1
+  destination_population_exponent: 1
+  gravity_alpha: 1.25
+  gravity_d_floor_km: 100
+access:
+  unavailable_policy: queue
+  slots_per_satellite: 4
+  uplink_rate_mbps: 1000.0
+  downlink_rate_mbps: 1000.0
+  uplink_queue_bits: 4000000000
+  downlink_queue_bits: 4000000000
+  association: bbm
+  hysteresis_deg: 0
+  min_dwell_s: 0
+  acquisition_delay_s: 0.1
+links:
+  rate_model: constant
+  isl_rate_mbps: 10.0
+  isl_queue_bits: 1000000
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 0.2
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  max_events: 20000000
+  max_entities: 20000
+  max_packets: 200000
+  available_capacity_interval_s: 1.0
+outputs:
+  out_dir: leo_sim_out/t1-grid-multiod-v4
+  plotting: false

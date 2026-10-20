@@ -1,0 +1,74 @@
+{
+ "run": "e0run-v4d",
+ "source_dir": "/tmp/e0run-v4d",
+ "note": "",
+ "manifest": {
+  "trace_sha256": "57d8513694567188fe7e7d9e5dfbb8fac78e9db0dca89506577bb5d9d87ca628",
+  "trace_identity_sha256": "8152d8f47d99ff2a2759df0d0c5357198afeb96a1d1fd58a5b3271bfaedb6e00",
+  "offered_packets": 60193,
+  "offered_bits": 481544000,
+  "input_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+  "realized_offered_mbps": 40.12866666666667,
+  "simulation_horizon_s": 12.0
+ },
+ "receipt": {
+  "schema": "leo-sim-receipt/v5",
+  "code_sha256": "57cca0eda33994844cf072c91914545708b53837957d829af248ab9ad1a8b011",
+  "config_sha256": "cbcf9da159c3d83e2879e43be824af6c072e14878780f4752e878a810f25ef5e",
+  "seed": 7,
+  "horizon_s": 12.0,
+  "conservation_ok": true,
+  "fate_counts": {
+   "ACCESS_QUEUE_OVERFLOW": 0,
+   "ACCESS_REJECTED": 0,
+   "DATA_DEADLINE_EXPIRED": 0,
+   "DELIVERED": 17816,
+   "GEOMETRY_LOSS_IN_FLIGHT": 0,
+   "HOLDING_QUEUE_OVERFLOW": 0,
+   "IN_SYSTEM_AT_STOP": 42377,
+   "ISL_QUEUE_OVERFLOW": 0,
+   "NO_ROUTE": 0,
+   "RANDOM_OUTAGE_IN_FLIGHT": 0
+  },
+  "totals": {
+   "delivered_bits": 142528000,
+   "in_system_bits_at_stop": 339016000,
+   "offered_bits": 481544000,
+   "terminal_loss_bits": 0
+  },
+  "events_processed": 1532823,
+  "research_eligible": false
+ },
+ "resolved_config": {
+  "scenario": {
+   "name": "t1-grid-conc-v4d",
+   "num_satellites": 140,
+   "num_planes": 7,
+   "altitude_km": 600,
+   "inclination_deg": 98.6,
+   "duration_s": 12.0,
+   "seed": 7
+  },
+  "demand": {
+   "mode": "population_gravity",
+   "offered_mbps": 40.0,
+   "packet_bits": 8000,
+   "destination_population_exponent": 4
+  },
+  "links": {
+   "isl_rate_mbps": 10.0,
+   "isl_queue_bits": 1000000,
+   "max_isl_km": 6000.0
+  },
+  "control_plane": {
+   "advertise_interval_s": 0.2,
+   "enabled": true,
+   "packet_bits": 8000,
+   "priority": "nonpreemptive_priority",
+   "ttl_s": 10.0,
+   "vis_k": 2
+  }
+ },
+ "trace_sha256_recomputed": "57d8513694567188fe7e7d9e5dfbb8fac78e9db0dca89506577bb5d9d87ca628",
+ "trace_sha256_matches_manifest": true
+}

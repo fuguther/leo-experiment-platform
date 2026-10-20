@@ -1,0 +1,74 @@
+{
+ "run": "e0run-v3b",
+ "source_dir": "/tmp/e0run-v3b",
+ "note": "",
+ "manifest": {
+  "trace_sha256": "999ad5d3ee4b6d21f18740ee09c06ad8792b5a1e7c8e6fb5df595517a3cf8022",
+  "trace_identity_sha256": "7f3fd72335a32e62055ff26ad419f23ee63d8a0f93c55b94459a4f10a3909d98",
+  "offered_packets": 90118,
+  "offered_bits": 720944000,
+  "input_sha256": "",
+  "realized_offered_mbps": 12.015733333333333,
+  "simulation_horizon_s": 60.0
+ },
+ "receipt": {
+  "schema": "leo-sim-receipt/v5",
+  "code_sha256": "57cca0eda33994844cf072c91914545708b53837957d829af248ab9ad1a8b011",
+  "config_sha256": "54a409f9f17e445b5a1c856657da37441ad06c336902305d9f51604d8f1bc32d",
+  "seed": 7,
+  "horizon_s": 60.0,
+  "conservation_ok": true,
+  "fate_counts": {
+   "ACCESS_QUEUE_OVERFLOW": 0,
+   "ACCESS_REJECTED": 0,
+   "DATA_DEADLINE_EXPIRED": 0,
+   "DELIVERED": 89986,
+   "GEOMETRY_LOSS_IN_FLIGHT": 0,
+   "HOLDING_QUEUE_OVERFLOW": 0,
+   "IN_SYSTEM_AT_STOP": 132,
+   "ISL_QUEUE_OVERFLOW": 0,
+   "NO_ROUTE": 0,
+   "RANDOM_OUTAGE_IN_FLIGHT": 0
+  },
+  "totals": {
+   "delivered_bits": 719888000,
+   "in_system_bits_at_stop": 1056000,
+   "offered_bits": 720944000,
+   "terminal_loss_bits": 0
+  },
+  "events_processed": 3109926,
+  "research_eligible": false
+ },
+ "resolved_config": {
+  "scenario": {
+   "name": "t1-pressure-corridor-v3",
+   "num_satellites": 24,
+   "num_planes": 3,
+   "altitude_km": 550.0,
+   "inclination_deg": 53.0,
+   "duration_s": 60.0,
+   "seed": 7
+  },
+  "demand": {
+   "mode": "uniform",
+   "offered_mbps": 12.0,
+   "packet_bits": 8000,
+   "destination_population_exponent": 1.0
+  },
+  "links": {
+   "isl_rate_mbps": 10.0,
+   "isl_queue_bits": 1000000,
+   "max_isl_km": 6000.0
+  },
+  "control_plane": {
+   "advertise_interval_s": 0.2,
+   "enabled": true,
+   "packet_bits": 8000,
+   "priority": "nonpreemptive_priority",
+   "ttl_s": 10.0,
+   "vis_k": 2
+  }
+ },
+ "trace_sha256_recomputed": "999ad5d3ee4b6d21f18740ee09c06ad8792b5a1e7c8e6fb5df595517a3cf8022",
+ "trace_sha256_matches_manifest": true
+}
