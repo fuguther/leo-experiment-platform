@@ -22,9 +22,17 @@ import math
 import re
 from pathlib import Path
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+def _pyplot():
+    """Import pyplot lazily.
+
+    The sensitivity helpers in this module (and their regression tests) are
+    plain arithmetic; they must be importable where matplotlib is absent, e.g.
+    the read-only CI environment.  Only the three figure builders need pyplot.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    return plt
 
 
 ARMS = ("stale", "now", "common", "candidate")
@@ -168,6 +176,7 @@ def sensitivity(per_arm):
 
 
 def fig_sensitivity(datasets, out_path: Path):
+    plt = _pyplot()
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.6))
     ax = axes[0]
     colors = plt.cm.viridis([i / max(1, len(datasets) - 1) for i in range(len(datasets))])
@@ -213,6 +222,7 @@ def fig_sensitivity(datasets, out_path: Path):
 
 
 def fig_outcome(datasets_outcome, out_path: Path):
+    plt = _pyplot()
     names = [n for n in datasets_outcome]
     fig, axes = plt.subplots(1, 3, figsize=(12.5, 4.2))
     metrics = [("d4_fail", "D4 deadline miss ratio"),
@@ -243,6 +253,7 @@ def fig_outcome(datasets_outcome, out_path: Path):
 
 
 def fig_funnel(cal_rows, out_path: Path):
+    plt = _pyplot()
     fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.4))
     labels = [r["cell"] for r in cal_rows]
     ax = axes[0]
