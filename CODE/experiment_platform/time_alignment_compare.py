@@ -36,6 +36,7 @@ import json
 import math
 import os
 import tempfile
+import time
 from pathlib import Path
 
 from CODE.experiment_platform import artifact_identity, t1_stats
@@ -922,8 +923,14 @@ def _replay_payload(captured):
     }
 
 
-def load_frozen_deadline(path):
-    """Load a development-frozen deadline with its provenance intact."""
+def load_frozen_deadline(path, expect_config_sha256=None):
+    """Load a development-frozen deadline with its provenance intact.
+
+    When expect_config_sha256 is given and the file records the identity of the
+    config it was frozen from, a mismatch is refused: D is the yardstick of the
+    comparison, so a freeze computed from a different config would silently
+    rescale every loss it scores.
+    """
     path = Path(path)
     if not path.exists():
         raise CompareError(f"frozen deadline file missing: {path}")
@@ -936,6 +943,19 @@ def load_frozen_deadline(path):
             or not math.isfinite(float(value)) or float(value) <= 0:
         raise CompareError(
             f"frozen deadline file has no positive deadline_s: {path}")
+    identity = doc.get("identity")
+    recorded = ((identity or {}).get("config_sha256")
+                if isinstance(identity, dict) else None)
+    stale = bool(expect_config_sha256) and bool(recorded)
+    if stale and str(recorded) != str(expect_config_sha256):
+        raise CompareError(
+            f"frozen deadline {path} was computed from config {recorded} but "
+            f"the scenario resolves to {expect_config_sha256}: D is the "
+            "yardstick of the comparison, so a freeze from a different config "
+            "may not be reused (re-freeze with: python -m "
+            "CODE.experiment_platform.t1_suite freeze-deadlines --contract "
+            "CODE/work/WP-T1-COMPLETE/contract.yaml --out-dir "
+            "CODE/work/WP-T1-COMPLETE/deadlines --refreeze)")
     return {
         "deadline_s": float(value),
         "source": "frozen_development_file",
@@ -949,11 +969,34 @@ def load_frozen_deadline(path):
     }
 
 
-def write_frozen_deadline(path, report, resolved, run_kind):
-    """Dev stage: freeze D with the identity that produced it."""
+def write_frozen_deadline(path, report, resolved, run_kind, allow_supersede=False):
+    """Dev stage: freeze D with the identity that produced it.
+
+    A plain freeze never overwrites an existing file.  allow_supersede is the
+    ONLY way past that, and it is deliberately explicit: the old bytes are
+    moved under _superseded/ (never deleted) and the new document records their
+    path and hash, because a deadline that changed without a trace would make
+    every loss scored under the old one uncomparable.
+    """
     path = Path(path)
+    supersedes = None
     if path.exists():
-        raise CompareError(f"refusing to overwrite a frozen deadline: {path}")
+        if not allow_supersede:
+            raise CompareError(
+                f"refusing to overwrite a frozen deadline: {path} (pass "
+                "--refreeze to supersede it, which archives the old bytes)")
+        archive = path.parent / "_superseded"
+        archive.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        target = archive / f"{path.stem}-{stamp}.json"
+        suffix = 1
+        while target.exists():
+            target = archive / f"{path.stem}-{stamp}-{suffix}.json"
+            suffix += 1
+        previous_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+        path.replace(target)
+        supersedes = {"path": str(target), "sha256": previous_sha256,
+                      "superseded_utc": stamp}
     identity = artifact_identity.build_identity(
         config=resolved, driver_paths=artifact_identity.execution_chain_paths())
     doc = dict(report)
@@ -964,6 +1007,7 @@ def write_frozen_deadline(path, report, resolved, run_kind):
         "run_kind": run_kind,
         "frozen_at_sha": identity["git"].get("commit"),
         "identity": identity,
+        "supersedes": supersedes,
         "note": "frozen on development data only; a confirmation comparison "
                 "loads this file and never re-derives D",
     })

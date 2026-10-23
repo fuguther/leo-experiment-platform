@@ -2080,10 +2080,16 @@ def publish_network_result(document, out):
     (about 13.6x the file size), so the gate and the analysis read it row by row
     instead of materializing the object graph.  The primary result keeps the
     sidecar name, its sha256, the per-stream counts and the byte-offset index.
+
+    A document that has no top-level arm list (branch_alignment publishes the
+    t1-branch-block/v1 block, execution_modes publishes the mode comparison)
+    is written unchanged: the graph codec, like this scan, is defined for the
+    network document only, so its absence is not an error.
     """
     from CODE.experiment_platform import replay_sidecar
-    if any((row.get("replay") or {}).get("captured") is True
-           for row in document["document"]["arms"]):
+    arms = (document.get("document") or {}).get("arms") or []
+    if document.get("task") == "network_alignment" and any(
+            (row.get("replay") or {}).get("captured") is True for row in arms):
         manifest = replay_sidecar.write_sidecar(document, out)
         document["document"].setdefault(
             "replay_capture", {})["sidecar"] = manifest
@@ -2123,15 +2129,23 @@ def publish(document, out):
         raise
 
 
-def _deadline_s(args):
+def _deadline_s(args, resolved=None):
+    """D for this task: the frozen development file, else the declared value.
+
+    The frozen file is loaded through the canonical loader so its identity is
+    checked against the config this task is about to run: D is the yardstick,
+    and a freeze computed from a different config must not silently rescale the
+    losses reported here (the loader raises CompareError with the re-freeze
+    command).
+    """
     if args.deadline_from:
-        payload = json.loads(Path(args.deadline_from).read_text(
-            encoding="utf-8"))
-        value = payload.get("deadline_s")
-        if value is None:
-            raise TaskError(
-                f"{args.deadline_from} does not carry a deadline_s value")
-        return float(value)
+        try:
+            loaded = tac.load_frozen_deadline(
+                args.deadline_from,
+                expect_config_sha256=(resolved or {}).get("sha256"))
+        except tac.CompareError as exc:
+            raise TaskError(str(exc)) from exc
+        return float(loaded["deadline_s"])
     return args.deadline_s
 
 
@@ -2266,7 +2280,7 @@ def main(argv=None) -> int:
             args.config, args.scenario, args.root, overrides)
         document = run_task(
             args.task, resolved, rows, geometry, source,
-            deadline_s=_deadline_s(args), max_branches=args.max_branches,
+            deadline_s=_deadline_s(args, resolved), max_branches=args.max_branches,
             window=window,
             modes=([m.strip() for m in str(args.modes).split(",") if m.strip()]
                    if args.modes else None),

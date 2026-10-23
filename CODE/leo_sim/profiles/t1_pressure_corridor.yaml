@@ -58,6 +58,15 @@ control_plane:
   enabled: true
   advertise_interval_s: 2.0
   vis_k: 2
+  # REQUIRED by the time-alignment scenarios (fixed_hotspot, burst_hotspot) and
+  # declared by CODE/work/WP-T1-COMPLETE/time_alignment_study.yaml:9.  Under v1 the
+  # advertisement wire keeps only {peer, value} per ISL record -- the kernel strips
+  # 'generation' and 'work_ahead_bits_proxy' (CODE/leo_sim/kernel.py:3632-3641) --
+  # so _build_ta_snapshot finds no admissible sample for any candidate, every
+  # decision falls back to the query instant, and all four arms collapse to the
+  # same computation.  Measured 2026-10-21: v1 gave four identical arm target sets
+  # (sym-diff 0); v2 gave 134/116/186/258 distinct targets with sym-diff 18-164.
+  advertisement_protocol_version: 2
 routing:
   policy: hop
 learning:

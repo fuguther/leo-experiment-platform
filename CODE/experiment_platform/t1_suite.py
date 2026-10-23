@@ -600,7 +600,8 @@ def deadline_file_for(scenario_id):
     return DEADLINE_DIR / f"deadline_{scenario_id}.json"
 
 
-def freeze_scenario_deadlines(contract_path, out_dir, root=None):
+def freeze_scenario_deadlines(contract_path, out_dir, root=None,
+                             allow_supersede=False):
     """Freeze ONE D per declared business scenario, from development data.
 
     D = multiplier x p95 of the LEGAL-CANDIDATE delivery samples of the
@@ -622,6 +623,20 @@ def freeze_scenario_deadlines(contract_path, out_dir, root=None):
     try:
         for spec in plan:
             sid = str(spec["id"])
+            status = spec.get("status")
+            if status is not None and status != "READY":
+                # The same gate _b_cells() applies: a scenario the contract
+                # has not cleared for execution must not be frozen either.
+                # Without it the freeze walked into the non-READY scenarios
+                # (mlab_asym is VALIDITY_PRE_CHECK_PENDING) and would have
+                # written a yardstick for a scenario no cell can run.
+                frozen[sid] = {
+                    "status": "NOT_READY",
+                    "declared_status": status,
+                    "reason": "the contract has not cleared this scenario "
+                              "for execution, so it has no runnable cell "
+                              "to score"}
+                continue
             workload = _workload_spec(contract, spec)
             cfg = _seed_config(contract, work, 7,
                                dict(spec.get("parameters") or {}),
@@ -663,6 +678,9 @@ def freeze_scenario_deadlines(contract_path, out_dir, root=None):
                                "branches": len(used)}
                 continue
             report = dict(t1_stats.default_deadline(delays))
+            # The fingerprint the compiled cells recompute, so a freeze can be
+            # proven to belong to the scenario as it resolves now.
+            report["config_fingerprint"] = _scenario_config_fingerprint(resolved)
             # The sample that produced D must be auditable FROM THE FILE: a
             # frozen deadline whose provenance is only in a run log cannot be
             # re-checked by the confirmation side.
@@ -673,7 +691,8 @@ def freeze_scenario_deadlines(contract_path, out_dir, root=None):
                                            "the development baseline, "
                                            "aggregated over branches")})
             path = out_dir / f"deadline_{sid}.json"
-            t1_tasks.tac.write_frozen_deadline(path, report, resolved, "dev")
+            t1_tasks.tac.write_frozen_deadline(path, report, resolved, "dev",
+                                              allow_supersede=allow_supersede)
             frozen[sid] = {"status": "FROZEN",
                            "deadline_s": report["deadline_s"],
                            "samples": len(delays),
@@ -704,6 +723,140 @@ def _workload_spec(contract, scenario_spec):
         raise SuiteError(f"scenario workload {name!r} is missing or malformed")
     return spec
 
+def _benchmark_pool_servers(spec, resolved_profile):
+    """The pool sizes a benchmark cell may REQUIRE for this scenario config.
+
+    ``benchmark_decision.pool_sweep`` builds every point by overriding
+    ``execution.compute_servers_per_satellite``.  When the scenario enables
+    ``time_alignment`` the config contract refuses N>1: the peer-processing
+    advertisement cannot encode multi-server work-ahead, so every candidate
+    would be scored incomplete.  Requiring N=2 there would fail the cell for a
+    constraint the scenario itself declares, so the requirement narrows to the
+    sizes the config can actually resolve.  Nothing is hidden by it: the sweep
+    still records the refused points, with their refusal text, in the result.
+    """
+    declared = spec.get("benchmark_pool_servers")
+    if declared:
+        return ([int(value) for value in declared],
+                "declared by the scenario spec")
+    if bool((resolved_profile.get("time_alignment") or {}).get("enabled")):
+        return ([1],
+                "the scenario enables time_alignment, and the config contract "
+                "admits compute_servers_per_satellite <= 1 with it: pool N>=2 "
+                "points stay in the result as explained skips, not as required "
+                "checks")
+    return [1, 2], "default sweep requirement"
+
+
+def _require_alignment_telemetry(sid, resolved_profile):
+    """Refuse a time-alignment cell whose advertisement wire carries no ISL telemetry.
+
+    The v1 advertisement keeps only {peer, value} for each ISL record: the
+    kernel removes 'generation' and 'work_ahead_bits_proxy' from the wire
+    (CODE/leo_sim/kernel.py:3632-3641).  _build_ta_snapshot requires both
+    (CODE/leo_sim/kernel.py:4961-4971), so under v1 no candidate can carry a
+    received state sample, every decision falls back to the query instant, and
+    the four arms differ only in their config hash -- an unanswerable
+    experiment, not a null result.  Called from _seed_config() for every tier
+    and from _b_cells(), so the check cannot be bypassed by a tier that builds
+    its configs a different way.  Measured 2026-10-21 on
+    b-fixed_hotspot-network-seed-7: v1 -> four arms with byte-identical target
+    sets; v2 -> 134/116/186/258 distinct targets (sym-diff 18-164).
+    """
+    if not bool((resolved_profile.get("time_alignment") or {}).get("enabled")):
+        return
+    protocol = int((resolved_profile.get("control_plane") or {}).get(
+        "advertisement_protocol_version", 1))
+    if protocol < 2:
+        raise SuiteError(
+            f"scenario {sid!r} enables time_alignment but the advertisement "
+            f"protocol is v{protocol}: the v1 wire has no ISL generation or "
+            "work-ahead proxy, so no candidate can carry a received state "
+            "sample and all four arms collapse to the query instant "
+            "(CODE/leo_sim/kernel.py:3632-3641 and :4961-4971). Declare "
+            "control_plane.advertisement_protocol_version: 2 in the scenario "
+            "profile, as CODE/work/WP-T1-COMPLETE/time_alignment_study.yaml:9 "
+            "already does.")
+
+
+def _scenario_config_fingerprint(resolved_like):
+    """A path-independent fingerprint of the config a scenario resolves to.
+
+    The config sha256 hashes the whole canonical config, demand.csv_path
+    included, and that path necessarily differs between the freeze run (a
+    throwaway directory) and a compiled bundle.  D depends on the workload, not
+    on where the trace file lives, so the trace is replaced by the hash of its
+    bytes before hashing; every other field is kept, so a real parameter change
+    still changes the fingerprint.
+    """
+    config = resolved_like
+    nested = config.get("config") if isinstance(config, dict) else None
+    if isinstance(nested, dict):
+        config = nested
+    masked = {key: value for key, value in (config or {}).items()
+              if key not in ("sha256", "canonical_json")}
+    demand = masked.get("demand")
+    if isinstance(demand, dict):
+        demand = dict(demand)
+        path = demand.get("csv_path")
+        if isinstance(path, str) and Path(path).exists():
+            demand["csv_path"] = "sha256:" + _sha256_file(Path(path))
+        masked["demand"] = demand
+    return hashlib.sha256(_canonical(masked).encode("utf-8")).hexdigest()
+
+
+def _refreeze_hint(sid):
+    return ("Re-freeze it explicitly, which archives the old bytes under "
+            "_superseded/: python -m CODE.experiment_platform.t1_suite "
+            "freeze-deadlines --contract CODE/work/WP-T1-COMPLETE/contract.yaml "
+            "--out-dir CODE/work/WP-T1-COMPLETE/deadlines --refreeze "
+            f"(scenario {sid!r})")
+
+
+def _scenario_deadline_args(sid, resolved_profile, diagnostic_deadline_s):
+    """The deadline flags one business scenario's cells must carry.
+
+    One D per declared scenario, shared by every arm and every mode: the
+    contract's own deadline_rule.  The frozen development file wins over the
+    tier-wide diagnostic value.  Before 2026-10-21 only the branch cell got the
+    frozen file while the four-arm network cell -- the one that produces the
+    primary endpoint -- was handed shared outcome args with --deadline-s, so
+    b-fixed_hotspot-network-seed-7 ran [--deadline-s 30.0] against an observed
+    p95 of 0.84-1.56 s and could not separate the arms.  The freeze is also
+    checked against the config the scenario resolves to now: a D frozen from a
+    different config is a different yardstick, and re-using it would silently
+    rescale the primary endpoint.  Refusing loudly is the point, and the error
+    names the explicit re-freeze command.
+    """
+    frozen = deadline_file_for(sid)
+    if not frozen.exists():
+        return (["--deadline-s", str(diagnostic_deadline_s)],
+                "D NOT YET FROZEN: the declared diagnostic value is used and "
+                "the cell says so")
+    try:
+        doc = json.loads(frozen.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SuiteError(f"frozen deadline for scenario {sid!r} is unreadable "
+                         f"({frozen}): {exc}")
+    recorded = doc.get("config_fingerprint")
+    expected = _scenario_config_fingerprint(resolved_profile)
+    if not recorded:
+        raise SuiteError(
+            f"frozen deadline for scenario {sid!r} records no config "
+            "fingerprint, so it cannot be shown to belong to the scenario as it "
+            "now resolves (it predates fingerprinting, 2026-10-21). "
+            + _refreeze_hint(sid))
+    if str(recorded) != str(expected):
+        raise SuiteError(
+            f"frozen deadline for scenario {sid!r} was computed from config "
+            f"fingerprint {recorded} but the scenario now resolves to "
+            f"{expected}: the frozen D is the yardstick of the primary "
+            "endpoint, so a stale freeze must not be reused. "
+            + _refreeze_hint(sid))
+    return (["--deadline-from", str(frozen)],
+            "frozen D from " + frozen.name)
+
+
 def _b_cells(contract, bundle_dir):
     """B0/B1: the PRE-DECLARED business scenarios, one small cell set each.
 
@@ -717,8 +870,10 @@ def _b_cells(contract, bundle_dir):
         return []
     deadline_s = _development_deadline_s(contract)
     population_window = _development_population_window(contract)
-    shared_outcome_args = [
-        "--deadline-s", str(deadline_s),
+    # The window flags are the same for every cell of this tier.  The deadline
+    # is NOT: it is resolved per scenario by _scenario_deadline_args(), which
+    # prefers the frozen development file and refuses a stale freeze.
+    window_args = [
         "--window-start", str(population_window[0]),
         "--window-end", str(population_window[1]),
     ]
@@ -735,14 +890,6 @@ def _b_cells(contract, bundle_dir):
         profile = str(spec["profile"])
         params = dict(spec.get("parameters") or {})
         branches = int(spec.get("max_branches", 12))
-        frozen_d = deadline_file_for(sid)
-        if frozen_d.exists():
-            deadline_args = ["--deadline-from", str(frozen_d)]
-            deadline_note = "frozen D from " + frozen_d.name
-        else:
-            deadline_args = ["--deadline-s", str(deadline_s)]
-            deadline_note = ("D NOT YET FROZEN: the declared diagnostic value "
-                             "is used and the cell says so")
         seeds = [int(seed) for seed in spec.get("seeds", [7])]
         tasks = set(spec.get("tasks", (
             "branch_alignment", "network_alignment", "benchmark")))
@@ -754,6 +901,9 @@ def _b_cells(contract, bundle_dir):
                                workload=workload)
             resolved_profile = t1_tasks.config_mod.load_config_file(
                 str(cfg))["config"]
+            _require_alignment_telemetry(sid, resolved_profile)
+            deadline_args, deadline_note = _scenario_deadline_args(
+                sid, resolved_profile, deadline_s)
             demand = resolved_profile.get("demand") or {}
             network_require = {
                 "require_task": "network_alignment",
@@ -831,11 +981,13 @@ def _b_cells(contract, bundle_dir):
                 cells.append(_task_cell(
                     f"b-{sid}-network-seed-{seed}", "b_round",
                     "network_alignment", cfg,
-                    extra_args=[*shared_outcome_args, *network_args],
+                    extra_args=[*deadline_args, *window_args, *network_args],
                     description=f"{sid}: four online arms, whole network",
                     seed=seed, require=network_require))
             if ("benchmark" in tasks and seed in [
                     int(v) for v in task_seeds.get("benchmark", seeds)]):
+                pool_servers, pool_note = _benchmark_pool_servers(
+                    spec, resolved_profile)
                 benchmark_args = ["--config", str(cfg),
                                   *list(spec.get("benchmark_args") or [])]
                 benchmark_cell_id = (
@@ -850,17 +1002,20 @@ def _b_cells(contract, bundle_dir):
                     seed=seed,
                     predicate={"kind": "benchmark",
                                "require": {"min_complete_rounds": 1,
-                                           "pool_servers": list(spec.get(
-                                               "benchmark_pool_servers", [1, 2])),
+                                           "pool_servers": pool_servers,
                                            "min_pool_requests": True,
                                            "require_model_provenance": True,
-                                           "require_alignment": True}}))
+                                           "require_alignment": True},
+                               # Why the requirement is not the raw default:
+                               # recorded in the cell, so a narrowed gate is
+                               # auditable instead of invisible.
+                               "pool_servers_note": pool_note}))
             if ("execution_modes" in tasks and seed in [
                     int(v) for v in task_seeds.get("execution_modes", seeds)]):
                 cells.append(_task_cell(
                     f"b-{sid}-execution-modes-seed-{seed}", "b_round",
                     "execution_modes", cfg,
-                    extra_args=shared_outcome_args,
+                    extra_args=[*deadline_args, *window_args],
                     description=f"{sid}: the five execution modes",
                     seed=seed,
                     require={"require_task": "execution_modes",
@@ -972,9 +1127,23 @@ def _acceptance_cells(contract, bundle_dir):
                "--rounds", "2", "--warmup", "20", "--service-s", "0.05",
                "--pool-sweep", "0,1,2"],
               "decision-path timing and finite-pool congestion",
+              # 2026-10-21: this tool force-enables time alignment
+              # (CODE/experiment_platform/benchmark_decision.py:535) and the
+              # config contract then refuses compute_servers_per_satellite > 1
+              # (CODE/leo_sim/config.py CONFIG_REQUIRES: the peer-processing
+              # advertisement cannot encode multi-server work-ahead). The sweep
+              # still ATTEMPTS 0,1,2 -- the refused point stays in the artifact
+              # with its refusal text -- so requiring N=2 to execute made this
+              # acceptance cell unsatisfiable by construction (observed
+              # 2026-10-21: accept4 bench-decision predicate_failed, "pool N=2
+              # executed").
               predicate={"kind": "benchmark",
                          "require": {"min_complete_rounds": 1,
-                                     "pool_servers": [0, 1, 2],
+                                     "pool_servers": [0, 1],
+                                     "pool_servers_note":
+                                         "N>=2 is refused while time_alignment "
+                                         "is enabled; the skipped point is "
+                                         "recorded, not required",
                                      "min_pool_requests": True,
                                      "require_queued_at": 1,
                                      # review S5-R2: arm alignment with the online audit was only
@@ -1316,6 +1485,10 @@ def _seed_config(contract, bundle_dir, seed, params=None, tag=None,
     if isinstance(doc["scenario"], dict):
         doc["scenario"]["seed"] = int(seed)
     apply_parameters(doc, params)
+    # Single chokepoint for every tier that writes a per-seed config
+    # (acceptance, development and confirmation cells all come through here),
+    # so no time-alignment cell can be compiled onto the v1 advertisement wire.
+    _require_alignment_telemetry(profile, doc)
     bundle_dir = Path(bundle_dir).resolve()
     configs = bundle_dir / "configs"
     configs.mkdir(parents=True, exist_ok=True)
@@ -1774,6 +1947,74 @@ def validate_bundle(bundle_dir):
 
 
 # -------------------------------------------------------------------- run
+SOURCE_COMMIT_FILE = REPO_ROOT / "CODE" / ".source_commit.json"
+
+
+def _run_git_identity(allow_git=True):
+    """Which commit produced this run, and whether that tree was clean.
+
+    A result nobody can tie to a commit is not comparable later, and the suite
+    must never guess one. Two sources are accepted, both of them declarations
+    rather than inference:
+
+    1. `git` in the tree itself (the developer checkout);
+    2. `CODE/.source_commit.json` -- written by the export step that copies the
+       tree to a run host, because the VM scratch copy is not a git checkout
+       and a run there still has to name its commit.
+
+    Where neither exists the fields stay null and the reason is recorded.
+    """
+    def _ask(args):
+        return subprocess.run(args, cwd=str(REPO_ROOT), capture_output=True,
+                              text=True, timeout=30)
+
+    if allow_git:
+        try:
+            head = _ask(["git", "rev-parse", "HEAD"]).stdout.strip() or None
+            status = _ask(["git", "status", "--porcelain"]).stdout
+        except (OSError, subprocess.SubprocessError) as exc:
+            head, status = None, None
+            git_error = f"{type(exc).__name__}: {exc}"
+        else:
+            git_error = None
+        if head:
+            dirty_paths = [line for line in status.splitlines() if line.strip()]
+            return {"head": head, "dirty": bool(dirty_paths),
+                    "dirty_count": len(dirty_paths), "source": "git"}
+    else:
+        git_error = "git identity not consulted"
+
+    try:
+        payload = json.loads(SOURCE_COMMIT_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"head": None, "dirty": None, "source": None,
+                "error": git_error or "no git identity and no source declaration"}
+    head = payload.get("head")
+    if not isinstance(head, str) or not head.strip():
+        return {"head": None, "dirty": None, "source": None,
+                "error": "source declaration carries no commit"}
+    return {"head": head.strip(), "dirty": payload.get("dirty"),
+            "dirty_count": payload.get("dirty_count"),
+            "source": "declared_source_commit"}
+
+
+def _cell_arm_annotation(cell):
+    """The arm or arms a cell runs, taken from the cell's own argv.
+
+    A network-alignment cell loops over all four arms inside one process, so it
+    gets `arms` and no single `arm`: recording one of the four would be a lie
+    that a later reader cannot see through.
+    """
+    args = [str(item) for item in (cell.get("args") or [])]
+    if "network_alignment" in args:
+        return {"arms": list(t1_tasks.NETWORK_ARMS)}
+    if "--arms" in args:
+        index = args.index("--arms")
+        if index + 1 < len(args):
+            return {"arms": [args[index + 1]]}
+    return {}
+
+
 def _cell_identity(bundle, cell):
     """What a cell result is bound to: matrix content + inputs + code chain."""
     return {
@@ -3525,6 +3766,9 @@ def run_bundle(bundle_dir, tier, out_dir, authorization=None,
             "counts": _count_records(records, len(tier_cell_ids)),
             "smoke_gate": None, "run_phases": [],
         }
+    git_identity = _run_git_identity()
+    run_doc.setdefault("git_head", git_identity["head"])
+    run_doc.setdefault("git_dirty", git_identity["dirty"])
     completed_ids = {record.get("cell_id") for record in records}
     selected_for_budget = list(selected_ids)
     selected_ids = [cid for cid in selected_ids if cid not in completed_ids]
@@ -3564,6 +3808,10 @@ def run_bundle(bundle_dir, tier, out_dir, authorization=None,
         record = _execute_cell(cell, out_dir, cell_budgets,
                                 runtime_context=runtime_context)
         record["identity"] = _cell_identity(bundle, cell)
+        record["tier"] = tier
+        record["git_head"] = run_doc.get("git_head")
+        record["git_dirty"] = run_doc.get("git_dirty")
+        record.update(_cell_arm_annotation(cell))
         if not records and smoke_validator is not None:
             probe = _inspect_result(out_dir / record["result_path"])
             try:
@@ -3746,6 +3994,10 @@ def resume_run(run_dir):
         fresh = _execute_cell(cell, run_dir, budgets,
                               runtime_context=runtime_context)
         fresh["identity"] = _cell_identity(bundle, cell)
+        fresh["tier"] = run_doc.get("tier")
+        fresh["git_head"] = run_doc.get("git_head")
+        fresh["git_dirty"] = run_doc.get("git_dirty")
+        fresh.update(_cell_arm_annotation(cell))
         _write_json(run_dir / "cells" / cell_id / "cell.json", fresh)
         if record is not None:
             records[records.index(record)] = fresh
@@ -4224,6 +4476,10 @@ def main(argv=None):
     p.add_argument("--contract", type=Path, required=True)
     p.add_argument("--out-dir", type=Path, required=True)
     p.add_argument("--root", type=Path, default=Path.cwd())
+    p.add_argument("--refreeze", action="store_true",
+                   help="supersede existing frozen deadlines: the old bytes are "
+                        "moved to _superseded/ and the new file records their "
+                        "path and hash")
     p = sub.add_parser("cost")
     p.add_argument("--bundle", type=Path, required=True)
     p = sub.add_parser("report")
@@ -4264,7 +4520,8 @@ def main(argv=None):
                               "out": str(args.out)}, ensure_ascii=False))
         elif args.command == "freeze-deadlines":
             frozen = freeze_scenario_deadlines(args.contract, args.out_dir,
-                                               args.root)
+                                               args.root,
+                                               allow_supersede=args.refreeze)
             report = frozen["scenarios"]
             print(json.dumps({
                 "status": "frozen",
