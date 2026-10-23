@@ -1,0 +1,18 @@
+{
+ "run": "e0run-off20",
+ "source_dir": "/tmp/e0run-off20",
+ "note": "incomplete: no receipt.json in this run dir (interrupted / pre-receipt run)",
+ "manifest": {
+  "trace_sha256": "83ebe44d31ef661395301c6714156d97056455fc35e7440f0b331bb81a2fd326",
+  "trace_identity_sha256": "a6b94e77335828d32d8b3a1a11a6a7f316fc670a2fc5a93018f42d127fc7488f",
+  "offered_packets": 100130,
+  "offered_bits": 801040000,
+  "input_sha256": "",
+  "realized_offered_mbps": 20.026,
+  "simulation_horizon_s": 40.0
+ },
+ "receipt": null,
+ "resolved_config": null,
+ "trace_sha256_recomputed": "83ebe44d31ef661395301c6714156d97056455fc35e7440f0b331bb81a2fd326",
+ "trace_sha256_matches_manifest": true
+}

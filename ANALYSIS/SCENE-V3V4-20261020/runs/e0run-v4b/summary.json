@@ -1,0 +1,74 @@
+{
+ "run": "e0run-v4b",
+ "source_dir": "/tmp/e0run-v4b",
+ "note": "",
+ "manifest": {
+  "trace_sha256": "40d377c11f1456d2b35b3803365f26e054bf91c187eaa7096f9a10fcab29ef2b",
+  "trace_identity_sha256": "2b14f3326a1df7c74a3ae31ce4faf04d543255dcefb1c0fde67fe8de4c3ffc2c",
+  "offered_packets": 60193,
+  "offered_bits": 481544000,
+  "input_sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+  "realized_offered_mbps": 40.12866666666667,
+  "simulation_horizon_s": 12.0
+ },
+ "receipt": {
+  "schema": "leo-sim-receipt/v5",
+  "code_sha256": "57cca0eda33994844cf072c91914545708b53837957d829af248ab9ad1a8b011",
+  "config_sha256": "2f7d79f5f877a26ee0b887fc2e098461d5631a186d6eab25ad2debf8ac8cb2c8",
+  "seed": 7,
+  "horizon_s": 12.0,
+  "conservation_ok": true,
+  "fate_counts": {
+   "ACCESS_QUEUE_OVERFLOW": 0,
+   "ACCESS_REJECTED": 0,
+   "DATA_DEADLINE_EXPIRED": 0,
+   "DELIVERED": 23309,
+   "GEOMETRY_LOSS_IN_FLIGHT": 0,
+   "HOLDING_QUEUE_OVERFLOW": 0,
+   "IN_SYSTEM_AT_STOP": 36884,
+   "ISL_QUEUE_OVERFLOW": 0,
+   "NO_ROUTE": 0,
+   "RANDOM_OUTAGE_IN_FLIGHT": 0
+  },
+  "totals": {
+   "delivered_bits": 186472000,
+   "in_system_bits_at_stop": 295072000,
+   "offered_bits": 481544000,
+   "terminal_loss_bits": 0
+  },
+  "events_processed": 1591570,
+  "research_eligible": false
+ },
+ "resolved_config": {
+  "scenario": {
+   "name": "t1-grid-140-v4b",
+   "num_satellites": 140,
+   "num_planes": 7,
+   "altitude_km": 600,
+   "inclination_deg": 98.6,
+   "duration_s": 12.0,
+   "seed": 7
+  },
+  "demand": {
+   "mode": "population_gravity",
+   "offered_mbps": 40.0,
+   "packet_bits": 8000,
+   "destination_population_exponent": 1
+  },
+  "links": {
+   "isl_rate_mbps": 10.0,
+   "isl_queue_bits": 1000000,
+   "max_isl_km": 6000.0
+  },
+  "control_plane": {
+   "advertise_interval_s": 0.2,
+   "enabled": true,
+   "packet_bits": 8000,
+   "priority": "nonpreemptive_priority",
+   "ttl_s": 10.0,
+   "vis_k": 2
+  }
+ },
+ "trace_sha256_recomputed": "40d377c11f1456d2b35b3803365f26e054bf91c187eaa7096f9a10fcab29ef2b",
+ "trace_sha256_matches_manifest": true
+}

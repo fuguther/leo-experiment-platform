@@ -1,0 +1,55 @@
+# v6：M-Lab 实测 OD 权重 + 24 星机制星座（2026-10-21）
+# 目的：v5 城市臂的 OD 是"均匀"的——实测 top5 OD 只占 1.8%（/tmp/od_stats.py 核过），
+# 流量被摊薄，谁都不排队。本臂改用平台内置的 M-Lab 实测有向 OD 权重（trace.py:373
+# W(s,d)=Sum(mean_throughput_mbps * sample_count)，44929 行、18957 客户端坐标 -> 75 服务端坐标），
+# 自带"客户端广、服务端集中"的真实不对称（server top5 份额 0.378，/tmp/mlab_stats.py）。
+# 其余（24 星 / 8000 bit 包 / 常数 10 Mbps ISL / 1 Mbit 缓冲）与 v5 保持一致，只换流量结构一个变量。
+config_version: leo-sim-config/v1
+scenario:
+  name: t1-mlab24-v6
+  duration_s: 30
+  time_step_s: 0.1
+  num_satellites: 24
+  num_planes: 3
+  seed: 7
+  min_elevation_deg: 5
+endpoints:
+  grid_deg: 0.25
+  mlab_auto: true
+  mlab_max_sites: 64
+demand:
+  mode: mlab
+  offered_mbps: 30
+  packet_bits: 8000
+access:
+  unavailable_policy: queue
+  slots_per_satellite: 32
+  uplink_rate_mbps: 1000.0
+  downlink_rate_mbps: 1000.0
+  uplink_queue_bits: 4000000000
+  downlink_queue_bits: 4000000000
+  association: bbm
+  hysteresis_deg: 0
+  min_dwell_s: 0
+  acquisition_delay_s: 0.1
+links:
+  rate_model: constant
+  isl_rate_mbps: 10.0
+  isl_queue_bits: 1000000
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 0.2
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  max_events: 20000000
+  max_entities: 20000
+  max_packets: 400000
+  available_capacity_interval_s: 1.0
+outputs:
+  out_dir: leo_sim_out/t1-mlab24-v6
+  plotting: false

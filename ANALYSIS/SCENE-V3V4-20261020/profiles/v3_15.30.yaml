@@ -1,0 +1,72 @@
+# T1-PRESSURE-WINDOW v3：时间尺度自洽版（2026-10-19）
+#
+# 与 v2 的差异，以及为什么（每一条都有推导，不是拍的）：
+#   1. packet_bits 1 000 000 -> 8 000
+#      v2: 1 Mbit / 10 Mbps = 100 ms/包，是一跳传播(6.7 ms)的 15 倍，传输成了主项。
+#      v3: 8 kbit / 10 Mbps = 0.8 ms，R1 = 0.12 <= 0.1，恢复"传播主导"。
+#      同时让 80 ms 的预测跨度 = 100 个包的服务时间，而不是 0.8 个。
+#   2. isl_queue_bits 256 Mbit -> 1 Mbit
+#      v2: 256 Mbit = 25.6 s 缓存，BDP(10 Mbps x 13.4 ms)=134 kbit，缓冲是 BDP 的 1919 倍。
+#      v3: 1 Mbit = 7.5 x BDP，落在 2-8 倍工程区间；开始有丢包，KPI 口径需同时报丢包。
+#   3. advertise_interval_s 2.0 -> 0.2
+#      预测跨度 80 ms 必须与状态年龄同量级，否则"补到现在"吃掉全部收益。
+#   4. duration_s 300 -> 60
+#      v2 的 300 s 在 8 kbit 包下是 90 万包，跑不动；60 s 含 15 s 预热 + 45 s 评估，仍有 6750 个包。
+#   5. max_isl_km 保持默认 6000
+#      曾试过压到 3000（想迫使 OD 对串到更少的链路上），实测 60 s 内 0 个包送达、
+#      74115 个包卡在 HOLDING_QUEUE_OVERFLOW —— 走廊被切断，不是"更集中"而是"不可达"。
+#      该负结果已记录，v3 保留 6000。
+#
+# 注意：本 profile 是"机制验证场景"，不是运营星座复现，也不是 research_eligible 证据。
+
+config_version: leo-sim-config/v1
+scenario:
+  name: t1-pressure-corridor-v3
+  duration_s: 30.0
+  time_step_s: 0.1
+  num_satellites: 24
+  num_planes: 3
+  seed: 7
+  min_elevation_deg: 5
+endpoints:
+  sites:
+  - name: equator
+    lat: 0.1
+    lon: 0.1
+    demand_weight: 1.0
+  - name: north
+    lat: 52.6
+    lon: 90.4
+    demand_weight: 1.0
+demand:
+  mode: uniform
+  offered_mbps: 15.0
+  packet_bits: 8000
+access:
+  unavailable_policy: queue
+  uplink_rate_mbps: 1000.0
+  downlink_rate_mbps: 1000.0
+  association: bbm
+  uplink_queue_bits: 4000000000
+  downlink_queue_bits: 4000000000
+links:
+  rate_model: constant
+  isl_rate_mbps: 10.0
+  isl_queue_bits: 1000000
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 0.2
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  max_events: 20000000
+  max_entities: 20000
+  max_packets: 200000
+  available_capacity_interval_s: 1.0
+outputs:
+  out_dir: leo_sim_out/t1-pressure-corridor-v3
+  plotting: false

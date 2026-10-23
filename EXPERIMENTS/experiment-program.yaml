@@ -1,6 +1,6 @@
 schema: leo-experiment-program/v1
-updated_at: "2026-09-23"
-reviewed_at: "2026-09-23"
+updated_at: "2026-10-20"
+reviewed_at: "2026-10-20"
 # Three layers, deliberately separated after the 2026-09-23 owner review:
 #   current    = what was verified NOW, by whom, with which command;
 #   historical = recorded past states; a record of a past deployment is NOT
@@ -9,13 +9,19 @@ reviewed_at: "2026-09-23"
 # Never read a "historical" entry as a "current" one, and never let a recorded
 # deployment receipt stand in for a live re-verification.
 external_state_recheck:
-  as_of: "2026-09-23T22:22+08:00"
+  as_of: "2026-10-20T21:50+08:00"
   current:
-    origin_main: c0cc4ea1bda5186f377220c406494b50987aa726
+    origin_main: 5458e570a8446bbbc21d26cd1f0e4218a84f35e2
     origin_main_verified_by: local_git_rev_parse_origin_main_after_git_fetch
-    origin_main_verified_at: "2026-09-23T22:16+08:00"
-    vm_live_state: verified
+    origin_main_verified_at: "2026-10-20T21:50+08:00"
+    # S4 2026-10-20: the live VM was NOT re-checked after 2026-09-23; the
+    # evidence block below is historical and must not be cited as current.
+    vm_live_state: unverified_since_2026-09-23
     vm_live_verified_at: "2026-09-23T22:19+08:00"
+    vm_live_reverification_note: >-
+      S4 on 2026-10-20 changed this field from "verified" to
+      "unverified_since_2026-09-23": no live VM check was performed in this
+      round. Re-verify before any formal run or before citing the VM state.
     vm_live_evidence:
       method: >-
         ssh to the canonical VM, read .remote_runtime/deployment.json, then
@@ -327,6 +333,28 @@ gates:
       - per_action_physical_features_verified
       - field_age_provenance_verified
 
+  scene_family_frozen:
+    status: pending
+    requires:
+      - observation_scale_self_consistent
+      - multi_od_traffic_with_queueing
+    evidence: research_scene_v3v4_20261020_commit_7bcf0c7_ANALYSIS_SCENE_V3V4_20261020
+    note: >-
+      v3 pressure corridor (8 kbit / 10 Mbps / 1 Mbit queue / 0.2 s adverts)
+      passes the four physical-scale checks in a local diagnostic (2026-10-20).
+      The multi-OD Kepler-140 runs (v4b/v4d/v4p) do NOT yet form a measurement
+      window, so the target operating-condition scene is not frozen.
+  r2_information_upper_bound:
+    status: pending
+    requires:
+      - scene_family_frozen
+    purpose: >-
+      Measure the information-value upper bounds before any predictor work:
+      ideal_current vs now, and candidate vs now (topic/SPEC.md v0.2 §0 criterion 2).
+      A true future oracle is NOT implemented (SPEC.md §5 P9). If the bound's
+      paired 95% CI includes 0,
+      R2 stops; see topic/STATUS.md "R2 判定规格" (2026-10-20).
+
 experiments:
   - id: VAL-D1
     class: platform_validation
@@ -596,3 +624,31 @@ experiments:
     status: planned
     prerequisites: [EXP-CC-FORMAL]
     purpose: Compare gravity and other proxies against the primary real-traffic result; uniform remains a controlled synthetic contrast.
+
+  - id: SCENE-CAL-V3V4
+    class: engineering_calibration
+    title: time_scale_consistent_pressure_scene_and_multi_od
+    status: pilot_required
+    prerequisites: [t1_platform_ready]
+    arms: [v3_pressure_corridor, v4_grid_multiod, v4_kepler140_population_gravity, v4_kepler140_concentrated]
+    purpose: >-
+      Calibrate a physically self-consistent pressure scene (v3) and a multi-OD
+      scenario (v4, Kepler-140 population gravity) so that 20-40% of directed
+      links can actually queue and prediction horizons are meaningful.
+    required_evidence: [local_run_receipts, code_identity_provenance]
+    evidence: codex_research_scene_v3v4_20261020_commit_7bcf0c7_plus_ANALYSIS_SCENE_V3V4_20261020
+    boundary: >-
+      Local diagnostics only (research_eligible=false); v4 runs do not yet form
+      a measurement window; not formal evidence.
+
+  - id: R2-CANDIDATE-ARRIVAL
+    class: mechanism_validation
+    title: candidate_arrival_time_state_estimation
+    status: planned
+    prerequisites: [scene_family_frozen, r2_information_upper_bound]
+    purpose: >-
+      Test whether estimating each candidate's state at its own expected arrival
+      time beats extrapolating to now / a common future, under the success and
+      stop criteria pre-declared in topic/STATUS.md "R2 判定规格".
+    required_evidence: [oracle_upper_bound, mechanism_gate, six_fresh_seeds_paired, independent_review, vm_receipt]
+    budget_note: 7 VM kernel calls remain; scheduling declaration required before launch.
