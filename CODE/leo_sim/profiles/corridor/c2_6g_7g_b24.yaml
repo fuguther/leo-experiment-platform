@@ -1,0 +1,98 @@
+# v7b150：第二轮标定三档之一（2026-10-21）
+# 底座 = t1_city18_v7a3（18 个 duty15=1.00 真实城市 / 24 星 3 平面 53° 550 km /
+#   access slots 256, idle_release 0.2 s, holding 256 Mbit）——接入侧按归因实验结论放宽；
+# 【探针臂】与 v7b150 的唯一差异：links.isl_rate_mbps 10.0 -> 5.5 Mbps（ratio_ser≈0.094 仍≤0.1）。
+# 目的：用户原始判据是 20%-40% 的有向链路在排队；v7b150（10 Mbps）实测 util≥0.2 占比 16.67%，
+# 本臂把同一负载压到更窄容量上，检验是否能进入 20%-40% 区间（同时看热点 ρ 与 ISL 队列是否溢出）。
+# （原注释）三档只变 demand.offered_mbps 与 duration_s（固定单档约 4.5-6.0e8 bit 的报价量，
+#   使每档墙钟可控且单档包数 ≥5e4）；ISL 保持 constant 10 Mbps、
+#   包 8000 bit ⇒ τ_ser=0.8 ms，实测平均一跳 τ_prop≈15.5 ms（48 条有向 ISL 平均 4641 km）
+#   ⇒ ratio_ser≈0.05 ≤ 0.1，故按 m00001 允许范围无需改 ISL 速率/包长。
+config_version: leo-sim-config/v1
+scenario:
+  name: c2_6g_7g_b24
+  duration_s: 1.2
+  time_step_s: 0.1
+  num_satellites: 140
+  num_planes: 7
+  altitude_km: 600.0
+  inclination_deg: 98.6
+  seed: 7
+  min_elevation_deg: 5
+endpoints:
+  sites:
+  - name: tokyo
+    lat: 35.68
+    lon: 139.69
+    demand_weight: 1.0
+  - name: singapore
+    lat: 1.35
+    lon: 103.82
+    demand_weight: 1.0
+  - name: london
+    lat: 51.51
+    lon: -0.13
+    demand_weight: 1.0
+  - name: newyork
+    lat: 40.71
+    lon: -74.01
+    demand_weight: 1.0
+  - name: saopaulo
+    lat: -23.55
+    lon: -46.63
+    demand_weight: 1.0
+  - name: lagos
+    lat: 6.52
+    lon: 3.38
+    demand_weight: 1.0
+demand:
+  mode: gravity
+  offered_mbps: 7000
+  gravity_alpha: 2.0
+  gravity_d_floor_km: 100.0
+  emission_start_s: 0.1
+  emission_end_s: 1.0
+  packet_bits: 600000
+access:
+  unavailable_policy: queue
+  slots_per_satellite: 256
+  slot_lease_s: 10.0
+  idle_release_s: 0.2
+  holding_queue_bits: 268435456
+  uplink_rate_mbps: 20000.0
+  downlink_rate_mbps: 20000.0
+  uplink_queue_bits: 4000000000
+  downlink_queue_bits: 4000000000
+  association: bbm
+  hysteresis_deg: 0
+  min_dwell_s: 0
+  acquisition_delay_s: 0.01
+links:
+  rate_model: constant
+  isl_rate_mbps: 1000.0
+  isl_queue_bits: 24000000
+  max_isl_km: 3000.0
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 0.02
+  vis_k: 3
+  advertisement_protocol_version: 2
+routing:
+  policy: known_serving
+  max_hops: 64
+time_alignment:
+  enabled: true
+  arm: candidate
+  predictor: bounded_linear
+  history_limit: 8
+learning:
+  algorithm: none
+execution:
+  max_events: 60000000
+  max_entities: 20000
+  max_packets: 400000
+  available_capacity_interval_s: 1.0
+outputs:
+  out_dir: leo_sim_out/d20
+  plotting: false
