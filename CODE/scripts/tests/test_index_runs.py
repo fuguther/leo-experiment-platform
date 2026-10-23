@@ -388,3 +388,20 @@ def test_single_arm_cell_still_reports_one_arm(tmp_path):
     rows, _, _ = index_runs.build_index([tmp_path])
     assert by_id(rows)["run-single"]["arm"] == "candidate"
 
+
+
+def test_summary_bundle_with_null_receipt_is_not_completed(tmp_path):
+    """A trace hash match is not a receipt: interrupted bundles must not be
+    promoted to completed_self_verified (2026-10-24 review)."""
+    analysis = tmp_path / "analysis"
+    write_json(analysis / "SCN-1" / "runs" / "run-interrupted" / "summary.json", {
+        "run": "run-interrupted",
+        "source_dir": "/tmp/run-interrupted",
+        "receipt": None,
+        "note": "incomplete: no receipt.json in this run dir (interrupted / pre-receipt run)",
+        "trace_sha256_matches_manifest": True,
+    })
+    rows, _, _ = index_runs.build_index([analysis])
+    row = by_id(rows)["run-interrupted"]
+    assert row["status"] == "summary_bundle_incomplete"
+    assert "receipt=null" in row["status_basis"] or "incomplete" in row["status_basis"]
