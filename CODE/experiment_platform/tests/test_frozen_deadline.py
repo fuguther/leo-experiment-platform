@@ -7,7 +7,9 @@ timeout failure.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -111,3 +113,37 @@ def test_the_artifact_records_which_deadline_file_was_used(tmp_path):
     assert doc["deadline"]["file_sha256"]
     assert doc["deadline"]["run_kind"] == "confirm"
     assert doc["units"]["loss"].startswith("normalized loss")
+
+def test_a_deadline_frozen_from_another_config_is_refused(tmp_path):
+    """D is the yardstick: a freeze from a different config is not reusable."""
+    frozen = tmp_path / "d.json"
+    frozen.write_text(json.dumps(
+        {"deadline_s": 3.0, "identity": {"config_sha256": "aaa"}}))
+    assert cmp.load_frozen_deadline(
+        frozen, expect_config_sha256="aaa")["deadline_s"] == 3.0
+    with pytest.raises(cmp.CompareError) as excinfo:
+        cmp.load_frozen_deadline(frozen, expect_config_sha256="bbb")
+    assert "may not be reused" in str(excinfo.value)
+    assert "--refreeze" in str(excinfo.value)
+    # A file that records no identity cannot be checked, and is not refused.
+    plain = tmp_path / "plain.json"
+    plain.write_text(json.dumps({"deadline_s": 3.0}))
+    assert cmp.load_frozen_deadline(
+        plain, expect_config_sha256="bbb")["deadline_s"] == 3.0
+
+
+def test_refreezing_archives_the_previous_bytes(tmp_path):
+    out = tmp_path / "deadline_sid.json"
+    report = {"deadline_s": 2.0, "source": "p95_times_multiplier"}
+    first = cmp.write_frozen_deadline(out, report, {}, "dev")
+    assert first["supersedes"] is None
+    with pytest.raises(cmp.CompareError):
+        cmp.write_frozen_deadline(out, report, {}, "dev")
+    previous = out.read_bytes()
+    second = cmp.write_frozen_deadline(
+        out, {"deadline_s": 3.0}, {}, "dev", allow_supersede=True)
+    archive = Path(second["supersedes"]["path"])
+    assert archive.parent.name == "_superseded"
+    assert archive.read_bytes() == previous
+    assert second["supersedes"]["sha256"] == hashlib.sha256(previous).hexdigest()
+    assert json.loads(out.read_text())["deadline_s"] == 3.0

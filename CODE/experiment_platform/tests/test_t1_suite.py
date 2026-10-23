@@ -2011,3 +2011,257 @@ def test_the_five_candidates_get_their_own_loss_columns(tmp_path):
         name = item.get("candidate")
         if name and name not in scored:
             assert item.get("reason"), item
+
+
+def test_benchmark_pool_requirement_narrows_when_alignment_is_enabled():
+    """A gate must not demand a pool size the scenario config refuses.
+
+    benchmark_decision.pool_sweep overrides compute_servers_per_satellite, and
+    the config contract refuses N>1 while time_alignment is enabled: requiring
+    N=2 failed every b-dev benchmark cell on 2026-10-21 for a constraint the
+    scenario itself declares. The refused points stay in the result as
+    explained skips, so the narrowed gate hides nothing.
+    """
+    servers, note = t1_suite._benchmark_pool_servers(
+        {}, {"time_alignment": {"enabled": True}})
+    assert servers == [1]
+    assert "time_alignment" in note
+
+    assert t1_suite._benchmark_pool_servers(
+        {}, {"time_alignment": {"enabled": False}}) == (
+        [1, 2], "default sweep requirement")
+
+    assert t1_suite._benchmark_pool_servers(
+        {"benchmark_pool_servers": [0, 1]},
+        {"time_alignment": {"enabled": True}}) == (
+        [0, 1], "declared by the scenario spec")
+
+
+def test_alignment_telemetry_requirement_refuses_a_v1_advertisement_wire():
+    """A time-alignment cell on the v1 wire cannot answer the question it asks.
+
+    v1 strips 'generation' and 'work_ahead_bits_proxy' from every ISL record
+    (CODE/leo_sim/kernel.py:3632-3641) while _build_ta_snapshot needs both
+    (CODE/leo_sim/kernel.py:4961-4971). Measured 2026-10-21: the b-dev
+    fixed_hotspot cell then produced four arms with identical target sets.
+    """
+    with pytest.raises(t1_suite.SuiteError) as excinfo:
+        t1_suite._require_alignment_telemetry(
+            "fixed_hotspot",
+            {"time_alignment": {"enabled": True},
+             "control_plane": {"advertisement_protocol_version": 1}})
+    assert "advertisement_protocol_version: 2" in str(excinfo.value)
+    assert "v1 wire" in str(excinfo.value)
+
+    # The default (no key declared) is v1 -- config.py:491 -- so an undeclared
+    # scenario must be refused too, not silently accepted.
+    with pytest.raises(t1_suite.SuiteError):
+        t1_suite._require_alignment_telemetry(
+            "fixed_hotspot", {"time_alignment": {"enabled": True}}
+        )
+
+    t1_suite._require_alignment_telemetry(
+        "fixed_hotspot",
+        {"time_alignment": {"enabled": True},
+         "control_plane": {"advertisement_protocol_version": 2}})
+    t1_suite._require_alignment_telemetry(
+        "steady_uniform",
+        {"time_alignment": {"enabled": False}, "control_plane": {}})
+
+
+def test_corridor_scenario_declares_the_protocol_the_study_manifest_fixes():
+    """The profile the b-round scenarios compile from must match the study.
+
+    CODE/work/WP-T1-COMPLETE/time_alignment_study.yaml declares
+    'control_plane.advertisement_protocol_version: 2' as fixed. The b-round
+    corridor cells compile from t1_pressure_corridor.yaml, which declared no
+    protocol at all until 2026-10-21, so every compiled cell ran the v1 wire.
+    """
+    study = (t1_suite.REPO_ROOT
+             / "CODE/work/WP-T1-COMPLETE/time_alignment_study.yaml").read_text(
+        encoding="utf-8")
+    assert "control_plane.advertisement_protocol_version: 2" in study
+
+    profile = yaml.safe_load((t1_suite.REPO_ROOT
+        / "CODE/leo_sim/profiles/t1_pressure_corridor.yaml").read_text(
+            encoding="utf-8"))
+    assert int(profile["control_plane"]["advertisement_protocol_version"]) == 2
+
+
+def test_every_tier_writes_only_v2_wires_for_alignment_cells(tmp_path):
+    """_seed_config is the one place every tier turns a profile into a config.
+
+    The guard lives there rather than only in the b-round builder, so an
+    acceptance or development cell cannot be compiled onto the v1 wire either.
+    The check runs on the raw document AFTER apply_parameters(), which is what
+    sets time_alignment.enabled for every cell.
+    """
+    doc: dict = {}
+    t1_suite.apply_parameters(doc, None)
+    assert doc["time_alignment"]["enabled"] is True
+    with pytest.raises(t1_suite.SuiteError) as excinfo:
+        t1_suite._require_alignment_telemetry("a-profile.yaml", doc)
+    assert "advertisement_protocol_version: 2" in str(excinfo.value)
+
+    doc.setdefault("control_plane", {})["advertisement_protocol_version"] = 2
+    t1_suite._require_alignment_telemetry("a-profile.yaml", doc)
+
+
+def test_acceptance_benchmark_predicate_only_requires_admissible_pool_points(
+        tmp_path):
+    """pool N>=2 cannot execute in the decision-path benchmark, by contract.
+
+    benchmark_decision force-enables time alignment
+    (CODE/experiment_platform/benchmark_decision.py:535) and the config
+    contract refuses compute_servers_per_satellite > 1 with it on, so an
+    acceptance predicate demanding pool N=2 was unsatisfiable by construction
+    (observed 2026-10-21: accept4 bench-decision predicate_failed with reason
+    "pool N=2 executed").
+    """
+    from CODE.leo_sim import config as config_mod
+
+    cells = t1_suite._acceptance_cells({}, tmp_path)
+    bench = [c for c in cells if c["cell_id"] == "bench-decision"]
+    assert len(bench) == 1
+    require = bench[0]["predicate"]["require"]
+    assert require["pool_servers"] == [0, 1]
+
+    cfg = t1_tasks.config_mod.load_config_file(str(
+        t1_suite.REPO_ROOT
+        / "CODE/leo_sim/profiles/t1_pressure_corridor.yaml"))["config"]
+    cfg.setdefault("time_alignment", {})["enabled"] = True
+    cfg.setdefault("execution", {})["compute_servers_per_satellite"] = 2
+    with pytest.raises(Exception) as excinfo:
+        config_mod.resolve_config(cfg)
+    assert "compute_servers_per_satellite" in str(excinfo.value)
+
+    cfg["execution"]["compute_servers_per_satellite"] = 1
+    cfg["execution"]["compute_delay_s"] = 0.001
+    config_mod.resolve_config(cfg)
+
+
+def test_run_identity_names_the_commit_and_the_arms_a_cell_ran():
+    """A run must be tied to a commit, and a four-arm cell must not claim one."""
+    git = t1_suite._run_git_identity()
+    head = subprocess.run(["git", "rev-parse", "HEAD"],
+                          cwd=str(t1_suite.REPO_ROOT), capture_output=True,
+                          text=True).stdout.strip()
+    assert git["head"] == head and len(head) == 40
+    assert isinstance(git["dirty"], bool)
+
+    network = {"args": ["--task", "network_alignment",
+                        "--config", "seed-7.yaml"]}
+    annotation = t1_suite._cell_arm_annotation(network)
+    assert annotation == {"arms": ["stale", "now", "common", "candidate"]}
+    assert "arm" not in annotation, (
+        "a network cell loops over all four arms; naming one of them would be "
+        "an invisible lie in the record")
+
+    assert t1_suite._cell_arm_annotation(
+        {"args": ["--task", "benchmark", "--arms", "now"]}) == {"arms": ["now"]}
+    assert t1_suite._cell_arm_annotation(
+        {"args": ["--scenario", "reachability"]}) == {}
+
+
+def test_cell_records_carry_tier_and_commit(tmp_path, monkeypatch):
+    """cell.json must let the index layer answer 'which tier, which commit'."""
+    cells = t1_suite._acceptance_cells({}, tmp_path)
+    target = cells[0]
+    record = {"cell_id": target["cell_id"], "status": "ok", "wall_s": 0.0}
+    record["tier"] = "acceptance"
+    record["git_head"] = t1_suite._run_git_identity()["head"]
+    record.update(t1_suite._cell_arm_annotation(target))
+    stream = tmp_path / "cell.json"
+    stream.write_text(json.dumps(record), encoding="utf-8")
+    written = json.loads(stream.read_text(encoding="utf-8"))
+    assert written["tier"] == "acceptance"
+    assert len(written["git_head"]) == 40
+    assert "arms" not in written
+
+
+def test_identity_falls_back_to_the_export_declaration(tmp_path, monkeypatch):
+    """A run host that is not a git checkout must still name its commit."""
+    declaration = tmp_path / ".source_commit.json"
+    monkeypatch.setattr(t1_suite, "SOURCE_COMMIT_FILE", declaration)
+
+    missing = t1_suite._run_git_identity(allow_git=False)
+    assert missing["head"] is None and missing["source"] is None
+    assert missing["error"]
+
+    declaration.write_text(json.dumps({
+        "head": "24ca705examplesha", "dirty": True, "dirty_count": 13,
+        "exported_at": "2026-10-21T03:00:00+08:00"}), encoding="utf-8")
+    declared = t1_suite._run_git_identity(allow_git=False)
+    assert declared["head"] == "24ca705examplesha"
+    assert declared["dirty"] is True and declared["dirty_count"] == 13
+    assert declared["source"] == "declared_source_commit"
+
+    declaration.write_text(json.dumps({"dirty": True}), encoding="utf-8")
+    assert t1_suite._run_git_identity(
+        allow_git=False)["head"] is None, "a declaration without a commit is not one"
+
+
+def test_a_scenario_deadline_prefers_the_frozen_file(tmp_path, monkeypatch):
+    """The frozen development D wins, and a stale freeze is refused loudly."""
+    monkeypatch.setattr(t1_suite, "DEADLINE_DIR", tmp_path)
+    resolved = {"scenario": {"duration_s": 4.0}, "demand": {"offered_mbps": 1.0}}
+    args, note = t1_suite._scenario_deadline_args("sid", resolved, 30.0)
+    assert args == ["--deadline-s", "30.0"]
+    assert "NOT YET FROZEN" in note
+    frozen = t1_suite.deadline_file_for("sid")
+    frozen.write_text(json.dumps({
+        "deadline_s": 2.5,
+        "config_fingerprint": t1_suite._scenario_config_fingerprint(resolved)}),
+        encoding="utf-8")
+    args, note = t1_suite._scenario_deadline_args("sid", resolved, 30.0)
+    assert args == ["--deadline-from", str(frozen)]
+    assert note == "frozen D from " + frozen.name
+    with pytest.raises(t1_suite.SuiteError) as excinfo:
+        t1_suite._scenario_deadline_args(
+            "sid", {"scenario": {"duration_s": 9.0}}, 30.0)
+    message = str(excinfo.value)
+    assert "re-freeze" in message.lower() and "--refreeze" in message
+
+
+def test_a_frozen_deadline_without_a_fingerprint_is_refused(tmp_path, monkeypatch):
+    """A pre-fingerprint freeze cannot be shown to belong to this scenario."""
+    monkeypatch.setattr(t1_suite, "DEADLINE_DIR", tmp_path)
+    frozen = t1_suite.deadline_file_for("sid")
+    frozen.write_text(json.dumps({"deadline_s": 2.5}), encoding="utf-8")
+    with pytest.raises(t1_suite.SuiteError) as excinfo:
+        t1_suite._scenario_deadline_args("sid", {"scenario": {}}, 30.0)
+    assert "records no config fingerprint" in str(excinfo.value)
+
+
+def test_the_fingerprint_ignores_where_the_trace_lives(tmp_path):
+    """The freeze and the bundle write the same trace at different paths."""
+    first = tmp_path / "a.csv"
+    second = tmp_path / "nested" / "b.csv"
+    second.parent.mkdir()
+    first.write_text("packet,src,dst\n1,a,b\n", encoding="utf-8")
+    second.write_text(first.read_text(encoding="utf-8"), encoding="utf-8")
+    left = {"demand": {"csv_path": str(first), "mode": "csv"}}
+    right = {"demand": {"csv_path": str(second), "mode": "csv"}}
+    assert t1_suite._scenario_config_fingerprint(left) == \
+        t1_suite._scenario_config_fingerprint(right)
+    other = {"demand": {"csv_path": str(first), "mode": "csv",
+                        "offered_mbps": 2.0}}
+    assert t1_suite._scenario_config_fingerprint(left) != \
+        t1_suite._scenario_config_fingerprint(other)
+
+
+def test_the_four_arm_network_cell_is_not_handed_the_diagnostic_deadline():
+    """Regression guard for the 2026-10-21 wiring hole.
+
+    b-fixed_hotspot-network-seed-7 -- the cell that produces the primary
+    endpoint -- was handed shared_outcome_args, so it ran [--deadline-s 30.0]
+    while the frozen file existed and the observed p95 was 0.84-1.56 s: the
+    main endpoint could not separate the arms.  Both the network cell and the
+    execution-modes cell must carry the per-scenario deadline instead.
+    """
+    import inspect
+
+    source = inspect.getsource(t1_suite._b_cells)
+    assert "--deadline-s" not in source
+    assert source.count("[*deadline_args, *window_args") == 2
+

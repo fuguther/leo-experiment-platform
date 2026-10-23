@@ -471,3 +471,33 @@ def test_sidecar_reference_to_a_missing_file_is_refused(tmp_path):
                  if "full-network" in item["check"])
     assert check["passed"] is False
 
+
+
+def test_publish_accepts_a_document_without_a_top_level_arm_list(tmp_path):
+    """branch_alignment and execution_modes have no top-level ``arms`` list.
+
+    The sidecar scan is defined for the network document, so its absence must
+    not be an error: before 2026-10-21 it raised KeyError "arms" and every
+    branch cell of the b-dev suite failed as "result unavailable".
+    """
+    import json
+
+    from CODE.experiment_platform import t1_tasks
+    document = {
+        "schema": "t1-task-result/v1",
+        "task": "branch_alignment",
+        "status": "ok",
+        "failed_units": 0,
+        "document": {"schema": "t1-branch-block/v1",
+                     "branches": [{"decision_id": 3,
+                                   "loss": {"stale": 0.25}}]},
+    }
+    result_path = tmp_path / "result.json"
+    t1_tasks.publish_network_result(document, result_path)
+
+    published = json.loads(result_path.read_text(encoding="utf-8"))
+    assert published["task"] == "branch_alignment"
+    assert published["document"]["schema"] == "t1-branch-block/v1"
+    assert "replay_capture" not in published["document"]
+    assert not (tmp_path / "result-replay.jsonl").exists()
+

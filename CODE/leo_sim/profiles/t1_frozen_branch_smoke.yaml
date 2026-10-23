@@ -50,6 +50,15 @@ control_plane:
   enabled: true
   advertise_interval_s: 2.0
   vis_k: 2
+  # 2026-10-21: the suite runs every cell with time_alignment.enabled (see
+  # DEFAULT_EXPERIMENT_PARAMETERS in CODE/experiment_platform/t1_suite.py), and
+  # on the v1 wire the snapshot carries isl_queue_bits as {peer, value} only --
+  # no generation, no work-ahead proxy (CODE/leo_sim/kernel.py:3632-3641) -- so
+  # _build_ta_snapshot (:4961-4971) drops every sample and all four arms query
+  # the snapshot instant itself.  Measured on the b_dev fixed_hotspot cell:
+  # history_len = 0 for all 139 decisions x 4 arms.  v2 is also what
+  # CODE/work/WP-T1-COMPLETE/time_alignment_study.yaml:9 already fixes.
+  advertisement_protocol_version: 2
 routing:
   policy: hop
 learning:
