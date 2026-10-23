@@ -496,6 +496,13 @@ class Constellation:
         # circular orbit period
         mu = 398600.4418  # km^3/s^2
         self.period_s = 2 * math.pi * math.sqrt(self.r ** 3 / mu)
+        # The E/W matching is a global pure function of one exact geometry
+        # instant, the requested directions, and the public geometry fields
+        # below. Keep only the most recent key so event-driven runs can reuse
+        # one global result while iterating over satellites without retaining
+        # an unbounded history of topology snapshots.
+        self._cross_matching_cache_key = None
+        self._cross_matching_cache_value = None
 
     def subpoint(self, sat_id: int, t: float) -> tuple[float, float, float]:
         """Geodetic lat/lon (deg) and altitude (km) of sat subpoint at time t.
@@ -573,10 +580,29 @@ class Constellation:
         SimulationRL.py:8330-8433); only physically available candidates
         (max_isl_km + earth clearance) are admitted.
         """
+        if not isinstance(dirs, str):
+            dirs = tuple(dirs)
         out = self.neighbors(sat_id, [d for d in dirs if d in ("N", "S")])
         if not any(d in dirs for d in ("E", "W")):
             return out
-        cross = self._cross_plane_matching(dirs, t)
+        cache_key = (
+            t,
+            dirs,
+            self.num_satellites,
+            self.num_planes,
+            self.per_plane,
+            self.r,
+            self.period_s,
+            self.inclination_deg,
+            self.max_isl_km,
+            self.geometry_epoch_s,
+        )
+        if cache_key != self._cross_matching_cache_key:
+            cross = self._cross_plane_matching(dirs, t)
+            self._cross_matching_cache_key = cache_key
+            self._cross_matching_cache_value = cross
+        else:
+            cross = self._cross_matching_cache_value
         for d in ("E", "W"):
             if d in dirs and cross.get(sat_id, {}).get(d) is not None:
                 out[d] = cross[sat_id][d]

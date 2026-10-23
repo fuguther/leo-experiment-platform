@@ -1,0 +1,49 @@
+{
+ "batch_id": "schot-20261019-20",
+ "mode": "diagnostic",
+ "measured": {
+  "source": "calibration cell hot-h1-r1600-2od, batch schot-20261019-19: rc=0, wall 350 s on the VM",
+  "vm_cgroup_quota_vcpu": 24,
+  "disk_free_gb": 252,
+  "mem_free_mb": 65425
+ },
+ "scheduling": {
+  "batch_id": "schot-20261019-20",
+  "mode": "diagnostic",
+  "probe": {
+   "cells": 1,
+   "wall_s": 600,
+   "peak_rss_mb": 1500,
+   "output_gb": 0.5,
+   "note": "measured on the calibration cell of the same trace; each of the four cells is one arm of it"
+  },
+  "capacity": {
+   "cores": 24,
+   "reserve_cores": 4,
+   "mem_limit_gb": 628,
+   "reserve_mem_gb": 16,
+   "disk_free_gb": 252,
+   "per_cell_gb": 0.5
+  },
+  "concurrency": 4,
+  "ordering": "cost_desc",
+  "cost_desc": [
+   "hot-a-common",
+   "hot-a-candidate",
+   "hot-a-now",
+   "hot-a-stale"
+  ],
+  "estimated_costs_s": {
+   "hot-a-common": 700,
+   "hot-a-candidate": 600,
+   "hot-a-now": 600,
+   "hot-a-stale": 600
+  },
+  "guards": {
+   "min_free_gb": 45,
+   "min_free_mem_mb": 12000,
+   "watchdog": true
+  },
+  "note": "four arms of the SAME hot trace, one arm per cell so they run in parallel; the truth probe is on in every arm"
+ }
+}

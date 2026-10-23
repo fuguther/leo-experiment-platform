@@ -1,0 +1,1084 @@
+{
+  "schema": "load-calibration-contract/v1",
+  "base_profile": "CODE/leo_sim/profiles/t1_hotspot_gravity.yaml",
+  "deadline_s": 4,
+  "max_packets": 30000,
+  "max_duration_s": 160,
+  "cells": [
+    {
+      "id": "fast50_smoke_s100",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 12,
+          "seed": 100
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 2,
+          "emission_end_s": 8,
+          "burst_start_s": 2.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s101_stale",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 101
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s101_now",
+      "arms": [
+        "now"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 101
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s101_common",
+      "arms": [
+        "common"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 101
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s101_candidate",
+      "arms": [
+        "candidate"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 101
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s102_stale",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 102
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s102_now",
+      "arms": [
+        "now"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 102
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s102_common",
+      "arms": [
+        "common"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 102
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s102_candidate",
+      "arms": [
+        "candidate"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 102
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s103_stale",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 103
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s103_now",
+      "arms": [
+        "now"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 103
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s103_common",
+      "arms": [
+        "common"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 103
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s103_candidate",
+      "arms": [
+        "candidate"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 103
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s104_stale",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 104
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s104_now",
+      "arms": [
+        "now"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 104
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s104_common",
+      "arms": [
+        "common"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 104
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s104_candidate",
+      "arms": [
+        "candidate"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 104
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s105_stale",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 105
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s105_now",
+      "arms": [
+        "now"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 105
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s105_common",
+      "arms": [
+        "common"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 105
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s105_candidate",
+      "arms": [
+        "candidate"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 105
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s106_stale",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 106
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s106_now",
+      "arms": [
+        "now"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 106
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s106_common",
+      "arms": [
+        "common"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 106
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    },
+    {
+      "id": "fast50_long_s106_candidate",
+      "arms": [
+        "candidate"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 160,
+          "seed": 106
+        },
+        "demand": {
+          "offered_mbps": 20,
+          "packet_bits": 120000,
+          "emission_start_s": 5,
+          "emission_end_s": 125,
+          "burst_start_s": 5.5
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "control_plane": {
+          "advertise_interval_s": 0.05,
+          "vis_k": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1,
+          "compute_delay_s": 0.001,
+          "max_packets": 30000
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 2
+        },
+        "routing": {
+          "policy": "known_serving"
+        },
+        "time_alignment": {
+          "predictor": "bounded_linear",
+          "history_limit": 8,
+          "min_observation_age_s": null
+        }
+      }
+    }
+  ]
+}

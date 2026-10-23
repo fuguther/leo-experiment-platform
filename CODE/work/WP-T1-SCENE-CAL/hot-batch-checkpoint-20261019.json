@@ -1,0 +1,47 @@
+{
+ "batch_id": "schot-20261019-19",
+ "mode": "diagnostic",
+ "measured": {
+  "source": "run scpt-sc-probe-truth-s111-20261019-17 (closest available cell): 890 s, 917 MB RSS, 0.12 GB output",
+  "vm_cgroup_quota_vcpu": 24,
+  "disk_free_gb": 252,
+  "mem_free_mb": 65425
+ },
+ "scheduling": {
+  "batch_id": "schot-20261019-19",
+  "mode": "diagnostic",
+  "probe": {
+   "cells": 1,
+   "wall_s": 1200,
+   "peak_rss_mb": 1200,
+   "output_gb": 0.3,
+   "note": "measured on the closest available cell; these cells carry 120 kbit packets instead of 12 kbit"
+  },
+  "capacity": {
+   "cores": 24,
+   "reserve_cores": 4,
+   "mem_limit_gb": 628,
+   "reserve_mem_gb": 16,
+   "disk_free_gb": 252,
+   "per_cell_gb": 0.3
+  },
+  "concurrency": 3,
+  "ordering": "cost_desc",
+  "cost_desc": [
+   "hot-h1-r1600-2od",
+   "hot-h3-r1600-4od",
+   "hot-h4-r2400-6od"
+  ],
+  "estimated_costs_s": {
+   "hot-h1-r1600-2od": 1100,
+   "hot-h3-r1600-4od": 1100,
+   "hot-h4-r2400-6od": 1500
+  },
+  "guards": {
+   "min_free_gb": 45,
+   "min_free_mem_mb": 12000,
+   "watchdog": true
+  },
+  "note": "route A calibration: three cells differ only in how many links the same style of load is spread over; each carries the truth probe so the acceptance metrics (backlog fraction, candidate spread) are measured on the VM"
+ }
+}

@@ -1,0 +1,129 @@
+{
+ "schema": "load-calibration-contract/v1",
+ "base_profile": "CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml",
+ "deadline_s": 4,
+ "max_packets": 20000,
+ "max_duration_s": 12,
+ "cells": [
+  {
+   "id": "stress_r025_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 0.25
+    }
+   }
+  },
+  {
+   "id": "stress_r025_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 0.25
+    }
+   }
+  },
+  {
+   "id": "stress_r025_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 0.25
+    }
+   }
+  },
+  {
+   "id": "stress_r025_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 0.25
+    }
+   }
+  },
+  {
+   "id": "stress_r01_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 0.1
+    }
+   }
+  },
+  {
+   "id": "stress_r01_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 0.1
+    }
+   }
+  },
+  {
+   "id": "stress_r01_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 0.1
+    }
+   }
+  },
+  {
+   "id": "stress_r01_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 0.1
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,121 @@
+{
+  "schema": "load-calibration-contract/v1",
+  "base_profile": "CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml",
+  "deadline_s": 4,
+  "max_packets": 20000,
+  "max_duration_s": 12,
+  "cells": [
+    {
+      "id": "warmup_isl1_candidate",
+      "arms": [
+        "candidate"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 12
+        },
+        "demand": {
+          "emission_start_s": 0,
+          "emission_end_s": 8,
+          "burst_start_s": 6.5,
+          "burst_duration_s": 1,
+          "burst_multiplier": 2
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1
+        }
+      }
+    },
+    {
+      "id": "warmup_isl1_stale",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 12
+        },
+        "demand": {
+          "emission_start_s": 0,
+          "emission_end_s": 8,
+          "burst_start_s": 6.5,
+          "burst_duration_s": 1,
+          "burst_multiplier": 2
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1
+        }
+      }
+    },
+    {
+      "id": "warmup_isl1_now",
+      "arms": [
+        "now"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 12
+        },
+        "demand": {
+          "emission_start_s": 0,
+          "emission_end_s": 8,
+          "burst_start_s": 6.5,
+          "burst_duration_s": 1,
+          "burst_multiplier": 2
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1
+        }
+      }
+    },
+    {
+      "id": "warmup_isl1_common",
+      "arms": [
+        "common"
+      ],
+      "overrides": {
+        "scenario": {
+          "duration_s": 12
+        },
+        "demand": {
+          "emission_start_s": 0,
+          "emission_end_s": 8,
+          "burst_start_s": 6.5,
+          "burst_duration_s": 1,
+          "burst_multiplier": 2
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 1
+        },
+        "execution": {
+          "compute_servers_per_satellite": 1
+        }
+      }
+    }
+  ]
+}

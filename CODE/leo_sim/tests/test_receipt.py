@@ -66,6 +66,17 @@ def _build_frozen_v2_run(tmp_path: Path) -> Path:
     rcp = json.loads(rcp_path.read_text(encoding="utf-8"))
     rcp["trace_identity_contract"] = config.TRACE_IDENTITY_VERSION_V2
     rcp["trace_identity_sha256"] = v2_identity
+    config_path = out / "resolved_config.json"
+    old_resolved = json.loads(config_path.read_text(encoding="utf-8"))
+    for field in config.V2_REMOVED_DEMAND_FIELDS:
+        old_resolved["config"]["demand"].pop(field, None)
+    old_canonical = json.dumps(
+        old_resolved["config"], sort_keys=True, separators=(",", ":"))
+    rcp["config_sha256"] = hashlib.sha256(
+        old_canonical.encode("utf-8")).hexdigest()
+    config_path.write_text(
+        json.dumps(old_resolved, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
     rcp_path.write_text(
         json.dumps(rcp, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return out
@@ -142,6 +153,79 @@ def test_v5_receipt_never_guesses_from_manifest_schema_or_code_version(
     assert any("trace identity" in e for e in errors)
 
 
+def _build_v2_wire_cost_run(tmp_path: Path) -> Path:
+    """A real kernel/control receipt using the extended v2 ad wire format."""
+    from CODE.leo_sim.tests.helpers import StaticGeometry, cell, make_cfg
+
+    a, b = cell(0.0, 0.0), cell(0.0, 10.0)
+    centers = {a: (0.5, 0.5), b: (0.5, 10.5)}
+    visible = lambda sat, lat, lon, _t: (
+        (sat == 0 and (lat, lon) == centers[a])
+        or (sat == 2 and (lat, lon) == centers[b]))
+    geometry = StaticGeometry(
+        3, neighbors_map={0: {"E": 1}, 1: {"W": 0, "E": 2},
+                          2: {"W": 1}}, visible=visible)
+    resolved = make_cfg({
+        "scenario": {"duration_s": 2.0, "num_satellites": 3,
+                     "num_planes": 1, "seed": 7},
+        "endpoints": {"sites": [
+            {"name": "a", "lat": 0.0, "lon": 0.0},
+            {"name": "b", "lat": 0.0, "lon": 10.0}]},
+        "control_plane": {"enabled": True,
+                           "advertisement_protocol_version": 2,
+                           "advertise_interval_s": 0.5,
+                           "ttl_s": 5.0, "vis_k": 2,
+                           "packet_bits": 8000},
+        "routing": {"policy": "hop"},
+    })
+    compiled = tmp_path / "compiled-v2-wire"
+    manifest = trace.compile_trace(resolved, str(compiled))
+    trace_bytes = (compiled / "trace.csv").read_bytes()
+    manifest["__trace_sha256"] = hashlib.sha256(trace_bytes).hexdigest()
+    manifest["__sha256"] = hashlib.sha256(
+        (compiled / "manifest.json").read_bytes()).hexdigest()
+    rows = trace.load_trace(
+        str(compiled / "trace.csv"), horizon_s=2.0,
+        max_packets=resolved["config"]["execution"]["max_packets"])
+    result = kernel.run_simulation(resolved, rows, geometry=geometry)
+    out = tmp_path / "run-v2-wire"
+    receipt.write_run(str(out), resolved, trace_bytes, manifest, result, rows)
+    return out
+
+
+def test_v2_wire_cost_receipt_recomputes_advertised_payload_and_rejects_tamper(
+        tmp_path):
+    out = _build_v2_wire_cost_run(tmp_path)
+    assert receipt.verify_receipt_dir(str(out)) == []
+    ledger_path = out / "ledgers.json"
+    ledgers = json.loads(ledger_path.read_text(encoding="utf-8"))
+    instances = ledgers["control_instances"]
+    extended = [pair for pair in instances.values() if len(pair) == 4]
+    assert extended
+    bits, wire = extended[0][1], extended[0][3]
+    assert wire["schema"] == "leo-control-ad-wire/v2"
+    assert bits == (wire["base_packet_bits"]
+                    + wire["isl_resource_records"] * wire["isl_record_bits"]
+                    + wire["gsl_resource_records"] * wire["gsl_record_bits"]
+                    + wire["processing_fields_bits"])
+
+    # Rebind the artifact digest so the semantic verifier, rather than only
+    # the outer hash check, has to reject a claimed packet length that no
+    # longer matches the declared wire payload.
+    key = next(iid for iid, pair in instances.items() if len(pair) == 4)
+    instances[key][1] += 1
+    ledger_path.write_text(
+        json.dumps(ledgers, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
+    rcp_path = out / "receipt.json"
+    rcp = json.loads(rcp_path.read_text(encoding="utf-8"))
+    rcp["ledgers_sha256"] = hashlib.sha256(ledger_path.read_bytes()).hexdigest()
+    rcp_path.write_text(
+        json.dumps(rcp, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    errors = receipt.verify_receipt_dir(str(out))
+    assert any("recomputed wire cost" in error for error in errors)
+
+
 def test_new_compilation_declares_identity_v3(tmp_path, monkeypatch):
     """compile_trace must stamp identity/v3 on fresh compilations and the
     receipt created from such a run carries the v3 contract."""
@@ -155,7 +239,7 @@ def test_new_compilation_declares_identity_v3(tmp_path, monkeypatch):
         source_shape=(720, 1440), source_resolution_deg=(0.25, 0.25),
         aggregation_deg=5.0, total_population=3.0)
     monkeypatch.setattr(population, "load_population_regions",
-                        lambda path, aggregation_deg: table)
+                        lambda path, aggregation_deg, **kwargs: table)
     cfg = config.resolve_config({
         "scenario": {"duration_s": 5.0, "seed": 3},
         "endpoints": {"aggregation_deg": 5.0},
@@ -186,7 +270,7 @@ def test_nested_manifest_rng_streams_branch_and_receipt_verification(
         source_resolution_deg=(0.25, 0.25), aggregation_deg=5.0,
         total_population=13.0)
     monkeypatch.setattr(pop_mod, "load_population_regions",
-                        lambda path, aggregation_deg: table)
+                        lambda path, aggregation_deg, **kwargs: table)
     resolved = config.resolve_config({
         "scenario": {"duration_s": 5.0, "seed": 7},
         "endpoints": {"aggregation_deg": 5.0},
@@ -254,7 +338,7 @@ def test_non_nested_manifest_keeps_only_canonical_demand_mapping(
         source_resolution_deg=(0.25, 0.25), aggregation_deg=5.0,
         total_population=13.0)
     monkeypatch.setattr(pop_mod, "load_population_regions",
-                        lambda path, aggregation_deg: table)
+                        lambda path, aggregation_deg, **kwargs: table)
     resolved = config.resolve_config({
         "scenario": {"duration_s": 5.0, "seed": 7},
         "endpoints": {"aggregation_deg": 5.0},

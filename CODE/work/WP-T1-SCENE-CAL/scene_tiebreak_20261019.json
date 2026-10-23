@@ -1,0 +1,76 @@
+{
+ "schema": "load-calibration-contract/v1",
+ "base_profile": "CODE/leo_sim/profiles/t1_scene_trunk_v1.yaml",
+ "deadline_s": 4,
+ "max_packets": 100000,
+ "max_duration_s": 160,
+ "diagnostics": {
+  "timeline": false,
+  "control_audit": false
+ },
+ "cells": [
+  {
+   "id": "sc-tieA-r050-s111",
+   "arms": [
+    "stale"
+   ],
+   "trace_program": {
+    "schema": "scene-trace-program/v1",
+    "model": "s1_stationary",
+    "cells": {
+     "beijing": [
+      39.9,
+      116.4
+     ],
+     "london": [
+      51.5,
+      -0.13
+     ]
+    },
+    "od_weights": {
+     "beijing,london": 1.0
+    },
+    "packet_bits": 12000,
+    "emission_start_s": 2.0,
+    "emission_end_s": 2.35,
+    "seed": 111,
+    "total_mbps": 499.68
+   },
+   "diagnostics": {
+    "timeline": false
+   },
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.35
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "access": {
+     "slots_per_satellite": 8
+    },
+    "time_alignment": {
+     "predictor": "hold_last",
+     "history_limit": 8,
+     "state_source": "advertised",
+     "tie_sig_digits": 9
+    }
+   }
+  }
+ ]
+}

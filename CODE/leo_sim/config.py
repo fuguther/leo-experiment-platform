@@ -12,6 +12,7 @@ import copy
 import hashlib
 import json
 import math
+import re
 from typing import Any, Mapping
 
 import yaml
@@ -54,6 +55,19 @@ _UniqueKeyLoader.add_constructor(
     yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
     _construct_unique_mapping)
 
+# YAML 1.1 (which PyYAML implements) only recognises a float exponent when the
+# mantissa carries a decimal point, so the JSON form "1e-06" -- which is exactly
+# what json.dumps emits for the small default time_alignment.query_delay_s --
+# round-trips as a STRING.  A compiled config written as JSON and re-read as
+# YAML would then be rejected as a type error.  Accept the JSON exponent form as
+# a float too; the mantissa must still be numeric, so ordinary words are
+# unaffected.
+_JSON_EXP_FLOAT = re.compile(
+    r"^[-+]?(?:[0-9][0-9_]*|\.[0-9_]+|[0-9][0-9_]*\.[0-9_]*)[eE][-+]?[0-9]+$")
+_UniqueKeyLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:float", _JSON_EXP_FLOAT,
+    list("-+0123456789."))
+
 
 # Allowed fields per top-level group. Anything else is rejected.
 SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
@@ -72,6 +86,8 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
     "endpoints": {
         "grid_deg": (int, float),
         "aggregation_deg": (int, float),
+        "region_lat_bounds_deg": (list, type(None)),
+        "region_lon_bounds_deg": (list, type(None)),
         "sites": list,  # list of {name, lat, lon, demand_weight}
         # Explicit opt-in for deterministic endpoint selection from the
         # repository M-Lab measurement snapshot. Existing named-site
@@ -82,8 +98,12 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
     "demand": {
         "mode": str,  # uniform|gravity|hotspot|burst|diurnal|csv|mlab
         "offered_mbps": (int, float),
+        "emission_start_s": (int, float),
         "emission_end_s": (int, float, type(None)),
         "packet_bits": int,
+        # Research/evaluation D never implies physical packet expiry; only
+        # deadline_s is the native hard TTL.
+        "research_deadline_s": (int, float, type(None)),
         "deadline_s": (int, float, type(None)),
         "csv_path": (str, type(None)),
         "population_path": (str, type(None)),
@@ -149,11 +169,35 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "ttl_s": (int, float),
         "advertise_interval_s": (int, float),
         "packet_bits": int,
+        "advertisement_protocol_version": int,
         "priority": str,  # nonpreemptive_priority (only supported mode)
+        # CONTROL-INIT (optional): emit one extra report per satellite at this
+        # instant, on its OWN schedule, without shifting the periodic grid.
+        # Real control packets on real links, wire cost included.
+        "initial_sync_burst_s": (int, float),
+        # EVENT-ADVERT (deployable alternative): a satellite reports when its
+        # own serving set changes, rate limited by the declared minimum
+        # interval, with changes inside the window merged into the next
+        # allowed report.
+        "event_advert_enabled": bool,
+        "event_advert_min_interval_s": (int, float),
     },
     "routing": {
-        "policy": str,  # hop|delay|capacity|oracle|info_queue|info_physical
+        "policy": str,  # hop|delay|capacity|oracle|info_queue|info_physical|known_serving
         "max_hops": int,  # data-packet loop cap
+        # STAGED-POLICY (optional): the configured policy runs until
+        # staged_policy_at_s, then the effective policy becomes staged_policy.
+        # Two runs that differ only in staged_policy share an identical prefix,
+        # which is what removes inherited queue history from the contrast.
+        "staged_policy": str,
+        "staged_policy_at_s": (int, float),
+        # RESTRICTED-ROUTING DIAGNOSTIC (default False = historical routing).
+        # When true, only the candidate directions that achieve the minimum
+        # remaining hop count to a node this satellite has actually been told
+        # serves the destination are admitted, BEFORE the time-alignment arm
+        # scores them.  Unknown distances never become a number: if any
+        # candidate's distance is unknown the restriction is not applied.
+        "min_remaining_hop_only": bool,
         "learning_enabled": bool,
         "contract": str,  # C1|C3|C4|C5|C6|C7 (observation contracts)
     },
@@ -165,6 +209,11 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "checkpoint_path": (str, type(None)),
         "checkpoint_sha256": (str, type(None)),
         "checkpoint_metadata_sha256": (str, type(None)),
+        # A1: read the checkpoint with the INFERENCE-ONLY reader
+        # (leo_sim.inference) instead of constructing a training learner.
+        # A fixed-inference run has no replay buffer and no update path, so it
+        # may run under the frozen observation mode a learner may not.
+        "fixed_inference": bool,
         # Exact training continuation bundle.  This is distinct from an
         # eval-only model checkpoint: it binds replay, optimizer/target state,
         # counters and RNG state to the same training contract.
@@ -175,7 +224,7 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "batch_size": int,
         "replay_size": int,
         "target_update_interval": int,
-        "reward": str,  # queue (corrected queue reward) — the ONLY v1 reward
+        "reward": str,  # legacy queue | deadline_loss_v1
         "reward_w1": (int, float),  # M1 queue reward weight (legacy w1=20)
         "reward_beta": (int, float),  # M1 decay rate s^-1 (legacy _M1_BETA=200)
         "forward_step_penalty": (int, float),  # non-positive hop cost; must dominate reward_w1
@@ -219,6 +268,61 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # variable as the PHY bandwidth (F3, links.isl_rate_mbps).  0 keeps the
         # historical instantaneous arrival path exactly.
         "node_process_delay_s": (int, float),
+        # T1-COMPUTE-QUEUE: how many routing decisions one satellite can
+        # compute CONCURRENTLY.  0 (the default) means the on-board processor
+        # is never the binding resource: a deferred decision waits exactly
+        # compute_delay_s and nothing else, which is the historical behaviour.
+        # A positive value makes the satellite a bounded server pool, so a
+        # decision can also WAIT for a free server -- that waiting time is
+        # compute-resource contention, and it is recorded separately from the
+        # service time so the two cannot be added up into one unattributable
+        # number.
+        "compute_servers_per_satellite": int,
+    },
+    # T1-COMPLETE P3.1: state-time semantics and asynchronous schedule
+    # updates.  Defaults are OFF so every existing configuration keeps its
+    # behaviour; the values below are engineering diagnostic assumptions, not
+    # measured satellite parameters.
+    "time_alignment": {
+        "enabled": bool,
+        "arm": str,  # stale | now | common | candidate
+        "predictor": str,  # hold_last | bounded_linear
+        "history_limit": int,
+        "common_rule": str,  # median_eta | mean_eta | fixed_horizon
+        "common_horizon_s": (int, float, type(None)),
+        "execution_mode": str,  # per_packet|per_flow|precomputed|async_point|async_window
+        "per_flow_ttl_s": (int, float),
+        "query_delay_s": (int, float),
+        # OBSERVATION-AGE INTERVENTION.  Minimum age (seconds) of the SOURCE
+        # MEASUREMENT of the same-resource workload the predictor may read:
+        # samples with measured_at > t0 - min_observation_age_s are withheld
+        # (not modified).  None keeps the historical behaviour.  Resource
+        # identity, generation filter, workload definition, scorer, candidate
+        # set, control schedule and physical model are unaffected.
+        "min_observation_age_s": (int, float, type(None)),
+        # STATE-SOURCE INTERVENTION (single factor).  "advertised" keeps the
+        # historical behaviour: the target resource work-ahead is the newest
+        # advertisement this node ACTUALLY RECEIVED, hence stale by
+        # construction.  "ideal_current" replaces ONLY that value source with
+        # the kernel own TRUE current state of the SAME resource at the
+        # decision instant.  Identity, generation filter, candidate set,
+        # scorer, control schedule and physical model are untouched.
+        "state_source": str,  # advertised | ideal_current
+        # Diagnostics only.  When set, candidate scores are quantised to this
+        # many SIGNIFICANT digits before the visible_order tie-break sees them,
+        # so mirror-symmetric candidates (whose scores differ only by float
+        # accumulation noise) actually tie and the deterministic break becomes
+        # reachable.  None = historical sort key, byte for byte.
+        "tie_sig_digits": (int, type(None)),
+    },
+    "async_routing": {
+        "enabled": bool,
+        "update_interval_s": (int, float),
+        "valid_window_s": (int, float),
+        "install_delay_s": (int, float),
+        "window_bins": int,
+        "trigger": str,  # periodic (first version)
+        "max_pending_per_scope": int,
     },
     "outputs": {
         "out_dir": str,
@@ -235,6 +339,17 @@ VALID_ASSOCIATION = {"bbm", "mbb"}
 VALID_UNAVAILABLE_POLICIES = {"reject", "queue"}
 VALID_POLICIES = {
     "hop", "delay", "capacity", "oracle", "info_queue", "info_physical",
+    # Equal-cost information intervention: unit-hop routing, but candidate
+    # admission and the path metric use the TRUE current serving set instead
+    # of the received advertisement.  Control-plane traffic, decision cadence,
+    # scorer and path cost stay identical to "hop", so a difference isolates
+    # the effect of stale state rather than of a different deployment policy.
+    "hop_known_serving",
+    # Same intervention with the serving-set source unified across EVERY
+    # consumer (admission, resource map, ETA targets, scoring).  hop_known_serving
+    # is the earlier, mixed-source version and is kept only so its published
+    # runs keep their identity.
+    "known_serving",
 }
 VALID_CONTRACTS = {"C1", "C3", "C4", "C5", "C6", "C7", "GAT", "MPNN"}
 VALID_ALGORITHMS = {"none", "ddqn", "qlearning"}
@@ -245,6 +360,13 @@ VALID_RATE_MODELS = {"constant", "mcs"}
 # during the computation cannot exist); "frozen" infers on the observation
 # taken at decision start and only checks legality at commit time.
 VALID_OBSERVATION_MODES = {"refresh", "frozen"}
+VALID_TIME_ARMS = {"stale", "now", "common", "candidate"}
+VALID_PREDICTORS = {"hold_last", "bounded_linear"}
+VALID_COMMON_RULES = {"median_eta", "mean_eta", "fixed_horizon"}
+VALID_EXECUTION_MODES = {
+    "per_packet", "per_flow", "precomputed", "async_point", "async_window",
+}
+VALID_ASYNC_TRIGGERS = {"periodic"}
 RF_KEYS = {
     "frequency_hz", "bandwidth_hz", "max_ptx_w",
     "antenna_diameter_tx_m", "antenna_diameter_rx_m",
@@ -268,6 +390,8 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "endpoints": {
         "grid_deg": 0.25,
         "aggregation_deg": 1.0,
+        "region_lat_bounds_deg": None,
+        "region_lon_bounds_deg": None,
         "sites": [],
         "mlab_auto": False,
         # Bound sparse ground-side entities while retaining many measured OD
@@ -277,8 +401,10 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "demand": {
         "mode": "uniform",
         "offered_mbps": 1.0,
+        "emission_start_s": 0.0,
         "emission_end_s": None,
         "packet_bits": 8_000_000,
+        "research_deadline_s": None,
         "deadline_s": None,
         "csv_path": None,
         "population_path": None,
@@ -362,9 +488,11 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "ttl_s": 10.0,
         "advertise_interval_s": 1.0,
         "packet_bits": 8_000,
+        "advertisement_protocol_version": 1,
         "priority": "nonpreemptive_priority",
     },
     "routing": {"policy": "hop", "max_hops": 16, "learning_enabled": False,
+                "min_remaining_hop_only": False,
                 "contract": "C3"},
     "learning": {
         "algorithm": "none",
@@ -374,6 +502,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "checkpoint_path": None,
         "checkpoint_sha256": None,
         "checkpoint_metadata_sha256": None,
+        "fixed_inference": False,
         "resume_path": None,
         "resume_sha256": None,
         "gamma": 0.99,
@@ -414,6 +543,34 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         # Historical runs process an arriving packet instantaneously; a
         # non-zero node cost is opt-in.
         "node_process_delay_s": 0.0,
+        # Historical runs have no bound on concurrent decisions per satellite;
+        # a bounded on-board processor is opt-in.
+        "compute_servers_per_satellite": 0,
+    },
+    "time_alignment": {
+        "enabled": False,
+        "arm": "candidate",
+        "predictor": "bounded_linear",
+        "history_limit": 8,
+        "common_rule": "median_eta",
+        "common_horizon_s": None,
+        "execution_mode": "per_packet",
+        "per_flow_ttl_s": 0.5,
+        "query_delay_s": 0.000001,
+        # None = read every received sample (historical behaviour).  A finite
+        # value is the observation-age intervention: samples whose source
+        # measurement is younger than this are withheld from the predictor.
+        "min_observation_age_s": None, "state_source": "advertised",
+        "tie_sig_digits": None,
+    },
+    "async_routing": {
+        "enabled": False,
+        "update_interval_s": 0.5,
+        "valid_window_s": 1.0,
+        "install_delay_s": 0.001,
+        "window_bins": 4,
+        "trigger": "periodic",
+        "max_pending_per_scope": 1,
     },
     "outputs": {"out_dir": "leo_sim_out", "trace_path": None, "plotting": False},
 }
@@ -473,6 +630,7 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         cfg["links"], cfg["topology"], cfg["control_plane"], cfg["routing"],
         cfg["learning"], cfg["execution"],
     )
+    ta, ar = cfg["time_alignment"], cfg["async_routing"]
     if sc["duration_s"] <= 0:
         raise ConfigError("scenario.duration_s must be > 0")
     if sc["time_step_s"] <= 0:
@@ -508,6 +666,30 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(
             "endpoints.mlab_auto requires endpoints.sites to be empty; "
             "choose automatic or explicit measurement endpoints")
+    region_lat = ep["region_lat_bounds_deg"]
+    region_lon = ep["region_lon_bounds_deg"]
+    if (region_lat is None) != (region_lon is None):
+        raise ConfigError(
+            "endpoints.region_lat_bounds_deg and region_lon_bounds_deg "
+            "must be supplied together")
+    if region_lat is not None:
+        if dm["mode"] != "population_gravity":
+            raise ConfigError(
+                "endpoint region bounds are only valid with "
+                "demand.mode=population_gravity")
+        for bounds, label, lower, upper in (
+                (region_lat, "latitude", -90.0, 90.0),
+                (region_lon, "longitude", -180.0, 180.0)):
+            if not isinstance(bounds, list) or len(bounds) != 2:
+                raise ConfigError(f"endpoint region {label} bounds must be a pair")
+            if any(not isinstance(v, (int, float)) or isinstance(v, bool)
+                   or not math.isfinite(v) for v in bounds):
+                raise ConfigError(
+                    f"endpoint region {label} bounds must be finite numbers")
+            if not lower <= bounds[0] < bounds[1] <= upper:
+                raise ConfigError(
+                    f"endpoint region {label} bounds must be ordered within "
+                    f"[{lower}, {upper}]")
     # grid IDs are only stable if cells tile the sphere evenly: both degrees
     # must divide 180/360 exactly, and aggregation must be an exact multiple
     # of the fine grid
@@ -553,10 +735,21 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
     if dm["offered_mbps"] <= 0:
         raise ConfigError("demand.offered_mbps must be > 0")
     emission_end = dm["emission_end_s"]
+    emission_start = dm["emission_start_s"]
+    if not isinstance(emission_start, (int, float)) \
+            or isinstance(emission_start, bool) \
+            or not math.isfinite(float(emission_start)) \
+            or emission_start < 0:
+        raise ConfigError("demand.emission_start_s must be finite and >= 0")
     if emission_end is not None and not (0 < emission_end <= sc["duration_s"]):
         raise ConfigError(
             "demand.emission_end_s must be finite, > 0 and <= "
             "scenario.duration_s")
+    emitted_until = (float(sc["duration_s"]) if emission_end is None
+                     else float(emission_end))
+    if emission_start >= emitted_until:
+        raise ConfigError(
+            "demand.emission_start_s must be before the emission end")
     if dm["packet_bits"] <= 0:
         raise ConfigError("demand.packet_bits must be > 0")
     if dm["mode"] == "csv" and not dm["csv_path"]:
@@ -571,7 +764,8 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         dm["burst_start_s"] is not None
         or dm["burst_duration_s"] is not None
     )
-    if burst_declared and dm["mode"] not in {"burst", "mlab"}:
+    if burst_declared and dm["mode"] not in {
+            "burst", "mlab", "population_gravity"}:
         # The transform exists ONLY in _rate_multiplier() for mode in
         # {burst, mlab} (trace.py:302-307).  Declaring the window under any
         # other mode used to resolve happily and then be silently dropped:
@@ -583,8 +777,8 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(
             "demand.burst_start_s/burst_duration_s are declared but "
             f"demand.mode={dm['mode']} never applies the burst transform; "
-            "the window would be silently dropped. Use demand.mode=burst or "
-            "demand.mode=mlab, or remove the burst window")
+            "the window would be silently dropped. Use a supported demand "
+            "mode, or remove the burst window")
     # The multiplier alone is the other half of the same hole: a config that
     # sets burst_multiplier but declares no window under a mode that never
     # applies the transform used to resolve happily with the value kept in the
@@ -593,7 +787,7 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
     # or not the author asked for it; a non-default value is a claim that
     # something will use it.
     default_multiplier = DEFAULTS["demand"]["burst_multiplier"]
-    if dm["mode"] not in {"burst", "mlab"} \
+    if dm["mode"] not in {"burst", "mlab", "population_gravity"} \
             and dm["burst_multiplier"] != default_multiplier:
         raise ConfigError(
             f"demand.burst_multiplier={dm['burst_multiplier']} is declared but "
@@ -601,7 +795,7 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             "the value would be silently ignored. Use demand.mode=burst or "
             f"demand.mode=mlab, or leave burst_multiplier at its default "
             f"({default_multiplier})")
-    if dm["mode"] in {"burst", "mlab"} and (
+    if dm["mode"] in {"burst", "mlab", "population_gravity"} and (
             dm["mode"] == "burst" or burst_declared):
         if dm["burst_start_s"] is None or dm["burst_duration_s"] is None:
             raise ConfigError(
@@ -617,19 +811,27 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         # manifest still declared a burst.  Measured 2026-09-25:
         # emission_end_s=20 with the window at [30, 40) gave 100 packets,
         # 0 inside the window, and realized offered load == target 40 Mbps.
-        emitted_until = (float(sc["duration_s"])
-                         if dm["emission_end_s"] is None
-                         else float(dm["emission_end_s"]))
         window_end = dm["burst_start_s"] + dm["burst_duration_s"]
-        if window_end > emitted_until:
+        if dm["burst_start_s"] < emission_start or window_end > emitted_until:
             raise ConfigError(
                 "burst window [burst_start_s, burst_start_s+burst_duration_s) "
                 f"= [{dm['burst_start_s']}, {window_end}) must lie inside the "
-                f"emission window [0, {emitted_until}] "
+                f"emission window [{emission_start}, {emitted_until}] "
                 "(demand.emission_end_s, or scenario.duration_s when unset); "
                 "a window that extends past it is only partially applied")
+        if dm["mode"] == "population_gravity" \
+                and dm["temporal_model"] == "local_diurnal_cosine":
+            raise ConfigError(
+                "population_gravity cannot combine its burst window with "
+                "local_diurnal_cosine in the same demand profile")
     if dm["deadline_s"] is not None and dm["deadline_s"] <= 0:
         raise ConfigError("demand.deadline_s must be > 0 when set")
+    if dm["research_deadline_s"] is not None and (
+            isinstance(dm["research_deadline_s"], bool)
+            or not math.isfinite(dm["research_deadline_s"])
+            or dm["research_deadline_s"] <= 0):
+        raise ConfigError(
+            "demand.research_deadline_s must be finite and > 0 when set")
     if dm["gravity_alpha"] <= 0 or dm["gravity_d_floor_km"] <= 0:
         raise ConfigError("gravity parameters must be > 0")
     if not 0 < dm["hotspot_fraction"] <= 1 or not 0 <= dm["hotspot_concentration"] <= 1:
@@ -763,10 +965,18 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError("control_plane.vis_k must be >= 0")
     if cp["ttl_s"] <= 0 or cp["advertise_interval_s"] <= 0 or cp["packet_bits"] < 1:
         raise ConfigError("control_plane ttl/advertise_interval/packet_bits invalid")
+    if cp["advertisement_protocol_version"] not in (1, 2):
+        raise ConfigError(
+            "control_plane.advertisement_protocol_version must be 1 or 2")
     if cp["priority"] != "nonpreemptive_priority":
         raise ConfigError("only nonpreemptive_priority control is supported")
     if rt["policy"] not in VALID_POLICIES:
         raise ConfigError(f"routing.policy must be one of {sorted(VALID_POLICIES)}")
+    staged = rt.get("staged_policy")
+    if staged not in (None, "", "known_serving", "oracle"):
+        raise ConfigError(
+            "routing.staged_policy must be known_serving or oracle, "
+            f"got {staged!r}")
     if rt["max_hops"] < 1:
         raise ConfigError("routing.max_hops must be >= 1")
     if rt["contract"] not in VALID_CONTRACTS:
@@ -847,18 +1057,46 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(
             "learning.mode=eval with algorithm=ddqn requires "
             "checkpoint_metadata_sha256 (sibling metadata trust anchor)")
+    if lr["fixed_inference"]:
+        # A1: the fixed-inference reader is a DIFFERENT execution path from the
+        # training learner.  Every condition it depends on is checked here so a
+        # configuration cannot ask for a read that has no artifact to read.
+        if lr["algorithm"] != "ddqn":
+            raise ConfigError(
+                "learning.fixed_inference requires learning.algorithm=ddqn (it "
+                "reads the repository DDQN artifact format)")
+        if lr["mode"] != "eval":
+            raise ConfigError(
+                "learning.fixed_inference requires learning.mode=eval: a fixed "
+                "checkpoint is never updated")
+        if lr["checkpoint_path"] is None or lr["checkpoint_sha256"] is None:
+            raise ConfigError(
+                "learning.fixed_inference requires checkpoint_path and "
+                "checkpoint_sha256")
+        if lr["checkpoint_metadata_sha256"] is None:
+            raise ConfigError(
+                "learning.fixed_inference requires checkpoint_metadata_sha256: "
+                "the observation contract lives in the sibling metadata and "
+                "must be pinned")
+        if lr["resume_path"] is not None:
+            raise ConfigError(
+                "learning.fixed_inference cannot load a training resume bundle")
     if lr["mode"] == "eval" and lr["resume_path"] is not None:
         raise ConfigError("learning.mode=eval cannot load a training resume bundle")
     if lr["mode"] == "train" and (lr["checkpoint_path"] is not None
                                     or lr["checkpoint_sha256"] is not None
                                     or lr["checkpoint_metadata_sha256"] is not None):
         raise ConfigError("learning.mode=train does not load a checkpoint")
-    if lr["reward"] != "queue":
-        # v1 keeps exactly one reward: the corrected queue reward (M1/M2
-        # semantics absorbed). distance/linear rewards are plan-excluded dead
-        # entry points and are rejected, not parked "for later".
-        raise ConfigError("learning.reward must be 'queue' (corrected queue reward); "
-                          "distance/linear rewards are excluded from v1")
+    if lr["reward"] not in {"queue", "deadline_loss_v1"}:
+        raise ConfigError("learning.reward must be 'queue' or 'deadline_loss_v1'")
+    if lr["reward"] == "deadline_loss_v1":
+        if dm["research_deadline_s"] is None:
+            raise ConfigError(
+                "learning.reward=deadline_loss_v1 requires "
+                "demand.research_deadline_s")
+        if lr["gamma"] != 1.0:
+            raise ConfigError(
+                "learning.reward=deadline_loss_v1 requires learning.gamma=1.0")
     if lr["reward_w1"] <= 0:
         raise ConfigError("learning.reward_w1 must be > 0")
     if lr["reward_beta"] <= 0:
@@ -911,22 +1149,138 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(
             "execution.decision_observation_mode must be one of "
             f"{sorted(VALID_OBSERVATION_MODES)}")
-    if ex["decision_observation_mode"] == "frozen" and compute_delay <= 0:
-        # Fail loud instead of silently ignoring the requested mode: with no
-        # computation time there is no interval during which an observation
-        # could go stale, so the two modes are the same run and the request is
-        # a configuration error rather than a no-op.
+    if ex["decision_observation_mode"] == "frozen" and compute_delay < 0:
+        # negative delays are already rejected above; this branch keeps the
+        # frozen mode's own lower bound explicit.
         raise ConfigError(
             "execution.decision_observation_mode=frozen requires "
-            "execution.compute_delay_s > 0")
+            "execution.compute_delay_s >= 0")
+    # T1-P2: zero-cost frozen is ALLOWED.  It is the diagnostic that freezes,
+    # selects and commits at one simulated instant without an epsilon delay, so
+    # the state-time semantics can be compared without paying a compute cost.
+    # The historical refresh + zero delay path is untouched.
     node_delay = ex["node_process_delay_s"]
     if (isinstance(node_delay, bool) or node_delay < 0
             or not math.isfinite(node_delay)):
         raise ConfigError(
             "execution.node_process_delay_s must be finite and >= 0")
+    servers = ex["compute_servers_per_satellite"]
+    if isinstance(servers, bool) or not isinstance(servers, int) or servers < 0:
+        raise ConfigError(
+            "execution.compute_servers_per_satellite must be a non-negative "
+            "integer")
+    if servers > 0 and compute_delay <= 0:
+        # Fail loud instead of silently ignoring the bound: with no computation
+        # time there is nothing for a server to be busy with, so a positive
+        # server count would be a configuration error rather than a no-op.
+        raise ConfigError(
+            "execution.compute_servers_per_satellite > 0 requires "
+            "execution.compute_delay_s > 0")
+    if ta["enabled"] and servers > 1:
+        # Fail loud instead of silently disabling the research mechanism.
+        # _processing_pool_advertisement marks multi-server work-ahead as
+        # "multi_server_projection_not_encoded" (it refuses to collapse an
+        # unserialized assignment to an unjustified average), so every
+        # candidate would carry peer_process_s as missing, no candidate would
+        # ever score complete, and all four time-alignment arms would fall back
+        # to the fixed direction order while the configuration still looks
+        # like a legitimate capacity knob. Three calibration cells were spent
+        # this way on 2026-10-13 before the link was found.
+        raise ConfigError(
+            "time_alignment.enabled requires "
+            "execution.compute_servers_per_satellite <= 1: the peer-processing "
+            "advertisement schema cannot encode multi-server work-ahead, so "
+            "every candidate would be scored incomplete and every arm would "
+            "fall back to the fixed direction order. Use 1 (or 0), or disable "
+            "time_alignment for this run.")
+    _validate_time_alignment(ta, ar)
 
 
-# The five demand fields defaulted since identity/v2 (Task 1 global scene
+def _validate_time_alignment(ta: Mapping[str, Any],
+                             ar: Mapping[str, Any]) -> None:
+    """T1-COMPLETE P3.1: fail loud on any contradictory state-time request.
+
+    A contradictory request (e.g. async execution mode with async_routing off)
+    is rejected, never silently downgraded to a different run.
+    """
+    if ta["arm"] not in VALID_TIME_ARMS:
+        raise ConfigError(
+            f"time_alignment.arm must be one of {sorted(VALID_TIME_ARMS)}, "
+            f"got {ta['arm']!r}")
+    if ta["predictor"] not in VALID_PREDICTORS:
+        raise ConfigError(
+            f"time_alignment.predictor must be one of "
+            f"{sorted(VALID_PREDICTORS)}, got {ta['predictor']!r}")
+    if isinstance(ta["history_limit"], bool) or ta["history_limit"] < 1:
+        raise ConfigError("time_alignment.history_limit must be >= 1")
+    if ta["common_rule"] not in VALID_COMMON_RULES:
+        raise ConfigError(
+            f"time_alignment.common_rule must be one of "
+            f"{sorted(VALID_COMMON_RULES)}, got {ta['common_rule']!r}")
+    horizon = ta["common_horizon_s"]
+    if ta["common_rule"] == "fixed_horizon":
+        if (horizon is None or isinstance(horizon, bool)
+                or not isinstance(horizon, (int, float))
+                or not math.isfinite(horizon) or horizon < 0):
+            raise ConfigError(
+                "time_alignment.common_horizon_s must be a finite, non-negative "
+                "number when common_rule=fixed_horizon")
+    elif horizon is not None:
+        raise ConfigError(
+            "time_alignment.common_horizon_s may only be set when "
+            "common_rule=fixed_horizon")
+    mode = ta["execution_mode"]
+    if mode not in VALID_EXECUTION_MODES:
+        raise ConfigError(
+            f"time_alignment.execution_mode must be one of "
+            f"{sorted(VALID_EXECUTION_MODES)}, got {mode!r}")
+    is_async = mode in ("async_point", "async_window")
+    if is_async and not ar["enabled"]:
+        raise ConfigError(
+            f"time_alignment.execution_mode={mode} requires "
+            "async_routing.enabled=true")
+    if bool(ar["enabled"]) and not is_async:
+        raise ConfigError(
+            "async_routing.enabled=true requires "
+            "time_alignment.execution_mode async_point or async_window")
+    ttl = ta["per_flow_ttl_s"]
+    if (isinstance(ttl, bool) or not isinstance(ttl, (int, float))
+            or not math.isfinite(ttl) or ttl <= 0):
+        raise ConfigError("time_alignment.per_flow_ttl_s must be > 0")
+    qd = ta["query_delay_s"]
+    if (isinstance(qd, bool) or not isinstance(qd, (int, float))
+            or not math.isfinite(qd) or qd < 0):
+        raise ConfigError(
+            "time_alignment.query_delay_s must be finite and >= 0")
+    for name in ("update_interval_s", "valid_window_s"):
+        v = ar[name]
+        if (isinstance(v, bool) or not isinstance(v, (int, float))
+                or not math.isfinite(v) or v <= 0):
+            raise ConfigError(f"async_routing.{name} must be finite and > 0")
+    install = ar["install_delay_s"]
+    if (isinstance(install, bool) or not isinstance(install, (int, float))
+            or not math.isfinite(install) or install < 0):
+        raise ConfigError(
+            "async_routing.install_delay_s must be finite and >= 0")
+    bins = ar["window_bins"]
+    if isinstance(bins, bool) or not isinstance(bins, int) or bins < 1:
+        raise ConfigError("async_routing.window_bins must be a positive integer")
+    if mode == "async_point" and bins != 1:
+        raise ConfigError(
+            "async_point forces a single window bin; async_routing.window_bins "
+            "must be 1")
+    pending = ar["max_pending_per_scope"]
+    if isinstance(pending, bool) or not isinstance(pending, int) or pending < 1:
+        raise ConfigError(
+            "async_routing.max_pending_per_scope must be >= 1")
+    if ar["trigger"] not in VALID_ASYNC_TRIGGERS:
+        raise ConfigError(
+            f"async_routing.trigger must be one of "
+            f"{sorted(VALID_ASYNC_TRIGGERS)}, got {ar['trigger']!r}")
+
+
+# The demand fields defaulted since identity/v2 (Task 1 global scene and
+# research-deadline contract)
 # contract).  The frozen v2 builder removes exactly these after config
 # resolution so an old v2 receipt can be reconstructed byte-for-byte.
 V2_REMOVED_DEMAND_FIELDS = (
@@ -935,6 +1289,9 @@ V2_REMOVED_DEMAND_FIELDS = (
     "population_destination_sampler",
     "destination_rejection_max_draws",
     "nested_master_offered_mbps",
+    # Added after the frozen v2 trace identity; this must not alter
+    # reconstruction of pre-research-D receipts.
+    "research_deadline_s",
 )
 
 
@@ -945,6 +1302,16 @@ def _trace_identity_payload(resolved: dict, identity_version: str,
     emission_end = demand.pop("emission_end_s")
     if emission_end is None:
         emission_end = c["scenario"]["duration_s"]
+    # Preserve the historical trace identity for configs using the new
+    # default (start=0, no regional filter). Non-default values remain bound
+    # into the identity because they change the generated endpoint/demand set.
+    if demand.get("emission_start_s") == 0:
+        demand.pop("emission_start_s")
+    endpoints = copy.deepcopy(c["endpoints"])
+    if endpoints.get("region_lat_bounds_deg") is None \
+            and endpoints.get("region_lon_bounds_deg") is None:
+        endpoints.pop("region_lat_bounds_deg", None)
+        endpoints.pop("region_lon_bounds_deg", None)
     for field in removed_demand_fields:
         demand.pop(field, None)
     return {
@@ -952,7 +1319,7 @@ def _trace_identity_payload(resolved: dict, identity_version: str,
         "config_version": resolved["version"],
         "scenario": {"emission_end_s": emission_end,
                      "seed": c["scenario"]["seed"]},
-        "endpoints": c["endpoints"],
+        "endpoints": endpoints,
         "demand": demand,
         "execution": {"max_packets": c["execution"]["max_packets"]},
     }
@@ -961,7 +1328,7 @@ def _trace_identity_payload(resolved: dict, identity_version: str,
 def trace_identity_payload_v2(resolved: dict) -> dict:
     """Frozen identity/v2 builder.
 
-    Removes the five demand fields defaulted by the Task 1 global scene
+    Removes the demand fields defaulted after the frozen v2 identity
     contract after config resolution, so a v2 receipt compiled before those
     fields existed still reconstructs byte-for-byte."""
     return _trace_identity_payload(
@@ -991,6 +1358,10 @@ def legacy_trace_identity_payload(resolved: dict) -> dict:
     c = resolved["config"]
     demand = copy.deepcopy(c["demand"])
     demand.pop("emission_end_s", None)
+    # These optional demand fields were added after the frozen v1/v2
+    # identities. Their defaults must not change reconstruction of old runs.
+    for field in V2_REMOVED_DEMAND_FIELDS:
+        demand.pop(field, None)
     return {
         "identity_version": TRACE_IDENTITY_VERSION_V1,
         "config_version": resolved["version"],

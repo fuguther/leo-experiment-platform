@@ -1,0 +1,108 @@
+{
+ "schema": "load-calibration-contract/v1",
+ "base_profile": "CODE/leo_sim/profiles/t1_scene_trunk_burst_v1.yaml",
+ "deadline_s": 4,
+ "max_packets": 100000,
+ "max_duration_s": 160,
+ "cells": [
+  {
+   "id": "tk-burst010-s111",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "offered_mbps": 727.794783,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7,
+     "burst_start_s": 2.0,
+     "burst_duration_s": 0.01,
+     "burst_multiplier": 3.089552
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-burst050-s111",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "offered_mbps": 634.209231,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7,
+     "burst_start_s": 2.0,
+     "burst_duration_s": 0.05,
+     "burst_multiplier": 3.545455
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-burst150-s111",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "offered_mbps": 340.690909,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7,
+     "burst_start_s": 2.0,
+     "burst_duration_s": 0.15,
+     "burst_multiplier": 6.6
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  }
+ ]
+}

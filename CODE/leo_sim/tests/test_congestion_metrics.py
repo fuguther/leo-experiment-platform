@@ -2,12 +2,12 @@
 
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import pytest
 
-from CODE.leo_sim import config, metrics
-from CODE.leo_sim import kernel
+from CODE.leo_sim import config, kernel, link_budget, metrics, model
 from CODE.leo_sim.tests.helpers import StaticGeometry, cell, make_cfg, row
 
 
@@ -21,6 +21,10 @@ def _convert_run_to_legacy_v1(out, receipt_schema="leo-sim-receipt/v3"):
     contract = manifest["provenance_contract"]
     for key in ("simulation_horizon_s", "emission_end_s", "drain_s"):
         contract.pop(key)
+    # A genuine pre-research-deadline artifact declares four provenance units;
+    # the current compiler always emits the fifth (research_deadline) unit, so a
+    # real v1 downgrade has to drop it instead of only renaming the schema.
+    (contract.get("units") or {}).pop("research_deadline", None)
     contract["schema"] = "leo-sim-trace-provenance/v1"
     resolved = json.loads((out / "resolved_config.json").read_text())
     resolved["config"]["demand"].pop("emission_end_s")
@@ -448,6 +452,238 @@ def test_capacity_metric_splits_scripted_visibility_change_inside_interval():
     windows = [w for w in result["link_available_windows"]
                if w["link_id"] == link_id]
     assert [(w["start"], w["end"]) for w in windows] == [(0.25, 0.75)]
+
+
+def _pre_optimization_capacity_segments(k, sat, start, end, lat, lon):
+    """Independent test reference for the pre-shortcut GSL segmenter."""
+    available = lambda t: k.geometry.gsl_available(sat, lat, lon, t)
+    next_change = lambda a, b: k.geometry.next_gsl_change(
+        sat, lat, lon, a, b)
+    range_at = lambda t: k.geometry.slant_range_km(sat, lat, lon, t)
+    next_range_under = lambda threshold, a, b: (
+        k.geometry.next_slant_range_under(sat, lat, lon, threshold, a, b))
+    rf = k.rf_uplink
+    boundaries = [float(start), float(end)]
+    eps = min(1e-9, max((end - start) * 1e-8, 1e-12))
+
+    def add_roots(root_fn):
+        cursor = float(start)
+        for _ in range(1024):
+            if cursor >= end - eps:
+                return
+            nxt = root_fn(cursor, end)
+            if nxt is None:
+                return
+            nxt = float(nxt)
+            assert cursor < nxt <= end
+            boundaries.append(nxt)
+            if nxt >= end - eps:
+                return
+            cursor = nxt
+        raise AssertionError("reference geometry roots exceeded 1024")
+
+    add_roots(next_change)
+    if k.rate_model == "mcs":
+        probe_times = (start, (start + end) / 2.0,
+                       max(start, end - eps))
+        ranges = [float(range_at(t)) for t in probe_times]
+        assert all(math.isfinite(v) and v > 0 for v in ranges)
+        margin = model.RANGE_RATE_KM_S * (end - start)
+        lo, hi = min(ranges) - margin, max(ranges) + margin
+        for threshold in link_budget.mcs_rate_threshold_ranges_km(
+                rf, k.mcs_table):
+            if lo <= threshold <= hi:
+                add_roots(lambda a, b, threshold=threshold:
+                          next_range_under(threshold, a, b))
+
+    segments = []
+    ordered = sorted(set(boundaries))
+    for a, b in zip(ordered, ordered[1:]):
+        if b - a <= eps:
+            continue
+        t = (a + b) / 2.0
+        if not available(t):
+            continue
+        rate = k._metric_available_rate("uplink", sat, t, lat=lat, lon=lon)
+        if rate > 0:
+            segments.append((float(a), float(b), float(rate)))
+    return segments
+
+
+class _CapacityScript(StaticGeometry):
+    def __init__(self, visible, changes=()):
+        super().__init__(1, visible=visible, slant_km=600.0,
+                         gsl_changes=changes)
+        self.range_calls = 0
+
+    def slant_range_km(self, sat_id, lat, lon, t):
+        self.range_calls += 1
+        return super().slant_range_km(sat_id, lat, lon, t)
+
+    def next_slant_range_under(self, sat_id, lat, lon, threshold, t, limit):
+        return None
+
+
+def _mcs_capacity_kernel(geo):
+    cfg = make_cfg({
+        "scenario": {"num_satellites": geo.num_satellites,
+                     "num_planes": getattr(geo, "num_planes", 1),
+                     "duration_s": 1.0},
+        "links": {"rate_model": "mcs"},
+    })
+    return kernel.Kernel(cfg, [], geometry=geo)
+
+
+def test_mcs_capacity_skips_threshold_work_for_certified_invisible_window(
+        monkeypatch):
+    geo = _CapacityScript(lambda *_: False)
+    k = _mcs_capacity_kernel(geo)
+    threshold_calls = []
+    original = link_budget.mcs_rate_threshold_ranges_km
+
+    def counted(rf, table):
+        threshold_calls.append((rf, table))
+        return original(rf, table)
+
+    monkeypatch.setattr(link_budget, "mcs_rate_threshold_ranges_km", counted)
+    reference = _pre_optimization_capacity_segments(k, 0, 0.0, 1.0, 0, 0)
+    assert reference == []
+    assert threshold_calls
+    threshold_calls.clear()
+    geo.range_calls = 0
+
+    actual = list(k._metric_capacity_segments(
+        "uplink", 0, 0.0, 1.0, lat=0, lon=0))
+
+    assert actual == reference
+    assert threshold_calls == []
+    assert geo.range_calls == 0
+
+
+def test_mcs_capacity_certified_constellation_invisible_window_skips_thresholds(
+        monkeypatch):
+    geo = model.Constellation(4, 2, 550.0, 53.0, min_elevation_deg=25.0)
+    lat, lon, _ = geo.subpoint(0, 0.0)
+    lon = ((lon + 180.0 + 180.0) % 360.0) - 180.0
+    assert not geo.gsl_available(0, lat, lon, 0.0)
+    assert not geo.gsl_available(0, lat, lon, 0.5)
+    assert not geo.gsl_available(0, lat, lon, 1.0)
+    k = _mcs_capacity_kernel(geo)
+    threshold_calls = []
+    original = link_budget.mcs_rate_threshold_ranges_km
+
+    def counted(rf, table):
+        threshold_calls.append((rf, table))
+        return original(rf, table)
+
+    monkeypatch.setattr(link_budget, "mcs_rate_threshold_ranges_km", counted)
+    reference = _pre_optimization_capacity_segments(k, 0, 0.0, 1.0,
+                                                     lat, lon)
+    assert reference == []
+    assert threshold_calls
+    threshold_calls.clear()
+
+    actual = list(k._metric_capacity_segments(
+        "uplink", 0, 0.0, 1.0, lat=lat, lon=lon))
+
+    assert actual == reference
+    assert threshold_calls == []
+
+
+def test_capacity_recorder_prefilter_skips_only_proven_gsl_pairs(monkeypatch):
+    """Whole-window elevation bound skips invisible pairs before root search."""
+    geo = model.Constellation(4, 2, 550.0, 53.0, min_elevation_deg=25.0)
+    k = _mcs_capacity_kernel(geo)
+    # This latitude is outside the full supported orbit ground track; the
+    # short interval is therefore safely below the certified visibility bound.
+    k._metric_endpoint_specs = {"far-south": (-80.0, 0.0)}
+    calls = []
+    original = model.MemoizedGeometry.next_gsl_change
+    prefilter = kernel._certified_gsl_invisible_pairs
+
+    def counted(self, *args, **kwargs):
+        calls.append(args)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(model.MemoizedGeometry, "next_gsl_change", counted)
+    monkeypatch.setattr(kernel, "_certified_gsl_invisible_pairs",
+                        lambda *_args: None)
+    k._record_available_capacity_sample(0.0, 1.0, 0.5)
+    baseline_windows = list(k.link_available_windows)
+    baseline_calls = len(calls)
+    assert baseline_calls == 2 * geo.num_satellites
+    assert not [w for w in baseline_windows if w["stage"] in ("uplink", "downlink")]
+
+    # Re-run with the approved conservative prefilter enabled. A proven
+    # invisible endpoint/satellite pair must avoid both stage root searches.
+    k.link_available_windows.clear()
+    calls.clear()
+    monkeypatch.setattr(kernel, "_certified_gsl_invisible_pairs", prefilter)
+    k._record_available_capacity_sample(0.0, 1.0, 0.5)
+    assert k.link_available_windows == baseline_windows
+    assert calls == []
+
+
+def test_capacity_visibility_prefilter_keeps_possible_rising_link(monkeypatch):
+    """A potentially visible interval is never pruned by the start bound."""
+    geo = model.Constellation(4, 2, 550.0, 53.0, min_elevation_deg=25.0)
+    # This fixed fixture rises through the mask during [0,120]: elevation is
+    # 20.312... degrees at t=0 and 37.128... at t=120.
+    sat, lat, lon = 1, -10.0, -180.0
+    assert geo.elevation_deg(sat, lat, lon, 0.0) < geo.min_elevation_deg
+    assert geo.elevation_deg(sat, lat, lon, 120.0) > geo.min_elevation_deg
+    k = _mcs_capacity_kernel(geo)
+    k._metric_endpoint_specs = {"near-pass": (lat, lon)}
+    reference = _pre_optimization_capacity_segments(k, sat, 0.0, 120.0,
+                                                     lat, lon)
+    actual = list(k._metric_capacity_segments(
+        "uplink", sat, 0.0, 120.0, lat=lat, lon=lon))
+    assert actual == reference
+    assert actual and actual[0][0] > 0.0
+
+    prefilter = kernel._certified_gsl_invisible_pairs
+    monkeypatch.setattr(kernel, "_certified_gsl_invisible_pairs",
+                        lambda *_args: None)
+    k._record_available_capacity_sample(0.0, 120.0, 60.0)
+    baseline_windows = list(k.link_available_windows)
+    k.link_available_windows.clear()
+    monkeypatch.setattr(kernel, "_certified_gsl_invisible_pairs", prefilter)
+    k._record_available_capacity_sample(0.0, 120.0, 60.0)
+    assert k.link_available_windows == baseline_windows
+    assert any(w["link_id"] == "gsl:uplink:1:near-pass"
+               and w["start"] > 0.0
+               for w in k.link_available_windows)
+
+
+def test_gsl_visibility_prefilter_falls_back_after_geometry_mutation():
+    geo = model.Constellation(4, 2, 550.0, 53.0, min_elevation_deg=25.0)
+    k = _mcs_capacity_kernel(geo)
+    specs = {"far-south": (-80.0, 0.0)}
+    assert kernel._certified_gsl_invisible_pairs(
+        k.geometry, specs, 0.0, 1.0)
+    geo.period_s *= 2
+    assert kernel._certified_gsl_invisible_pairs(
+        k.geometry, specs, 0.0, 1.0) is None
+
+
+@pytest.mark.parametrize("visible, changes, expected_bounds", [
+    (lambda *_: True, (), [(0.0, 1.0)]),
+    (lambda _s, _lat, _lon, t: 0.25 <= t < 0.75,
+     (0.25, 0.75), [(0.25, 0.75)]),
+])
+def test_mcs_capacity_keeps_visible_idle_and_visibility_flip_segments(
+        visible, changes, expected_bounds):
+    geo = _CapacityScript(visible, changes)
+    k = _mcs_capacity_kernel(geo)
+    reference = _pre_optimization_capacity_segments(k, 0, 0.0, 1.0, 0, 0)
+
+    actual = list(k._metric_capacity_segments(
+        "uplink", 0, 0.0, 1.0, lat=0, lon=0))
+
+    assert [(a, b) for a, b, _ in actual] == expected_bounds
+    assert actual == reference
+    if not changes:
+        assert actual[0][2] > 0.0
 
 
 def test_capacity_metric_includes_retired_isl_generation():

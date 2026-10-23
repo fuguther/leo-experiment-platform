@@ -43,14 +43,22 @@ from __future__ import annotations
 
 import math
 import hashlib
+import json
+import os
+import time
 from collections import deque
+from pathlib import Path
 
 import numpy as np
 import simpy
 
 from . import (control, fates, grid as gridmod, learning as _learning, metrics,
                model, q0, link_budget)
+from . import deadline_objective as _deadline_objective
+from . import async_routing as _async
+from . import inference as _inference
 from . import outage, rng as rngmod, routing
+from . import time_alignment as _ta
 from . import trace as tracemod
 
 LearningUnavailable = _learning.LearningUnavailable
@@ -60,6 +68,103 @@ class KernelError(RuntimeError):
     pass
 
 
+def _certified_gsl_invisible_pairs(geometry, endpoint_specs, start: float,
+                                  end: float):
+    """Return GSL pairs proven invisible for all of [start,end], else None.
+
+    The only supported fast path is the unmodified MemoizedGeometry wrapping
+    the native Constellation. Elevation can rise no faster than the certified
+    2 deg/s bound over the supported 300--2000 km domain. Thus a start value
+    whose upper bound remains below the mask cannot become visible in-window.
+    The epsilon is one-sided (it only makes pruning harder); uncertain inputs
+    fall back to the original per-link certified path.
+    """
+    try:
+        start, end = float(start), float(end)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(start) or not math.isfinite(end):
+        return None
+    duration = end - start
+    if duration <= 0:
+        return set()
+    if type(geometry) is not model.MemoizedGeometry:
+        return None
+    inner = getattr(geometry, "_inner", None)
+    if type(inner) is not model.Constellation:
+        return None
+    method_names = ("subpoint", "ecef", "positions", "elevation_deg",
+                    "ground_visible", "gsl_available", "next_gsl_change")
+    if any(name in vars(inner) or name in vars(geometry)
+           for name in method_names):
+        return None
+    try:
+        altitude = float(inner.altitude_km)
+        min_elevation = float(inner.min_elevation_deg)
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return None
+    if (not math.isfinite(altitude)
+            or not 300.0 <= altitude <= 2000.0
+            or model.ELEV_RATE_DEG_S != 2.0
+            or not math.isfinite(min_elevation)
+            or model.EARTH_RADIUS_KM != 6371.0
+            or model.EARTH_ROT_RATE_RAD_S != 7.2921159e-5):
+        return None
+    # Constellation's fields are public and mutable. Only trust the bound if
+    # the motion parameters still match its constructor relationships.
+    try:
+        n, planes = int(inner.num_satellites), int(inner.num_planes)
+        expected_r = model.EARTH_RADIUS_KM + altitude
+        expected_period = 2 * math.pi * math.sqrt(
+            expected_r ** 3 / 398600.4418)
+        if (n <= 0 or planes <= 0 or n % planes != 0
+                or int(inner.per_plane) != n // planes
+                or int(geometry.num_satellites) != n
+                or float(inner.r) != expected_r
+                or float(inner.period_s) != expected_period
+                or not math.isfinite(float(inner.geometry_epoch_s))):
+            return None
+    except (AttributeError, ArithmeticError, TypeError, ValueError, OverflowError):
+        return None
+    try:
+        endpoints = list(endpoint_specs.items())
+        if not endpoints:
+            return set()
+        positions = np.asarray(geometry.positions(float(start)), dtype=float)
+        if positions.shape != (int(inner.num_satellites), 3):
+            return None
+        if not np.isfinite(positions).all():
+            return None
+        coords = np.asarray([spec for _, spec in endpoints], dtype=float)
+        if coords.shape != (len(endpoints), 2) or not np.isfinite(coords).all():
+            return None
+        lat = np.radians(coords[:, 0])
+        lon = np.radians(coords[:, 1])
+        radius = model.EARTH_RADIUS_KM
+        ground = radius * np.column_stack((np.cos(lat) * np.cos(lon),
+                                           np.cos(lat) * np.sin(lon),
+                                           np.sin(lat)))
+        delta = positions[np.newaxis, :, :] - ground[:, np.newaxis, :]
+        ranges = np.linalg.norm(delta, axis=2)
+        up = ground / radius
+        numerator = np.sum(delta * up[:, np.newaxis, :], axis=2)
+        cos_z = np.divide(numerator, ranges, out=np.zeros_like(ranges),
+                          where=ranges != 0.0)
+        elevation = np.degrees(np.arcsin(np.clip(cos_z, -1.0, 1.0)))
+        elevation = np.where(ranges == 0.0, 90.0, elevation)
+        if not np.isfinite(elevation).all():
+            return None
+        upper = elevation + model.ELEV_RATE_DEG_S * duration + 1e-6
+        return {
+            (cell, sat)
+            for endpoint_i, (cell, _spec) in enumerate(endpoints)
+            for sat in range(int(inner.num_satellites))
+            if upper[endpoint_i, sat] < min_elevation
+        }
+    except (ArithmeticError, TypeError, ValueError, OverflowError):
+        return None
+
+
 class CapExceeded(KernelError):
     """A configured bound (events/entities/packets) was exceeded. Fail closed."""
 
@@ -67,11 +172,13 @@ class CapExceeded(KernelError):
 class DataPacket:
     __slots__ = ("pid", "src", "dst", "bits", "deadline", "emitted_at", "path",
                  "assigned_sat", "learning_state", "learning_action",
-                 "learning_reward", "isl_enqueued_at", "holding_until",
+                 "learning_reward", "learning_episode_closed",
+                 "research_deadline_at", "isl_enqueued_at", "holding_until",
                  "metric_queue_id", "metric_prop_id", "metric_ingress_at",
                  "decision_id")
 
-    def __init__(self, pid, src, dst, bits, deadline, emitted_at):
+    def __init__(self, pid, src, dst, bits, deadline, emitted_at,
+                 research_deadline_at=None):
         self.pid = pid
         self.src = src
         self.dst = dst
@@ -83,6 +190,8 @@ class DataPacket:
         self.learning_state = None
         self.learning_action = None
         self.learning_reward = None
+        self.learning_episode_closed = False
+        self.research_deadline_at = research_deadline_at
         # enqueue time on the current ISL egress queue; the realized queue
         # wait (service start minus this) feeds the M1 queue reward
         self.isl_enqueued_at = None
@@ -220,6 +329,12 @@ class SatelliteHoldingQueue:
         return expired
 
 
+CONTROL_AD_WIRE_SCHEMA_V2 = "leo-control-ad-wire/v2"
+CONTROL_AD_ISL_RECORD_BITS_V2 = 3 * 64
+CONTROL_AD_GSL_RECORD_BITS_V2 = 3 * 64 + 8
+CONTROL_AD_PROCESSING_BITS_V2 = 416
+
+
 class ControlPacket:
     """A real control-plane packet (the task contract: origin, sequence,
     generated_at, received_at, ttl, remaining_hops, payload_bits,
@@ -233,10 +348,11 @@ class ControlPacket:
     """
 
     __slots__ = ("iid", "origin", "seq", "generated_at", "_received_at",
-                 "ttl_s", "remaining_hops", "payload_bits", "payload")
+                 "ttl_s", "remaining_hops", "payload_bits", "payload",
+                 "wire_cost")
 
     def __init__(self, iid, origin, seq, generated_at, ttl_s, remaining_hops,
-                 bits, payload):
+                 bits, payload, wire_cost=None):
         if not isinstance(generated_at, (int, float)) \
                 or isinstance(generated_at, bool) \
                 or not math.isfinite(generated_at) or generated_at < 0:
@@ -258,6 +374,7 @@ class ControlPacket:
         self.remaining_hops = remaining_hops
         self.payload_bits = bits
         self.payload = payload
+        self.wire_cost = (None if wire_cost is None else dict(wire_cost))
 
     @property
     def bits(self) -> int:
@@ -573,12 +690,25 @@ class DownlinkServer(_DRRMixin):
         return self.queued_bits + bits <= self.k.cfg_access["downlink_queue_bits"]
 
     def put(self, pkt: DataPacket) -> None:
+        # T1-WORKLOAD-AHEAD, downlink half.  Only the queued bits are measured:
+        # _in_service_remaining extrapolates at the ISL rate and would be wrong
+        # for a GSL egress, so no in-service number is produced rather than a
+        # wrong one (the same rule the MCS branch follows).
+        backlog = {
+            "resource": f"gsl:downlink:{self.sat}:{pkt.dst}",
+            "resource_kind": "downlink_egress",
+            "queued_bits_before": int(self.queued_bits),
+            "in_service_remaining_bits_before": None,
+            "in_service_remaining_method": "not_measured_for_downlink_egress",
+            "measured": "before_insertion",
+            "excludes": "the enqueueing packet",
+        }
         self.queues.setdefault(pkt.dst, deque()).append(pkt)
         self.queued_bits += pkt.bits
         self.area.add(pkt.bits, self.k.env.now)
         self.k._metric_queue_enter(
             pkt, "downlink", f"gsl:downlink:{self.sat}:{pkt.dst}",
-            decision_id=pkt.decision_id)
+            decision_id=pkt.decision_id, backlog_before=backlog)
         self.k._note_busy(pkt.dst)
         self.k._poke(self.wake)
 
@@ -807,18 +937,63 @@ class ISLLink:
         return k.geometry.isl_available(self.sat, self.peer, k.env.now)
 
     def put_data(self, pkt: DataPacket) -> None:
+        # T1-WORKLOAD-AHEAD: measure the resource BEFORE this packet joins it,
+        # so the reported work ahead provably excludes the target packet
+        # itself.  Measuring after the insert and subtracting would rely on the
+        # packet's bits being recoverable; measuring before cannot get it wrong.
+        bits, remaining, _phase, _is_ctrl, method = \
+            self.k._in_service_remaining(self, self.k.env.now)
+        backlog = {
+            "resource": f"isl:{self.sat}:{self.peer}",
+            "resource_kind": "isl_egress",
+            "queued_bits_before": int(self.data_bits + self.ctrl_bits),
+            "queued_data_bits_before": int(self.data_bits),
+            "queued_ctrl_bits_before": int(self.ctrl_bits),
+            "in_service_bits_before": int(bits),
+            "in_service_remaining_bits_before": (None if remaining is None
+                                                 else float(remaining)),
+            "in_service_remaining_method": method,
+            "measured": "before_insertion",
+            "excludes": "the enqueueing packet",
+        }
         pkt.isl_enqueued_at = self.k.env.now
         self.data_q.append(pkt)
         self.data_bits += pkt.bits
         self.data_area.add(pkt.bits, self.k.env.now)
         self.k._metric_queue_enter(pkt, "isl", f"isl:{self.sat}:{self.peer}",
-                                   decision_id=pkt.decision_id)
+                                   decision_id=pkt.decision_id,
+                                   backlog_before=backlog)
+        self.k._record_isl_queue_state(self, "enqueue_data", pid=pkt.pid)
         self.k._poke(self.wake)
 
     def put_ctrl(self, pkt: ControlPacket) -> None:
+        # S1-B/C: control traffic must be visible on the SAME named resource
+        # as data.  Without this row a reconstruction that only sees data
+        # enqueues reports a control backlog frozen at the last data enqueue,
+        # so a control packet arriving after it is invisible.
+        if self.k.timeline_sink is not None:
+            bits, remaining, _phase, _is_ctrl, method = \
+                self.k._in_service_remaining(self, self.k.env.now)
+            self.k._timeline_ctrl(
+                "queue_enter", pkt, f"isl:{self.sat}:{self.peer}",
+                queue="isl_egress", priority="control",
+                backlog_before={
+                    "resource": f"isl:{self.sat}:{self.peer}",
+                    "resource_kind": "isl_egress",
+                    "queued_bits_before": int(self.data_bits + self.ctrl_bits),
+                    "queued_data_bits_before": int(self.data_bits),
+                    "queued_ctrl_bits_before": int(self.ctrl_bits),
+                    "in_service_remaining_bits_before": (
+                        None if remaining is None else float(remaining)),
+                    "in_service_remaining_method": method,
+                    "measured": "before_insertion",
+                    "excludes": "the enqueueing packet",
+                })
         self.ctrl_q.append(pkt)
         self.ctrl_bits += pkt.bits
         self.ctrl_area.add(pkt.bits, self.k.env.now)
+        self.k._record_isl_queue_state(self, "enqueue_control",
+                                       control_iid=pkt.iid)
         self.k._poke(self.wake)
 
     def _is_drained(self) -> bool:
@@ -961,6 +1136,10 @@ class ISLLink:
             self._svc = (k.env.now, occ)
             self._svc_phase = "waiting_for_link"
             self._tx_started_at = None
+            k._record_isl_queue_state(
+                self, "dequeue_for_service",
+                pid=(None if is_ctrl else pkt.pid),
+                control_iid=(pkt.iid if is_ctrl else None))
             outcome = yield k.env.process(
                 k._transmit(dur, pkt, ("isl", self.sat, self.peer, self.ge),
                             occ, owner=self, rate_fn=rate_fn,
@@ -969,6 +1148,11 @@ class ISLLink:
             self._svc_phase = None
             self._tx_started_at = None
             self.current = None
+            k._record_isl_queue_state(
+                self, "service_exit",
+                pid=(None if is_ctrl else pkt.pid),
+                control_iid=(pkt.iid if is_ctrl else None),
+                outcome=outcome)
             if outcome == "stalled":
                 if is_ctrl:
                     self.ctrl_q.appendleft(pkt)
@@ -980,6 +1164,8 @@ class ISLLink:
                     self.data_area.add(pkt.bits, k.env.now)
                     self.k._metric_queue_enter(
                         pkt, "isl", f"isl:{self.sat}:{self.peer}")
+                    self.k._record_isl_queue_state(
+                        self, "requeue_stalled_data", pid=pkt.pid)
                 if k.env.now >= k.horizon:
                     break
                 yield self.wake
@@ -1010,8 +1196,20 @@ class ISLLink:
         kept_ctrl = deque()
         for pkt in self.ctrl_q:
             if now >= pkt.generated_at + pkt.ttl_s:
+                # B1: leaving the queue without being served must be
+                # recorded, or a reconstruction keeps counting this
+                # packet as control backlog forever (the kernel own
+                # ctrl_bits drops to 0 while the rebuild stays at 100).
+                # It is a DROP event, never a fake service_finish.
+                if self.k.timeline_sink is not None:
+                    self.k._timeline_ctrl(
+                        "ctrl_drop", pkt, f"isl:{self.sat}:{self.peer}",
+                        queue="isl_egress", priority="control",
+                        reason="CONTROL_EXPIRED", left_queue="expired")
                 self.ctrl_bits -= pkt.bits
                 self.ctrl_area.remove(pkt.bits, now)
+                self.k._record_isl_queue_state(
+                    self, "drop_expired_control", control_iid=pkt.iid)
                 self.k._fail(pkt, "CONTROL_EXPIRED")
             else:
                 kept_ctrl.append(pkt)
@@ -1021,6 +1219,8 @@ class ISLLink:
             if pkt.deadline is not None and now >= pkt.deadline:
                 self.data_bits -= pkt.bits
                 self.data_area.remove(pkt.bits, now)
+                self.k._record_isl_queue_state(
+                    self, "drop_expired_data", pid=pkt.pid)
                 self.k._fail(pkt, "DATA_DEADLINE_EXPIRED")
             else:
                 kept_data.append(pkt)
@@ -1030,7 +1230,9 @@ class ISLLink:
 class Kernel:
     def __init__(self, resolved: dict, rows: list[dict], geometry=None,
                  learning_out_dir=None, decision_sink=None, timeline_sink=None,
-                 forced_actions=None):
+                 forced_actions=None, control_audit=False,
+                 inference_policy=None, target_probe_path=None,
+                 target_probe_max=None, target_probe_stride=None):
         cfg = resolved["config"]
         self.resolved = resolved
         self.cfg_sc = cfg["scenario"]
@@ -1041,13 +1243,144 @@ class Kernel:
         self.cfg_rt = cfg["routing"]
         self.cfg_learning = cfg["learning"]
         self.cfg_ex = cfg["execution"]
+        # T1-COMPLETE P5: state-time aligned candidate ordering.  Both default
+        # to disabled/off, so a config that does not opt in keeps the exact
+        # historical routing path.
+        self.cfg_ta = cfg["time_alignment"]
+        self.cfg_ar = cfg["async_routing"]
+        self.cfg_dm = cfg["demand"]
+        # CONTROL-INIT: one optional extra advertisement burst per satellite,
+        # emitted at the declared instant and NOT charged to the periodic
+        # schedule.  It is the legal "initial synchronisation" of the night
+        # experiment: the reports are the real control packets, they travel the
+        # real ISL queues and are recorded with their real wire cost, so any
+        # difference against the plain periodic schedule is attributable to the
+        # timing of the first report rather than to a cost subsidy.
+        self._initial_sync_burst_s = self.cfg_cp.get("initial_sync_burst_s")
+        # WARMUP: a declared, deterministic traffic prefix.  Associations are
+        # demand-driven, so a serving relationship only exists once an endpoint
+        # has asked for it; a warm-up is therefore the only legal way to have
+        # every arm start the measured window with established associations and
+        # a populated cache.  The warm-up rows are the SAME rows for every arm
+        # (the trace is exogenous), so the prefix is identical by construction.
+        self._warmup_until_s = float(self.cfg_dm.get("warmup_until_s") or 0.0)
+        # Minimum source-measurement age of the same-resource workload the
+        # predictor is allowed to see.  None = the historical behaviour (any
+        # received sample).  A finite value is the controlled observation-age
+        # intervention: it withholds fresher samples WITHOUT modifying them.
+        raw_age = self.cfg_ta.get("min_observation_age_s")
+        self._min_observation_age_s = (None if raw_age in (None, "")
+                                       else float(raw_age))
+        # EVENT-ADVERT: the deployable alternative to the periodic schedule.
+        # A satellite emits an extra report when ITS OWN serving set changes
+        # (an association becomes active, or a link is released).  The trigger
+        # uses only facts the source node knows about itself, the report is a
+        # normal control packet on the normal links, and the rate limiter is
+        # fixed in configuration, so the extra cost is real and countable.
+        self._event_advert_min_interval_s = float(
+            self.cfg_cp.get("event_advert_min_interval_s") or 0.0)
+        self._event_advert_enabled = bool(
+            self.cfg_cp.get("event_advert_enabled", False))
+        self._last_event_advert_at = {}
+        self._event_advert_pending = set()
+        self._event_adverts_emitted = 0
+        # STAGED-POLICY: run the configured policy until this instant, then
+        # switch to the declared one.  Both arms of a common-prefix contrast
+        # share the identical prefix bit for bit, which is what makes the
+        # post-switch difference free of inherited queue history.
+        staged = self.cfg_rt.get("staged_policy")
+        self._staged_policy = str(staged) if staged else None
+        self._staged_policy_at = float(
+            self.cfg_rt.get("staged_policy_at_s") or 0.0)
+        if self._staged_policy is not None \
+                and self._staged_policy not in ("known_serving", "oracle"):
+            raise KernelError(
+                "routing.staged_policy must be known_serving or oracle, "
+                f"got {self._staged_policy!r}")
+        # T1-R6/S6: an INFERENCE-ONLY policy may replace the action choice on a
+        # frozen snapshot (branch tooling).  A training learner is refused here
+        # and the frozen+learner combination stays refused below; this hook is
+        # deliberately not an unlock of the learner boundary.
+        self.inference_policy = inference_policy
+        if inference_policy is not None:
+            _inference.assert_inference_only(inference_policy)
+            if not self.cfg_ta["enabled"]:
+                # without time alignment there is no frozen snapshot for the
+                # policy to act on, so it would be silently ignored (S6
+                # review, finding 4): refuse the configuration instead
+                raise KernelError(
+                    "an inference policy was supplied but "
+                    "time_alignment.enabled is false, so there is no frozen "
+                    "snapshot for it to act on; supplying a policy without "
+                    "enabling time alignment would silently ignore it")
+            if str(cfg["learning"]["algorithm"]) != "none":
+                raise KernelError(
+                    "an inference-only policy may not be combined with a "
+                    "training learner (learning.algorithm="
+                    f"{cfg['learning']['algorithm']!r})")
+        # T1-R9: ONE shared per-satellite query service.  Every execution mode
+        # reads its answer through it, so "just a table lookup" is not silently
+        # free; a query_delay_s of 0 keeps the historical instantaneous path.
+        self._query_delay_s = float(self.cfg_ta["query_delay_s"])
+        # the pool needs num_sats, which is only known once the geometry is
+        # built; it is created there
+        self._query_pool = None
+        self._query_charge = {"requests": 0, "wait_s": 0.0, "service_s": 0.0,
+                              "servers": 0}
+        self._query_totals = {"requests": 0, "total_wait_s": 0.0,
+                              "total_service_s": 0.0, "max_wait_s": 0.0}
+        # T1-COMPLETE P7/P8: async execution modes.  The schedule manager owns
+        # the scope state machine; the kernel owns simulated time and the SHARED
+        # compute pool, so an async update is never free and never gets its own
+        # private pool.
+        self.async_mode = str(self.cfg_ta["execution_mode"]) in (
+            "async_point", "async_window")
+        self.async_bins = (1 if self.cfg_ta["execution_mode"] == "async_point"
+                           else int(self.cfg_ar["window_bins"]))
+        self.async_manager = None
+        self._async_scopes: set = set()
+        # T1-P8 execution modes that reuse a result instead of recomputing:
+        # per_flow keeps one ranking per (sat, src, dst, class) with a TTL;
+        # precomputed keeps a topology-derived next-hop table built once.
+        self.exec_mode = str(self.cfg_ta["execution_mode"])
+        self._flow_cache: dict = {}
+        self._precomputed_dirs: dict = {}
+        self._dist_to: dict = {}
+        self._precompute_cost = {"builds": 0, "targets": 0, "installs": 0,
+                                 "queries": 0, "bfs_runs": 0}
+        if self.async_mode:
+            self.async_manager = _async.AsyncScheduleManager(
+                install_delay_s=float(self.cfg_ar["install_delay_s"]),
+                valid_window_s=float(self.cfg_ar["valid_window_s"]),
+                window_bins=self.async_bins,
+                max_pending_per_scope=int(
+                    self.cfg_ar["max_pending_per_scope"]),
+                service_s=float(self.cfg_ex["compute_delay_s"]),
+                listener=self._async_event)
         self.horizon = float(self.cfg_sc["duration_s"])
         self.time_step = float(self.cfg_sc["time_step_s"])
         self.env = simpy.Environment()
         self.learning_gate(cfg)
         self.learning_out_dir = learning_out_dir
         algorithm = cfg["learning"]["algorithm"]
-        if algorithm == "ddqn":
+        # A1: an INFERENCE-ONLY read of a real checkpoint occupies the SAME
+        # decision call site as a training learner, but has no replay buffer and
+        # no update path -- which is exactly why the frozen observation mode,
+        # refused together with a learner below, is allowed with it.
+        self.fixed_policy = None
+        self.policy_source = "deterministic_scorer"
+        if algorithm != "none" and self.cfg_learning.get("fixed_inference"):
+            self.fixed_policy = _inference.load_fixed_adapter_from_checkpoint(
+                self.cfg_learning["checkpoint_path"],
+                self.cfg_learning["checkpoint_sha256"],
+                self._fixed_policy_metadata_path(),
+                self.cfg_learning["checkpoint_metadata_sha256"],
+                expected_contract=self.cfg_rt["contract"],
+                name="checkpoint-ddqn")
+            self.learner = None
+            self.policy_source = "fixed_inference_checkpoint"
+            self.mech_fixed_policy_calls = 0
+        elif algorithm == "ddqn":
             self.learner = _learning.TensorflowDDQN(
                 self.cfg_rt["contract"], cfg["learning"],
                 cfg["learning"]["seed"]
@@ -1061,6 +1394,8 @@ class Kernel:
                 else self.cfg_sc["seed"])
         else:
             self.learner = None
+        if self.learner is not None:
+            self.policy_source = "training_learner"
 
         if geometry is None:
             geometry = model.Constellation(
@@ -1084,14 +1419,33 @@ class Kernel:
         # times itself.
         self.geometry = model.MemoizedGeometry(geometry)
         self.num_sats = geometry.num_satellites
+        if self.cfg_ta["enabled"] and self._query_delay_s > 0:
+            self._query_pool = [simpy.Resource(self.env, capacity=1)
+                                for _ in range(self.num_sats)]
+            self._query_charge["servers"] = 1
         # optional output-only per-hop decision snapshot sink (a list); when
         # None the recording code paths are never entered
         self.decision_sink = decision_sink
+        # One most-recent converted advertisement history per receiver and
+        # origin. This is output-only and never participates in routing.
+        self._recorded_advertisement_history_cache = {}
         # optional output-only decision lifecycle stream (a list of dicts).
         # Deliberately a SEPARATE sink: the per-hop decision rows are asserted
         # by shape and count in existing tests, so lifecycle milestones must
         # never be appended to decision_sink.  When None no row is built.
         self.timeline_sink = timeline_sink
+        # SAME-RUN PREDICTION -> TRUTH PROBE (audit only, default off).
+        # When a path is given, one probe object samples the live directed-ISL
+        # resource at each decision's evaluation target instant.  It is created
+        # after the environment exists and is started from run(); nothing in
+        # routing, learning, access, metrics or the fate ledger reads it.
+        self.target_probe = None
+        if target_probe_path is not None:
+            from . import target_probe as _target_probe
+            self.target_probe = _target_probe.TargetProbe(
+                self, target_probe_path, max_samples=target_probe_max,
+                stride=(target_probe_stride or 1),
+                note="same-run probe; truth read at the decision's eval target")
         # per-decision identity; allocated only when a sink can record it
         self._decision_seq = 0
         # T1-COUNTERFACTUAL-REPLAY: strictly opt-in override of the action
@@ -1099,10 +1453,39 @@ class Kernel:
         # default, so normal runs never consult it.
         self.forced_actions = dict(forced_actions or {})
         self._forced_applied: set[int] = set()
+        # T1-CTRL-AUDIT: opt-in control-plane lifecycle audit.  Default off so
+        # a run that does not ask for it writes exactly the rows it wrote
+        # before; the audit exists to ATTRIBUTE a missing destination
+        # advertisement, not to change any decision.
+        self.control_audit = bool(control_audit)
         # T1-COMPUTE-DELAY: simulated seconds one routing decision takes to
         # compute.  0 (the default) keeps every historical run exactly as it
         # was: _decide stays a plain synchronous call with no yield at all.
         self.compute_delay_s = float(self.cfg_ex["compute_delay_s"])
+        # T1-COMPUTE-QUEUE: concurrent decisions one satellite can compute.
+        # 0 = unbounded, i.e. the historical behaviour where compute_delay_s is
+        # the WHOLE cost of a decision and no decision ever waits.  A positive
+        # value turns each satellite into a deterministic N-server pool, so the
+        # cost of a decision splits into two separately recorded parts:
+        # the WAIT for a free server (resource contention) and the SERVICE
+        # (compute_delay_s).  Keeping them apart is the point: a single summed
+        # number could not tell "the processor is oversubscribed" from "the
+        # computation is slow", and those two have different remedies.
+        self.compute_servers = int(self.cfg_ex["compute_servers_per_satellite"])
+        # T1-P2: the pool is a per-satellite FIFO N-server resource, shared by
+        # EVERY deferred decision (per-packet, async, per-flow cache miss).  No
+        # path may create its own free pool.  0 = unbounded (historical).
+        self._compute_pool = [
+            simpy.Resource(self.env, capacity=self.compute_servers)
+            for _ in range(self.num_sats)] if self.compute_servers > 0 else []
+        # stable id for the compute_request/start/finish event triple; assigned
+        # BEFORE a decision_id exists, so queueing cost is attributable even
+        # for requests that never become a committed decision.
+        self._compute_job_seq = 0
+        # Request-local service lengths let an online pool snapshot account
+        # for queued jobs without reading their eventual measured wait.
+        self._compute_service_by_request = {}
+        self._query_service_by_request = {}
         # T1-COMPUTE-DELAY observation semantics (protocol doc 4.1/4.4):
         #   "refresh" (default) -- the deferred decision re-reads env.now and
         #       the live state when it lands.  That is a *delayed re-observation*
@@ -1113,10 +1496,26 @@ class Kernel:
         #       whether the inferred action is still LEGAL.  A rejected action
         #       is recorded and the packet is parked; it is never silently
         #       replaced by a freshly solved optimum.
-        # The first version of "frozen" is deliberately restricted: a learning
-        # arm needs its own observation contract, and the counterfactual
-        # harness forces actions at the branch point, which frozen moves to the
-        # observation instant.
+        # "frozen" is still restricted on one axis: a learning arm needs its
+        # own observation contract and has none yet.
+        #
+        # T1-FROZEN-BRANCH.  "frozen" and forced_actions USED to be refused
+        # together, on the argument that the counterfactual harness forces at
+        # the branch point and frozen moves the branch point to the observation
+        # instant.  That argument was about the LOCATION of the branch, not
+        # about incompatibility: a frozen branch point is well defined, it is
+        # obs["t_observe"], and the legal set recorded in obs["legal"] is
+        # exactly the set the branch could have picked from.  Forcing an action
+        # that is inside that set is therefore a counterfactual AT the frozen
+        # branch point -- see _forced_action_at_observation.  The alternative
+        # (refusing the pair, then approximating it with a refresh run) is what
+        # this removal eliminates: a refresh run has a DIFFERENT branch point
+        # and cannot be compared against a frozen baseline at all.
+        #
+        # Nothing here changes a run that supplies no forced_actions: the
+        # override is consulted only on the commit half and only for decision
+        # ids the caller named, and decision ids are still allocated in the same
+        # order, so existing frozen runs stay bit-identical.
         self.obs_mode = str(self.cfg_ex["decision_observation_mode"])
         if self.obs_mode not in ("refresh", "frozen"):
             raise KernelError(
@@ -1125,12 +1524,6 @@ class Kernel:
             raise KernelError(
                 "execution.decision_observation_mode=frozen is not supported "
                 "together with a learning arm in the first version")
-        if self.obs_mode == "frozen" and self.forced_actions:
-            raise KernelError(
-                "execution.decision_observation_mode=frozen cannot be combined "
-                "with forced_actions: the counterfactual harness forces at the "
-                "branch point, and frozen moves the branch point to the "
-                "observation instant")
 
         # F2 (node processing / scheduling cost).  A satellite visit costs the
         # node the configured receive/process/schedule time BEFORE the packet
@@ -1210,6 +1603,8 @@ class Kernel:
         self.topo = routing.build_topology(
             self.geometry, self.num_sats, self.cfg_links["isl_dirs"],
             t=0.0 if self.cfg_topo["recompute_interval_s"] is not None else None)
+        self.topology_trace = []
+        self._record_topology_snapshot("initial")
         self._build_routing_structures()
 
         # per-satellite state
@@ -1298,9 +1693,12 @@ class Kernel:
             "control_tx_started": 0,
             "control_tx_completed": 0,
             "control_initialized": bool(self.cfg_cp["enabled"]),
+            "event_adverts_emitted": 0,
+            "serving_changes_seen": 0,
             "ge_initialized": self.ge_enabled,
             "mbb_events": 0,
-            "learning_initialized": self.learner is not None,
+            "learning_initialized": (self.learner is not None
+                                     or self.fixed_policy is not None),
             "learning_decisions": 0,
             "learning_transitions": 0,
             "learning_train_steps": 0,
@@ -1346,6 +1744,15 @@ class Kernel:
             self.env.process(self._topology_ticker())
         for s in range(self.num_sats):
             self.env.process(self._pending_ticker(s))
+        if self.exec_mode == "precomputed":
+            # offline topology table: built once at t=0, before any packet
+            self._precompute_build()
+        if self.async_mode:
+            # periodic trigger (first version): one ticker per satellite; a
+            # scope is only refreshed once it has been queried
+            for s in range(self.num_sats):
+                self.env.process(self._async_ticker(
+                    s, float(self.cfg_ar["update_interval_s"])))
         self.env.process(self._horizon_closer())
 
     def _live_entity_count(self) -> int:
@@ -1391,6 +1798,62 @@ class Kernel:
     def _poke(self, event):
         if not event.triggered:
             event.succeed()
+
+    def _record_topology_snapshot(self, reason: str) -> None:
+        """Record the actual directed peer map at a topology transition."""
+        if self.decision_sink is None and self.timeline_sink is None:
+            return
+        self.topology_trace.append({
+            "at": float(self.env.now),
+            "reason": reason,
+            "num_satellites": self.num_sats,
+            "direction_order": ["N", "E", "S", "W"],
+            "peer_by_satellite": {
+                str(sat): {direction: peer
+                          for direction, peer in sorted(
+                              self.topo.get(sat, {}).items())}
+                for sat in range(self.num_sats)},
+        })
+
+    def _record_isl_queue_state(self, link: ISLLink, event: str, *,
+                                pid=None, control_iid=None, outcome=None):
+        """Exact post-transition queue/in-service state for offline replay."""
+        if self.timeline_sink is None:
+            return
+        current = link.current
+        current_is_control = isinstance(current, ControlPacket)
+        row = {
+            "milestone": "queue_state",
+            "at": float(self.env.now),
+            "event": str(event),
+            "pid": None,
+            "trigger_pid": pid,
+            "control_iid": control_iid,
+            "resource_id": f"isl:{link.sat}:{link.peer}",
+            "resource_kind": "isl_egress",
+            "sat": int(link.sat),
+            "direction": str(link.dir),
+            "peer": int(link.peer),
+            "generation": int(link.gen),
+            "retired": bool(link.retired),
+            "queued_data_bits": int(link.data_bits),
+            "queued_control_bits": int(link.ctrl_bits),
+            "queued_bits": int(link.data_bits + link.ctrl_bits),
+            "queued_data_packets": len(link.data_q),
+            "queued_control_packets": len(link.ctrl_q),
+            "in_service": current is not None,
+            "in_service_kind": ("control" if current_is_control else
+                                "data" if current is not None else None),
+            "in_service_pid": (None if current is None or current_is_control
+                                else int(current.pid)),
+            "in_service_control_iid": (int(current.iid)
+                                        if current_is_control else None),
+            "in_service_bits": (int(current.bits)
+                                if current is not None else 0),
+            "in_service_phase": link._svc_phase,
+            "outcome": outcome,
+        }
+        self.timeline_sink.append(row)
 
     def _link_rate(self, kind: str, t: float, sat: int,
                    peer: int | None = None, ep=None) -> float:
@@ -1529,6 +1992,29 @@ class Kernel:
         self.timeline_sink.append(row)
 
     # ------------------------------------------------------- raw metrics
+    def _timeline_ctrl(self, milestone: str, pkt, link_id, **extra) -> None:
+        """Append one CONTROL-plane milestone to the optional sink.
+
+        S1-B/C: a ControlPacket has no pid (it is not a routing decision),
+        so the row carries the control identity instead and is marked with
+        packet_kind.  Output only: never influences routing, learning,
+        timing or fates.  Callers guard on timeline_sink being present.
+        """
+        row = {
+            "milestone": milestone,
+            "at": float(self.env.now),
+            "pid": None,
+            "decision_id": None,
+            "packet_kind": "control",
+            "link_id": link_id,
+            "origin": pkt.origin,
+            "seq": pkt.seq,
+            "control_generated_at": float(pkt.generated_at),
+            "bits": int(pkt.bits),
+        }
+        row.update(extra)
+        self.timeline_sink.append(row)
+
     def _metric_packet_emitted(self, pkt: DataPacket) -> None:
         self.packet_events.append({
             "kind": "packet_emitted", "pid": pkt.pid,
@@ -1537,7 +2023,8 @@ class Kernel:
 
     def _metric_queue_enter(self, pkt: DataPacket, queue: str,
                             link_id: str,
-                            decision_id: int | None = None) -> None:
+                            decision_id: int | None = None,
+                            backlog_before: dict | None = None) -> None:
         """Record one enqueue into a physical queue.
 
         ``decision_id`` is the decision that CAUSED this enqueue and must be
@@ -1548,6 +2035,13 @@ class Kernel:
         or retirement therefore pass None, the ISL and downlink enqueues a
         commit performs pass the committed id, and the holding enqueue passes
         the id of the holding attempt.
+
+        backlog_before is the state of the CONTENDED RESOURCE measured BEFORE
+        this packet is inserted into it, so the target packet can never count
+        itself as work ahead of itself (T1-WORKLOAD-AHEAD).  It is recorded
+        only where a producer can measure it honestly; an enqueue that passes
+        None is one whose queue is not a forwarding egress (uplink, holding),
+        and the absence is a fact rather than a zero.
         """
         qid = self._metric_queue_seq
         self._metric_queue_seq += 1
@@ -1558,8 +2052,10 @@ class Kernel:
             "link_id": link_id, "queue_id": qid,
         })
         if self.timeline_sink is not None:
+            extra = ({} if backlog_before is None
+                     else {"backlog_before": dict(backlog_before)})
             self._timeline("queue_enter", pkt, decision_id,
-                           queue=queue, link_id=link_id)
+                           queue=queue, link_id=link_id, **extra)
 
     def _metric_link_id(self, link_ref, occ_key: str) -> tuple[str, str]:
         if link_ref[0] == "isl":
@@ -1653,6 +2149,9 @@ class Kernel:
             "kind": "delivered", "pid": pkt.pid,
             "at": float(self.env.now),
         })
+        if self.timeline_sink is not None:
+            self._timeline("packet_fate", pkt, pkt.decision_id,
+                           fate="DELIVERED")
 
     def _build_routing_structures(self):
         self._routing_reverse_adj = routing._reverse_adj(self.topo)
@@ -1776,6 +2275,15 @@ class Kernel:
             raise KernelError("geometry change certification exceeded 1024 roots")
 
         add_roots(next_change)
+        if (self.rate_model == "mcs"
+                and getattr(self.geometry, "certifies_change_times", False)
+                and len(set(boundaries)) == 2
+                and not available((start + end) / 2.0)):
+            # With no certified visibility transition in the interval, an
+            # unavailable midpoint proves that no physical capacity exists
+            # here.  Avoid range/MCS threshold work while retaining the
+            # ordinary path for visible idle links and visibility changes.
+            return
         if self.rate_model == "mcs":
             # Only thresholds that could be reached in this interval need a
             # root search.  RANGE_RATE_KM_S is conservative for supported
@@ -1816,8 +2324,13 @@ class Kernel:
         """
         if end <= start:
             return
+        proven_gsl_invisible = _certified_gsl_invisible_pairs(
+            self.geometry, self._metric_endpoint_specs, start, end)
         for cell, (lat, lon) in sorted(self._metric_endpoint_specs.items()):
             for sat in range(self.num_sats):
+                if (proven_gsl_invisible is not None
+                        and (cell, sat) in proven_gsl_invisible):
+                    continue
                 for stage in ("uplink", "downlink"):
                     for seg_start, seg_end, rate in self._metric_capacity_segments(
                             stage, sat, start, end, lat=lat, lon=lon):
@@ -1959,6 +2472,8 @@ class Kernel:
                         pkt.learning_reward = None
                         self.mech["learning_discarded_at_rematch"] += 1
                     self._hold_packet(s, pkt)
+                    self._record_isl_queue_state(
+                        link, "rematch_to_holding", pid=pkt.pid)
                 link.retired = True
                 # wake a sleeping server so a fully drained link releases
                 # its direction slot immediately instead of dozing forever
@@ -1976,6 +2491,7 @@ class Kernel:
                     self._isl_dyn_created += 1
             self.isls[s] = new_links
         self.topo = new_topo
+        self._record_topology_snapshot("recompute")
         self._build_routing_structures()
         self._state_version += 1
         self.mech["topo_recomputes"] += 1
@@ -2573,6 +3089,12 @@ class Kernel:
                 owner._tx_started_at = t0
                 if rate_fn is not None:
                     owner._service_rate_bps = rate
+                if link_ref[0] == "isl":
+                    self._record_isl_queue_state(
+                        owner, "transmission_start",
+                        pid=(pkt.pid if isinstance(pkt, DataPacket) else None),
+                        control_iid=(pkt.iid
+                                     if isinstance(pkt, ControlPacket) else None))
             if rate_fn is not None:
                 self.mech["mcs_rate_samples"] += 1
                 rate_bps = int(round(rate))
@@ -2599,8 +3121,25 @@ class Kernel:
                         pkt, metric_stage, metric_link_id,
                         metric_window_start, self.env.now,
                         metric_rate_bps, outcome)
+                elif (isinstance(pkt, ControlPacket)
+                      and self.timeline_sink is not None):
+                    _stage, _link_id = self._metric_link_id(link_ref,
+                                                           occ_key)
+                    self._timeline_ctrl("service_finish", pkt,
+                                        _link_id, queue=_stage,
+                                        priority="control",
+                                        outcome=outcome)
             if isinstance(pkt, ControlPacket):
                 self.mech["control_tx_started"] += 1
+                # S1-B/C: the service window of a control packet must be
+                # visible, otherwise "a control packet is in service right
+                # now" is indistinguishable from an idle link.
+                if self.timeline_sink is not None:
+                    _stage, _link_id = self._metric_link_id(link_ref,
+                                                       occ_key)
+                    self._timeline_ctrl("service_start", pkt, _link_id,
+                                        queue=_stage,
+                                        priority="control")
             if (link_ref[0] == "isl" and isinstance(pkt, DataPacket)
                     and pkt.learning_state is not None
                     and pkt.isl_enqueued_at is not None):
@@ -2609,11 +3148,12 @@ class Kernel:
                 # raw queue reward remains available through the diagnostic
                 # helper, while the training objective cannot profit from
                 # extra hops.
-                pkt.learning_reward = _learning.forward_reward(
-                    t0 - pkt.isl_enqueued_at,
-                    self.cfg_learning["reward_w1"],
-                    self.cfg_learning["reward_beta"],
-                    self.cfg_learning["forward_step_penalty"])
+                if self.cfg_learning["reward"] == "queue":
+                    pkt.learning_reward = _learning.forward_reward(
+                        t0 - pkt.isl_enqueued_at,
+                        self.cfg_learning["reward_w1"],
+                        self.cfg_learning["reward_beta"],
+                        self.cfg_learning["forward_step_penalty"])
                 pkt.isl_enqueued_at = None
             fail_t, fail_kind = end, None
             if self.cfg_links["geometry_loss"]:
@@ -2684,10 +3224,21 @@ class Kernel:
             # (that would re-open the A3 preposition/ads/obs leak)
             ep = self._ensure_endpoint(cell)
             self._count_data_packet()
-            pkt = DataPacket(r["packet_id"], r["src_grid_id"], r["dst_grid_id"],
-                             r["bits"], r["deadline_at_s"], self.env.now)
+            research_deadline_at = r.get("research_deadline_at_s")
+            if (research_deadline_at is None
+                    and self.cfg_dm["research_deadline_s"] is not None):
+                research_deadline_at = (
+                    self.env.now + float(self.cfg_dm["research_deadline_s"]))
+            pkt = DataPacket(
+                r["packet_id"], r["src_grid_id"], r["dst_grid_id"],
+                r["bits"], r["deadline_at_s"], self.env.now,
+                research_deadline_at=research_deadline_at)
             self._metric_packet_emitted(pkt)
             self.ledger.register(pkt.pid, pkt.bits)
+            if (self.learner is not None
+                    and self.cfg_learning["reward"] == "deadline_loss_v1"
+                    and pkt.research_deadline_at is not None):
+                self.env.process(self._research_deadline_watch(pkt))
             now = self.env.now
             if pkt.deadline is not None and now > pkt.deadline:
                 self._fail(pkt, "DATA_DEADLINE_EXPIRED")
@@ -2933,26 +3484,68 @@ class Kernel:
             for pkt in waiting:
                 q.remove(pkt, self.env.now)
             for pkt in waiting:
-                if self.compute_delay_s > 0:
+                if self._deferred_enabled():
                     self.env.process(self.decide_deferred(pkt, s))
                 else:
                     self._decide(pkt, s)
 
     def _control_advertiser(self, sat: int):
-        interval = self.cfg_cp["advertise_interval_s"]
+        """Periodic reports at 0, interval, 2*interval, ... plus one optional
+        pre-scheduled initial report.
+
+        The initial report is scheduled INDEPENDENTLY: emitting it must not move
+        the periodic schedule.  The first version did move it (0.05, 4.05, 8.05
+        instead of 0, 4, 8), which made the "initial synchronisation" arm differ
+        from the baseline in its whole control schedule rather than only in
+        having one extra early report.
+        """
+        interval = float(self.cfg_cp["advertise_interval_s"])
+        burst = self._initial_sync_burst_s
+        next_periodic = 0.0
+        next_burst = None if burst is None else max(0.0, float(burst))
         while True:
+            if next_burst is not None and next_burst <= next_periodic + 1e-12:
+                # the extra report fires on its OWN schedule and is consumed
+                # once; the periodic grid below is never shifted by it
+                yield self.env.timeout(max(0.0, next_burst - self.env.now))
+                self._advertise(sat)
+                next_burst = None
+            yield self.env.timeout(max(0.0, next_periodic - self.env.now))
             self._advertise(sat)
-            yield self.env.timeout(interval)
+            next_periodic += interval
 
     # --------------------------------------------------------------- control
+    def _ctrl_audit(self, milestone: str, **fields) -> None:
+        """Record one control-plane lifecycle event on the timeline sink.
+
+        T1-CTRL-AUDIT.  This is a DIAGNOSTIC channel: it is written only when
+        the caller asked for it (control_audit=True) and only to the timeline
+        sink, which is an output-only stream that no decision reads.  Its
+        purpose is to make an advertisement's life observable -- generated,
+        relayed, arrived, expired, or stopped by the hop limit -- so a missing
+        destination advertisement can be ATTRIBUTED instead of guessed.
+
+        Rows are appended directly rather than through _timeline because a
+        control packet carries an instance id (iid), not a data packet id, and
+        pretending otherwise would put a wrong key in the stream.
+        """
+        if not self.control_audit or self.timeline_sink is None:
+            return
+        row = {"milestone": milestone, "at": float(self.env.now),
+               "pid": None, "decision_id": None, "audit": "control_plane"}
+        row.update(fields)
+        self.timeline_sink.append(row)
+
     def _advertise(self, sat: int):
         self.ctrl_seq += 1
         # metrics are bound to the CURRENT peer identity: after a rematch an
         # old advertisement must read as "unknown" for the new edge, never be
         # reinterpreted as the new peer's metric (D2 review M2)
-        isl_bits = {d: {"peer": link.peer,
-                        "value": link.data_bits + link.ctrl_bits}
-                    for d, link in self.isls[sat].items()}
+        isl_bits = {
+            d: self._isl_resource_state_advertisement(link, self.env.now)
+            for d, link in self.isls[sat].items()}
+        protocol_version = int(self.cfg_cp.get(
+            "advertisement_protocol_version", 1))
         isl_prop = {
             d: {"peer": link.peer,
                 "value": model.propagation_delay_s(
@@ -2967,8 +3560,100 @@ class Kernel:
             {c: (ep.lat, ep.lon) for c, ep in self.endpoints.items()},
             isl_bits, isl_prop, len(self.slots[sat]),
             self.cfg_access["slots_per_satellite"])
+        snap["processing_resources"] = {
+            "schema": "leo-peer-processing/v1",
+            "measurement_at": float(self.env.now),
+            "compute": self._processing_pool_advertisement(
+                self._compute_pool[sat] if self.compute_servers > 0 else None,
+                self.compute_delay_s, float(self.env.now),
+                self._compute_service_by_request,
+                servers=self.compute_servers),
+            "query": self._processing_pool_advertisement(
+                self._query_pool[sat] if self._query_pool is not None else None,
+                self._query_delay_s, float(self.env.now),
+                self._query_service_by_request,
+                servers=1 if self._query_pool is not None else 0),
+        }
         snap["serve_cells"] = serve
+        downlink_resources = {}
+        for cell in serve:
+            ep = self.endpoints[cell]
+            server = self.downlinks[sat]
+            queue_known = True
+            work_bits = float(server.queued_bits)
+            current = server.current
+            if current is not None:
+                if server._svc is None or server._svc_phase == "waiting_for_link":
+                    work_bits += float(current.bits)
+                elif server._svc_phase == "transmitting" \
+                        and server._tx_started_at is not None \
+                        and self.rate_model == "constant" \
+                        and self.dl_rate_bps > 0:
+                    remaining_s = max(
+                        0.0, float(current.bits) / self.dl_rate_bps
+                        - (float(self.env.now) - float(server._tx_started_at)))
+                    work_bits += remaining_s * self.dl_rate_bps
+                else:
+                    # A changing MCS rate has no certified residual-work
+                    # estimate in this advertisement; missing stays missing.
+                    queue_known = False
+            rate = self._link_rate("downlink", self.env.now, sat, ep=ep)
+            propagation = model.propagation_delay_s(
+                self.geometry.slant_range_km(sat, ep.lat, ep.lon, self.env.now))
+            association = ep.links.get(sat)
+            active = association is not None and association.state == "active"
+            available = bool(
+                active and self.geometry.gsl_available(
+                    sat, ep.lat, ep.lon, self.env.now) and rate > 0)
+            downlink_resources[str(cell)] = {
+                "queue_bits": float(work_bits) if queue_known else None,
+                "rate_bps": float(rate) if rate > 0 else None,
+                "propagation_s": float(propagation),
+                "available": available,
+                "queue_scope": "satellite_shared_drr",
+                "queue_semantics": (
+                    "all_waiting_bits_plus_active_residual_work_proxy"),
+            }
+        snap["downlink_resources"] = downlink_resources
+        if protocol_version >= 2:
+            resource_telemetry_bits = (
+                CONTROL_AD_ISL_RECORD_BITS_V2 * len(isl_bits)
+                + CONTROL_AD_GSL_RECORD_BITS_V2 * len(downlink_resources)
+                + CONTROL_AD_PROCESSING_BITS_V2)
+            wire_cost = {
+                "schema": CONTROL_AD_WIRE_SCHEMA_V2,
+                "base_packet_bits": int(self.cfg_cp["packet_bits"]),
+                "isl_resource_records": len(isl_bits),
+                "gsl_resource_records": len(downlink_resources),
+                "isl_record_bits": CONTROL_AD_ISL_RECORD_BITS_V2,
+                "gsl_record_bits": CONTROL_AD_GSL_RECORD_BITS_V2,
+                "processing_fields_bits": CONTROL_AD_PROCESSING_BITS_V2,
+            }
+        else:
+            # V1 retains the historical base-only packet. Remove fields that
+            # do not exist on its wire so they cannot silently affect routing.
+            resource_telemetry_bits = 0
+            wire_cost = None
+            snap["isl_queue_bits"] = {
+                d: {"peer": record["peer"], "value": record["value"]}
+                for d, record in isl_bits.items()}
+            snap.pop("downlink_resources", None)
+            snap.pop("processing_resources", None)
+        advertisement_bits = (int(self.cfg_cp["packet_bits"])
+                              + resource_telemetry_bits)
         self.mech["control_snapshots"] += 1
+        self._ctrl_audit("ctrl_advert_generated", origin=int(sat),
+                         seq=int(self.ctrl_seq), hops=0,
+                         vis_k=self.cfg_cp["vis_k"],
+                         packet_bits=advertisement_bits,
+                         advertisement_protocol_version=protocol_version,
+                         wire_cost=wire_cost,
+                         base_packet_bits=int(self.cfg_cp["packet_bits"]),
+                         resource_telemetry_bits=resource_telemetry_bits,
+                         ttl_s=self.cfg_cp["ttl_s"],
+                         serve_cells=list(serve),
+                         downlink_resources=downlink_resources,
+                         children=list(self.control_children[sat][sat]))
         # the origin never accepts its own advertisement back, however long
         # it loops: its own (origin, seq) keys are pre-seeded as seen
         self.seen_ctrl[sat].add((sat, self.ctrl_seq))
@@ -2978,14 +3663,119 @@ class Kernel:
             pkt = ControlPacket(
                 self.ctrl_iid, sat, self.ctrl_seq, self.env.now,
                 self.cfg_cp["ttl_s"], self.cfg_cp["vis_k"],
-                self.cfg_cp["packet_bits"], snap)
-            self.ctrl_ledger.register(pkt.iid, pkt.bits)
+                advertisement_bits, snap, wire_cost=wire_cost)
+            self.ctrl_ledger.register(pkt.iid, pkt.bits, wire_cost=wire_cost)
             self.mech["control_registered"] += 1
             if not link.room(pkt.bits):
                 self.ctrl_ledger.record(pkt.iid, "QUEUE_OVERFLOW", pkt.bits)
                 continue
             self.mech["control_entered_queue"] += 1
             link.put_ctrl(pkt)
+
+    def _isl_resource_state_advertisement(self, link: ISLLink,
+                                          now: float) -> dict:
+        """Return legal, source-measured state for one directed ISL resource.
+
+        ``value`` remains the queued data+control bits used by the existing
+        hop router. ``work_ahead_bits_proxy`` additionally includes the active
+        packet's remaining bits. The residual subtracts service already
+        delivered at the rate sampled when this transmission actually began;
+        the separately advertised ``rate_bps`` is the request-time estimate
+        for future service. This matches the simulator's per-transmission
+        fixed-rate service interval, but remains a proxy for future arrivals
+        and waiting time. An active service without a recorded start rate stays
+        unknown rather than becoming zero.
+        """
+        queued_bits = int(link.data_bits + link.ctrl_bits)
+        try:
+            rate = float(self._link_rate("isl", float(now), link.sat,
+                                         peer=link.peer))
+            if not math.isfinite(rate) or rate < 0.0:
+                rate = None
+        except Exception:
+            rate = None
+        current = link.current
+        if current is None:
+            active_bits = 0.0
+        elif link._svc_phase == "transmitting":
+            service_rate = getattr(link, "_service_rate_bps", None)
+            if (not isinstance(service_rate, (int, float))
+                    or isinstance(service_rate, bool)
+                    or not math.isfinite(float(service_rate))
+                    or service_rate <= 0.0
+                    or link._tx_started_at is None):
+                active_bits = None
+            else:
+                elapsed = max(0.0, float(now) - float(link._tx_started_at))
+                active_bits = max(
+                    0.0, float(current.bits) - elapsed * float(service_rate))
+        else:
+            # The active head has not begun physical serialization (for
+            # example, it waits for a link window), so its full bit count is
+            # known work ahead even though its service time is not.
+            active_bits = float(current.bits)
+        work_ahead = (None if active_bits is None else
+                      float(queued_bits) + float(active_bits))
+        return {
+            "peer": int(link.peer),
+            "value": queued_bits,
+            "generation": int(link.gen),
+            "rate_bps": rate,
+            "work_ahead_bits_proxy": work_ahead,
+        }
+
+    @staticmethod
+    def _processing_pool_advertisement(pool, service_s: float, now: float,
+                                       service_by_request: dict,
+                                       *, servers: int) -> dict:
+        """Fixed-shape, request-time advertisement of known FIFO work.
+
+        A one-server FIFO pool can publish exact known residual-plus-queued
+        service under the explicit no-future-arrivals assumption.  Multi-server
+        assignment is not serialized by this schema and is therefore marked
+        unknown instead of collapsed to an unjustified average.
+        """
+        result = {"servers": int(servers), "service_s": float(service_s),
+                  "queued": 0, "active": 0, "work_ahead_s": None,
+                  "method": "unknown"}
+        if not math.isfinite(float(service_s)) or float(service_s) < 0:
+            return result
+        if servers == 0:
+            result.update(queued=0, active=0, work_ahead_s=0.0,
+                          method="unbounded_no_wait")
+            return result
+        if pool is None:
+            return result
+        result["queued"] = len(pool.queue)
+        result["active"] = len(pool.users)
+        if int(servers) != 1:
+            result["method"] = "multi_server_projection_not_encoded"
+            return result
+        work = 0.0
+        for request in list(pool.users):
+            started = getattr(request, "usage_since", None)
+            duration = service_by_request.get(id(request))
+            if started is None or duration is None:
+                return result
+            work += max(0.0, float(duration) -
+                        max(0.0, float(now) - float(started)))
+        for request in list(pool.queue):
+            duration = service_by_request.get(id(request))
+            if duration is None:
+                return result
+            work += max(0.0, float(duration))
+        result.update(work_ahead_s=float(work), method="single_server_fifo")
+        return result
+
+    def _project_advertised_peer_processing(self, record: dict,
+                                            peer_arrival_at: float):
+        """Estimate peer compute/query delay from one received ad only.
+
+        Delegates to the SHARED pure projection so the online kernel path
+        and the offline comparator cannot drift apart.
+        """
+        return _ta.project_advertised_peer_processing(
+            record, peer_arrival_at, self.exec_mode)
 
     def _ctrl_arrive_after_prop(self, pkt: ControlPacket, from_sat: int, sat: int, prop: float):
         yield self.env.timeout(prop)
@@ -2994,6 +3784,10 @@ class Kernel:
         if not pkt.valid_at(now):
             self.ctrl_ledger.record(pkt.iid, "CONTROL_EXPIRED", pkt.bits,
                                     received_at=now)
+            self._ctrl_audit("ctrl_advert_expired", origin=int(pkt.origin),
+                             seq=int(pkt.seq), sat=int(sat),
+                             hops=int(self.cfg_cp["vis_k"]
+                                      - pkt.remaining_hops))
             return
         if pkt.origin == sat:
             # explicit guard: an origin never consumes its own looped
@@ -3009,20 +3803,44 @@ class Kernel:
         self.seen_ctrl[sat].add(key)
         self.ctrl_ledger.record(pkt.iid, "DELIVERED", pkt.bits, received_at=now)
         hops = self.cfg_cp["vis_k"] - pkt.remaining_hops + 1
+        self._ctrl_audit("ctrl_advert_arrived", origin=int(pkt.origin),
+                         seq=int(pkt.seq), sat=int(sat), hops=int(hops),
+                         remaining_hops=int(pkt.remaining_hops),
+                         serve_cells=sorted(pkt.payload.get("serve_cells", ())),
+                         downlink_resources=dict(
+                             pkt.payload.get("downlink_resources") or {}),
+                         payload_fields=sorted(pkt.payload))
         entry = control.CacheEntry(pkt.origin, pkt.payload, pkt.generated_at,
                                    pkt.received_at, pkt.ttl_s, hops=hops)
         self.caches[sat].put(entry)
+        if pkt.remaining_hops <= 1:
+            # the hop budget is exhausted exactly here: this arrival is the
+            # last one this advertisement can make, and saying so is what
+            # separates "out of reach" from "still travelling"
+            self._ctrl_audit("ctrl_advert_hop_limit", origin=int(pkt.origin),
+                             seq=int(pkt.seq), sat=int(sat), hops=int(hops),
+                             vis_k=self.cfg_cp["vis_k"])
         if pkt.remaining_hops > 1:
             for d in self.control_children[pkt.origin][sat]:
                 link = self.isls[sat][d]
                 self.ctrl_iid += 1
                 fwd = ControlPacket(
                     self.ctrl_iid, pkt.origin, pkt.seq, pkt.generated_at,
-                    pkt.ttl_s, pkt.remaining_hops - 1, pkt.bits, pkt.payload)
-                self.ctrl_ledger.register(fwd.iid, fwd.bits)
+                    pkt.ttl_s, pkt.remaining_hops - 1, pkt.bits, pkt.payload,
+                    wire_cost=pkt.wire_cost)
+                self.ctrl_ledger.register(fwd.iid, fwd.bits,
+                                          wire_cost=fwd.wire_cost)
                 self.mech["control_registered"] += 1
+                self._ctrl_audit("ctrl_advert_relayed", origin=int(pkt.origin),
+                                 seq=int(pkt.seq), sat=int(sat),
+                                 toward=int(self.topo[sat][d]),
+                                 hops=int(hops),
+                                 remaining_hops=int(fwd.remaining_hops))
                 if not link.room(fwd.bits):
                     self.ctrl_ledger.record(fwd.iid, "QUEUE_OVERFLOW", fwd.bits)
+                    self._ctrl_audit("ctrl_advert_dropped", origin=int(pkt.origin),
+                                     seq=int(pkt.seq), sat=int(sat),
+                                     reason="ctrl_queue_overflow")
                     continue
                 self.mech["control_entered_queue"] += 1
                 link.put_ctrl(fwd)
@@ -3066,6 +3884,7 @@ class Kernel:
         if acq <= 0:
             link.state = "active"
             self._poke(self.uplinks[sat].wake)
+            self._serving_changed(sat)
         else:
             self.env.process(self._activate_after_delay(ep, link))
 
@@ -3075,6 +3894,7 @@ class Kernel:
             link.state = "active"
             self._poke(self.uplinks[link.sat].wake)
             self._poke(self.downlinks[link.sat].wake)
+            self._serving_changed(link.sat)
 
     def _release(self, ep: TrafficEndpoint, sat: int, now: float, reason: str):
         link = ep.links.pop(sat, None)
@@ -3088,6 +3908,42 @@ class Kernel:
         self.handover_events.append({"t": now, "endpoint": ep.cell,
                                      "type": "release", "sat": sat,
                                      "reason": reason})
+        self._serving_changed(sat)
+
+    def _serving_changed(self, sat: int) -> None:
+        """One satellite's serving set changed; schedule one rate-limited report.
+
+        Merging rule (fixed in configuration, not chosen per run): at most one
+        event-triggered report per satellite per
+        control_plane.event_advert_min_interval_s.  Changes arriving inside the
+        window are merged into the next allowed report, so a handover burst
+        cannot turn into a flood.
+        """
+        if not self._event_advert_enabled:
+            return
+        self.mech["serving_changes_seen"] += 1
+        now = self.env.now
+        last = self._last_event_advert_at.get(sat)
+        if last is None or now - last >= self._event_advert_min_interval_s > 0:
+            self._last_event_advert_at[sat] = now
+            self._advertise(sat)
+            self._event_adverts_emitted += 1
+            self.mech["event_adverts_emitted"] += 1
+            return
+        if sat in self._event_advert_pending:
+            return
+        self._event_advert_pending.add(sat)
+        self.env.process(self._deferred_event_advert(sat))
+
+    def _deferred_event_advert(self, sat: int):
+        wait = (self._last_event_advert_at.get(sat, self.env.now)
+                + self._event_advert_min_interval_s - self.env.now)
+        yield self.env.timeout(max(0.0, wait))
+        self._event_advert_pending.discard(sat)
+        self._last_event_advert_at[sat] = self.env.now
+        self._advertise(sat)
+        self._event_adverts_emitted += 1
+        self.mech["event_adverts_emitted"] += 1
 
     def _on_link_retired(self, ep: TrafficEndpoint, sat: int):
         """An in-flight service hit the hard retirement deadline: the link
@@ -3193,6 +4049,38 @@ class Kernel:
         ep = self.endpoints[cell]
         return sorted(s for s, l in ep.links.items() if l.state == "active")
 
+    def _serving_source(self, sat: int, dst: str, now: float,
+                        cache_hops) -> list[int]:
+        """THE single serving-set source for one decision.
+
+        Every consumer (candidate admission, resource mapping, ETA targets,
+        scoring) must ask this one function, so a policy cannot end up
+        routing on one serving set and scoring on another.  The switch is on
+        the EFFECTIVE policy, which a staged switch may change mid-run.
+        """
+        if self._effective_routing_policy() in ("oracle", "known_serving"):
+            return [s for s in self._serving_sats(dst) if s != sat]
+        return routing.destinations_in_cache(self.caches[sat], dst, now,
+                                             max_cache_hops=cache_hops)
+
+    def _effective_routing_policy(self) -> str:
+        """Configured policy, or the staged one once its switch time passes."""
+        staged = self._staged_policy
+        if staged is not None and self.env.now >= self._staged_policy_at:
+            return staged
+        return self.cfg_rt["policy"]
+
+    def _fixed_policy_metadata_path(self) -> str:
+        """The sibling metadata that pins the observation contract.
+
+        The artifact format has no separate config key for it: a repository
+        checkpoint is always accompanied by the metadata.json written next to
+        it by save_and_verify, and its content hash is what the resolved
+        config pins.
+        """
+        path = Path(str(self.cfg_learning["checkpoint_path"]))
+        return str(path.with_name("metadata.json"))
+
     def _learning_observation(self, sat: int, dst_cell: str) -> np.ndarray:
         queues = {d: lnk.data_bits + lnk.ctrl_bits
                   for d, lnk in self.isls[sat].items()}
@@ -3251,6 +4139,59 @@ class Kernel:
         pkt.learning_reward = None
         self._learning_open.discard(pkt)
 
+    def _finish_deadline_transition(self, pkt: DataPacket, outcome: str, *,
+                                    next_state=None, next_mask=None) -> bool:
+        """Settle one transition under the packet research-D objective.
+
+        This closes the learning episode only; it never changes physical
+        packet fate, queue membership, or later forwarding. ``research_D`` is
+        the duration between emission and the absolute per-packet boundary.
+        """
+        if self.learner is None or pkt.learning_episode_closed:
+            return False
+        if pkt.research_deadline_at is None:
+            raise KernelError(
+                "deadline_loss_v1 packet has no research deadline "
+                f"(pid={pkt.pid})")
+        deadline_s = float(pkt.research_deadline_at) - float(pkt.emitted_at)
+        delay = (float(self.env.now) - float(pkt.emitted_at)
+                 if outcome == "delivered" else None)
+        transition = _deadline_objective.deadline_loss_v1(
+            deadline_s=deadline_s, outcome=outcome,
+            e2e_delay_s=delay, gamma=float(self.cfg_learning["gamma"]),
+            episode_closed=False)
+        if transition is not None and pkt.learning_state is not None:
+            if next_state is None:
+                next_state = np.zeros(
+                    _learning.CONTRACT_DIMS[self.cfg_rt["contract"]])
+            if next_mask is None:
+                next_mask = {action: False for action in _learning.ACTIONS}
+            self.learner.remember(
+                pkt.learning_state, pkt.learning_action, transition.reward,
+                next_state, next_mask, transition.terminal)
+        if transition is None or transition.terminal:
+            pkt.learning_episode_closed = True
+        pkt.learning_state = None
+        pkt.learning_action = None
+        pkt.learning_reward = None
+        self._learning_open.discard(pkt)
+        if transition is not None and transition.terminal \
+                and self.timeline_sink is not None:
+            self._timeline(
+                "learning_episode_closed", pkt, pkt.decision_id,
+                reason=outcome, research_deadline_at_s=float(
+                    pkt.research_deadline_at), reward=float(transition.reward))
+        return transition is not None
+
+    def _research_deadline_watch(self, pkt: DataPacket):
+        """Close a deadline-loss learner episode at D while physics continues."""
+        target = float(pkt.research_deadline_at)
+        delay = max(0.0, target - float(self.env.now))
+        if delay:
+            yield self.env.timeout(delay)
+        if not pkt.learning_episode_closed:
+            self._finish_deadline_transition(pkt, "deadline_expired")
+
     def _close_learning_at_stop(self) -> None:
         """Explicitly discard every learning transition still open at the
         stop time (packets pending re-decision, queued on an ISL/downlink,
@@ -3270,8 +4211,51 @@ class Kernel:
             self.mech["learning_discarded_at_stop"] += 1
         self._learning_open.clear()
 
+    def _fixed_policy_action(self, pkt: DataPacket, sat: int, legal):
+        """Ask the LOADED checkpoint for the action, or None when there is none.
+
+        A1: the frozen observation half and the direct decision half must not
+        disagree about who chooses.  Before this helper the frozen half used
+        its own first-legal rule, so a checkpoint could be read, counted and
+        then silently ignored -- which is precisely the failure a real reader
+        is supposed to make impossible.  The mask is the legal set in both
+        halves, so the model can never pick outside it.
+        """
+        if self.fixed_policy is None:
+            return None
+        mask = {a: a in legal for a in _learning.ACTIONS}
+        action = self._learning_action(pkt, sat, mask)
+        if action not in legal:
+            raise KernelError(
+                f"fixed policy selected action {action!r} outside the legal "
+                f"mask {sorted(legal)}")
+        return action
+
     def _learning_action(self, pkt: DataPacket, sat: int, mask: dict) -> str:
         state = self._learning_observation(sat, pkt.dst)
+        if self.fixed_policy is not None:
+            # A1 fixed-inference path.  The observation contract, the mask and
+            # the tie-break are the SAME as the learner path; what is absent is
+            # the transition: no reward is settled, no replay row is written
+            # and no gradient step can happen, because the adapter refuses all
+            # of them.  The adapter owns the call counter, so the artifact can
+            # prove the model -- not the scorer -- produced the action.
+            return self.fixed_policy.choose(state, mask, self.env.now)
+        if self.cfg_learning["reward"] == "deadline_loss_v1":
+            if pkt.learning_episode_closed:
+                # Physical routing continues after research D, but this
+                # packet cannot create more replay transitions.
+                return self.learner.choose(state, mask, self.env.now)
+            if pkt.learning_state is not None:
+                self._finish_deadline_transition(
+                    pkt, "intermediate", next_state=state,
+                    next_mask=mask)
+            action = self.learner.choose(state, mask, self.env.now)
+            pkt.learning_state = state
+            pkt.learning_action = action
+            pkt.learning_reward = None
+            self._learning_open.add(pkt)
+            return action
         if pkt.learning_state is not None and pkt.learning_reward is None:
             # The only action allowed to be open without a settled reward is
             # deliver: its arrival reward exists only at real delivery. A
@@ -3326,7 +4310,7 @@ class Kernel:
                               mode: str, source: str, own_queue_bits: dict,
                               considered: list, legal: list,
                               status: str | None, kind: str,
-                              action: str | None) -> dict:
+                              action: str | None, ta_audit: dict | None = None) -> dict:
         """The observation a decision was ACTUALLY based on.
 
         Every contributing neighbour keeps its OWN measurement/arrival time:
@@ -3345,6 +4329,9 @@ class Kernel:
                 self._observed_cache_entries(sat, now).items()):
             payload = entry.payload if isinstance(entry.payload, dict) else {}
             advertised = {}
+            generations = {}
+            rates = {}
+            work_ahead = {}
             for direction, record in (payload.get("isl_queue_bits")
                                       or {}).items():
                 if not isinstance(record, dict):
@@ -3355,7 +4342,26 @@ class Kernel:
                 if record.get("peer") != self.topo.get(int(origin), {}).get(
                         direction):
                     continue
-                advertised[direction] = int(record["value"])
+                value = record.get("value")
+                if (isinstance(value, (int, float))
+                        and not isinstance(value, bool)
+                        and math.isfinite(float(value)) and value >= 0.0):
+                    advertised[direction] = int(value)
+                generation = record.get("generation")
+                if (isinstance(generation, int)
+                        and not isinstance(generation, bool)
+                        and generation >= 0):
+                    generations[direction] = int(generation)
+                rate = record.get("rate_bps")
+                if (isinstance(rate, (int, float))
+                        and not isinstance(rate, bool)
+                        and math.isfinite(float(rate)) and rate >= 0.0):
+                    rates[direction] = float(rate)
+                bits = record.get("work_ahead_bits_proxy")
+                if (isinstance(bits, (int, float))
+                        and not isinstance(bits, bool)
+                        and math.isfinite(float(bits)) and bits >= 0.0):
+                    work_ahead[direction] = float(bits)
             neighbours[str(origin)] = {
                 "origin": int(origin),
                 "measurement": "control_cache_advertisement",
@@ -3364,9 +4370,43 @@ class Kernel:
                 "age_s": float(max(0.0, entry.aoi(now))),
                 "hops": int(entry.hops),
                 "advertised_isl_queue_bits": advertised,
+                "advertised_isl_generation": generations,
+                "advertised_isl_rate_bps": rates,
+                "advertised_isl_work_ahead_bits_proxy": work_ahead,
                 "advertised_serve_cells": sorted(
                     payload.get("serve_cells", ())),
+                # T1-P3: what actually arrived from this origin, in arrival
+                # order, so a bounded_linear predictor has real ordered source
+                # measurements instead of a single frozen value.  Output only.
+                "advertised_history": (
+                    [] if self.decision_sink is None
+                    else self._recorded_advertisement_history(
+                        sat, int(origin), now)),
             }
+        # Compute and query pool state AT THE OBSERVATION INSTANT, from the
+        # same helpers the online kernel path uses.  Without these the
+        # offline comparator silently priced compute at the configured
+        # service with zero wait, and query at zero, while the real branch
+        # charged the finite pool.
+        observation_compute = self._compute_state_now(int(sat))
+        observation_query = self._query_state_at(
+            int(sat), now,
+            float(observation_compute["wait_estimate_s"])
+            + float(observation_compute["service_s"]))
+        # Local first-hop residual work AT THE OBSERVATION INSTANT.  It is
+        # recorded here, at freeze time, so the offline comparator neither
+        # reads the post-commit queue nor invents a zero for an unmeasured
+        # queue.  A direction whose residual cannot be certified is omitted
+        # rather than reported as empty.
+        local_egress_in_service = {}
+        for direction in considered:
+            link = self.isls[int(sat)].get(str(direction))
+            if link is None:
+                continue
+            residual = self._isl_in_service_s(link, now)
+            if residual is None:
+                continue
+            local_egress_in_service[str(direction)] = float(residual)
         return {
             "schema": "leo-sim-observation-at-start/v1",
             "mode": mode,
@@ -3375,13 +4415,1231 @@ class Kernel:
             "sat": int(sat),
             "own_queue_bits": {d: int(bits)
                                for d, bits in own_queue_bits.items()},
+            "local_egress_in_service_s": local_egress_in_service,
+            "compute_state": observation_compute,
+            "query_state": observation_query,
             "neighbours": neighbours,
             "candidate_directions": list(considered),
             "legal_directions": list(legal),
             "routing_status": status,
             "kind": kind,
             "action": action,
+            # T1-P3: per-candidate target RESOURCE map.  The candidate is this
+            # node's next-hop direction; the predicted resource is the PEER's
+            # named directed egress, chosen by the same deterministic rule the
+            # online estimate uses.  Output only, and only when a sink exists.
+            "candidate_resources": self._candidate_resource_map(
+                pkt, sat, now, considered),
+            # T1-P5: what the enabled state-time arm actually queried and how it
+            # reordered the candidates, so a single decision can be replayed.
+            # None whenever time_alignment is disabled.
+            "time_alignment": ta_audit,
+            # T1-R8: the pool state the ETA's compute-wait term was derived
+            # from, so an offline reader can rebuild the same snapshot without
+            # reading the realised wait out of the future.
+            "compute_state": self._compute_state_now(int(sat)),
         }
+
+    def _advertisement_history(self, sat: int, origin: int, now: float,
+                               force: bool = False) -> list:
+        """Arrived advertisements from one origin, in arrival order, as rows."""
+        if self.decision_sink is None and not force:
+            return []
+        out = []
+        for entry in self.caches[sat].history_for(origin):
+            if entry.received_at > now:
+                continue
+            payload = entry.payload if isinstance(entry.payload, dict) else {}
+            advertised = {}
+            generations = {}
+            rates = {}
+            work_ahead = {}
+            for direction, record in (payload.get("isl_queue_bits")
+                                      or {}).items():
+                if not isinstance(record, dict):
+                    continue
+                if record.get("peer") != self.topo.get(origin, {}).get(direction):
+                    continue
+                value = record.get("value")
+                if (isinstance(value, (int, float))
+                        and not isinstance(value, bool)
+                        and math.isfinite(float(value)) and value >= 0.0):
+                    advertised[direction] = int(value)
+                generation = record.get("generation")
+                if (isinstance(generation, int)
+                        and not isinstance(generation, bool)
+                        and generation >= 0):
+                    generations[direction] = int(generation)
+                rate = record.get("rate_bps")
+                if (isinstance(rate, (int, float))
+                        and not isinstance(rate, bool)
+                        and math.isfinite(float(rate)) and rate >= 0.0):
+                    rates[direction] = float(rate)
+                bits = record.get("work_ahead_bits_proxy")
+                if (isinstance(bits, (int, float))
+                        and not isinstance(bits, bool)
+                        and math.isfinite(float(bits)) and bits >= 0.0):
+                    work_ahead[direction] = float(bits)
+            downlink = {}
+            for cell, record in (payload.get("downlink_resources") or {}).items():
+                if not isinstance(record, dict):
+                    continue
+                bits = record.get("queue_bits")
+                rate = record.get("rate_bps")
+                if (isinstance(bits, (int, float))
+                        and not isinstance(bits, bool)
+                        and math.isfinite(float(bits)) and bits >= 0):
+                    downlink[str(cell)] = {
+                        "queue_bits": float(bits),
+                        "rate_bps": (float(rate) if isinstance(rate, (int, float))
+                                     and not isinstance(rate, bool)
+                                     and math.isfinite(float(rate)) and rate > 0
+                                     else None),
+                        "propagation_s": (
+                            float(record["propagation_s"])
+                            if isinstance(record.get("propagation_s"), (int, float))
+                            and not isinstance(record.get("propagation_s"), bool)
+                            and math.isfinite(float(record["propagation_s"]))
+                            and record["propagation_s"] >= 0 else None),
+                        "available": record.get("available") is True,
+                        "queue_scope": record.get("queue_scope"),
+                        "queue_semantics": record.get("queue_semantics"),
+                    }
+            out.append({
+                "generated_at": float(entry.generated_at),
+                "received_at": float(entry.received_at),
+                "advertised_isl_queue_bits": advertised,
+                "advertised_isl_generation": generations,
+                "advertised_isl_rate_bps": rates,
+                "advertised_isl_work_ahead_bits_proxy": work_ahead,
+                "advertised_processing": (
+                    payload.get("processing_resources")
+                    if isinstance(payload.get("processing_resources"), dict)
+                    else None),
+                "advertised_downlink_resources": downlink,
+            })
+        return out
+
+    def _recorded_advertisement_history(self, sat: int, origin: int,
+                                        now: float) -> list:
+        """Reuse output-only history expansion while its inputs are unchanged.
+
+        The cache retains one version per (receiver, origin). Its key holds
+        the actual arrived CacheEntry objects and the origin's current peer
+        mapping, so arrivals, duplicate samples, future-arrival boundaries,
+        and topology rematches all invalidate it. CacheEntry payloads are
+        assumed immutable after insertion into LocalCache; a producer that
+        mutates payloads in place must add an explicit payload version here.
+        """
+        if self.decision_sink is None:
+            return []
+
+        sat = int(sat)
+        origin = int(origin)
+        arrived = tuple(
+            entry for entry in self.caches[sat].history_for(origin)
+            if entry.received_at <= now
+        )
+        origin_topology = tuple(sorted(
+            self.topo.get(origin, {}).items()))
+        key = (arrived, origin_topology)
+        slot = (sat, origin)
+        cached = self._recorded_advertisement_history_cache.get(slot)
+        if cached is not None and cached[0] == key:
+            # Keep each observation's list append/clear independent while
+            # sharing the converted rows and their nested resource records.
+            return list(cached[1])
+
+        # Reuse the authoritative conversion path so recorded and force=True
+        # rows keep exactly the same fields and filtering rules.
+        converted = self._advertisement_history(sat, origin, now)
+        if cached is not None and cached[0][1] == origin_topology:
+            # A new arrival changes the history key, but existing samples
+            # remain valid while the topology is unchanged. Reuse them by
+            # CacheEntry object identity so each arrival only retains new row
+            # objects; the converted rows above remain the parity oracle.
+            old_rows = dict(zip(cached[0][0], cached[1]))
+            converted = [old_rows.get(entry, row)
+                         for entry, row in zip(arrived, converted)]
+        self._recorded_advertisement_history_cache[slot] = (
+            key, tuple(converted))
+        return list(converted)
+
+    # ------------------------------- T1-COMPLETE P8 per_flow / precomputed
+    def _flow_key(self, pkt, sat: int):
+        return (int(sat), pkt.src, pkt.dst, "default")
+
+    def _per_flow_hit(self, pkt, sat: int, now: float):
+        if self.exec_mode != "per_flow":
+            return None
+        entry = self._flow_cache.get(self._flow_key(pkt, sat))
+        if entry is None or entry["expires_at"] <= now:
+            return None
+        return entry
+
+    def _store_flow_cache(self, pkt, sat: int, now: float, ranking: list) -> None:
+        if self.exec_mode != "per_flow":
+            return
+        ttl = float(self.cfg_ta["per_flow_ttl_s"])
+        self._flow_cache[self._flow_key(pkt, sat)] = {
+            "ranking": list(ranking),
+            "expires_at": float(now) + ttl,
+            "stored_at": float(now),
+        }
+
+    def _precompute_build(self) -> None:
+        """Build the topology-only next-hop table once, at t=0.
+
+        Uses ONLY the visible static topology and the hop metric; it never reads
+        a business queue, an advertisement payload or a future event.  The
+        destination-to-serving mapping is still resolved at query time from the
+        received advertisements, which is allowed control information.
+        """
+        adj = self._routing_reverse_adj
+        # Directed shortest distance from every node TO each target.  The
+        # reverse adjacency makes a BFS rooted at the TARGET give exactly
+        # "hops from u to target", which is what choosing a next hop requires.
+        # The previous version rooted the search at the CURRENT satellite and
+        # ignored the target when costing each candidate direction, so every
+        # target got the same (first) direction.
+        self._dist_to = {}
+        for target in range(self.num_sats):
+            self._dist_to[target] = routing._multi_source_bfs(adj, [target])
+        self._precompute_cost["bfs_runs"] = self.num_sats
+        build_started = time.perf_counter()
+        for sat in range(self.num_sats):
+            table = {}
+            for other in range(self.num_sats):
+                if other == sat:
+                    continue
+                best_dir, best_hops = None, None
+                for direction, peer in sorted(self.topo.get(sat, {}).items()):
+                    if peer == other:
+                        best_dir, best_hops = direction, 0
+                        break
+                    hops = self._dist_to[other].get(peer)
+                    if hops is None:
+                        continue
+                    if best_hops is None or hops < best_hops:
+                        best_dir, best_hops = direction, hops
+                if best_dir is not None:
+                    # unreachable targets are simply absent: never a fake route
+                    table[other] = best_dir
+            self._precomputed_dirs[sat] = table
+        self._precompute_cost["builds"] += 1
+        self._precompute_cost["targets"] = sum(
+            len(t) for t in self._precomputed_dirs.values())
+        self._precompute_cost["installs"] += 1
+        self._precompute_cost["build_wall_s"] = (
+            time.perf_counter() - build_started)
+        self._precompute_cost["cost_kind"] = (
+            "offline host build, reported separately from any packet "
+            "inference; it is NOT a per-packet compute charge")
+
+    def _precomputed_order(self, pkt, sat: int, cands: list, now: float):
+        """Order candidates from the installed table plus advertisements."""
+        self._precompute_cost["queries"] += 1
+        serving = routing.destinations_in_cache(self.caches[sat], pkt.dst, now,
+                                                max_cache_hops=None)
+        if not serving:
+            return None, "no_serving_advertisement"
+        table = self._precomputed_dirs.get(sat, {})
+        reachable = [t for t in serving if t != sat and t in table]
+        if not reachable:
+            return None, "no_precomputed_route_to_a_serving_satellite"
+        # nearest serving target by the precomputed directed distance, so no
+        # per-query graph search is needed
+        target = min(reachable,
+                     key=lambda t: (self._dist_to.get(t, {}).get(sat, math.inf),
+                                    t))
+        primary = table[target]
+        order = ([primary] if primary in cands else [])
+        order += [d for d in cands if d not in order]
+        return order, None
+
+    # ------------------------------------- T1-COMPLETE P7 async updater
+    def _async_event(self, row: dict) -> None:
+        """Mirror an async schedule milestone onto the timeline sink."""
+        if self.timeline_sink is None:
+            return
+        out = dict(row)
+        name = str(out.get("milestone", "event"))
+        out["milestone"] = (name if name.startswith("schedule")
+                            else "schedule_" + name)
+        out["pid"] = None
+        out["decision_id"] = None
+        self.timeline_sink.append(out)
+
+    def _async_scope(self, sat: int, dst) -> tuple:
+        return (int(sat), dst, "default")
+
+    def _async_snapshot(self, sat: int, dst, now: float, cands=None,
+                        own_q=None):
+        """Scope-level snapshot from current received advertisements.
+
+        When the caller already computed the legal candidate set (the packet
+        path did), that set is reused: the schedule must be built from the SAME
+        allowed information the decision saw, not from a second lookup that
+        could resolve differently.
+        """
+        status = "ok"
+        if cands is None:
+            cands, status = routing.choose_next_hop(
+                self.cfg_rt["policy"], sat, dst, now, self.geometry, self.topo,
+                self.caches[sat],
+                {d: lnk.data_bits + lnk.ctrl_bits
+                 for d, lnk in self.isls[sat].items()},
+                self.isl_rate_bps, model.propagation_delay_s, best_only=False,
+                reverse_adj=self._routing_reverse_adj,
+                sorted_adj=self._routing_sorted_rev_adj,
+                cache_hops=None)
+        if status != "ok" or not cands:
+            return None, cands, status
+        cands = [d for d in cands if self.topo[sat].get(d) is not None]
+        if own_q is None:
+            own_q = {d: lnk.data_bits + lnk.ctrl_bits
+                     for d, lnk in self.isls[sat].items()}
+        arm = str(self.cfg_ta["arm"])
+        rule = str(self.cfg_ta["common_rule"])
+        bits = float(self.cfg_dm["packet_bits"])
+        if rule == "fixed_horizon":
+            horizon = float(self.cfg_ta["common_horizon_s"])
+        else:
+            probe = self._build_ta_snapshot(None, sat, now, cands, own_q, arm,
+                                            None, dst=dst, packet_bits=bits)
+            horizon = self._ta_common_horizon(probe, rule)
+        snap = self._build_ta_snapshot(None, sat, now, cands, own_q, arm,
+                                       horizon, dst=dst, packet_bits=bits)
+        return snap, cands, status
+
+    def _async_order(self, pkt, sat: int, now: float, cands: list,
+                     own_q: dict):
+        """Order candidates from the INSTALLED table only (no re-scoring)."""
+        scope = self._async_scope(sat, pkt.dst)
+        if scope not in self._async_scopes:
+            self._async_scopes.add(scope)
+            self._async_trigger(sat, pkt.dst, now, cands, own_q)
+        result = self.async_manager.query(scope, now, legal=cands,
+                                          path=pkt.path)
+        if result.get("fallback"):
+            # shared visible-topology safe fallback for every arm; the update
+            # was already requested above / by the query
+            if result.get("needs_update"):
+                self._async_trigger(sat, pkt.dst, now)
+            order = list(cands)
+        else:
+            action = result["action"]
+            order = [action] + [d for d in cands if d != action]
+        audit = {
+            "schema": "leo-sim-async-order-at-start/v1",
+            "enabled": True,
+            "execution_mode": str(self.cfg_ta["execution_mode"]),
+            "arm": str(self.cfg_ta["arm"]),
+            "scope": list(scope),
+            "bins": self.async_bins,
+            "installed_version": result.get("version"),
+            "bin": result.get("bin"),
+            "state": result.get("state"),
+            "fallback": bool(result.get("fallback")),
+            "reason": result.get("reason"),
+            "applied_order": list(order),
+            "query": dict(self._query_charge),
+            "source": "installed schedule table lookup only; the scorer is "
+                      "never called on the query path",
+        }
+        return order, audit
+
+    def _async_trigger(self, sat: int, dst, now: float, cands=None,
+                       own_q=None) -> None:
+        """Request one background update for the scope, if allowed."""
+        if self.async_manager is None:
+            return
+        scope = self._async_scope(sat, dst)
+        if not self.async_manager.needs_update(scope, now):
+            return
+        snap, cands, status = self._async_snapshot(sat, dst, now, cands, own_q)
+        if snap is None:
+            return
+        self._async_scopes.add(scope)
+        result = self.async_manager.request_update(scope, snap, now,
+                                                   trigger="periodic")
+        ticket = result.get("ticket")
+        if ticket is not None:
+            self.env.process(self._async_compute(ticket))
+
+    def _async_compute(self, ticket):
+        """Consume the SHARED compute pool, then install after the delay."""
+        requested = float(self.env.now)
+        sat = int(ticket.scope[0])
+        scope = ticket.scope
+        self._compute_job_seq += 1
+        job_id = self._compute_job_seq
+        self._async_milestone(
+            "compute_request", sat, job_id, requested_at=requested,
+            service_s=ticket.service_s, servers=self.compute_servers,
+            scope="async:%s" % (scope,))
+        if self.compute_servers > 0:
+            pool = self._compute_pool[sat]
+            busy = pool.count
+            slot = pool.request()
+            self._compute_service_by_request[id(slot)] = float(ticket.service_s)
+            yield slot
+            started = float(self.env.now)
+            wait = started - requested
+            self._async_milestone(
+                "compute_wait", sat, job_id, wait_s=wait,
+                service_s=ticket.service_s, servers=self.compute_servers,
+                servers_busy=busy, queueing=bool(wait > 0.0),
+                requested_at=requested, at=requested)
+            yield self.env.timeout(ticket.service_s)
+            finished = float(self.env.now)
+            self._async_milestone(
+                "compute_finish", sat, job_id, requested_at=requested,
+                started_at=started, finished_at=finished, wait_s=wait,
+                service_s=finished - started)
+            pool.release(slot)
+            self._compute_service_by_request.pop(id(slot), None)
+        else:
+            yield self.env.timeout(ticket.service_s)
+            finished = float(self.env.now)
+            self._async_milestone(
+                "compute_finish", sat, job_id, requested_at=requested,
+                started_at=requested, finished_at=finished, wait_s=0.0,
+                service_s=finished - requested)
+        self.async_manager.finish_compute(ticket, finished)
+        delay = max(0.0, (ticket.install_at or finished) - self.env.now)
+        if delay > 0:
+            yield self.env.timeout(delay)
+        verdict = self.async_manager.install(ticket, float(self.env.now))
+        if not verdict.get("installed"):
+            return
+        pending = self.async_manager.take_pending(scope)
+        if pending is not None:
+            self._async_trigger(sat, scope[1], float(self.env.now))
+
+    def _async_ticker(self, sat: int, interval: float):
+        while True:
+            yield self.env.timeout(interval)
+            now = float(self.env.now)
+            for scope in sorted(self._async_scopes):
+                if scope[0] != sat:
+                    continue
+                if self.async_manager.needs_update(scope, now):
+                    self._async_trigger(sat, scope[1], now)
+
+    # ------------------------------------------- T1-COMPLETE P5 online arms
+    def _build_ta_snapshot(self, pkt, sat: int, now: float,
+                           cands: list, own_q: dict, arm: str,
+                           common_horizon_s, dst=None, packet_bits=None):
+        """ObservationSnapshot for the online state-time arms.
+
+        Reads only what the decision may read: this node own queues, its
+        received advertisements, the visible topology rule and the configured
+        per-hop costs.  No kernel truth, no peer cache, no future event.
+
+        The packet size is resolved BEFORE anything else and from its own
+        source only.  An earlier version reused one local name for both the
+        packet size and the advertised queue value, so the last advertisement
+        silently overwrote the packet size and the transmit term became an
+        advertisement reading.
+        """
+        if packet_bits is not None:
+            target_bits = float(packet_bits)
+        elif pkt is not None:
+            target_bits = float(pkt.bits)
+        else:
+            target_bits = float(self.cfg_dm["packet_bits"])
+        target_dst = (pkt.dst if (pkt is not None and dst is None) else
+                      (dst if dst is not None else None))
+        # OBSERVATION-AGE INTERVENTION.  min_observation_age_s = a means the
+        # snapshot must only contain samples whose SOURCE MEASUREMENT is at
+        # least a seconds old, i.e. measured_at <= t0 - a.  Only the age of the
+        # same-resource workload observation changes: the resource identity,
+        # the generation filter, the workload definition, the scorer, the
+        # candidate set, the control schedule and the physical model are all
+        # untouched.  a = None (the default) keeps the historical behaviour.
+        age_cutoff = None
+        if self._min_observation_age_s is not None:
+            age_cutoff = float(now) - float(self._min_observation_age_s)
+        cand_map = self._candidate_resource_map(pkt, sat, now, cands,
+                                                force=True, dst=target_dst)
+        legal = []
+        resources = {}
+        history = []
+        rate = {}
+        prop = {}
+        peer_process = {}
+        remaining = {}
+        resource_rate = {}
+        terminal_prop = {}
+        resource_available = {}
+        local_in_service = {}
+        # Preserve the already-computed legal/min-hop baseline order for the
+        # shared unknown-information fallback; scoring may reorder only when
+        # the required observations are complete.
+        used_state = {}
+        for direction in cands:
+            cr = cand_map.get(str(direction))
+            if not isinstance(cr, dict) or cr.get("status") not in (
+                    "ok", "delivered_downlink"):
+                legal.append(direction)
+                continue
+            legal.append(direction)
+            if cr.get("status") == "delivered_downlink":
+                key = _ta.ResourceKey(int(cr["peer"]), str(target_dst),
+                                      _ta.KIND_DOWNLINK)
+                resource_rate[direction] = cr.get("downlink_rate_bps")
+                terminal_prop[direction] = cr.get(
+                    "downlink_propagation_s")
+                resource_available[direction] = cr.get("downlink_available")
+            else:
+                key = _ta.ResourceKey(int(cr["peer"]),
+                                      str(cr["egress_direction"]), "isl",
+                                      generation=int(cr["egress_generation"]))
+                resource_rate[direction] = cr.get("isl_rate_bps")
+            resources[direction] = key
+            rate[direction] = cr.get(
+                "candidate_isl_rate_bps", cr.get("isl_rate_bps"))
+            prop[direction] = cr.get("propagation_s")
+            # The peer term is known only when a legal, received processing
+            # advertisement supports an estimate at the packet's projected
+            # arrival.  A configured node delay is not evidence about this
+            # particular peer's queue and must not turn an unobserved term
+            # into a falsely complete ETA (including protocol-v1 history).
+            peer_process[direction] = None
+            remaining[direction] = cr.get("remaining_prop_s")
+            # Local first-hop work continues while this request is in compute
+            # and query service.  Keep its residual work separate from the
+            # candidate target resource, which may be an ISL or terminal GSL.
+            link = self.isls[int(sat)].get(str(direction))
+            if link is not None:
+                local_in_service[str(direction)] = self._isl_in_service_s(
+                    link, now)
+            src = str((self.cfg_ta or {}).get("state_source") or "advertised")
+            if src not in ("advertised", "ideal_current"):
+                raise ValueError(
+                    'time_alignment.state_source must be advertised or ideal_current, got %r' % (src,))
+            if src == "ideal_current" and key.kind == _ta.KIND_ISL:
+                res_link = self.isls[int(cr["peer"])].get(
+                    str(cr["egress_direction"]))
+                ideal_state = None
+                if (res_link is not None
+                        and int(res_link.gen) == int(key.generation)):
+                    ideal_state = self._isl_resource_state_advertisement(
+                        res_link, now)
+                ideal_bits = (None if ideal_state is None
+                              else ideal_state.get("work_ahead_bits_proxy"))
+                if ideal_bits is not None:
+                    history.append(_ta.StateSample(
+                        key, float(now), float(now), float(ideal_bits),
+                        None if ideal_state.get("rate_bps") is None
+                        else float(ideal_state["rate_bps"])))
+                    used_state[str(direction)] = {
+                        "source": "ideal_current",
+                        "resource_id": "isl:%d:%d" % (
+                            int(cr["peer"]), int(res_link.peer)),
+                        "generation": (None if key.generation is None
+                                       else int(key.generation)),
+                        "bits": float(ideal_bits),
+                        "measured_at": float(now),
+                        "received_at": float(now),
+                        "used_at": float(now),
+                        "queued_bits": int(res_link.data_bits + res_link.ctrl_bits),
+                    }
+                continue
+            for rec in self._advertisement_history(sat, int(cr["peer"]), now,
+                                                   force=True):
+                if key.kind == _ta.KIND_DOWNLINK:
+                    terminal = (rec.get("advertised_downlink_resources")
+                                or {}).get(str(target_dst))
+                    advertised_bits = (None if terminal is None
+                                       else terminal.get("queue_bits"))
+                    sample_rate = (None if terminal is None
+                                   else terminal.get("rate_bps"))
+                else:
+                    resource_direction = str(cr["egress_direction"])
+                    generation = (rec.get("advertised_isl_generation")
+                                  or {}).get(resource_direction)
+                    if generation != key.generation:
+                        continue
+                    advertised_bits = (
+                        rec.get("advertised_isl_work_ahead_bits_proxy")
+                        or {}).get(resource_direction)
+                    sample_rate = (rec.get("advertised_isl_rate_bps")
+                                   or {}).get(resource_direction)
+                if advertised_bits is None:
+                    continue
+                if age_cutoff is not None \
+                        and float(rec["generated_at"]) > age_cutoff:
+                    # too fresh for this arm: the observation is deliberately
+                    # not offered to the predictor.  The sample is not
+                    # modified, only withheld; the arm's own past state is
+                    # still what remains.
+                    continue
+                history.append(_ta.StateSample(
+                    key, float(rec["generated_at"]), float(rec["received_at"]),
+                    float(advertised_bits),
+                    None if sample_rate is None else float(sample_rate)))
+                if (key.kind == _ta.KIND_ISL
+                        and (str(direction) not in used_state
+                             or float(rec["generated_at"]) >=
+                             used_state[str(direction)]["measured_at"])):
+                    used_state[str(direction)] = {
+                        "source": "advertised",
+                        "resource_id": "isl:%d:%d" % (
+                            int(cr["peer"]),
+                            self.topo.get(int(cr["peer"]), {}).get(
+                                str(cr["egress_direction"]), -1)),
+                        "generation": int(key.generation),
+                        "bits": float(advertised_bits),
+                        "measured_at": float(rec["generated_at"]),
+                        "received_at": float(rec["received_at"]),
+                        "used_at": float(now),
+                    }
+        def _finite_pairs(values):
+            return {d: float(v) for d, v in values.items()
+                    if v is not None and isinstance(v, (int, float))
+                    and not isinstance(v, bool) and math.isfinite(float(v))}
+        scope = "scope:|%s|%s|default" % (sat, target_dst)
+        # Frozen per-packet/per-flow-miss decisions request compute now, then
+        # query after compute. Refresh scoring runs after both services; table
+        # lookups never add a fictitious per-packet compute interval.
+        include_compute = (self.obs_mode == "frozen"
+                           and not self.async_mode
+                           and self.exec_mode != "precomputed")
+        compute_state = (self._compute_state_now(int(sat))
+                         if include_compute else
+                         {"wait_estimate_s": 0.0, "service_s": 0.0,
+                          "method": "no_foreground_compute_before_snapshot"})
+        compute_elapsed = (compute_state["wait_estimate_s"]
+                           + compute_state["service_s"])
+        query_state = self._query_state_at(int(sat), now, compute_elapsed)
+        # For an ISL action, the packet reaches the peer only after the local
+        # compute/query, local FIFO work, packet serialization, and propagation
+        # intervals.  Estimate the peer's later decision delay only from the
+        # latest actually-received processing advertisement.  In particular,
+        # never inspect the peer's live SimPy pools here.
+        for direction in cands:
+            cr = cand_map.get(str(direction))
+            if (not isinstance(cr, dict)
+                    or cr.get("status") not in ("ok", "delivered_downlink")
+                    or int(cr.get("peer", sat)) == int(sat)):
+                continue
+            rate_local = cr.get("candidate_isl_rate_bps", cr.get("isl_rate_bps"))
+            prop_local = cr.get("propagation_s")
+            queued_local = own_q.get(direction, 0.0)
+            residual_local = local_in_service.get(str(direction))
+            if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                       and math.isfinite(float(v)) for v in
+                       (rate_local, prop_local, queued_local)) \
+                    or float(rate_local) <= 0 or residual_local is None:
+                peer_process[direction] = None
+                continue
+            source_compute_query = (float(compute_state["wait_estimate_s"])
+                                    + float(compute_state["service_s"])
+                                    + float(query_state["wait_s"])
+                                    + float(query_state["service_s"]))
+            local_wait = max(
+                0.0, float(queued_local) / float(rate_local)
+                + float(residual_local) - source_compute_query)
+            peer_arrival_at = (float(now) + source_compute_query + local_wait
+                               + target_bits / float(rate_local)
+                               + float(prop_local))
+            rows = self._advertisement_history(
+                int(sat), int(cr["peer"]), float(now), force=True)
+            if not rows:
+                peer_process[direction] = None
+                continue
+            record = rows[-1]
+            projected = self._project_advertised_peer_processing(
+                record, peer_arrival_at)
+            if projected is not None:
+                peer_process[direction] = projected
+        self._ta_used_state = used_state
+        return _ta.make_snapshot(
+            satellite=int(sat), snapshot_at=float(now), history=tuple(history),
+            legal_directions=tuple(legal), resources=resources,
+            egress_queue_bits=_finite_pairs(
+                {d: own_q.get(d, 0.0) for d in resources}),
+            local_egress_in_service_s=_finite_pairs(local_in_service),
+            link_rate_bps=_finite_pairs(rate),
+            link_propagation_s=_finite_pairs(prop),
+            peer_process_s=_finite_pairs(peer_process),
+            remaining_prop_s=_finite_pairs(remaining),
+            resource_service_rate_bps=_finite_pairs(resource_rate),
+            terminal_propagation_s=_finite_pairs(terminal_prop),
+            resource_available=resource_available,
+            compute_wait_s=float(compute_state["wait_estimate_s"]),
+            compute_service_s=float(compute_state["service_s"]),
+            query_wait_s=float(query_state["wait_s"]),
+            query_service_s=float(query_state["service_s"]),
+            pkt_bits=target_bits,
+            arm=arm, predictor=str(self.cfg_ta["predictor"]),
+            history_limit=int(self.cfg_ta["history_limit"]),
+            common_horizon_s=common_horizon_s,
+            common_rule=str(self.cfg_ta["common_rule"]),
+            # Diagnostics-only.  Absent means None, which leaves the sort key
+            # byte-identical to every historical run.
+            tie_sig_digits=self.cfg_ta.get("tie_sig_digits"),
+            query_delay_s=float(self.cfg_ta["query_delay_s"]),
+            provenance=(scope,))
+
+    def _ta_common_horizon(self, probe, rule):
+        """Delegates to the shared resolver (kept for existing callers)."""
+        return _ta.resolve_common_horizon(probe, rule)
+
+    def _time_aligned_order(self, pkt: DataPacket, sat: int, now: float,
+                            cands: list, own_q: dict, frozen_hit=None,
+                            query_charge=None):
+        """Reorder the legal forward candidates with the shared scorer.
+
+        Returns (ordered_candidates, audit).  With time_alignment disabled the
+        candidate order and the audit are exactly what the historical path
+        produced.  A scoring failure is fail-loud, never a silent fallback.
+
+        frozen_hit is the per_flow cache entry that was selected WHEN THE
+        DECISION WAS REQUESTED.  The frozen contract is "freeze at request,
+        never refresh while queued", so a TTL that lapses during the query
+        service wait must NOT turn an already-granted hit into a surprise
+        full scoring run (review S3): that entry is honoured, and only the
+        legality filters run against the post-wait state.
+        """
+        if not self.cfg_ta["enabled"] or not cands:
+            return cands, None
+        if self.async_mode:
+            return self._async_order(pkt, sat, now, cands, own_q)
+        if self.exec_mode == "per_flow":
+            hit = (frozen_hit if frozen_hit is not None
+                   else self._per_flow_hit(pkt, sat, now))
+            if hit is not None:
+                order = [d for d in hit["ranking"] if d in cands]
+                order += [d for d in cands if d not in order]
+                return order, {
+                    "schema": "leo-sim-execution-mode-at-start/v1",
+                    "enabled": True, "execution_mode": "per_flow",
+                    "cache_hit": True, "stored_at": hit["stored_at"],
+                    "query": dict(query_charge if query_charge is not None
+                                  else self._query_charge),
+                    "expires_at": hit["expires_at"],
+                    "ttl_s": float(self.cfg_ta["per_flow_ttl_s"]),
+                    "applied_order": list(order),
+                    "frozen_at_request": frozen_hit is not None,
+                    "source": "per-flow cache hit: no scoring, no compute on "
+                              "this decision" +
+                              (" (entry FROZEN when the decision was "
+                               "requested; a TTL lapse during the query "
+                               "wait does not convert it into a miss)"
+                               if frozen_hit is not None else ""),
+                }
+            order, audit = self._score_order(
+                pkt, sat, now, cands, own_q, query_charge=query_charge)
+            self._store_flow_cache(pkt, sat, now, order)
+            if audit is not None:
+                audit["execution_mode"] = "per_flow"
+                audit["cache_hit"] = False
+                audit["ttl_s"] = float(self.cfg_ta["per_flow_ttl_s"])
+            return order, audit
+        if self.exec_mode == "precomputed":
+            order, reason = self._precomputed_order(pkt, sat, cands, now)
+            if order is None:
+                return list(cands), {
+                    "schema": "leo-sim-execution-mode-at-start/v1",
+                    "enabled": True, "execution_mode": "precomputed",
+                    "fallback": True, "reason": reason,
+                    "installed": bool(self._precomputed_dirs),
+                    "applied_order": list(cands),
+                    "source": "precomputed topology table: per-decision "
+                              "scoring skipped",
+                }
+            return order, {
+                "schema": "leo-sim-execution-mode-at-start/v1",
+                "enabled": True, "execution_mode": "precomputed",
+                "fallback": False, "reason": None,
+                "installed": True,
+                "applied_order": list(order),
+                "source": "precomputed topology table + received "
+                          "advertisements; per-decision scoring skipped",
+            }
+        return self._score_order(pkt, sat, now, cands, own_q,
+                                 query_charge=query_charge)
+
+    def _score_order(self, pkt, sat: int, now: float, cands: list, own_q: dict,
+                     query_charge=None):
+        """The full per-packet scoring path (observation -> prediction ->
+        scoring -> ranking).  Returns (order, audit)."""
+        arm = str(self.cfg_ta["arm"])
+        try:
+            rule = str(self.cfg_ta["common_rule"])
+            if rule == "fixed_horizon":
+                horizon = float(self.cfg_ta["common_horizon_s"])
+                probe = self._build_ta_snapshot(pkt, sat, now, cands, own_q,
+                                                arm, horizon)
+            else:
+                probe = self._build_ta_snapshot(pkt, sat, now, cands, own_q,
+                                                arm, None)
+                # the shared horizon resolver, so the online path and the
+                # benchmark cannot compute different common instants
+                horizon = _ta.resolve_common_horizon(probe, rule)
+                probe = self._build_ta_snapshot(pkt, sat, now, cands, own_q,
+                                                arm, horizon)
+            plan = _ta.plan_decision(probe)
+            scored = plan.scored
+            policy_choice = None
+            if self.inference_policy is not None:
+                policy_choice = self.inference_policy.act(probe)
+                if policy_choice not in probe.legal_directions:
+                    raise KernelError(
+                        "the inference policy chose "
+                        f"{policy_choice!r} outside the legal set "
+                        f"{sorted(probe.legal_directions)}")
+        except _ta.TimeAlignmentError as exc:
+            raise KernelError(
+                f"time_alignment could not score decision at {now}: {exc}")
+        order = [d for d in scored.ranking if d in cands]
+        order += [d for d in cands if d not in order]
+        if policy_choice is not None:
+            # the inference policy owns the ACTION; the scorer still supplies
+            # the fallback ordering behind it
+            order = [policy_choice] + [d for d in order if d != policy_choice]
+        # OBSERVATION-AGE AUDIT.  For every candidate, record the source
+        # measurement instant of the sample the predictor will actually use and
+        # the workload value that sample carries.  This is built with the SAME
+        # helpers the predictor uses (order_history / _latest_by_resource), so
+        # "what was read" and "what is recorded" cannot drift apart.
+        age_audit = None
+        if self._min_observation_age_s is not None:
+            # The audit is DIAGNOSTIC: it must never change what the decision
+            # does.  A direction without a mapped resource legitimately has
+            # resource_for(d) is None, and an instrument that raised on that
+            # took the whole run down (measured once, rt9 pilot).  Errors are
+            # caught and recorded, never propagated.
+            try:
+                ordered = _ta.order_history(probe.history, probe.snapshot_at)
+                grouped = _ta._latest_by_resource(ordered) if ordered else {}
+                per_dir = {}
+                for d in probe.legal_directions:
+                    res = probe.resource_for(d)
+                    key = None if res is None else res.as_tuple()
+                    series = list(grouped.get(key, ())) if key is not None else []
+                    used = series[-1] if series else None
+                    per_dir[d] = {
+                        "resource": key,
+                        "samples_available": len(series),
+                        "used_measured_at": (None if used is None
+                                             else float(used.measured_at)),
+                        "used_actual_age_s": (
+                            None if used is None
+                            else float(probe.snapshot_at)
+                            - float(used.measured_at)),
+                        "used_queue_bits": (None if used is None
+                                            else float(used.queue_bits)),
+                        "used_rate_bps": (None if used is None
+                                          else used.rate_bps),
+                    }
+                age_audit = {
+                    "schema": "leo-sim-observation-age/v1",
+                    "declared_min_observation_age_s": float(
+                        self._min_observation_age_s),
+                    "snapshot_at": float(probe.snapshot_at),
+                    "cutoff_measured_at": float(probe.snapshot_at)
+                    - float(self._min_observation_age_s),
+                    "per_direction": per_dir,
+                    "rule": "withhold samples with measured_at > snapshot_at "
+                            "- a; no sample is modified; insufficient history "
+                            "uses the predictor's normal hold-last behaviour "
+                            "on what remains",
+                }
+            except Exception as exc:  # diagnostic only, never fatal
+                age_audit = {
+                    "schema": "leo-sim-observation-age/v1",
+                    "declared_min_observation_age_s": float(
+                        self._min_observation_age_s),
+                    "snapshot_at": float(probe.snapshot_at),
+                    "error": "%s: %s" % (type(exc).__name__, exc),
+                    "per_direction": {},
+                }
+        audit = {
+            "schema": "leo-sim-time-alignment-at-start/v1",
+            "enabled": True,
+            "arm": arm,
+            "predictor": probe.predictor,
+            "state_source": str((self.cfg_ta or {}).get("state_source") or "advertised"),
+            "used_state": dict(getattr(self, "_ta_used_state", {}) or {}),
+            "observation_age": age_audit,
+            "common_rule": rule,
+            "common_horizon_s": horizon,
+            "common_horizon_status": (
+                "fixed_configured" if rule == "fixed_horizon" else
+                ("NO_STRONG_COMMON" if horizon is None else "finite_eta_median")),
+            "query_delay_s": probe.query_delay_s,
+            "snapshot_at": probe.snapshot_at,
+            "compute_state": self._compute_state_now(int(sat)),
+            "eta_terms": {
+                d: dict(_ta.estimate_eta(probe, d).terms)
+                for d in probe.legal_directions},
+            "eta_targets": {
+                d: _ta.estimate_eta(probe, d).target_at
+                for d in probe.legal_directions},
+            # THE instants this decision actually queried, from the shared
+            # planner: the benchmark is checked against these, not against its
+            # own idea of the arm
+            "query_targets": dict(plan.targets),
+            "arm": probe.arm,
+            "inference_policy": (
+                None if self.inference_policy is None else
+                {"name": getattr(self.inference_policy, "name", None),
+                 "choice": policy_choice,
+                 "counters": self.inference_policy.counters()}),
+            "eta_unknown_terms": {
+                d: list(_ta.estimate_eta(probe, d).unknown_terms)
+                for d in probe.legal_directions},
+            "ranking": list(scored.ranking),
+            "fallback_directions": list(scored.fallback_directions),
+            "missing_directions": list(scored.missing_directions),
+            "applied_order": list(order),
+            "history_samples": {
+                d: (0 if probe.resource_for(d) is None
+                    else len(probe.history_for(probe.resource_for(d))))
+                for d in probe.legal_directions},
+            "scores": {
+                s.direction: {
+                    "total_s": (None if s.total_s == math.inf else s.total_s),
+                    "terms": dict(s.terms),
+                    "missing": list(s.missing),
+                    "fallback": s.fallback,
+                    # The two factors of resource_work_s, recorded separately:
+                    # resource_work_s = predicted_bits / service_rate_bps.
+                    "predicted_bits": s.predicted_bits,
+                    "service_rate_bps": s.service_rate_bps,
+                } for s in scored.scores},
+            "execution_mode": self.exec_mode,
+            "cache_hit": None,
+            "query": dict(query_charge if query_charge is not None
+                          else self._query_charge),
+            "source": "leo_sim.kernel online snapshot (received advertisements "
+                      "and local state only)",
+        }
+        return order, audit
+
+    @staticmethod
+    def _pool_wait_for_new_request(pool, service_s: float, now: float,
+                                   service_by_request=None) -> tuple[float, int]:
+        """Project the known FIFO work ahead of one new request.
+
+        This uses only currently active starts, the current Resource queue and
+        configured service lengths. It assumes no future arrivals and never
+        reads the wait this new request later realizes.
+        """
+        service_s = max(0.0, float(service_s))
+        servers = int(pool.capacity)
+        if servers <= 0:
+            return 0.0, 0
+        known = service_by_request or {}
+        available = [0.0] * servers
+        active = list(pool.users)
+        for i, request in enumerate(active):
+            started = getattr(request, "usage_since", None)
+            if started is None:
+                remaining = service_s
+            else:
+                remaining = max(0.0, known.get(id(request), service_s)
+                                - (float(now) - float(started)))
+            available[i] = remaining
+        # Assign already-waiting jobs in FIFO order to the next free server.
+        # SimPy Resource.queue is an ordered list of ungranted requests.
+        for request in list(pool.queue):
+            server = min(range(servers), key=lambda idx: available[idx])
+            duration = max(0.0, float(known.get(id(request), service_s)))
+            available[server] += duration
+        return min(available), len(pool.queue)
+
+    def _compute_state_now(self, sat: int) -> dict:
+        """The compute-pool state KNOWN AT THIS INSTANT.
+
+        Used to estimate the wait a request would pay.  It is derived from the
+        live pool occupancy and the configured service time, never from the
+        wait the request will actually turn out to pay (that would be future
+        information leaking into an online prediction).
+        """
+        service = float(self.cfg_ex["compute_delay_s"])
+        if self.compute_servers <= 0:
+            return {"servers": 0, "busy": 0, "service_s": service,
+                    "wait_estimate_s": 0.0,
+                    "method": "unbounded_pool_no_wait"}
+        pool = self._compute_pool[sat]
+        busy = pool.count
+        wait, queued = self._pool_wait_for_new_request(
+            pool, service, float(self.env.now),
+            self._compute_service_by_request)
+        return {"servers": self.compute_servers, "busy": int(busy),
+                "queued": int(queued),
+                "service_s": service,
+                "wait_estimate_s": float(wait),
+                "method": "fifo_remaining_service_plus_waiters"}
+
+    def _query_state_at(self, sat: int, now: float,
+                        arrival_delay_s: float = 0.0) -> dict:
+        """Estimate a query arriving after known compute time.
+
+        Existing query jobs drain during the compute interval. Future query
+        arrivals are unknown and excluded; actual wait is logged separately.
+        """
+        if self._query_pool is None or self._query_delay_s <= 0:
+            return {"servers": 0, "busy": 0, "queued": 0,
+                    "wait_s": 0.0, "service_s": 0.0,
+                    "method": "no_query_service"}
+        pool = self._query_pool[sat]
+        wait_now, queued = self._pool_wait_for_new_request(
+            pool, self._query_delay_s, now,
+            self._query_service_by_request)
+        wait_at_arrival = max(0.0, wait_now - max(0.0, arrival_delay_s))
+        return {"servers": int(pool.capacity), "busy": int(pool.count),
+                "queued": int(queued), "wait_s": float(wait_at_arrival),
+                "service_s": float(self._query_delay_s),
+                "method": "known_fifo_work_no_future_arrivals"}
+
+    @staticmethod
+    def _isl_in_service_s(link, now: float) -> float:
+        """Remaining active PHY service using the rate frozen at service start.
+
+        The simulator samples a rate when a transmission begins and schedules
+        that packet's completion from the sampled rate.  A later MCS sample is
+        for future transmissions; using it to reconstruct this packet's
+        residual would invent work progress.  Missing start metadata is
+        unknown, not zero.
+        """
+        if link.current is None:
+            return 0.0
+        if link._svc_phase == "transmitting":
+            rate = getattr(link, "_service_rate_bps", None)
+            started_at = getattr(link, "_tx_started_at", None)
+            if (not isinstance(rate, (int, float))
+                    or isinstance(rate, bool)
+                    or not math.isfinite(float(rate)) or rate <= 0.0
+                    or started_at is None):
+                return None
+            return max(0.0, float(link.current.bits) / float(rate)
+                       - (float(now) - float(started_at)))
+        try:
+            rate = float(link.k._link_rate(
+                "isl", now, link.sat, peer=link.peer))
+        except Exception:
+            return None
+        if not math.isfinite(rate) or rate <= 0.0:
+            return None
+        return float(link.current.bits) / rate
+
+    def _candidate_resource_map(self, pkt, sat: int, now: float,
+                                considered: list, force: bool = False,
+                                dst=None) -> dict:
+        """Per-candidate (peer_sat, egress_direction) prediction at now.
+
+        Deterministic-router scope (learning.algorithm == none), which is the
+        T1 first-round contract.  A candidate whose egress cannot be resolved
+        from information this node HAD at now is recorded as an explicit
+        missing entry, never as a zero or as an invented route.  Reading the
+        peer's real queue is forbidden here; only the received advertisement
+        may enter.
+        """
+        if (self.decision_sink is None and not force) or not considered:
+            return {}
+        cache_hops = (1 if self.cfg_rt["contract"] == "C1"
+                      else self.cfg_learning.get("obs_hops")) \
+            if self.learner is not None else None
+        target_dst = pkt.dst if dst is None else dst
+        policy = self._effective_routing_policy()
+        # Serving-set source is a POLICY property, not a per-callsite choice.
+        # For the authoritative-serving policies the routing decision already
+        # used the true set; letting the resource map fall back to the cache
+        # here made the two disagree and produced a genuinely mixed-information
+        # decision (measured: 3.1% of known-serving decisions had every
+        # candidate marked fallback, against 0.08% for hop).  One source only.
+        serving = self._serving_source(sat, target_dst, now, cache_hops)
+        forbidden_nodes = set(getattr(pkt, "path", ()) or ())
+        safe_serving = [s for s in serving if s not in forbidden_nodes]
+        entries = self._observed_cache_entries(sat, now)
+        out: dict = {}
+        for direction in considered:
+            link = self.isls[sat].get(direction)
+            peer = None if link is None else link.peer
+            if peer is None:
+                out[str(direction)] = {
+                    "status": "missing", "reason": "direction_has_no_peer"}
+                continue
+            try:
+                candidate_isl_rate = float(
+                    self._link_rate("isl", now, sat, peer=peer))
+            except Exception:
+                candidate_isl_rate = None
+            if peer in forbidden_nodes:
+                out[str(direction)] = {
+                    "status": "missing", "reason": "candidate_peer_already_visited",
+                    "peer": int(peer), "measurement": None,
+                    "isl_rate_bps": float(self.isl_rate_bps),
+                    "candidate_isl_rate_bps": candidate_isl_rate,
+                }
+                continue
+            entry = entries.get(peer)
+            advertised_q: dict = {}
+            if entry is not None:
+                payload = (entry.payload
+                           if isinstance(entry.payload, dict) else {})
+                for d, record in (payload.get("isl_queue_bits")
+                                  or {}).items():
+                    if not isinstance(record, dict):
+                        continue
+                    if record.get("peer") != self.topo.get(peer, {}).get(d):
+                        continue
+                    value = record.get("value")
+                    if isinstance(value, (int, float)) and not isinstance(
+                            value, bool) and math.isfinite(float(value)) \
+                            and value >= 0:
+                        advertised_q[d] = int(value)
+            measurement = None if entry is None else {
+                "generated_at": float(entry.generated_at),
+                "received_at": float(entry.received_at),
+                "age_s": float(max(0.0, entry.aoi(now))),
+                "hops": int(entry.hops)}
+            try:
+                propagation = float(model.propagation_delay_s(
+                    self.geometry.isl_range_km(sat, peer, now)))
+            except Exception:  # geometry may not describe this edge
+                propagation = None
+            if peer in serving:
+                payload = (entry.payload if entry is not None
+                           and isinstance(entry.payload, dict) else {})
+                terminal = ((payload.get("downlink_resources") or {})
+                            .get(str(target_dst), {}))
+                downlink_rate = terminal.get("rate_bps")
+                downlink_prop = terminal.get("propagation_s")
+                downlink_bits = terminal.get("queue_bits")
+                out[str(direction)] = {
+                    "status": "delivered_downlink", "peer": int(peer),
+                    "egress_direction": None, "kind": "downlink",
+                    "measurement": measurement,
+                    "isl_rate_bps": float(self.isl_rate_bps),
+                    "candidate_isl_rate_bps": candidate_isl_rate,
+                    "propagation_s": propagation,
+                    "downlink_queue_bits": downlink_bits,
+                    "downlink_rate_bps": downlink_rate,
+                    "downlink_propagation_s": downlink_prop,
+                    "downlink_available": terminal.get("available"),
+                    "downlink_queue_scope": terminal.get("queue_scope"),
+                    "downlink_queue_semantics": terminal.get(
+                        "queue_semantics"),
+                    "remaining_prop_s": 0.0,
+                }
+                continue
+            if not self.topo.get(peer):
+                out[str(direction)] = {
+                    "status": "missing", "reason": "peer_has_no_isl_egress",
+                    "peer": int(peer), "measurement": measurement,
+                    "isl_rate_bps": float(self.isl_rate_bps),
+                    "candidate_isl_rate_bps": candidate_isl_rate,
+                    "propagation_s": propagation}
+                continue
+            cands, route_status = routing.choose_next_hop(
+                policy, peer, target_dst, now, self.geometry,
+                self.topo, self.caches[sat], advertised_q, self.isl_rate_bps,
+                model.propagation_delay_s,
+                oracle_targets=([s for s in serving if s != peer]
+                                if policy in ("oracle", "known_serving")
+                                else None),
+                best_only=False,
+                reverse_adj=self._routing_reverse_adj,
+                sorted_adj=self._routing_sorted_rev_adj,
+                rate_from_propagation=(
+                    (lambda prop_s: link_budget.mcs_rate_bps(
+                        prop_s * model.C_KM_S, self.rf_isl, self.mcs_table))
+                    if self.rate_model == "mcs" else None),
+                cache_hops=cache_hops,
+                forbidden_nodes=forbidden_nodes)
+            if route_status != "ok" or not cands:
+                out[str(direction)] = {
+                    "status": "missing",
+                    "reason": "peer_route_%s" % route_status,
+                    "peer": int(peer), "measurement": measurement,
+                    "isl_rate_bps": float(self.isl_rate_bps),
+                    "candidate_isl_rate_bps": candidate_isl_rate,
+                    "propagation_s": propagation}
+                continue
+            egress = cands[0]
+            peer_payload = (entry.payload if entry is not None
+                            and isinstance(entry.payload, dict) else {})
+            egress_record = ((peer_payload.get("isl_queue_bits") or {})
+                             .get(egress))
+            egress_peer = self.topo.get(peer, {}).get(egress)
+            if (not isinstance(egress_record, dict)
+                    or egress_record.get("peer") != egress_peer
+                    or isinstance(egress_record.get("generation"), bool)
+                    or not isinstance(egress_record.get("generation"), int)
+                    or egress_record.get("generation") < 0):
+                out[str(direction)] = {
+                    "status": "missing",
+                    "reason": "target_egress_identity_unavailable",
+                    "peer": int(peer), "measurement": measurement,
+                    "egress_direction": str(egress),
+                    "egress_peer": (None if egress_peer is None
+                                    else int(egress_peer)),
+                    "isl_rate_bps": None,
+                    "candidate_isl_rate_bps": candidate_isl_rate,
+                    "propagation_s": propagation,
+                }
+                continue
+            raw_target_rate = egress_record.get("rate_bps")
+            target_rate = None
+            if (isinstance(raw_target_rate, (int, float))
+                    and not isinstance(raw_target_rate, bool)
+                    and math.isfinite(float(raw_target_rate))
+                    and raw_target_rate > 0.0):
+                target_rate = float(raw_target_rate)
+            raw_work_ahead = egress_record.get("work_ahead_bits_proxy")
+            target_work_ahead = None
+            if (isinstance(raw_work_ahead, (int, float))
+                    and not isinstance(raw_work_ahead, bool)
+                    and math.isfinite(float(raw_work_ahead))
+                    and raw_work_ahead >= 0.0):
+                target_work_ahead = float(raw_work_ahead)
+            # fixed visible-topology remaining propagation cost: remaining
+            # hop count from the peer to its nearest VISIBLE serving node, at
+            # a representative per-hop propagation (the known link value).
+            # Arm-independent and candidate-dependent, so it can enter the
+            # ranking without favouring any arm.
+            remaining_hops = None
+            try:
+                safe_reverse = routing.without_nodes(
+                    self._routing_reverse_adj, forbidden_nodes)
+                hops_map = routing._multi_source_bfs(
+                    safe_reverse, safe_serving)
+                remaining_hops = hops_map.get(peer)
+            except Exception:
+                remaining_hops = None
+            remaining_prop = (
+                None if (remaining_hops is None or propagation is None)
+                else float(remaining_hops) * float(propagation))
+            out[str(direction)] = {
+                "status": "ok", "peer": int(peer),
+                "egress_direction": egress,
+                "egress_peer": (None if egress_peer is None
+                                else int(egress_peer)),
+                "kind": "isl",
+                "advertised_queue_bits": advertised_q.get(egress),
+                "advertised_queue_known": egress in advertised_q,
+                "egress_generation": int(egress_record["generation"]),
+                "work_ahead_bits_proxy": target_work_ahead,
+                "measurement": measurement,
+                "isl_rate_bps": target_rate,
+                "candidate_isl_rate_bps": candidate_isl_rate,
+                "propagation_s": propagation,
+                "remaining_hops": remaining_hops,
+                "remaining_prop_s": remaining_prop,
+                "rule": "visible_topology_shortest_remaining_path",
+                "remaining_prop_basis": (
+                    "path-constrained remaining hop count from this candidate "
+                    "peer to its nearest received serving advertisement, times "
+                    "the known per-hop link propagation"),
+            }
+        return out
 
     def _estimate_at_start(self, pkt: DataPacket, sat: int, now: float,
                            chosen: str | None, kind: str
@@ -3404,26 +5662,16 @@ class Kernel:
         peer = link.peer
         if peer is None:
             return None, "chosen_direction_has_no_peer"
-        policy = self.cfg_rt["policy"]
-        cache_hops = None
-        if policy == "oracle":
-            # The labeled oracle has perfect global current knowledge by
-            # contract, and the kernel already hands it the true serving set
-            # at decision time; the estimate stays inside that same contract
-            # instead of pretending the oracle is cache-limited.
-            serving = self._serving_sats(pkt.dst)
-            is_destination = peer in serving
-            targets = [s for s in serving if s != peer]
-            information_source = "oracle_global_knowledge"
-        else:
-            cache_hops = (1 if self.cfg_rt["contract"] == "C1"
-                          else self.cfg_learning.get("obs_hops")) \
-                if self.learner is not None else None
-            serving = routing.destinations_in_cache(
-                self.caches[sat], pkt.dst, now, max_cache_hops=cache_hops)
-            is_destination = peer in serving
-            targets = [s for s in serving if s != peer]
-            information_source = "control_cache"
+        policy = self._effective_routing_policy()
+        cache_hops = (1 if self.cfg_rt["contract"] == "C1"
+                      else self.cfg_learning.get("obs_hops")) \
+            if self.learner is not None else None
+        serving = self._serving_source(sat, pkt.dst, now, cache_hops)
+        is_destination = peer in serving
+        targets = [s for s in serving if s != peer]
+        information_source = ("authoritative_current_serving"
+                              if policy in ("oracle", "known_serving")
+                              else "control_cache")
         entry = self._observed_cache_entries(sat, now).get(peer)
         advertised_q: dict[str, int] = {}
         if entry is not None:
@@ -3493,7 +5741,9 @@ class Kernel:
                          audit_candidates: list | None = None,
                          decision_id: int | None = None,
                          decision_started_at: float | None = None,
-                         observation: dict | None = None) -> None:
+                         observation: dict | None = None,
+                         ta_audit: dict | None = None,
+                         direction_audit: dict | None = None) -> None:
         """Append one per-hop decision snapshot to the optional decision sink.
 
         Output only: never influences routing, learning, timing, or fates.
@@ -3546,7 +5796,8 @@ class Kernel:
                 # the label -- not the numbers -- says so
                 source="commit_time_state",
                 own_queue_bits=own_queue_bits, considered=list(considered),
-                legal=list(candidates), status=None, kind=kind, action=chosen)
+                legal=list(candidates), status=None, kind=kind, action=chosen,
+                ta_audit=ta_audit)
             estimate, estimate_reason = self._estimate_at_start(
                 pkt, sat, committed_at, chosen, kind)
         else:
@@ -3557,6 +5808,15 @@ class Kernel:
         if estimate_reason is not None:
             observation_record = dict(observation_record)
             observation_record["estimate_unavailable_reason"] = estimate_reason
+        if direction_audit is None:
+            direction_audit = observation_record.get("four_direction_audit")
+        if direction_audit is None:
+            direction_audit = self._four_direction_audit(
+                pkt, sat, committed_at, route_candidates=considered,
+                loop_free_candidates=considered, legal=candidates,
+                kind=kind, ta_audit=ta_audit)
+        observation_record = dict(observation_record)
+        observation_record["four_direction_audit"] = direction_audit
         truth_at_commit = {
             "schema": "leo-sim-truth-at-commit/v1",
             "t_observed": committed_at,
@@ -3568,6 +5828,18 @@ class Kernel:
             "candidate_truth": info_audit["candidate_truth"],
             "cache_entries": info_audit["cache_entries"],
         }
+        if self.target_probe is not None:
+            # The audit that MATTERS is the one persisted with the decision.
+            # Some call sites hand the scorer audit through the observation
+            # instead of the ta_audit argument, so take whichever exists and
+            # never invent one.
+            effective_ta = (ta_audit if ta_audit
+                            else (observation_record or {}).get("time_alignment"))
+            self._enqueue_target_probe(
+                pkt, sat, kind, candidates, chosen, committed_at,
+                decision_id=decision_id, ta_audit=effective_ta,
+                direction_audit=direction_audit,
+                decision_started_at=decision_started_at)
         self.decision_sink.append({
             "t": committed_at,
             # When computation consumed simulated time these two differ:
@@ -3594,9 +5866,88 @@ class Kernel:
             # simulation reads none of them.
             "obs_mode": obs_mode,
             "observation_at_start": observation_record,
+            "four_direction_audit": direction_audit,
             "estimate_at_start": estimate,
             "truth_at_commit": truth_at_commit,
         })
+
+    def _enqueue_target_probe(self, pkt, sat: int, kind: str,
+                              candidates, chosen, committed_at: float, *,
+                              decision_id, ta_audit, direction_audit,
+                              decision_started_at):
+        """Queue one audit row per candidate direction for the same-run probe.
+
+        Called only after the action is committed, and only when a probe was
+        explicitly requested.  It reads the decision's own audit objects; it
+        does not build a snapshot, score anything, or touch any resource.
+        """
+        probe = self.target_probe
+        if probe is None or not ta_audit:
+            return
+        used = ta_audit.get("used_state") or {}
+        etas = ta_audit.get("eta_targets") or {}
+        queries = ta_audit.get("query_targets") or {}
+        scores = ta_audit.get("scores") or {}
+        details = (direction_audit or {}).get("candidate_details") or {}
+        rows = []
+        for direction in candidates:
+            score = scores.get(direction) or {}
+            detail = details.get(direction) or {}
+            state = used.get(direction) or {}
+            resource_id = state.get("resource_id")
+            generation = state.get("generation")
+            identity_source = "used_state" if resource_id is not None else None
+            if resource_id is None and detail.get("resource_id"):
+                # The prediction carried no identity (no advertisement was
+                # received for this resource), but the live audit did.  The
+                # two are recorded separately so a consumer can SEE that this
+                # row's identity did not come from the predictor.
+                resource_id = detail.get("resource_id")
+                identity_source = "live_audit_not_used_by_predictor"
+                if generation is None and detail.get("generation") is not None:
+                    generation = detail.get("generation")
+                    identity_source = ("live_audit_not_used_by_predictor"
+                                       " (resource_id+generation)")
+            peer = detail.get("peer")
+            rows.append({
+                "schema": "leo-sim-target-probe-decision/v1",
+                "decision_id": decision_id,
+                "pid": pkt.pid,
+                "sat": int(sat),
+                "kind": str(kind),
+                "chosen": str(chosen),
+                "selected": bool(direction == chosen),
+                "direction": str(direction),
+                "candidate_directions": [str(c) for c in candidates],
+                "t_commit_s": float(committed_at),
+                "t_decision_start_s": (float(committed_at)
+                                       if decision_started_at is None
+                                       else float(decision_started_at)),
+                "arm": ta_audit.get("arm"),
+                "predictor": ta_audit.get("predictor"),
+                "state_source": ta_audit.get("state_source"),
+                "snapshot_at_s": ta_audit.get("snapshot_at"),
+                "resource_id": resource_id,
+                "resource_peer": (None if peer is None else int(peer)),
+                "identity_source": identity_source,
+                "generation": (None if generation is None else int(generation)),
+                "state_bits": state.get("bits"),
+                "state_queued_bits": state.get("queued_bits"),
+                "state_source_used": state.get("source"),
+                "state_measured_at_s": state.get("measured_at"),
+                "state_received_at_s": state.get("received_at"),
+                "state_used_at_s": state.get("used_at"),
+                "algo_query_target_s": queries.get(direction),
+                "eval_target_s": etas.get(direction),
+                "predicted_bits": score.get("predicted_bits"),
+                "service_rate_bps": score.get("service_rate_bps"),
+                "predicted_work_s": (score.get("terms") or {}).get(
+                    "resource_work_s"),
+                "score_total_s": score.get("total_s"),
+                "score_missing": list(score.get("missing") or ()),
+                "fallback": bool(score.get("fallback")),
+            })
+        probe.enqueue(rows)
 
     def _in_service_remaining(self, link, now: float):
         """In-service work on one ISL egress, with an honest method label.
@@ -3677,7 +6028,8 @@ class Kernel:
                 model.propagation_delay_s,
                 oracle_targets=([s for s in self._serving_sats(pkt.dst)
                                  if s != peer]
-                                if self.cfg_rt["policy"] == "oracle" else None),
+                                if self._effective_routing_policy() in
+                                ("oracle", "known_serving") else None),
                 best_only=False,
                 reverse_adj=self._routing_reverse_adj,
                 sorted_adj=self._routing_sorted_rev_adj)
@@ -3828,6 +6180,69 @@ class Kernel:
                            original=action, forced=forced)
         return forced
 
+    def _forced_action_at_observation(self, pkt: DataPacket, sat: int,
+                                      decision_id: int | None,
+                                      obs: dict) -> str | None:
+        """Resolve a counterfactual override at a FROZEN branch point.
+
+        The frozen branch point is the OBSERVATION instant, not the commit
+        instant: the action is inferred from the observation taken at
+        obs["t_observe"] and commit only re-checks that it is still legal.  A
+        counterfactual branch must therefore pick its action from the legal set
+        that observation recorded -- obs["legal"].  Forcing a direction that
+        was not legal there would commit an action the kernel itself had
+        already refused, which is a different experiment rather than a
+        counterfactual, so it fails loud exactly like the refresh path does.
+
+        Returns the forced direction, or None when this decision is not forced.
+        Strictly opt-in and at most once per decision id, like
+        _apply_forced_action; the timeline milestone records the branch instant
+        and the legal set the choice was made from, so a substitution is
+        auditable rather than invisible.
+        """
+        if not self.forced_actions or decision_id is None:
+            return None
+        forced = self.forced_actions.get(decision_id)
+        if forced is None or decision_id in self._forced_applied:
+            return None
+        if obs["kind"] != "forward":
+            raise KernelError(
+                f"decision {decision_id} is a {obs['kind']} decision at its "
+                "frozen branch point; the first version of the counterfactual "
+                "harness only forces a choice among the ISL forward candidates")
+        legal_at_branch = list(obs["legal"] or [])
+        if forced not in legal_at_branch:
+            raise KernelError(
+                f"forced action {forced!r} for decision {decision_id} is not "
+                f"legal at the frozen branch point {sorted(legal_at_branch)} "
+                f"(t_observe={obs['t_observe']})")
+        self._forced_applied.add(decision_id)
+        if self.timeline_sink is not None:
+            self._timeline("forced_action", pkt, decision_id, sat=int(sat),
+                           original=obs["action"], forced=forced,
+                           obs_mode="frozen",
+                           branch_instant="observation",
+                           t_observe=float(obs["t_observe"]),
+                           legal_at_branch_point=legal_at_branch)
+        return forced
+
+    def _deferred_enabled(self) -> bool:
+        """Is the deferred (generator) decision path active?
+
+        True when the computation consumes simulated time OR when the run asks
+        for frozen observation semantics.  The zero-cost frozen diagnostic
+        (decision_observation_mode=frozen, compute_delay_s=0) must still freeze
+        at the request instant and commit at the same simulated instant, so it
+        cannot use the synchronous path (which never builds a pre-compute
+        observation).  The default refresh + zero delay path stays exactly the
+        historical synchronous call.
+        """
+        if self.cfg_ta["enabled"] and self._query_delay_s > 0:
+            # a non-zero query service is a simulated event, so the decision
+            # must be able to yield
+            return True
+        return self.compute_delay_s > 0 or self.obs_mode == "frozen"
+
     def decide_deferred(self, pkt: DataPacket, sat: int):
         """Decide after consuming simulated computation time (T1-COMPUTE-DELAY).
 
@@ -3843,14 +6258,198 @@ class Kernel:
         sites call _decide synchronously exactly as before, so historical runs
         stay bit-identical.
         """
-        started = float(self.env.now)
+        requested = float(self.env.now)
         # frozen: the observation and the inference happen NOW, before the
         # timeout; only the legality check and the commit happen after it.
+        query_charge = self._new_query_charge()
+        if not self._packet_compute_required(pkt, sat, requested):
+            # A TABLE LOOKUP IS NOT A COMPUTATION.  precomputed, async_point and
+            # async_window read an installed table, and a per-flow cache hit
+            # reads a cached answer: none of them may pay the per-packet
+            # compute interval, or the comparison would be measuring the same
+            # full inference in every arm.  They all still pay the shared query
+            # service, and the background update (async) or the miss (per_flow)
+            # pays the real computation.
+            # FREEZE AT REQUEST: if this was a per_flow cache hit, hand the
+            # very entry judged valid here down to the decision, so a TTL
+            # that lapses during the query wait cannot silently trigger a
+            # full scoring run that nobody paid for (review S3).
+            frozen_hit = (self._per_flow_hit(pkt, sat, requested)
+                          if self.exec_mode == "per_flow" else None)
+            query_requested = float(self.env.now)
+            yield from self._query_service(
+                pkt, sat, query_requested, query_charge,
+                decision_requested_at=requested)
+            self._decide(pkt, sat, decision_started_at=requested,
+                         observation=None, frozen_flow_hit=frozen_hit,
+                         query_charge=query_charge)
+            return
         observation = (self._observe_preferred_action(pkt, sat)
                        if self.obs_mode == "frozen" else None)
-        yield self.env.timeout(self.compute_delay_s)
-        self._decide(pkt, sat, compute_started_at=started,
-                     observation=observation)
+        self._compute_job_seq += 1
+        job_id = self._compute_job_seq
+        scope = self._compute_scope(pkt, sat)
+        self._compute_milestone(
+            "compute_request", pkt, sat, job_id, requested_at=requested,
+            service_s=self.compute_delay_s, servers=self.compute_servers,
+            scope=scope)
+        if self.compute_servers > 0:
+            pool = self._compute_pool[sat]
+            busy = pool.count
+            slot = pool.request()
+            self._compute_service_by_request[id(slot)] = float(
+                self.compute_delay_s)
+            yield slot
+            started = float(self.env.now)
+            wait = started - requested
+            self._emit_compute_wait(pkt, sat, job_id, wait, busy, requested)
+            self._compute_milestone(
+                "compute_start", pkt, sat, job_id, requested_at=requested,
+                started_at=started, wait_s=wait)
+            yield self.env.timeout(self.compute_delay_s)
+            finished = float(self.env.now)
+            self._compute_milestone(
+                "compute_finish", pkt, sat, job_id, requested_at=requested,
+                started_at=started, finished_at=finished,
+                wait_s=wait, service_s=finished - started)
+            # release at the finish instant: the next queued request can start
+            # here, and a completion event always precedes anything it triggers
+            pool.release(slot)
+            self._compute_service_by_request.pop(id(slot), None)
+        else:
+            started = requested
+            self._emit_compute_wait(pkt, sat, job_id, 0.0, 0, requested)
+            self._compute_milestone(
+                "compute_start", pkt, sat, job_id, requested_at=requested,
+                started_at=started, wait_s=0.0)
+            yield self.env.timeout(self.compute_delay_s)
+            finished = float(self.env.now)
+            self._compute_milestone(
+                "compute_finish", pkt, sat, job_id, requested_at=requested,
+                started_at=started, finished_at=finished,
+                wait_s=0.0, service_s=finished - started)
+        query_requested = float(self.env.now)
+        yield from self._query_service(
+            pkt, sat, query_requested, query_charge,
+            decision_requested_at=requested)
+        # the frozen observation (and its audit) was built BEFORE the query, so
+        # the charge is attached now, in place, rather than left at zero
+        if observation is not None:
+            audit = (observation.get("observation") or {}).get("time_alignment")
+            if isinstance(audit, dict):
+                audit["query"] = dict(query_charge)
+        self._decide(pkt, sat, decision_started_at=requested,
+                     observation=observation, query_charge=query_charge)
+
+    def _async_milestone(self, milestone: str, sat: int, job_id: int,
+                         **extra) -> None:
+        """Compute milestone for a scope update (no packet/decision id)."""
+        if self.timeline_sink is None:
+            return
+        row = {"milestone": milestone, "at": float(self.env.now),
+               "pid": None, "decision_id": None, "sat": int(sat),
+               "compute_job_id": int(job_id)}
+        row.update(extra)
+        self.timeline_sink.append(row)
+
+    def _new_query_charge(self) -> dict:
+        return {"requests": 0, "wait_s": 0.0, "service_s": 0.0,
+                "servers": 1 if self._query_pool else 0}
+
+    def _query_milestone(self, milestone: str, pkt, sat: int,
+                         charge: dict, **extra) -> None:
+        # requests are counted once per query in _query_service; start/finish
+        # are two rows of the SAME query
+        if "wait_s" in extra:
+            charge["wait_s"] += float(extra["wait_s"])
+            self._query_totals["total_wait_s"] += float(extra["wait_s"])
+            self._query_totals["max_wait_s"] = max(
+                self._query_totals["max_wait_s"], float(extra["wait_s"]))
+        if "service_s" in extra:
+            charge["service_s"] += float(extra["service_s"])
+            self._query_totals["total_service_s"] += float(extra["service_s"])
+        if self.timeline_sink is not None:
+            row = {"milestone": milestone, "at": float(self.env.now),
+                   "pid": None if pkt is None else pkt.pid,
+                   "decision_id": None, "sat": int(sat),
+                   "scope": "query:%d" % int(sat)}
+            row.update(extra)
+            self.timeline_sink.append(row)
+
+    def _query_service(self, pkt, sat: int, requested: float, charge: dict,
+                       *, decision_requested_at: float | None = None):
+        """Consume the shared per-satellite query service.
+
+        Yields until the answer is available and returns (wait_s, service_s).
+        All five execution modes pay it identically; only the query_delay_s = 0
+        default keeps the historical instantaneous path.
+        """
+        if self._query_pool is None or self._query_delay_s <= 0:
+            return 0.0, 0.0
+        pool = self._query_pool[sat]
+        busy = pool.count
+        charge["requests"] += 1
+        self._query_totals["requests"] += 1
+        slot = pool.request()
+        self._query_service_by_request[id(slot)] = float(self._query_delay_s)
+        yield slot
+        started = float(self.env.now)
+        wait = max(0.0, started - requested)
+        self._query_milestone(
+            "query_start", pkt, sat, charge, requested_at=requested,
+            decision_requested_at=decision_requested_at,
+            started_at=started, wait_s=wait, servers_busy=int(busy),
+            queueing=bool(wait > 0.0))
+        yield self.env.timeout(self._query_delay_s)
+        finished = float(self.env.now)
+        self._query_milestone("query_finish", pkt, sat, charge,
+                              started_at=started, finished_at=finished,
+                              wait_s=0.0, service_s=finished - started)
+        pool.release(slot)
+        self._query_service_by_request.pop(id(slot), None)
+        return wait, finished - started
+
+    def _packet_compute_required(self, pkt, sat: int, requested: float) -> bool:
+        """Does THIS decision have to run a full computation?
+
+        per_packet : always.
+        per_flow   : only on a cache miss/expiry (the hit already ran once).
+        precomputed, async_point, async_window : never -- the packet reads an
+                     installed table; the computation happened (or will happen)
+                     as a separate, separately-accounted background job.
+        """
+        if self.exec_mode == "per_flow":
+            return self._per_flow_hit(pkt, sat, requested) is None
+        if self.exec_mode in ("precomputed", "async_point", "async_window"):
+            return False
+        return True
+
+    def _compute_scope(self, pkt: DataPacket, sat: int) -> str:
+        """(satellite, destination_cell, traffic_class) as a stable string."""
+        return f"{int(sat)}|{pkt.dst}|default"
+
+    def _compute_milestone(self, milestone: str, pkt: DataPacket, sat: int,
+                           job_id: int, **extra) -> None:
+        if self.timeline_sink is not None:
+            self._timeline(milestone, pkt, None, sat=int(sat),
+                           compute_job_id=int(job_id), **extra)
+
+    def _emit_compute_wait(self, pkt: DataPacket, sat: int, job_id: int,
+                           wait: float, busy: int, requested: float) -> None:
+        """Backward-compatible summary row: wait_s (contention) and service_s
+        (configured cost) stay separately readable, and compute_start /
+        compute_finish carry the same split in explicit-event form.
+
+        The row is stamped at the REQUEST instant (not when the server was
+        granted), which is what the existing probe keys on and what makes the
+        wait comparable across jobs.  compute_start carries requested_at /
+        started_at so no reader has to infer either end from this row.
+        """
+        self._compute_milestone(
+            "compute_wait", pkt, sat, job_id, wait_s=float(wait),
+            service_s=self.compute_delay_s, servers=self.compute_servers,
+            servers_busy=int(busy), queueing=bool(wait > 0.0),
+            requested_at=float(requested), at=float(requested))
 
     # ------------------------------- T1-COMPUTE-DELAY frozen observation
 
@@ -3886,6 +6485,213 @@ class Kernel:
                 legal.append(d)
         return legal
 
+    def _min_remaining_hop_filter(self, pkt: DataPacket, sat: int,
+                                  now: float, cands: list):
+        """Keep only the directions achieving the minimum remaining hops.
+
+        RESTRICTED-ROUTING DIAGNOSTIC, off by default.  The distance is the
+        path-constrained hop count from each candidate peer to a node THIS
+        satellite has actually received an advertisement from that reports
+        serving the destination -- the same visible-topology information the
+        scorer already uses for its remaining-propagation term.  It is NOT
+        the `hop` policy best_only shortcut, which also carries a local
+        queue term.
+
+        Returns (kept, audit).  Unknown distances are never treated as a
+        number: if any candidate's distance cannot be established the
+        restriction is not applied and the audit says so.
+        """
+        if not bool(self.cfg_rt.get("min_remaining_hop_only", False)) \
+                or not cands:
+            return list(cands), None
+        forbidden = set(getattr(pkt, "path", ()) or ())
+        serving = routing.destinations_in_cache(self.caches[sat], pkt.dst,
+                                                now)
+        safe_serving = [s for s in serving if s not in forbidden]
+        audit = {
+            "schema": "leo-sim-min-remaining-hop/v1",
+            "basis": "visible_topology_path_constrained_distance_to_received_serving",
+            "pre_candidates": list(cands),
+            "serving_from_received_cache": sorted(serving),
+            "serving_after_visited_filter": sorted(safe_serving),
+        }
+        if not safe_serving:
+            audit.update({"applied": False,
+                          "reason": "no_received_serving_advertisement",
+                          "post_candidates": list(cands)})
+            return list(cands), audit
+        try:
+            safe_reverse = routing.without_nodes(self._routing_reverse_adj,
+                                                 forbidden)
+            hops_map = routing._multi_source_bfs(safe_reverse, safe_serving)
+        except Exception:
+            audit.update({"applied": False, "reason": "distance_unavailable",
+                          "post_candidates": list(cands)})
+            return list(cands), audit
+        per_direction = {}
+        for direction in cands:
+            peer = self.topo.get(sat, {}).get(direction)
+            per_direction[str(direction)] = (None if peer is None
+                                             else hops_map.get(peer))
+        if any(v is None for v in per_direction.values()):
+            audit.update({"applied": False,
+                          "reason": "unknown_distance_present",
+                          "per_direction_remaining_hops": per_direction,
+                          "post_candidates": list(cands)})
+            return list(cands), audit
+        best = min(per_direction.values())
+        kept = [d for d in cands if per_direction[str(d)] == best]
+        audit.update({
+            "applied": True,
+            "reason": "min_remaining_hops",
+            "per_direction_remaining_hops": per_direction,
+            "min_remaining_hops": best,
+            "dropped_candidates": [d for d in cands if d not in kept],
+            "post_candidates": list(kept),
+        })
+        return kept, audit
+
+    def _four_direction_audit(self, pkt: DataPacket, sat: int, now: float, *,
+                              route_candidates=(), loop_free_candidates=(),
+                              legal=(), route_status=None, kind="forward",
+                              ta_audit=None, hop_restriction=None) -> dict:
+        """Describe N/E/S/W masks using the same gates as the live router.
+
+        This is output-only. It records physical feasibility separately from
+        route-policy, loop, queue-room and final candidate masks; it never
+        changes or chooses a route. GE state is not an admission filter in the
+        platform and is checked by the real link-service path instead.
+        """
+        directions = ("N", "E", "S", "W")
+        route = set(route_candidates or ())
+        loop_free = set(loop_free_candidates or ())
+        legal_set = set(legal or ())
+        peers = self.topo.get(int(sat), {})
+        details = {}
+        for direction in directions:
+            peer = peers.get(direction)
+            link = self.isls[int(sat)].get(direction)
+            connected = peer is not None and link is not None
+            geometry_up = False
+            rate_bps = None
+            rate_ok = False
+            queue_room = False
+            if connected:
+                geometry_up = (
+                    not self.cfg_links["geometry_loss"]
+                    or self.geometry.isl_available(int(sat), int(peer), now))
+                rate_bps = self._link_rate(
+                    "isl", now, int(sat), peer=int(peer))
+                rate_ok = bool(rate_bps > 0)
+                queue_room = bool(link.room(pkt.bits))
+            physical = bool(connected and geometry_up and rate_ok)
+            routing_attempt = kind in ("forward", "hold", "fail")
+            final = bool(routing_attempt and route_status in (None, "ok")
+                         and direction in route
+                         and direction in loop_free and physical and queue_room)
+            reasons = []
+            if not routing_attempt:
+                reasons.append("not_a_forward_decision")
+            elif not connected:
+                reasons.append("no_current_neighbor")
+            else:
+                if route_status not in (None, "ok"):
+                    reasons.append("router_status:" + str(route_status))
+                if direction not in route:
+                    reasons.append("routing_policy_excluded")
+                if direction in route and direction not in loop_free:
+                    reasons.append("loop_to_visited_satellite")
+                if not geometry_up:
+                    reasons.append("geometry_unavailable")
+                if not rate_ok:
+                    reasons.append("zero_or_unavailable_rate")
+                if not queue_room:
+                    reasons.append("insufficient_queue_room")
+            details[direction] = {
+                "peer": (None if peer is None else int(peer)),
+                "connected": bool(connected),
+                "resource_id": (None if not connected
+                                else f"isl:{int(sat)}:{int(peer)}"),
+                "generation": (None if link is None else int(link.gen)),
+                "route_candidate": direction in route,
+                "loop_free_candidate": direction in loop_free,
+                "geometry_up": geometry_up,
+                "rate_bps": float(rate_bps) if rate_bps is not None else None,
+                "rate_legal": rate_ok,
+                "physical_legal": physical,
+                "queue_room": queue_room,
+                "queue_bits_before": (None if link is None
+                                      else int(link.data_bits + link.ctrl_bits)),
+                "queue_capacity_bits": int(self.cfg_links["isl_queue_bits"]),
+                "final_legal": final,
+                "filter_reasons": reasons,
+                "candidate_score": ((ta_audit or {}).get("scores") or {}).get(
+                    direction),
+            }
+        final_mask = {direction: details[direction]["final_legal"]
+                      for direction in directions}
+        return {
+            "schema": "leo-sim-four-direction-mask/v1",
+            "t_observed": float(now),
+            "sat": int(sat),
+            "route_status": route_status,
+            "decision_kind": kind,
+            "direction_order": list(directions),
+            "four_direction_peer_map": {
+                direction: (None if peers.get(direction) is None
+                            else int(peers[direction]))
+                for direction in directions},
+            "route_candidates": [d for d in directions if d in route],
+            "loop_free_candidates": [d for d in directions if d in loop_free],
+            # Output-only: the restricted-routing diagnostic's pre/post
+            # candidate sets and its hop-count basis.  None when the
+            # restriction is disabled (the historical default).
+            "min_remaining_hop_restriction": hop_restriction,
+            "committed_legal_directions": list(legal or ()),
+            "route_candidate_mask": {
+                direction: direction in route for direction in directions},
+            "loop_free_mask": {
+                direction: direction in loop_free for direction in directions},
+            "physical_legal_mask": {
+                direction: details[direction]["physical_legal"]
+                for direction in directions},
+            "queue_room_mask": {
+                direction: details[direction]["queue_room"]
+                for direction in directions},
+            "final_legal_mask": final_mask,
+            "final_mask_matches_committed_set": (
+                kind not in ("forward", "hold", "fail")
+                or {d for d, value in final_mask.items() if value} == legal_set),
+            "filter_reason_by_direction": {
+                direction: list(details[direction]["filter_reasons"])
+                for direction in directions},
+            "candidate_details": details,
+            "availability_semantics": {
+                "geometry_loss": bool(self.cfg_links["geometry_loss"]),
+                "rate_model": str(self.rate_model),
+                "queue_room_in_final_mask": True,
+                "ge_is_checked_at_link_service_not_candidate_admission": True,
+            },
+        }
+
+    def _timeline_decision_attempt(self, pkt, sat, decision_id, action,
+                                   route_status, four_direction_audit,
+                                   reason=None):
+        if self.timeline_sink is None:
+            return
+        self.timeline_sink.append({
+            "milestone": "decision_attempt",
+            "at": float(self.env.now),
+            "pid": int(pkt.pid),
+            "decision_id": decision_id,
+            "sat": int(sat),
+            "dst": str(pkt.dst),
+            "action": action,
+            "route_status": route_status,
+            "reason": reason,
+            "four_direction_audit": four_direction_audit,
+        })
+
     def _observe_preferred_action(self, pkt: DataPacket, sat: int) -> dict:
         """Observation + inference half of the frozen mode: decide what to do
         from the state visible NOW, committing nothing.
@@ -3902,6 +6708,12 @@ class Kernel:
         if self._deliver_legal_now(pkt, sat, now):
             kind, action = "deliver", "deliver"
             legal, cands, status = ["deliver"], ["deliver"], "ok"
+            route_candidates, loop_free_candidates = [], []
+            ta_audit = None
+            hop_restriction = None
+            chosen = self._fixed_policy_action(pkt, sat, legal)
+            if chosen is not None:
+                action = chosen
         else:
             cands, status = routing.choose_next_hop(
                 self.cfg_rt["policy"], sat, pkt.dst, now, self.geometry,
@@ -3909,7 +6721,8 @@ class Kernel:
                 model.propagation_delay_s,
                 oracle_targets=([s for s in self._serving_sats(pkt.dst)
                                  if s != sat]
-                                if self.cfg_rt["policy"] == "oracle" else None),
+                                if self._effective_routing_policy() in
+                                ("oracle", "known_serving") else None),
                 best_only=False,
                 reverse_adj=self._routing_reverse_adj,
                 sorted_adj=self._routing_sorted_rev_adj,
@@ -3918,9 +6731,22 @@ class Kernel:
                         prop_s * model.C_KM_S, self.rf_isl, self.mcs_table))
                     if self.rate_model == "mcs" else None),
                 cache_hops=None)
+            route_candidates = list(cands)
             cands = [d for d in cands if self.topo[sat][d] not in pkt.path]
+            loop_free_candidates = list(cands)
+            # Restricted-routing diagnostic (off by default): the arm scores
+            # ONLY the shortest-remaining-hop candidates, so a detour the
+            # scorer prices partially can no longer be chosen.
+            cands, hop_restriction = self._min_remaining_hop_filter(
+                pkt, sat, now, cands)
+            cands, ta_audit = self._time_aligned_order(pkt, sat, now, cands,
+                                                       own_q)
             legal = self._forward_legal_now(pkt, sat, now, cands)
-            if legal:
+            chosen = (self._fixed_policy_action(pkt, sat, legal)
+                      if legal else None)
+            if chosen is not None:
+                kind, action = "forward", chosen
+            elif legal:
                 kind, action = "forward", legal[0]
             else:
                 kind, action, legal = "hold", None, []
@@ -3931,7 +6757,12 @@ class Kernel:
             pkt, sat, now, mode="frozen",
             source="frozen_snapshot_before_compute",
             own_queue_bits=own_q, considered=cands, legal=legal,
-            status=status, kind=kind, action=action)
+            status=status, kind=kind, action=action, ta_audit=ta_audit)
+        observation["four_direction_audit"] = self._four_direction_audit(
+            pkt, sat, now, route_candidates=route_candidates,
+            loop_free_candidates=loop_free_candidates, legal=legal,
+            route_status=status, kind=kind, ta_audit=ta_audit,
+            hop_restriction=hop_restriction)
         estimate, estimate_reason = self._estimate_at_start(
             pkt, sat, now, action, kind)
         return {"t_observe": now, "kind": kind, "action": action,
@@ -3941,7 +6772,7 @@ class Kernel:
 
     def _decide_from_frozen_observation(self, pkt: DataPacket, sat: int,
                                         obs: dict,
-                                        compute_started_at: float | None = None
+                                        decision_started_at: float | None = None
                                         ) -> None:
         """Commit half of the frozen mode.
 
@@ -3969,22 +6800,29 @@ class Kernel:
                        observation=obs["observation"])
             return
         kind = obs["kind"]
+        # T1-FROZEN-BRANCH: an override is resolved against the OBSERVATION's
+        # legal set -- the branch point -- not against the commit-time state.
+        # A decision whose frozen branch point was not a forward choice raises
+        # here, so an illegal counterfactual can never be silently dropped.
+        action_override = self._forced_action_at_observation(
+            pkt, sat, decision_id, obs)
         if kind == "deliver" and self._deliver_legal_now(pkt, sat, now):
             pkt.decision_id = decision_id
             self._record_decision(pkt, sat, "deliver", ["deliver"], "deliver",
                                   decision_id=decision_id,
-                                  decision_started_at=compute_started_at,
+                                  decision_started_at=decision_started_at,
                                   observation=obs)
             self.downlinks[sat].put(pkt)
             return
         if kind == "forward":
-            action = obs["action"]
+            action = (obs["action"] if action_override is None
+                      else action_override)
             if self._forward_legal_now(pkt, sat, now, [action]):
                 pkt.decision_id = decision_id
                 self._record_decision(
                     pkt, sat, "forward", obs["legal"], action,
                     audit_candidates=obs["cands"], decision_id=decision_id,
-                    decision_started_at=compute_started_at,
+                    decision_started_at=decision_started_at,
                     observation=obs)
                 self.isls[sat][action].put_data(pkt)
                 return
@@ -4034,11 +6872,12 @@ class Kernel:
         self._hold_packet(sat, pkt, decision_id=decision_id)
 
     def _decide(self, pkt: DataPacket, sat: int,
-                compute_started_at: float | None = None,
-                observation: dict | None = None) -> None:
+                decision_started_at: float | None = None,
+                observation: dict | None = None,
+                frozen_flow_hit=None, query_charge=None) -> None:
         if observation is not None:
             self._decide_from_frozen_observation(
-                pkt, sat, observation, compute_started_at)
+                pkt, sat, observation, decision_started_at)
             return
         now = self.env.now
         decision_id = self._next_decision_id()
@@ -4051,9 +6890,19 @@ class Kernel:
                            prev_decision_id=pkt.decision_id, sat=int(sat),
                            obs_mode=self.obs_mode)
         if pkt.deadline is not None and now >= pkt.deadline:
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, "fail", "DATA_DEADLINE_EXPIRED",
+                self._four_direction_audit(
+                    pkt, sat, now, route_status="deadline_expired", kind="fail"),
+                "deadline_expired_before_routing")
             self._fail(pkt, "DATA_DEADLINE_EXPIRED", decision_id=decision_id)
             return
         if len(pkt.path) > self.cfg_rt["max_hops"]:
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, "fail", "MAX_HOPS",
+                self._four_direction_audit(
+                    pkt, sat, now, route_status="max_hops", kind="fail"),
+                "maximum_hops_exceeded")
             self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             return
         ep = self._ensure_endpoint(pkt.dst)
@@ -4089,11 +6938,17 @@ class Kernel:
                         self._schedule_pending_wake(sat, nxt_up)
                 if pkt.deadline is not None:
                     self._schedule_pending_wake(sat, pkt.deadline)
+                self._timeline_decision_attempt(
+                    pkt, sat, decision_id, "hold", "deliver_mcs_unavailable",
+                    self._four_direction_audit(
+                        pkt, sat, now,
+                        route_status="deliver_mcs_unavailable", kind="deliver"),
+                    "downlink_zero_mcs_rate")
                 self._hold_packet(sat, pkt, decision_id=decision_id)
                 return
             dl = self.downlinks[sat]
             if dl.room(pkt.bits):
-                if self.learner is not None:
+                if self.learner is not None or self.fixed_policy is not None:
                     action = self._learning_action(
                         pkt, sat,
                         {a: a == "deliver" for a in _learning.ACTIONS},
@@ -4108,9 +6963,14 @@ class Kernel:
                 pkt.decision_id = decision_id
                 self._record_decision(pkt, sat, "deliver", ["deliver"],
                                       "deliver", decision_id=decision_id,
-                                      decision_started_at=compute_started_at)
+                                      decision_started_at=decision_started_at)
                 dl.put(pkt)
             else:
+                self._timeline_decision_attempt(
+                    pkt, sat, decision_id, "fail", "ACCESS_QUEUE_OVERFLOW",
+                    self._four_direction_audit(
+                        pkt, sat, now, route_status="deliver_queue_full",
+                        kind="deliver"), "downlink_queue_overflow")
                 self._fail(pkt, "ACCESS_QUEUE_OVERFLOW",
                            decision_id=decision_id)
             return
@@ -4120,7 +6980,7 @@ class Kernel:
         # its configured observation crops away (R1-A2).  C1 is intrinsically
         # one-hop; other contracts use obs_hops=None for the full vis_k cache.
         cache_hops = None
-        if self.learner is not None:
+        if self.learner is not None or self.fixed_policy is not None:
             cache_hops = (1 if self.cfg_rt["contract"] == "C1"
                           else self.cfg_learning.get("obs_hops"))
         cands, status = routing.choose_next_hop(
@@ -4129,7 +6989,8 @@ class Kernel:
             # oracle_targets is consumed only by the oracle policy; compute it
             # only there instead of scanning serving satellites every decision
             oracle_targets=([s for s in self._serving_sats(pkt.dst) if s != sat]
-                            if self.cfg_rt["policy"] == "oracle" else None),
+                            if self._effective_routing_policy() in
+                            ("oracle", "known_serving") else None),
             # learning must choose among ALL local legal directions: the
             # heuristic only orders candidates, it never pre-clips the
             # learner's action set (otherwise DDQN is a tie-breaker over the
@@ -4143,10 +7004,32 @@ class Kernel:
                 if self.rate_model == "mcs" else None),
             cache_hops=cache_hops)
         if status == "unreachable":
+            direction_audit = self._four_direction_audit(
+                pkt, sat, now, route_candidates=cands,
+                loop_free_candidates=cands, legal=[], route_status=status,
+                kind="fail")
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, "fail", status, direction_audit,
+                "no_policy_route")
             self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             return
         if status == "no_info":
-            if not self.cfg_cp["enabled"] and self.cfg_rt["policy"] != "oracle":
+            if not self.cfg_cp["enabled"] and \
+                    self._effective_routing_policy() not in (
+                        "oracle", "known_serving"):
+                no_info_action, no_info_kind = "fail", "fail"
+                no_info_reason = "control_plane_disabled"
+            else:
+                no_info_action, no_info_kind = "hold", "hold"
+                no_info_reason = "no_current_routing_information"
+            direction_audit = self._four_direction_audit(
+                pkt, sat, now, route_candidates=cands,
+                loop_free_candidates=cands, legal=[], route_status=status,
+                kind=no_info_kind)
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, no_info_action, status,
+                direction_audit, no_info_reason)
+            if no_info_kind == "fail":
                 self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             else:
                 if pkt.deadline is not None:
@@ -4155,7 +7038,15 @@ class Kernel:
                                   decision_id=decision_id)  # wait
             return
         # loop avoidance: never forward back onto a satellite already visited
+        route_candidates = list(cands)
         cands = [d for d in cands if self.topo[sat][d] not in pkt.path]
+        loop_free_candidates = list(cands)
+        # T1-P5: reorder by the enabled state-time arm; the legality/looping
+        # filters below and the commit rules are unchanged, so the four arms
+        # differ ONLY in the ordering they feed the same pipeline.
+        cands, ta_audit = self._time_aligned_order(
+            pkt, sat, now, cands, own_q, frozen_hit=frozen_flow_hit,
+            query_charge=query_charge)
         unavailable = False
         rate_blocked = False
         recover_at = float("inf")
@@ -4191,7 +7082,11 @@ class Kernel:
             if link.room(pkt.bits):
                 legal.append(d)
         if legal:
-            if self.learner is not None:
+            direction_audit = self._four_direction_audit(
+                pkt, sat, now, route_candidates=route_candidates,
+                loop_free_candidates=loop_free_candidates, legal=legal,
+                route_status=status, kind="forward", ta_audit=ta_audit)
+            if self.learner is not None or self.fixed_policy is not None:
                 mask = {a: a in legal for a in _learning.ACTIONS}
                 action = self._learning_action(pkt, sat, mask)
                 if action not in legal:
@@ -4210,10 +7105,19 @@ class Kernel:
             self._record_decision(pkt, sat, "forward", legal, action,
                                   audit_candidates=cands,
                                   decision_id=decision_id,
-                                  decision_started_at=compute_started_at)
+                                  decision_started_at=decision_started_at,
+                                  ta_audit=ta_audit,
+                                  direction_audit=direction_audit)
             self.isls[sat][action].put_data(pkt)
             return
         if unavailable:
+            direction_audit = self._four_direction_audit(
+                pkt, sat, now, route_candidates=route_candidates,
+                loop_free_candidates=loop_free_candidates, legal=[],
+                route_status=status, kind="hold", ta_audit=ta_audit)
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, "hold", status, direction_audit,
+                "current_candidate_temporarily_unavailable")
             if rate_blocked:
                 self.mech["mcs_zero_rate_holds"] += 1
             if pkt.deadline is not None:
@@ -4224,8 +7128,22 @@ class Kernel:
                               decision_id=decision_id)  # unavailable: wait
             return
         if cands:
+            direction_audit = self._four_direction_audit(
+                pkt, sat, now, route_candidates=route_candidates,
+                loop_free_candidates=loop_free_candidates, legal=[],
+                route_status=status, kind="fail", ta_audit=ta_audit)
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, "fail", status, direction_audit,
+                "all_routed_candidates_have_no_queue_room")
             self._fail(pkt, "ISL_QUEUE_OVERFLOW", decision_id=decision_id)
         else:
+            direction_audit = self._four_direction_audit(
+                pkt, sat, now, route_candidates=route_candidates,
+                loop_free_candidates=loop_free_candidates, legal=[],
+                route_status=status, kind="fail", ta_audit=ta_audit)
+            self._timeline_decision_attempt(
+                pkt, sat, decision_id, "fail", status, direction_audit,
+                "all_policy_candidates_return_to_visited_satellites")
             self._fail(pkt, "NO_ROUTE",
                        decision_id=decision_id)  # every candidate loops
 
@@ -4234,7 +7152,7 @@ class Kernel:
             return
         waiting = self.pending[sat].take_ready(self.env.now)
         for pkt in waiting:
-            if self.compute_delay_s > 0:
+            if self._deferred_enabled():
                 self.env.process(self.decide_deferred(pkt, sat))
             else:
                 self._decide(pkt, sat)
@@ -4312,7 +7230,7 @@ class Kernel:
         pkt.path.append(sat)
         self._note_busy(pkt.dst)  # new downlink demand may have appeared
         yield from self._node_process(pkt, sat, "uplink")
-        if self.compute_delay_s > 0:
+        if self._deferred_enabled():
             yield from self.decide_deferred(pkt, sat)
         else:
             self._decide(pkt, sat)
@@ -4327,7 +7245,7 @@ class Kernel:
         pkt.path.append(sat)
         self._note_busy(pkt.dst)  # new downlink demand may have appeared
         yield from self._node_process(pkt, sat, "isl")
-        if self.compute_delay_s > 0:
+        if self._deferred_enabled():
             yield from self.decide_deferred(pkt, sat)
         else:
             self._decide(pkt, sat)
@@ -4340,14 +7258,19 @@ class Kernel:
         if pkt.deadline is not None and now >= pkt.deadline:
             self._fail(pkt, "DATA_DEADLINE_EXPIRED")
             return
-        self._finish_learning_transition(
-            pkt, np.zeros(_learning.CONTRACT_DIMS[self.cfg_rt["contract"]]),
-            {a: False for a in _learning.ACTIONS}, True,
-            # the arrival reward (legacy ArriveReward,
-            # ANALYSIS/REWARD-DIFF-20260816.md) exists only here, at real
-            # delivery — never at the deliver decision
-            terminal_reward=float(self.cfg_learning["arrive_reward"]),
-        )
+        if self.cfg_learning["reward"] == "deadline_loss_v1":
+            if (pkt.research_deadline_at is not None
+                    and now >= float(pkt.research_deadline_at)):
+                self._finish_deadline_transition(pkt, "deadline_expired")
+            else:
+                self._finish_deadline_transition(pkt, "delivered")
+        else:
+            self._finish_learning_transition(
+                pkt, np.zeros(_learning.CONTRACT_DIMS[self.cfg_rt["contract"]]),
+                {a: False for a in _learning.ACTIONS}, True,
+                # The legacy arrival reward exists only at real delivery.
+                terminal_reward=float(self.cfg_learning["arrive_reward"]),
+            )
         self.ledger.record(pkt.pid, "DELIVERED", pkt.bits)
         self.deliveries[pkt.pid] = {"delivered_at": now, "path": list(pkt.path)}
         self._metric_delivered(pkt)
@@ -4356,6 +7279,11 @@ class Kernel:
     # ----------------------------------------------------------------- fates
     def _fail(self, pkt, fate: str, decision_id: int | None = None,
               observation: dict | None = None):
+        if (self.timeline_sink is not None
+                and isinstance(pkt, DataPacket)):
+            # Exact terminal timing for packet-population replay, including
+            # access rejection/overflow before a routing decision exists.
+            self._timeline("packet_fate", pkt, decision_id, fate=fate)
         if self.timeline_sink is not None and decision_id is not None:
             # R8-A7: a failed attempt is still a decision; without this row
             # its decision_id would be consumed and vanish.  The observation
@@ -4373,14 +7301,18 @@ class Kernel:
             # mid-service failure (geometry/GE/deadline/retire) must not
             # erase that realized reward: keep it, and settle 0 only when no
             # reward was realized yet (failure before service start).
-            self._finish_learning_transition(
-                pkt,
-                np.zeros(_learning.CONTRACT_DIMS[self.cfg_rt["contract"]]),
-                {a: False for a in _learning.ACTIONS}, True,
-                terminal_reward=(None
-                                 if pkt.learning_reward is not None
-                                 else 0.0),
-            )
+            if self.cfg_learning["reward"] == "deadline_loss_v1":
+                self._finish_deadline_transition(pkt, "failed")
+            else:
+                self._finish_learning_transition(
+                    pkt,
+                    np.zeros(_learning.CONTRACT_DIMS[
+                        self.cfg_rt["contract"]]),
+                    {a: False for a in _learning.ACTIONS}, True,
+                    terminal_reward=(None
+                                     if pkt.learning_reward is not None
+                                     else 0.0),
+                )
             self.ledger.record(pkt.pid, fate, pkt.bits)
             self._log("fate", pid=pkt.pid, fate=fate)
 
@@ -4389,6 +7321,10 @@ class Kernel:
         interrupted = False
         error = None
         events = 0
+        # The audit sampler must exist before the first event so its pending
+        # list can grow during the run.  It only reads; see target_probe.py.
+        if self.target_probe is not None:
+            self.target_probe.start()
         try:
             while True:
                 # simpy.peek() returns inf when the queue is empty; no
@@ -4473,9 +7409,15 @@ class Kernel:
             "monitor": self.monitor,
             "learning_algorithm": (
                 self.cfg_learning["algorithm"]
-                if self.learner is not None else "none"),
+                if (self.learner is not None or self.fixed_policy is not None)
+                else "none"),
             "learning_mode": (
-                self.learner.mode if self.learner is not None else "train"),
+                self.learner.mode if self.learner is not None
+                else ("eval" if self.fixed_policy is not None else "train")),
+            # A1: WHICH policy drove the actions.  Reported from the object that
+            # actually exists, not re-derived from the config, so a run cannot
+            # claim a model it did not read.
+            "learning_policy": self.policy_source,
             "topology_recompute_interval_s": self.cfg_topo["recompute_interval_s"],
             "topology_matching": self.cfg_topo["matching"],
         }
@@ -4531,6 +7473,14 @@ class Kernel:
                 self.learner.train_steps > 0 if self.learner.mode == "train"
                 else self.learner.decisions > 0
             )
+        elif self.fixed_policy is not None:
+            # The read receipt and the live counter are merged: the artifact
+            # must show both WHAT was read (hashes, contract, purpose) and that
+            # it really produced actions (calls).
+            learning_result = dict(self.fixed_policy.receipt())
+            counters = self.fixed_policy.counters()
+            learning_result.update(counters)
+            effective["learning"] = int(counters["calls"]) > 0
         # A local kernel cannot self-authorize a scientific result. Mechanism
         # effectiveness is reported above; research eligibility requires an
         # externally anchored review/authorization/deployment receipt and is
@@ -4573,6 +7523,7 @@ class Kernel:
             "packet_events": list(self.packet_events),
             "link_service_windows": list(self.link_service_windows),
             "link_available_windows": list(self.link_available_windows),
+            "topology_trace": list(self.topology_trace),
             "congestion_metrics": congestion_metrics,
             "handover": {"events": self.handover_events},
             "control": {
@@ -4595,6 +7546,19 @@ class Kernel:
                                "valid": e.valid_at(self.env.now)}
                            for o, e in c._entries.items()}
                        for s, c in enumerate(self.caches)},
+            "execution_mode": {
+                "mode": self.exec_mode,
+                "async_enabled": bool(self.async_mode),
+                "async_bins": self.async_bins,
+                "per_flow_cache_entries": len(self._flow_cache),
+                "precompute": dict(self._precompute_cost),
+                "query_service": {"delay_s": self._query_delay_s,
+                                  "servers_per_satellite":
+                                      1 if self._query_pool else 0,
+                                  "totals": dict(self._query_totals)},
+                "async": (None if self.async_manager is None
+                          else self.async_manager.snapshot_counts()),
+            },
             "mechanisms": {"requested": requested, "effective": effective},
             "learning": learning_result,
             "mechanism_counters": dict(self.mech),
@@ -4605,11 +7569,101 @@ class Kernel:
         return result
 
 
-def run_simulation(resolved: dict, rows: list[dict], geometry=None,
-                   learning_out_dir=None, decision_sink=None,
-                   timeline_sink=None, forced_actions=None) -> dict:
+def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
+                         learning_out_dir=None, decision_sink=None,
+                         timeline_sink=None, forced_actions=None,
+                         control_audit=False, inference_policy=None,
+                         target_probe_path=None, target_probe_max=None,
+                         target_probe_stride=None) -> dict:
     kern = Kernel(resolved, rows, geometry=geometry,
                   learning_out_dir=learning_out_dir,
                   decision_sink=decision_sink, timeline_sink=timeline_sink,
-                  forced_actions=forced_actions)
-    return kern.run()
+                  forced_actions=forced_actions, control_audit=control_audit,
+                  inference_policy=inference_policy,
+                  target_probe_path=target_probe_path,
+                  target_probe_max=target_probe_max,
+                  target_probe_stride=target_probe_stride)
+    result = kern.run()
+    if kern.target_probe is not None:
+        # Written AFTER the simulation stops, so an interrupted run still
+        # carries whatever was sampled before the stop.
+        result["target_probe"] = kern.target_probe.write()
+    return result
+
+
+_SIMULATION_CALL_SEQUENCE = 0
+
+
+def _write_simulation_call_event(path, event):
+    """Append one flushed event to the optional development run ledger."""
+    payload = (json.dumps(event, sort_keys=True, separators=(",", ":"))
+               + "\n").encode("utf-8")
+    descriptor = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+    try:
+        os.write(descriptor, payload)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def run_simulation(resolved: dict, rows: list[dict], geometry=None,
+                   learning_out_dir=None, decision_sink=None,
+                   timeline_sink=None, forced_actions=None,
+                   control_audit=False, inference_policy=None,
+                   target_probe_path=None, target_probe_max=None,
+                   target_probe_stride=None) -> dict:
+    """Run the kernel and, inside a metered T1 cell, record real call edges.
+
+    The ledger is opt-in so ordinary library use stays unchanged.  A configured
+    ledger is fail-closed: the run does not start if its begin event cannot be
+    persisted, and an end/fail event is flushed before returning to the driver.
+    The outer suite reconciles an unmatched begin as a timeout or interruption.
+    """
+    global _SIMULATION_CALL_SEQUENCE
+    ledger_path = os.environ.get("T1_SIM_CALL_LEDGER")
+    if not ledger_path:
+        return _run_simulation_impl(
+            resolved, rows, geometry=geometry,
+            learning_out_dir=learning_out_dir,
+            decision_sink=decision_sink, timeline_sink=timeline_sink,
+            forced_actions=forced_actions, control_audit=control_audit,
+            inference_policy=inference_policy,
+            target_probe_path=target_probe_path,
+            target_probe_max=target_probe_max,
+            target_probe_stride=target_probe_stride)
+
+    _SIMULATION_CALL_SEQUENCE += 1
+    sequence = _SIMULATION_CALL_SEQUENCE
+    context = os.environ.get("T1_SIM_CALL_CONTEXT", "unknown")
+    call_id = f"{context}:{sequence:04d}"
+    started_ns = time.perf_counter_ns()
+    common = {"schema": "t1-simulator-call/v1", "call_id": call_id,
+              "sequence": sequence, "context": context}
+    _write_simulation_call_event(
+        ledger_path, dict(common, event="begin", wall_time_ns=time.time_ns(),
+                          monotonic_ns=started_ns, packet_count=len(rows)))
+    try:
+        result = _run_simulation_impl(
+            resolved, rows, geometry=geometry,
+            learning_out_dir=learning_out_dir,
+            decision_sink=decision_sink, timeline_sink=timeline_sink,
+            forced_actions=forced_actions, control_audit=control_audit,
+            inference_policy=inference_policy,
+            target_probe_path=target_probe_path,
+            target_probe_max=target_probe_max,
+            target_probe_stride=target_probe_stride)
+    except BaseException as exc:
+        ended_ns = time.perf_counter_ns()
+        _write_simulation_call_event(
+            ledger_path, dict(common, event="fail", wall_time_ns=time.time_ns(),
+                              monotonic_ns=ended_ns,
+                              duration_s=(ended_ns - started_ns) / 1e9,
+                              error_type=type(exc).__name__,
+                              error=str(exc)[:1000]))
+        raise
+    ended_ns = time.perf_counter_ns()
+    _write_simulation_call_event(
+        ledger_path, dict(common, event="end", wall_time_ns=time.time_ns(),
+                          monotonic_ns=ended_ns,
+                          duration_s=(ended_ns - started_ns) / 1e9))
+    return result

@@ -35,6 +35,118 @@ def test_isl_neighbors_respect_directions():
     assert nb["N"] != nb["E"]
 
 
+def test_constellation_reuses_global_cross_matching_for_all_satellites(monkeypatch):
+    c = model.Constellation(num_satellites=12, num_planes=3,
+                            altitude_km=550, inclination_deg=53)
+    calls = []
+
+    def matching(dirs, t):
+        calls.append((tuple(dirs), t))
+        return {}
+
+    monkeypatch.setattr(c, "_cross_plane_matching", matching)
+    for sat_id in range(c.num_satellites):
+        c.neighbors_at(sat_id, ("N", "S", "E", "W"), 1.25)
+
+    assert calls == [(('N', 'S', 'E', 'W'), 1.25)]
+
+
+def _legacy_constellation_neighbors(geo, dirs, t):
+    """Reference the pre-cache public behavior for one exact time/direction."""
+    cross = geo._cross_plane_matching(dirs, t)
+    result = {}
+    for sat_id in range(geo.num_satellites):
+        neighbors = geo.neighbors(
+            sat_id, [direction for direction in dirs
+                     if direction in ("N", "S")])
+        for direction in ("E", "W"):
+            if direction in dirs and cross.get(sat_id, {}).get(direction) is not None:
+                neighbors[direction] = cross[sat_id][direction]
+        result[sat_id] = neighbors
+    return result
+
+
+def _matching_reference_like(geo):
+    return model.Constellation(
+        num_satellites=geo.num_satellites,
+        num_planes=geo.num_planes,
+        altitude_km=geo.altitude_km,
+        inclination_deg=geo.inclination_deg,
+        min_elevation_deg=geo.min_elevation_deg,
+        max_isl_km=geo.max_isl_km,
+        geometry_epoch_s=geo.geometry_epoch_s,
+    )
+
+
+def test_cached_global_matching_matches_legacy_and_invalidates_exact_key(
+        monkeypatch):
+    dirs_all = ("N", "S", "E", "W")
+    geo = model.Constellation(
+        num_satellites=280, num_planes=14, altitude_km=550,
+        inclination_deg=53, min_elevation_deg=25.0, max_isl_km=6000.0)
+    matching_calls = []
+    original_matching = geo._cross_plane_matching
+
+    def counted_matching(dirs, t):
+        matching_calls.append((tuple(dirs), t))
+        return original_matching(dirs, t)
+
+    monkeypatch.setattr(geo, "_cross_plane_matching", counted_matching)
+
+    def assert_case(t, dirs):
+        expected = _legacy_constellation_neighbors(
+            _matching_reference_like(geo), dirs, t)
+        before = len(matching_calls)
+        actual = {
+            sat_id: geo.neighbors_at(sat_id, dirs, t)
+            for sat_id in range(geo.num_satellites)
+        }
+        assert actual == expected
+        assert len(matching_calls) == before + 1
+        # A second traversal at the same exact key reuses the same global map.
+        for sat_id in range(geo.num_satellites):
+            assert geo.neighbors_at(sat_id, dirs, t) == expected[sat_id]
+        assert len(matching_calls) == before + 1
+        return actual
+
+    base = assert_case(1.25, dirs_all)
+    assert any("E" in neighbors for neighbors in base.values())
+
+    # Adjacent representable times must not collide through rounding.
+    assert_case(math.nextafter(1.25, math.inf), dirs_all)
+    assert_case(1.25, ("N", "E"))
+
+    # Geometry fields are public and mutable, so they participate in the key.
+    geo.max_isl_km = 1.0
+    restricted = assert_case(1.25, dirs_all)
+    assert not any("E" in neighbors or "W" in neighbors
+                   for neighbors in restricted.values())
+
+    geo.geometry_epoch_s = 240.0
+    assert_case(1.25, dirs_all)
+
+    geo.max_isl_km = 6000.0
+    assert_case(1.25, dirs_all)
+
+
+def test_cross_matching_cache_is_instance_local_for_different_geometry():
+    first = model.Constellation(
+        num_satellites=24, num_planes=6, altitude_km=550,
+        inclination_deg=53, max_isl_km=6000.0)
+    second = model.Constellation(
+        num_satellites=24, num_planes=6, altitude_km=900,
+        inclination_deg=35, max_isl_km=4500.0)
+    dirs = ("N", "S", "E", "W")
+    for geo in (first, second):
+        expected = _legacy_constellation_neighbors(
+            _matching_reference_like(geo), dirs, 3.125)
+        actual = {
+            sat_id: geo.neighbors_at(sat_id, dirs, 3.125)
+            for sat_id in range(geo.num_satellites)
+        }
+        assert actual == expected
+
+
 def test_slant_and_propagation_positive():
     c = model.Constellation(num_satellites=12, num_planes=3, altitude_km=550, inclination_deg=53)
     lat, lon, _ = c.subpoint(0, 0.0)

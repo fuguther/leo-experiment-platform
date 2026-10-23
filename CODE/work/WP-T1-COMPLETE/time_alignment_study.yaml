@@ -1,0 +1,108 @@
+schema: time-alignment-study/v1
+question: 在相同合法信息和预测器下，按候选预计资源使用时刻查询状态，是否比查询当前时刻或统一未来时刻降低全体业务期限损失？
+base_profile: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
+data_provenance: population_weighted_synthetic_not_measured_traffic
+execution_status: DESIGNED_NOT_EXECUTED
+seed: 7
+arms: [stale, now, common, candidate]
+fixed:
+  control_plane.advertisement_protocol_version: 2
+  time_alignment.history_limit: 8
+  time_alignment.common_rule: median_eta
+  execution.decision_observation_mode: frozen
+  execution.node_process_delay_s: 0.0
+  routing.learning_enabled: false
+  learning.algorithm: none
+conditions:
+  - id: steady_low
+    purpose: 零或弱效应对照；结果保留，不要求出现排序变化
+    overrides:
+      demand.offered_mbps: 5.0
+      demand.burst_multiplier: 1.0
+      demand.burst_start_s: null
+      demand.burst_duration_s: null
+  - id: burst_reference
+    purpose: 继承已有静态计算服务负荷参考点；不代表已形成星间拥塞
+    overrides:
+      demand.offered_mbps: 35.87267964647467
+      demand.burst_multiplier: 2.0
+blocks:
+  - id: primary_steady
+    condition: steady_low
+    role: primary
+    predictor: bounded_linear
+    advertise_interval_s: 1.0
+  - id: primary_burst
+    condition: burst_reference
+    role: primary
+    predictor: bounded_linear
+    advertise_interval_s: 1.0
+  - id: hold_last_burst
+    condition: burst_reference
+    role: predictor_negative_control
+    predictor: hold_last
+    advertise_interval_s: 1.0
+  - id: frequent_advertisement_burst
+    condition: burst_reference
+    role: protocol_sensitivity_not_pure_age_effect
+    predictor: bounded_linear
+    advertise_interval_s: 0.25
+primary:
+  metric: mean_all_offered_D4
+  contrasts: [candidate_minus_now, candidate_minus_common]
+  favorable_sign: negative
+  minimum_practical_D4_reduction: 0.005
+  threshold_basis: prospective_engineering_tolerance_not_literature_or_formal_power
+  deadline_s: 4.0
+  include_terminal_loss_and_administrative_censoring: true
+  record_uncapped_delivered_latency_and_delivery_rate: true
+  inference_unit: independent_trace_seed_not_packet
+  claim_scope: single_seed_development_only
+information:
+  online_allowed: received_history_at_or_before_frozen_decision_time
+  resource_identity: satellite_direction_kind_generation
+  stale: latest_received_source_measurement_time
+  now: frozen_decision_time
+  common: frozen_decision_time_plus_common_median_eta
+  candidate: frozen_decision_time_plus_candidate_eta
+  future_truth: offline_diagnostic_only_never_routing_input
+  prediction: median_adjacent_slopes_of_latest_8_distinct_source_times_received_by_t0_for_same_resource_generation
+  insufficient_history: hold_last_with_explicit_fallback_count
+  expired_received_history: may_remain_a_regression_feature_for_the_same_resource_generation
+  ttl_scope: current_advertisement_validity_not_prediction_history_age_limit
+  first_batch_ttl_scope: 8s_horizon_is_shorter_than_10s_TTL_not_an_expiry_test
+  extrapolation_upper_bound: none_in_current_online_snapshot
+  extrapolation_lower_bound_bits: 0
+  actual_age: decision_time_minus_source_measurement_time
+  age_is_not_advertisement_interval: true
+diagnostics:
+  - offered_admitted_delivered_terminal_and_censored_counts
+  - wait_by_uplink_compute_query_isl_downlink_and_holding
+  - advertised_work_ahead_variation_and_zero_slope_fraction
+  - received_age_distribution_and_samples_per_resource_generation
+  - actual_min_max_source_time_and_lookback_span_per_resource
+  - candidate_eta_spread_and_query_target_checks
+  - fallback_by_reason_and_candidates_per_decision
+  - first_policy_divergence_with_common_packet_and_event_prefix
+  - prediction_error_at_matching_resource_time_when_observed
+  - control_bits_compute_and_query_cost
+interpretation:
+  no_target_resource_variation: 条件未激发该机制；仍报告全部结果，不等于证明方法普遍无效
+  legal_prediction_no_ranking_improvement: 预测器或资源映射不足；不默认增加模型复杂度
+  ranking_changes_without_network_gain: 没有该条件下的净收益；检查代价与拥塞转移
+  no_candidate_increment: 停止默认扩参和训练；如改变假设必须登记新研究问题
+  never_select_conditions_by_candidate_gain: true
+  no_posthoc_window_or_deadline_selection: true
+  changing_advertisement_interval_changes_control_load: true
+  cross_condition_differences_are_not_single_factor_effects: true
+  missing_future_truth_is_not_zero_error: true
+run_boundary:
+  compile_only_no_simulator_call: true
+  requires_complete_lossless_publication_and_receipt: true
+  requires_matching_scope_validator_not_the_old_1236_packet_validator: true
+  requires_t1_suite_bundle_and_launch_context: true
+  baseline_resource_diagnosis_before_expanding_matrix: true
+  no_automatic_vm_launch: true
+  no_formal_claim_or_training: true
+  maximum_materialized_cells: 16
+  replication_seeds_reserved_not_executed: [23, 41]

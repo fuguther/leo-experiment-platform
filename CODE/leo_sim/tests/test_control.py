@@ -5,6 +5,7 @@ hops, respect TTL/AoI, enjoy non-preemptive priority, and be the only source
 of remote state in a satellite's local cache.
 """
 from CODE.leo_sim import control, kernel
+from CODE.experiment_platform import t1_tasks
 from CODE.leo_sim.tests.helpers import StaticGeometry, cell, cell_center, make_cfg, row
 
 A = cell(0.0, 0.0)
@@ -68,6 +69,66 @@ def test_vis_k_1_limits_propagation():
     assert 2 not in res["caches"][0]
     # but sat1 (1 hop away from sat2) did learn it
     assert 2 in res["caches"][1]
+
+
+def test_real_no_info_ingress_path_keeps_auditable_hold_attempts():
+    geo = StaticGeometry(3, neighbors_map=LINE, visible=_line_vis)
+    sink, timeline = [], []
+    cfg = _cp_cfg(**{"control_plane": {"vis_k": 1},
+                     "execution": {"decision_observation_mode": "frozen"}})
+    result = kernel.run_simulation(
+        cfg, [row(91, 0.0, A, B)], geometry=geo,
+        decision_sink=sink, timeline_sink=timeline)
+    assert result["fates"][91] == "IN_SYSTEM_AT_STOP"
+    holds = [r for r in timeline if r.get("milestone") == "frozen_inferred_hold"]
+    assert holds and any(r.get("status") == "no_info" for r in holds)
+    audit = t1_tasks._routing_audit_log(sink, timeline)
+    attempts = audit["attempt_records"]
+    assert attempts
+    assert any(r.get("source_milestone") == "frozen_inferred_hold"
+               and r.get("route_status") == "no_info"
+               and r.get("attempt_outcome") == "held"
+               and r.get("four_direction_audit") for r in attempts)
+
+
+def test_vis_k_4_delivers_all_control_fields_over_four_hops():
+    line5 = {0: {"E": 1}, 1: {"W": 0, "E": 2},
+             2: {"W": 1, "E": 3}, 3: {"W": 2, "E": 4},
+             4: {"W": 3}}
+    visible = lambda s, lat, lon, _t: (
+        (s == 0 and (lat, lon) == AC)
+        or (s == 4 and (lat, lon) == BC))
+    geo = StaticGeometry(5, neighbors_map=line5, visible=visible)
+    cfg = _cp_cfg(**{
+        "scenario": {"num_satellites": 5, "duration_s": 8.0},
+            "control_plane": {"vis_k": 4, "packet_bits": 10_000,
+                              "advertisement_protocol_version": 2},
+        "execution": {"decision_observation_mode": "frozen"},
+        "routing": {"policy": "hop"},
+    })
+    timeline = []
+    kern = kernel.Kernel(cfg, [row(92, 0.0, A, B, bits=8000)],
+                         geometry=geo, timeline_sink=timeline,
+                         control_audit=True)
+    result = kern.run()
+    assert result["fates"][92] == "DELIVERED"
+    destination_ad = kern.caches[0].entry(4)
+    assert destination_ad.hops == 4
+    payload = destination_ad.payload
+    assert B in payload["serve_cells"]
+    resource = payload["downlink_resources"][B]
+    assert resource["queue_scope"] == "satellite_shared_drr"
+    assert resource["rate_bps"] == 100_000_000.0
+    # The same 4-hop cache entry also carries the other advertised fields;
+    # vis_k is therefore the range of the whole snapshot, not just discovery.
+    assert "isl_queue_bits" in payload
+    assert "isl_propagation_s" in payload
+    audit = t1_tasks._control_advertisement_audit(
+        timeline, vis_k=4, packet_bits=10_000, enabled=True)
+    assert audit["advertisement_scope"] == \
+        "all fields in one snapshot share this hop limit"
+    assert 0 in audit["by_origin"]["4"]["installed_satellites"]
+    assert audit["max_observed_hops"] == 4
 
 
 BC_STR = B  # grid-id string for assertions on advertised cells

@@ -72,11 +72,16 @@ DEFAULT_OBS_MODE = "refresh"
 #: stream is diagnostic-only, which is precisely why
 #: ANALYSIS/T1-MEASUREMENT-PROTOCOL.md section 3.3 keeps it outside the
 #: receipt/ledger trust chain and why a formal run used to refuse it.
+#: four_direction_audit joined the literal when the per-direction audit was
+#: added (kernel.py, next to observation_at_start).  The contract has to follow
+#: the writer: leaving it out made every CODE.leo_sim run fail closed, so the
+#: cap
+#: fold/replay entry points could not run at all.
 DECISION_ROW_KEYS = frozenset({
     "t", "t_decision_start", "decision_id", "state_version", "pid", "src",
     "dst", "sat", "kind", "policy", "candidates", "chosen", "own_queue_bits",
     "obs", "info_audit", "obs_mode", "observation_at_start",
-    "estimate_at_start", "truth_at_commit",
+    "four_direction_audit", "estimate_at_start", "truth_at_commit",
 })
 
 #: Stream-contract identifier a V6 receipt binds the decision log under.

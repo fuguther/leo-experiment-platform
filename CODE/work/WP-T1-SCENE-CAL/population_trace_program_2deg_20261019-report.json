@@ -1,0 +1,141 @@
+{
+ "access_map": {
+  "cells": 149,
+  "cells_with_multiple_best_sats": 25,
+  "cells_with_switches": 7,
+  "geometry": {
+   "alt_km": 800.0,
+   "incl_deg": 53.0,
+   "min_elev_deg": 10.0,
+   "planes": 12,
+   "sats": 96
+  },
+  "max_distinct_best_sats": 2,
+  "median_visible": 2,
+  "path": "CODE/work/WP-T1-SCENE-CAL/population_access_map_2deg_20261019.csv"
+ },
+ "coverage_filter": {
+  "cells_after": 4570,
+  "cells_before": 4938,
+  "excluded_cells": 368,
+  "excluded_examples": [
+   {
+    "cell": "G2:35:112",
+    "lat": -19.0,
+    "lon": 45.0,
+    "min_visible": 0
+   },
+   {
+    "cell": "G2:35:157",
+    "lat": -19.0,
+    "lon": 135.0,
+    "min_visible": 0
+   },
+   {
+    "cell": "G2:35:67",
+    "lat": -19.0,
+    "lon": -45.0,
+    "min_visible": 0
+   },
+   {
+    "cell": "G2:35:97",
+    "lat": -19.0,
+    "lon": 15.0,
+    "min_visible": 0
+   },
+   {
+    "cell": "G2:36:110",
+    "lat": -17.0,
+    "lon": 41.0,
+    "min_visible": 0
+   },
+   {
+    "cell": "G2:36:111",
+    "lat": -17.0,
+    "lon": 43.0,
+    "min_visible": 0
+   },
+   {
+    "cell": "G2:36:112",
+    "lat": -17.0,
+    "lon": 45.0,
+    "min_visible": 0
+   },
+   {
+    "cell": "G2:36:113",
+    "lat": -17.0,
+    "lon": 47.0,
+    "min_visible": 0
+   },
+   {
+    "cell": "G2:36:114",
+    "lat": -17.0,
+    "lon": 49.0,
+    "min_visible": 0
+   },
+   {
+    "cell": "G2:36:155",
+    "lat": -17.0,
+    "lon": 131.0,
+    "min_visible": 0
+   }
+  ],
+  "excluded_population": 234499180.55311325,
+  "min_visible_required": 1,
+  "sample_instants": 8,
+  "total_population": 7969444350.355793
+ },
+ "program_digest": "d010c69597726bb48550b58139af3236ccc88775b17169c8bc146abf3aa9bc29",
+ "raster": {
+  "aggregation_deg": 2.0,
+  "path": "CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif",
+  "positive_cells": 4938,
+  "sha256": "c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a",
+  "total_population": 7969444350.355793
+ },
+ "sampling": {
+  "cells": 149,
+  "cells_with_subcells": 149,
+  "dropped_zero_packet_ods": [
+   "G2:51:109,G2:67:101",
+   "G2:51:140,G2:53:151",
+   "G2:45:151,G2:42:103"
+  ],
+  "od_pairs": 93,
+  "seed": 20261019,
+  "subcells_total": 8477,
+  "weight_sum": 1.0
+ },
+ "schema": "population-od-program-report/v1",
+ "trace": {
+  "byte_identical_rerun": true,
+  "center_exact_fraction": 0.0,
+  "center_exact_packets": 0,
+  "distinct_od_realised": 93,
+  "rows": 5827,
+  "sha256": "6d93f289c535151986302279b14705f147b5c579b2e829782fd367f246059790",
+  "sha256_second_run": "6d93f289c535151986302279b14705f147b5c579b2e829782fd367f246059790",
+  "top_od": [
+   {
+    "od": "G2:60:150,G2:58:129",
+    "packets": 606
+   },
+   {
+    "od": "G2:57:132,G2:64:148",
+    "packets": 529
+   },
+   {
+    "od": "G2:54:126,G2:60:105",
+    "packets": 476
+   },
+   {
+    "od": "G2:59:129,G2:57:132",
+    "packets": 365
+   },
+   {
+    "od": "G2:65:151,G2:56:146",
+    "packets": 239
+   }
+  ]
+ }
+}

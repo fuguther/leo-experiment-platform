@@ -1,0 +1,153 @@
+{
+ "schema": "load-calibration-contract/v1",
+ "base_profile": "CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml",
+ "deadline_s": 4,
+ "max_packets": 20000,
+ "max_duration_s": 12,
+ "cells": [
+  {
+   "id": "age_adv4_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 1
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    }
+   }
+  },
+  {
+   "id": "age_adv4_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 1
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    }
+   }
+  },
+  {
+   "id": "age_adv4_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 1
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    }
+   }
+  },
+  {
+   "id": "age_adv4_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 1
+    },
+    "control_plane": {
+     "advertise_interval_s": 4
+    }
+   }
+  },
+  {
+   "id": "age_adv8_stale",
+   "arms": [
+    "stale"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 1
+    },
+    "control_plane": {
+     "advertise_interval_s": 8
+    }
+   }
+  },
+  {
+   "id": "age_adv8_now",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 1
+    },
+    "control_plane": {
+     "advertise_interval_s": 8
+    }
+   }
+  },
+  {
+   "id": "age_adv8_common",
+   "arms": [
+    "common"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 1
+    },
+    "control_plane": {
+     "advertise_interval_s": 8
+    }
+   }
+  },
+  {
+   "id": "age_adv8_candidate",
+   "arms": [
+    "candidate"
+   ],
+   "overrides": {
+    "access": {
+     "slots_per_satellite": 128
+    },
+    "links": {
+     "rate_model": "constant",
+     "isl_rate_mbps": 1
+    },
+    "control_plane": {
+     "advertise_interval_s": 8
+    }
+   }
+  }
+ ]
+}

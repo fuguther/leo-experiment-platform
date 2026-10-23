@@ -1,0 +1,154 @@
+{
+ "schema": "load-calibration-contract/v1",
+ "base_profile": "CODE/leo_sim/profiles/t1_scene_trunk_v1.yaml",
+ "deadline_s": 4,
+ "max_packets": 100000,
+ "max_duration_s": 160,
+ "diagnostics": {
+  "timeline": false,
+  "control_audit": false
+ },
+ "cells": [
+  {
+   "id": "sc-dist-r020-stale-s111",
+   "arms": [
+    "stale"
+   ],
+   "trace_program": {
+    "schema": "scene-trace-program/v1",
+    "model": "s1_stationary",
+    "cells": {
+     "beijing": [
+      39.9,
+      116.4
+     ],
+     "shanghai": [
+      31.2,
+      121.5
+     ],
+     "tokyo": [
+      35.7,
+      139.7
+     ],
+     "london": [
+      51.5,
+      -0.13
+     ],
+     "frankfurt": [
+      50.1,
+      8.68
+     ],
+     "newyork": [
+      40.7,
+      -74.0
+     ],
+     "sydney": [
+      -33.87,
+      151.2
+     ],
+     "saopaulo": [
+      -23.55,
+      -46.63
+     ]
+    },
+    "od_weights": {
+     "beijing,shanghai": 0.017857142857142856,
+     "beijing,tokyo": 0.017857142857142856,
+     "beijing,london": 0.017857142857142856,
+     "beijing,frankfurt": 0.017857142857142856,
+     "beijing,newyork": 0.017857142857142856,
+     "beijing,sydney": 0.017857142857142856,
+     "beijing,saopaulo": 0.017857142857142856,
+     "shanghai,beijing": 0.017857142857142856,
+     "shanghai,tokyo": 0.017857142857142856,
+     "shanghai,london": 0.017857142857142856,
+     "shanghai,frankfurt": 0.017857142857142856,
+     "shanghai,newyork": 0.017857142857142856,
+     "shanghai,sydney": 0.017857142857142856,
+     "shanghai,saopaulo": 0.017857142857142856,
+     "tokyo,beijing": 0.017857142857142856,
+     "tokyo,shanghai": 0.017857142857142856,
+     "tokyo,london": 0.017857142857142856,
+     "tokyo,frankfurt": 0.017857142857142856,
+     "tokyo,newyork": 0.017857142857142856,
+     "tokyo,sydney": 0.017857142857142856,
+     "tokyo,saopaulo": 0.017857142857142856,
+     "london,beijing": 0.017857142857142856,
+     "london,shanghai": 0.017857142857142856,
+     "london,tokyo": 0.017857142857142856,
+     "london,frankfurt": 0.017857142857142856,
+     "london,newyork": 0.017857142857142856,
+     "london,sydney": 0.017857142857142856,
+     "london,saopaulo": 0.017857142857142856,
+     "frankfurt,beijing": 0.017857142857142856,
+     "frankfurt,shanghai": 0.017857142857142856,
+     "frankfurt,tokyo": 0.017857142857142856,
+     "frankfurt,london": 0.017857142857142856,
+     "frankfurt,newyork": 0.017857142857142856,
+     "frankfurt,sydney": 0.017857142857142856,
+     "frankfurt,saopaulo": 0.017857142857142856,
+     "newyork,beijing": 0.017857142857142856,
+     "newyork,shanghai": 0.017857142857142856,
+     "newyork,tokyo": 0.017857142857142856,
+     "newyork,london": 0.017857142857142856,
+     "newyork,frankfurt": 0.017857142857142856,
+     "newyork,sydney": 0.017857142857142856,
+     "newyork,saopaulo": 0.017857142857142856,
+     "sydney,beijing": 0.017857142857142856,
+     "sydney,shanghai": 0.017857142857142856,
+     "sydney,tokyo": 0.017857142857142856,
+     "sydney,london": 0.017857142857142856,
+     "sydney,frankfurt": 0.017857142857142856,
+     "sydney,newyork": 0.017857142857142856,
+     "sydney,saopaulo": 0.017857142857142856,
+     "saopaulo,beijing": 0.017857142857142856,
+     "saopaulo,shanghai": 0.017857142857142856,
+     "saopaulo,tokyo": 0.017857142857142856,
+     "saopaulo,london": 0.017857142857142856,
+     "saopaulo,frankfurt": 0.017857142857142856,
+     "saopaulo,newyork": 0.017857142857142856,
+     "saopaulo,sydney": 0.017857142857142856
+    },
+    "packet_bits": 12000,
+    "emission_start_s": 2.0,
+    "emission_end_s": 2.35,
+    "seed": 111,
+    "total_mbps": 1116.4159999999995
+   },
+   "diagnostics": {
+    "timeline": false
+   },
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.35
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    },
+    "access": {
+     "slots_per_satellite": 8
+    },
+    "time_alignment": {
+     "predictor": "hold_last",
+     "history_limit": 8,
+     "state_source": "advertised"
+    }
+   }
+  }
+ ]
+}

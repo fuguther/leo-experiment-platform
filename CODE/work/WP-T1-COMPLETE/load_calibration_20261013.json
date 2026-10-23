@@ -1,0 +1,100 @@
+{
+  "schema": "load-calibration-contract/v1",
+  "base_profile": "CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml",
+  "deadline_s": 4.0,
+  "max_packets": 20000,
+  "max_duration_s": 12.0,
+  "cells": [
+    {
+      "id": "reference5",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {}
+    },
+    {
+      "id": "offered40",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "demand": {
+          "offered_mbps": 40.0
+        }
+      }
+    },
+    {
+      "id": "access40",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "demand": {
+          "offered_mbps": 40.0
+        },
+        "access": {
+          "slots_per_satellite": 128
+        }
+      }
+    },
+    {
+      "id": "parallel40",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "demand": {
+          "offered_mbps": 40.0
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "execution": {
+          "compute_servers_per_satellite": 8
+        }
+      }
+    },
+    {
+      "id": "constant20_load40",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "demand": {
+          "offered_mbps": 40.0
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "execution": {
+          "compute_servers_per_satellite": 8
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 20.0
+        }
+      }
+    },
+    {
+      "id": "constant20_load5",
+      "arms": [
+        "stale"
+      ],
+      "overrides": {
+        "demand": {
+          "offered_mbps": 5.0
+        },
+        "access": {
+          "slots_per_satellite": 128
+        },
+        "execution": {
+          "compute_servers_per_satellite": 8
+        },
+        "links": {
+          "rate_model": "constant",
+          "isl_rate_mbps": 20.0
+        }
+      }
+    }
+  ]
+}

@@ -40,7 +40,7 @@ def _family_table():
 def _family_cfg(monkeypatch, offered_mbps, master_mbps, **over):
     table = _family_table()
     monkeypatch.setattr(population, "load_population_regions",
-                        lambda path, aggregation_deg: table)
+                        lambda path, aggregation_deg, **kwargs: table)
     user = {
         "scenario": {"duration_s": 25.0, "seed": 7},
         "endpoints": {"aggregation_deg": 5.0},
@@ -280,7 +280,7 @@ def test_master_candidate_cap_fails_before_artifacts_accepted(
     artifact is written into the output directory."""
     table = _family_table()
     monkeypatch.setattr(population, "load_population_regions",
-                        lambda path, aggregation_deg: table)
+                        lambda path, aggregation_deg, **kwargs: table)
     user = {
         "scenario": {"duration_s": 25.0, "seed": 7},
         "endpoints": {"aggregation_deg": 5.0},

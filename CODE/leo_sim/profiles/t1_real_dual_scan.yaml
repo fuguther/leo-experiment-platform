@@ -1,0 +1,53 @@
+# T1-REAL-DUAL-SCAN: the real-constellation scenario for the dual-reachable
+# population scan.
+#
+# DECLARED BEFORE THE RUN.  It differs from t1_frozen_branch_smoke.yaml in
+# exactly one field -- demand.offered_mbps 0.5 -> 2.0 -- because that profile
+# produces a single packet and therefore too few branch points to report a
+# ratio over.  Everything that could confound the mechanism (geometry, seed,
+# control plane, routing policy, observation mode, compute delay, node
+# processing) is held identical, so a finding here is a finding about the same
+# constellation, not about a new scenario.
+#
+# node_process_delay_s stays 0.5: it is a per-hop cost that is separately
+# attributable (F2), and removing it would make this scenario incomparable with
+# the no_info diagnosis case.
+config_version: leo-sim-config/v1
+scenario:
+  name: t1_real_dual_scan
+  duration_s: 70.0
+  num_satellites: 24
+  num_planes: 3
+  seed: 7
+endpoints:
+  sites:
+    - {name: equator, lat: 0.1, lon: 0.1, demand_weight: 1.0}
+    - {name: north, lat: 52.6, lon: 90.4, demand_weight: 1.0}
+demand:
+  mode: uniform
+  offered_mbps: 2.0
+  packet_bits: 8000000
+access:
+  association: bbm
+  idle_release_s: 100.0
+  slot_lease_s: 100.0
+links:
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 2.0
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  compute_delay_s: 1.0
+  node_process_delay_s: 0.5
+  decision_observation_mode: frozen
+  max_events: 200000
+  max_entities: 1000
+  max_packets: 20000
+outputs:
+  out_dir: leo_sim_out/t1_real_dual_scan
+  plotting: false

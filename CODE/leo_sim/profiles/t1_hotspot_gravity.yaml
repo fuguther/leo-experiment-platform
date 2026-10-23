@@ -1,0 +1,102 @@
+config_version: leo-sim-config/v1
+# T1-HOTSPOT: destination-concentrated variant of the population smoke profile.
+#
+# Why: the uniform-gravity profile spreads demand over 99 sites, so the queue a
+# routing decision prices is EMPTY in 85% of candidate slots and never deeper
+# than about one packet.  A state-time method cannot show anything on a queue
+# that is not there.  Raising demand.destination_population_exponent to 3.0 and
+# lowering demand.gravity_alpha to 0.5 concentrates destinations on the largest
+# population cells, so traffic funnels into a few approach corridors while the
+# rest of the mesh stays available as a substitute.  That is the condition the
+# state-age mechanism needs: sustained, deep, and AVOIDABLE queueing.
+#
+# Everything else (geometry, access, control plane, execution) is unchanged from
+# the smoke profile so results stay comparable to the earlier runs.
+# Bounded small-region cost-probe input. Geometry, access and load values are
+# explicit study engineering assumptions, not measured constellation data.
+scenario:
+  name: t1-hotspot-gravity
+  duration_s: 8.0
+  time_step_s: 0.1
+  num_satellites: 96
+  num_planes: 12
+  altitude_km: 800.0
+  inclination_deg: 53.0
+  min_elevation_deg: 10.0
+  geometry_epoch_s: 0.0
+  seed: 7
+endpoints:
+  grid_deg: 0.25
+  aggregation_deg: 1.0
+  region_lat_bounds_deg: [20.0, 30.0]
+  region_lon_bounds_deg: [100.0, 110.0]
+demand:
+  mode: population_gravity
+  population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
+  offered_mbps: 5.0
+  emission_start_s: 2.0
+  emission_end_s: 4.0
+  packet_bits: 12000
+  research_deadline_s: 4.0
+  deadline_s: null
+  source_population_exponent: 1.0
+  destination_population_exponent: 3.0
+  gravity_alpha: 0.5
+  gravity_d_floor_km: 100.0
+  burst_start_s: 2.5
+  burst_duration_s: 1.0
+  burst_multiplier: 2.0
+  temporal_model: constant
+  population_destination_sampler: alias_rejection
+  destination_rejection_max_draws: 10000
+access:
+  unavailable_policy: queue
+  slots_per_satellite: 4
+  uplink_rate_mbps: 100.0
+  downlink_rate_mbps: 100.0
+  uplink_queue_bits: 64000000
+  downlink_queue_bits: 64000000
+  association: bbm
+  hysteresis_deg: 0.0
+  min_dwell_s: 0.0
+  acquisition_delay_s: 0.1
+links:
+  rate_model: mcs
+  ge_enabled: false
+topology:
+  recompute_interval_s: 1.0
+  matching: markovian
+control_plane:
+  enabled: true
+  advertisement_protocol_version: 2
+  advertise_interval_s: 1.0
+  ttl_s: 10.0
+  vis_k: 17
+  packet_bits: 8000
+  priority: nonpreemptive_priority
+routing:
+  policy: hop
+  max_hops: 64
+  learning_enabled: false
+learning:
+  algorithm: none
+execution:
+  compute_delay_s: 0.001
+  compute_servers_per_satellite: 1
+  decision_observation_mode: frozen
+  max_events: 20000000
+  max_entities: 10000
+  # 20,000 is a fail-closed trace/runtime cap, not a target or truncation
+  # limit. The predeclared competitive candidate has 8,968 expected packets;
+  # a realization above the cap must be rejected, never clipped.
+  max_packets: 20000
+  available_capacity_interval_s: 1.0
+time_alignment:
+  enabled: true
+  arm: candidate
+  predictor: bounded_linear
+  common_rule: median_eta
+  query_delay_s: 0.000001
+outputs:
+  out_dir: leo_sim_out/t1-population-small-region-cost-smoke
+  plotting: false

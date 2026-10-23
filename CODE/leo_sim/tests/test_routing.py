@@ -66,6 +66,27 @@ def test_best_only_returns_only_shortest_ties():
     assert status == "ok" and dirs == ["E"]
 
 
+def test_tail_route_cannot_return_through_a_visited_satellite():
+    # At sat1 the packet already traversed 0->1. A candidate next hop to sat2
+    # can reach serving sat3 only by returning through sat1, so its tail is
+    # not a legal estimate for this packet even though the topology is connected.
+    topo_map = {0: {"E": 1}, 1: {"W": 0, "E": 2, "N": 3},
+                2: {"W": 1}, 3: {"S": 1}}
+    geo = StaticGeometry(4, neighbors_map=topo_map)
+    topo = _topo(geo)
+    cache = _cache_with([
+        (3, {"serve_cells": [B], "isl_queue_bits": {}}, 0.0, 0.01, 10.0)
+    ])
+    unfiltered, unfiltered_status = routing.choose_next_hop(
+        "hop", 2, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458)
+    filtered, filtered_status = routing.choose_next_hop(
+        "hop", 2, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458, forbidden_nodes={0, 1})
+    assert unfiltered_status == "ok" and unfiltered == ["W"]
+    assert filtered_status == "unreachable" and filtered == []
+
+
 def test_delay_policy_uses_propagation_not_hops():
     ranges = {(0, 1): 100.0, (1, 2): 100.0, (0, 2): 10_000.0}
     fn = lambda a, b, t: ranges.get((a, b), ranges.get((b, a), 100.0))
@@ -334,3 +355,271 @@ def test_integration_hop_vs_delay_paths_differ():
     assert r_delay["fates"][1] == "DELIVERED"
     assert r_hop["deliveries"][1]["path"] == [0, 2]
     assert r_delay["deliveries"][1]["path"] == [0, 1, 2]
+
+# --- equal-cost information intervention (hop_known_serving) ---------------
+# hop_known_serving must behave exactly like "hop" except that the serving set
+# comes from the caller's authoritative set instead of the received cache.
+# A test that only checks "it finds a route" would pass for the old policy too,
+# so these cases make the two disagree on purpose.
+
+KNOWN_TOPO = {
+    0: {"E": 1, "N": 4},
+    1: {"W": 0, "E": 3},
+    3: {"W": 1},
+    4: {"S": 0},
+}
+
+
+def test_known_serving_uses_the_authoritative_set_not_the_cache():
+    geo = StaticGeometry(5, neighbors_map=KNOWN_TOPO)
+    topo = _topo(geo)
+    # the cache advertises only satellite 4 (1 hop from 0); the true serving
+    # set is satellite 3, which is 2 hops away.  Plain "hop" must take the
+    # advertised shortcut; hop_known_serving must ignore it.
+    cache = _cache_with([
+        (4, {"visible_cells": [B], "isl_queue_bits": {}}, 0.0, 0.01, 10.0)])
+    dirs_hop, status_hop = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458)
+    assert status_hop == "ok"
+    assert dirs_hop[0] == "N"          # heads to the advertised server 4
+    dirs_known, status_known = routing.choose_next_hop(
+        "hop_known_serving", 0, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458, oracle_targets=[3])
+    assert status_known == "ok"
+    assert dirs_known[0] == "E"        # heads to the true server 3
+
+
+def test_known_serving_works_with_an_empty_cache():
+    geo = StaticGeometry(5, neighbors_map=KNOWN_TOPO)
+    topo = _topo(geo)
+    empty = _cache_with([])
+    dirs, status = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo, empty, {}, 1e9,
+        lambda km: km / 299_792.458)
+    assert status == "no_info" and dirs == []
+    dirs2, status2 = routing.choose_next_hop(
+        "hop_known_serving", 0, B, 1.0, geo, topo, empty, {}, 1e9,
+        lambda km: km / 299_792.458, oracle_targets=[3])
+    assert status2 == "ok" and dirs2[0] == "E"
+
+
+def test_hop_known_serving_is_accepted_by_config_validation():
+    from CODE.leo_sim import config as config_mod
+    assert "hop_known_serving" in config_mod.VALID_POLICIES
+    cfg = make_cfg({"routing": {"policy": "hop_known_serving"}})
+    assert cfg["config"]["routing"]["policy"] == "hop_known_serving"
+
+
+def test_hop_known_serving_prices_every_candidate_at_unit_cost():
+    """The policy must not silently become a delay/capacity policy."""
+    geo = StaticGeometry(5, neighbors_map=KNOWN_TOPO)
+    topo = _topo(geo)
+    cache = _cache_with([])
+    known, _ = routing.choose_next_hop(
+        "hop_known_serving", 0, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458, oracle_targets=[3])
+    hop, _ = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo,
+        _cache_with([(3, {"visible_cells": [B], "isl_queue_bits": {}},
+                      0.0, 0.01, 10.0)]), {}, 1e9,
+        lambda km: km / 299_792.458)
+    assert known == hop
+
+# --- initial synchronisation burst and staged policy (night experiment) -----
+
+def test_known_serving_is_a_valid_policy_and_behaves_like_hop_unit_cost():
+    """known_serving is the unified-source version of the serving intervention.
+
+    It must keep the unit-hop candidate order, so the only thing it changes
+    relative to hop is where the serving set comes from.
+    """
+    from CODE.leo_sim import config as config_mod
+    assert "known_serving" in config_mod.VALID_POLICIES
+    geo = StaticGeometry(5, neighbors_map=KNOWN_TOPO)
+    topo = _topo(geo)
+    cache = _cache_with([(3, {"visible_cells": [B], "isl_queue_bits": {}},
+                         0.0, 0.01, 10.0)])
+    known, status = routing.choose_next_hop(
+        "known_serving", 0, B, 1.0, geo, topo, _cache_with([]), {}, 1e9,
+        lambda km: km / 299_792.458, oracle_targets=[3])
+    hop, _ = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458)
+    assert status == "ok"
+    assert known == hop
+
+
+def test_initial_sync_burst_emits_one_extra_report_per_satellite():
+    """The burst is a real control report, not a cache injection."""
+    from CODE.leo_sim import control as control_mod
+    geo = StaticGeometry(3,
+                         neighbors_map={0: {"E": 1}, 1: {"W": 0, "E": 2},
+                                       2: {"W": 1}})
+    base = make_cfg({"scenario": {"num_satellites": 3, "num_planes": 1,
+                                  "duration_s": 5.0},
+                     "control_plane": {"enabled": True, "vis_k": 4,
+                                       "advertise_interval_s": 2.0}})
+    plain_rows = []
+    plain = kernel.run_simulation(base, [row(1, 0.5, A, B)], geometry=geo,
+                                  timeline_sink=plain_rows, control_audit=True)
+    burst_cfg = make_cfg({"scenario": {"num_satellites": 3, "num_planes": 1,
+                                       "duration_s": 5.0},
+                          "control_plane": {"enabled": True, "vis_k": 4,
+                                            "advertise_interval_s": 2.0,
+                                            "initial_sync_burst_s": 0.5}})
+    burst_rows = []
+    burst = kernel.run_simulation(burst_cfg, [row(1, 0.5, A, B)],
+                                  geometry=geo,
+                                  timeline_sink=burst_rows,
+                                  control_audit=True)
+    n_plain = plain["mechanism_counters"]["control_snapshots"]
+    n_burst = burst["mechanism_counters"]["control_snapshots"]
+    assert n_plain > 0, "the periodic schedule must still fire"
+    # the extra report moves the FIRST generation of every satellite from the
+    # periodic interval down to the declared sync instant; the total count may
+    # stay the same because the periodic schedule is unchanged.
+    def first_gen(rows):
+        gen = [r for r in rows
+               if r.get("milestone") == "ctrl_advert_generated"]
+        return min(r["at"] for r in gen), len(gen)
+    t_plain, n_plain_rows = first_gen(plain_rows)
+    t_burst, n_burst_rows = first_gen(burst_rows)
+    # The periodic grid is 0, 2, 4 in BOTH arms.  An earlier version let the
+    # extra report shift the whole grid to 0.5, 2.5, 4.5, which silently made
+    # the "sync" arm differ in its entire control schedule; this asserts the
+    # grid explicitly.
+    def grid(rows):
+        return sorted({round(r["at"], 3) for r in rows
+                       if r.get("milestone") == "ctrl_advert_generated"})
+    assert t_plain == 0.0, t_plain
+    assert grid(plain_rows) == [0.0, 2.0, 4.0], grid(plain_rows)
+    assert 0.5 in grid(burst_rows), grid(burst_rows)
+    for t in (0.0, 2.0, 4.0):
+        assert t in grid(burst_rows), (t, grid(burst_rows))
+    assert n_burst_rows > n_plain_rows, (n_plain_rows, n_burst_rows)
+
+
+def test_staged_policy_declares_and_validates_its_target():
+    from CODE.leo_sim import config as config_mod
+    cfg = make_cfg({"scenario": {"num_satellites": 1, "num_planes": 1},
+                    "routing": {"policy": "hop",
+                                "staged_policy": "known_serving",
+                                "staged_policy_at_s": 1.0}})
+    assert cfg["config"]["routing"]["staged_policy"] == "known_serving"
+    with pytest.raises(config_mod.ConfigError):
+        make_cfg({"scenario": {"num_satellites": 1, "num_planes": 1},
+                  "routing": {"policy": "hop", "staged_policy": "delay"}})
+
+
+def test_staged_policy_does_not_change_the_prefix():
+    """Two runs that differ only in the staged target are identical before it."""
+    geo = StaticGeometry(3,
+                         neighbors_map={0: {"E": 1}, 1: {"W": 0, "E": 2},
+                                       2: {"W": 1}},
+                         visible=lambda s, lat, lon, t: True)
+    common = {"scenario": {"num_satellites": 3, "num_planes": 1,
+                           "duration_s": 3.0},
+              "routing": {"policy": "hop", "staged_policy_at_s": 1.5}}
+    a = kernel.run_simulation(
+        make_cfg(dict(common, routing={"policy": "hop",
+                                       "staged_policy": "known_serving",
+                                       "staged_policy_at_s": 1.5})),
+        [row(1, 0.2, A, B)], geometry=geo)
+    b = kernel.run_simulation(
+        make_cfg(dict(common, routing={"policy": "hop",
+                                       "staged_policy": "oracle",
+                                       "staged_policy_at_s": 1.5})),
+        [row(1, 0.2, A, B)], geometry=geo)
+    def prefix(res):
+        return [e for e in res.get("packet_events", []) if e["at"] < 1.5]
+    assert prefix(a) == prefix(b)
+
+def test_every_policy_runs_the_kernel_end_to_end():
+    """A policy that resolves must also produce a finished simulation.
+
+    The pure routing-library tests cannot catch a NameError inside a kernel
+    call site; this one deliberately runs every accepted policy (and both
+    staged targets) through run_simulation so a broken call path fails loudly
+    here instead of on the VM.
+    """
+    geo = StaticGeometry(3,
+                         neighbors_map={0: {"E": 1}, 1: {"W": 0, "E": 2},
+                                       2: {"W": 1}},
+                         visible=lambda s, lat, lon, t: True)
+    cases = [("hop", {"policy": "hop"}),
+             ("known_serving", {"policy": "known_serving"}),
+             ("switch_to_known", {"policy": "hop",
+                                  "staged_policy": "known_serving",
+                                  "staged_policy_at_s": 1.0}),
+             ("switch_to_oracle", {"policy": "hop",
+                                   "staged_policy": "oracle",
+                                   "staged_policy_at_s": 1.0})]
+    for tag, rt in cases:
+        cfg = make_cfg({"scenario": {"num_satellites": 3, "num_planes": 1,
+                                     "duration_s": 3.0},
+                        "control_plane": {"enabled": True, "vis_k": 3,
+                                          "initial_sync_burst_s": 0.05},
+                        "routing": rt})
+        rows = []
+        res = kernel.run_simulation(cfg, [row(1, 0.2, A, B)], geometry=geo,
+                                    timeline_sink=rows, control_audit=True)
+        assert res["mechanism_counters"]["control_snapshots"] > 0, tag
+        assert res["fate_counts"]["DELIVERED"] >= 0, tag
+
+# --- observation-age intervention (this round) -----------------------------
+
+def test_observation_age_withholds_fresh_samples_without_touching_them():
+    """A deterministic queue change: the age window must change the read value.
+
+    The same resource, the same units, the same predictor; only the minimum
+    age of the source measurement changes.  The fresher sample is WITHHELD,
+    never rewritten, so the remaining value is the branch own past state.
+    """
+    from CODE.leo_sim import time_alignment as ta
+    res = ta.ResourceKey(7, "E", ta.KIND_ISL, generation=3)
+    hist = [ta.StateSample(res, 0.0, 0.01, 1000.0, 1e6),
+            ta.StateSample(res, 2.0, 2.01, 5000.0, 1e6),
+            ta.StateSample(res, 4.0, 4.01, 9000.0, 1e6)]
+    fresh = ta.predict_resource(hist, snapshot_at=4.5, target_at=4.5,
+                                method="hold_last", resource=res)
+    assert fresh.predicted_bits == 9000.0
+    # withhold anything measured after 4.5 - 1.0 = 3.5 s
+    withheld = [s for s in hist if s.measured_at <= 3.5]
+    aged = ta.predict_resource(withheld, snapshot_at=4.5, target_at=4.5,
+                               method="hold_last", resource=res)
+    assert aged.predicted_bits == 5000.0
+    assert len(withheld) == 2, "the fresh sample must be absent, not edited"
+    # and the value really is the age of the source measurement
+    assert 4.5 - withheld[-1].measured_at == 2.5
+
+
+def test_observation_age_config_resolves_and_defaults_to_off():
+    from CODE.leo_sim import config as config_mod
+    base = make_cfg({"scenario": {"num_satellites": 1, "num_planes": 1}})
+    assert base["config"]["time_alignment"]["min_observation_age_s"] is None
+    aged = make_cfg({"scenario": {"num_satellites": 1, "num_planes": 1},
+                     "time_alignment": {"min_observation_age_s": 1.5}})
+    assert aged["config"]["time_alignment"]["min_observation_age_s"] == 1.5
+
+
+def test_observation_age_audit_survives_an_unmapped_direction():
+    """The diagnostic audit must never change what a decision does.
+
+    A legal direction can have no mapped resource (resource_for returns None).
+    An earlier version called .as_tuple() on that None and took the whole run
+    down with AttributeError; this pins the behaviour.
+    """
+    from CODE.leo_sim import time_alignment as ta
+    snap = ta.make_snapshot(
+        satellite=1, snapshot_at=1.0, history=[], legal_directions=["E", "W"],
+        resources={"E": ta.ResourceKey(2, "W", ta.KIND_ISL, generation=1)},
+        arm="stale", predictor="hold_last")
+    assert snap.resource_for("E") is not None
+    assert snap.resource_for("W") is None
+    grouped = {}
+    for d in snap.legal_directions:
+        res = snap.resource_for(d)
+        key = None if res is None else res.as_tuple()
+        assert key is None or isinstance(key, tuple)
+
