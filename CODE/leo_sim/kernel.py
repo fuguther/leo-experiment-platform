@@ -1447,18 +1447,19 @@ class Kernel:
         # resource at each decision's evaluation target instant.  It is created
         # after the environment exists and is started from run(); nothing in
         # routing, learning, access, metrics or the fate ledger reads it.
+        # T1-MULTI-HORIZON target probe: each sampled candidate row is repeated
+        # at eval_target + h for every declared h.  Sampling happens BEFORE
+        # expansion (see TargetProbe.enqueue).
+        self.target_probe_horizons = tuple(
+            float(h) for h in (target_probe_horizons or ()))
         self.target_probe = None
         if target_probe_path is not None:
             from . import target_probe as _target_probe
             self.target_probe = _target_probe.TargetProbe(
                 self, target_probe_path, max_samples=target_probe_max,
                 stride=(target_probe_stride or 1),
+                horizons=self.target_probe_horizons,
                 note="same-run probe; truth read at the decision's eval target")
-        # T1-MULTI-HORIZON target probe: when set, each candidate row is
-        # repeated at eval_target + h for every declared h.  This measures how
-        # fast the truth diverges from the predicted instant; it is audit-only.
-        self.target_probe_horizons = tuple(
-            float(h) for h in (target_probe_horizons or ()))
         # T1-RESOURCE-JOURNAL: opt-in per-link queue time series + loss
         # attribution.  Write-only audit; never read by routing.
         self.resource_journal = None
@@ -6000,10 +6001,6 @@ class Kernel:
                 "score_missing": list(score.get("missing") or ()),
                 "fallback": bool(score.get("fallback")),
             })
-        horizons = getattr(self, "target_probe_horizons", ())
-        if horizons:
-            from .target_probe import expand_horizons
-            rows = expand_horizons(rows, horizons)
         probe.enqueue(rows)
 
     def _in_service_remaining(self, link, now: float):
@@ -7196,8 +7193,13 @@ class Kernel:
                 pkt, sat, decision_id, "fail", status, direction_audit,
                 "all_routed_candidates_have_no_queue_room")
             if self.resource_journal is not None:
+                unique = [d for d in (cands or ()) if d in self.isls[sat]]
+                direction = unique[0] if len(unique) == 1 else None
+                peer = (self.isls[sat][direction].peer
+                        if direction is not None else None)
                 self.resource_journal.record_loss(
                     pkt=pkt, fate="ISL_QUEUE_OVERFLOW", sat=sat,
+                    peer=peer, direction=direction,
                     hop_index=getattr(pkt, "current_hop_index", None),
                     decision_id=decision_id, at=float(self.env.now))
             self._fail(pkt, "ISL_QUEUE_OVERFLOW", decision_id=decision_id)

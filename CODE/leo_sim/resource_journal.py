@@ -57,7 +57,7 @@ class ResourceJournal:
         self._fh.write(json.dumps(compact, sort_keys=True) + "\n")
         self.rows += 1
 
-    def record_loss(self, *, pkt, fate, sat=None, peer=None,
+    def record_loss(self, *, pkt, fate, sat=None, peer=None, direction=None,
                     hop_index=None, decision_id=None, bits=None, at=None):
         self.losses += 1
         row = {
@@ -67,6 +67,7 @@ class ResourceJournal:
             "fate": str(fate),
             "sat": None if sat is None else int(sat),
             "peer": None if peer is None else int(peer),
+            "direction": direction,
             "hop_index": hop_index,
             "decision_id": decision_id,
             "bits": (int(bits) if bits is not None

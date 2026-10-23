@@ -98,7 +98,7 @@ class TargetProbe:
     """Audit-only recorder. One instance per kernel run (or None)."""
 
     def __init__(self, kernel, path, *, max_samples=None, note=None,
-                 stride=1):
+                 stride=1, horizons=None):
         self.kernel = kernel
         self.path = str(path)
         self.note = note
@@ -107,6 +107,11 @@ class TargetProbe:
         # EARLIEST rows: the first probe run hit the cap at 40 000 of 191 023
         # candidates and therefore described the first 55 ms of the run only.
         self.stride = max(1, int(stride))
+        # Sample the BASE candidate rows 1-in-stride FIRST, then expand each
+        # sampled row over the horizons.  Expanding before sampling would make
+        # a stride divisible by the horizon count select only one offset (the
+        # f58 run with stride=50 kept only +50 ms), which is a sampling bug.
+        self.horizons = tuple(float(h) for h in (horizons or ()))
         self._seq = 0
         # Largest number of DIRECTION records the probe will schedule.  The
         # cap is on records, not on decisions, and every dropped record is
@@ -148,16 +153,17 @@ class TargetProbe:
             if self.stride > 1 and (self._seq % self.stride):
                 self.counters["skipped_by_stride"] += 1
                 continue
-            if (self.max_samples is not None
-                    and self.counters["enqueued"] >= self.max_samples):
-                self.counters["dropped_overflow"] += 1
-                self._reason("overflow")
-                continue
-            self.counters["enqueued"] += 1
-            target = float(row["eval_target_s"])
-            position = bisect.bisect_right(self._targets, target)
-            self._targets.insert(position, target)
-            self.pending.insert(position, row)
+            for expanded in expand_horizons([row], self.horizons):
+                if (self.max_samples is not None
+                        and self.counters["enqueued"] >= self.max_samples):
+                    self.counters["dropped_overflow"] += 1
+                    self._reason("overflow")
+                    break
+                self.counters["enqueued"] += 1
+                target = float(expanded["eval_target_s"])
+                position = bisect.bisect_right(self._targets, target)
+                self._targets.insert(position, target)
+                self.pending.insert(position, expanded)
             if self.started and self._wake is not None \
                     and not self._wake.triggered:
                 # A newer target may be EARLIER than the one the sampler is

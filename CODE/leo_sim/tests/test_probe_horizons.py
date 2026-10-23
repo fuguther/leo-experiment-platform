@@ -1,24 +1,22 @@
-"""Unit tests for multi-horizon probe row expansion."""
+"""Multi-horizon rows must be sampled per BASE row, not per expanded row."""
 from __future__ import annotations
 
-from CODE.leo_sim.target_probe import expand_horizons
+import json
+
+from CODE.leo_sim.target_probe import TargetProbe
 
 
-def test_expand_horizons_keeps_prediction_and_moves_target():
-    rows = [{"eval_target_s": 1.0, "predicted_bits": 5},
-            {"eval_target_s": None, "predicted_bits": None}]
-    out = expand_horizons(rows, (0.01, 0.05))
-    assert len(out) == 4          # base + two horizons + one passthrough
-    times = sorted(r["eval_target_s"] for r in out if r["eval_target_s"])
-    assert times == [1.0, 1.01, 1.05]
-    assert [r["horizon_offset_s"] for r in out
-            if r.get("horizon_offset_s") is not None] == [0.0, 0.01, 0.05]
-    for row in out:
-        if row.get("horizon_offset_s") is not None:
-            assert row["predicted_bits"] == 5
-            assert row["base_eval_target_s"] == 1.0
-
-
-def test_expand_horizons_noop_without_horizons():
-    rows = [{"eval_target_s": 1.0}]
-    assert expand_horizons(rows, ()) == rows
+def test_stride_is_applied_before_horizon_expansion(tmp_path):
+    probe = TargetProbe(None, tmp_path / "probe.jsonl", stride=2,
+                        horizons=(0.01, 0.05))
+    rows = []
+    for i in range(4):
+        rows.append({"eval_target_s": 1.0 + i, "pid": i, "predicted_bits": 1})
+    probe.enqueue(rows)
+    targets = sorted(row["eval_target_s"] for row in probe.pending)
+    # stride=2 keeps the 2nd and 4th base rows (targets 2.0 and 4.0);
+    # each expands to 0/+10/+50 ms
+    assert len(probe.pending) == 6
+    assert targets == [2.0, 2.01, 2.05, 4.0, 4.01, 4.05]
+    offsets = sorted({row["horizon_offset_s"] for row in probe.pending})
+    assert offsets == [0.0, 0.01, 0.05]
