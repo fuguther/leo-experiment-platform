@@ -632,6 +632,7 @@ def _candidate_outcomes(candidates):
     out = {}
     for direction, item in sorted((candidates or {}).items()):
         item = item or {}
+        outcome = item.get("outcome") or {}
         out[str(direction)] = {
             "valid": bool(item.get("valid")),
             "reason": item.get("reason"),
@@ -641,8 +642,43 @@ def _candidate_outcomes(candidates):
             "censored": item.get("censored"),
             "censor_reason": item.get("censor_reason"),
             "resource_mismatch": item.get("resource_mismatch"),
+            # Four-direction ETA truth: the arm only ever reports the chosen
+            # direction, but the counterfactual replay already produced the
+            # arrival instant for every forced candidate.  Publishing it is a
+            # data-movement change, not an extra simulation.
+            "fate": outcome.get("fate"),
+            "delivered_at_s": outcome.get("delivered_at"),
+            "emitted_at_s": outcome.get("emitted_at"),
+            "delay_s": outcome.get("delay_s"),
+            "eta_target_s": item.get("eta_target_s"),
+            "peer_arrival_at_s": item.get("peer_arrival_at_s"),
         }
     return out
+
+
+def _four_direction_eta(candidate_outcomes):
+    """Aggregate predicted-vs-actual first-hop arrival by direction."""
+    out = {}
+    for direction, item in sorted((candidate_outcomes or {}).items()):
+        item = item or {}
+        eta = item.get("eta_target_s")
+        actual = item.get("peer_arrival_at_s")
+        if not isinstance(eta, (int, float)) or not isinstance(
+                actual, (int, float)):
+            continue
+        bucket = out.setdefault(str(direction), {"errors": []})
+        bucket["errors"].append(float(actual) - float(eta))
+    result = {}
+    for direction, bucket in sorted(out.items()):
+        errors = bucket["errors"]
+        abs_errors = [abs(e) for e in errors]
+        result[direction] = {
+            "n": len(errors),
+            "mean_signed_error_s": statistics.fmean(errors),
+            "mean_abs_error_s": statistics.fmean(abs_errors),
+            "max_abs_error_s": max(abs_errors),
+        }
+    return result
 
 
 def _resource_target_evidence(value):
@@ -1181,6 +1217,8 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
             "arm_actions": _arm_actions(arms),
             "candidate_outcomes": _candidate_outcomes(
                 document.get("candidates") or {}),
+            "four_direction_eta": _four_direction_eta(
+                _candidate_outcomes(document.get("candidates") or {})),
             "common_horizon_candidates": document.get(
                 "common_horizon_candidates") or [],
             "resource_pressure": resource_pressure,
@@ -1191,6 +1229,28 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
         })
         if decision_id == capture_id:
             explanation_replay = document.get("replay")
+    eta_block = {}
+    for branch_row in branches:
+        for direction, stats in (branch_row.get("four_direction_eta") or {}).items():
+            bucket = eta_block.setdefault(direction, {"n": 0, "abs_sum": 0.0,
+                                                      "signed_sum": 0.0,
+                                                      "max_abs": 0.0})
+            bucket["n"] += stats["n"]
+            bucket["abs_sum"] += stats["mean_abs_error_s"] * stats["n"]
+            bucket["signed_sum"] += (stats["mean_signed_error_s"]
+                                     * stats["n"])
+            bucket["max_abs"] = max(bucket["max_abs"],
+                                    stats["max_abs_error_s"])
+    four_direction_eta = {
+        direction: {
+            "n": bucket["n"],
+            "mean_abs_error_s": bucket["abs_sum"] / bucket["n"],
+            "mean_signed_error_s": bucket["signed_sum"] / bucket["n"],
+            "max_abs_error_s": bucket["max_abs"],
+        }
+        for direction, bucket in sorted(eta_block.items())
+        if bucket["n"]
+    }
     identity = artifact_identity.build_identity(
         config=resolved, trace_digest=source.get("trace_sha256"),
         driver_paths=artifact_identity.execution_chain_paths(),
@@ -1223,6 +1283,7 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
                                 "the future of the unchosen actions is "
                                 "never consulted"},
         "branches": branches,
+        "four_direction_eta": four_direction_eta,
         "common_horizon_calibration": (
             {
                 "status": ("projected" if horizon_offset_source["offsets"]

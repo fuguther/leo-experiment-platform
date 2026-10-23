@@ -1176,6 +1176,13 @@ def compare(resolved, rows, geometry, decision_id, deadline_s, source,
                                      resource_link,
                                      target["t_decision_start"])),
             "outcome": outcome,
+            "eta_target_s": (((target.get("observation_at_start") or {})
+                              .get("time_alignment") or {})
+                             .get("eta_targets") or {}).get(direction),
+            "peer_arrival_at_s": next(
+                (row.get("at") for row in chosen_branch["timeline_rows"]
+                 if row.get("milestone") == "peer_arrival"
+                 and row.get("pid") == pid), None),
             "replay": (_replay_payload(chosen_branch)
                        if capture_replay else None),
         }
