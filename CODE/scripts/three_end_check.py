@@ -2,7 +2,7 @@
 """Read-only three-end code identity check.
 
 Compares: local git HEAD, GitHub main, the newest immutable release, and
-CURRENT.json (when present).  It never writes, fetches, merges or deletes.
+CURRENT.json (when present).  It never writes, merges or deletes; it only runs read-only git/network probes.
 
 Usage:
   python3 -m CODE.scripts.three_end_check \

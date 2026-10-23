@@ -66,3 +66,28 @@ def test_cli_build_and_verify(tmp_path):
     assert lm.main(["--out", str(out), "--root", str(Path.cwd()),
                     "--run-id", "cli", "--input", f"config={cfg}"]) == 0
     assert lm.main(["--out", str(out), "--verify"]) == 0
+
+
+def test_verify_recomputes_input_hash(tmp_path):
+    cfg = tmp_path / "scene.yaml"
+    cfg.write_text("a: 1\n", encoding="utf-8")
+    out = tmp_path / "m.json"
+    lm.build_launch_manifest(
+        root=Path.cwd(), out=out, run_id="r", task="network_alignment",
+        inputs=[("config", cfg)])
+    cfg.write_text("a: 2\n", encoding="utf-8")
+    with pytest.raises(lm.ManifestError, match="input sha256 changed"):
+        lm.verify_launch_manifest(out)
+
+
+def test_require_pinned_rejects_dirty_tree(tmp_path, monkeypatch):
+    out = tmp_path / "m.json"
+    monkeypatch.setattr(
+        lm.artifact_identity, "current_identity",
+        lambda root: {"sources": {"combined_sha256": "a" * 64},
+                      "git": {"available": True, "commit": "b" * 40,
+                              "dirty": True}})
+    with pytest.raises(lm.ManifestError, match="dirty"):
+        lm.build_launch_manifest(
+            root=tmp_path, out=out, run_id="r", task="network_alignment",
+            require_pinned=True)

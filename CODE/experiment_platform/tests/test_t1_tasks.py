@@ -1045,3 +1045,15 @@ def test_an_unknown_task_is_refused():
     resolved, rows, geometry, source = _scenario()
     with pytest.raises(t1_tasks.TaskError):
         t1_tasks.run_task("nonsense", resolved, rows, geometry, source)
+
+
+def test_non_binding_deadline_degrades_and_flag_accepts():
+    resolved, rows, geometry, source = _scenario()
+    strict = t1_tasks.network_alignment(
+        resolved, rows, geometry, source, deadline_s=20.0)
+    assert strict["status"] == "DEGRADED"
+    assert "primary_endpoint_deadline_not_binding" in strict["status_reasons"]
+    accepted = t1_tasks.network_alignment(
+        resolved, rows, geometry, source, deadline_s=20.0,
+        allow_non_binding_deadline=True)
+    assert accepted["status"] == "ok"

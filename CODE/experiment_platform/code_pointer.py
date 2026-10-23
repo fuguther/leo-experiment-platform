@@ -109,7 +109,9 @@ def read_current(path: Path | str) -> dict:
     if not COMMIT_RE.match(str(doc.get("commit") or "")):
         raise PointerError("pointer commit must be a 40-char hex SHA")
     recorded = doc.get("pointer_sha256")
-    if recorded and recorded != _canonical_sha256(doc):
+    if not recorded:
+        raise PointerError("pointer_sha256 is missing (fail-closed)")
+    if recorded != _canonical_sha256(doc):
         raise PointerError("pointer_sha256 does not match its content")
     return doc
 

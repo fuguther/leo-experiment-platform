@@ -80,3 +80,11 @@ def test_read_latest_release_by_mtime(tmp_path):
 
 def test_read_current_reports_missing(tmp_path):
     assert tec.read_current(tmp_path / "absent.json")["commit"] is None
+
+
+def test_pointer_without_hash_is_rejected(tmp_path):
+    out = tmp_path / "CURRENT.json"
+    doc = {"schema": code_pointer.SCHEMA, "commit": COMMIT, "dirty": False}
+    out.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(code_pointer.PointerError, match="pointer_sha256 is missing"):
+        code_pointer.read_current(out)
