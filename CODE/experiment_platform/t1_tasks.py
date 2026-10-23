@@ -1392,7 +1392,8 @@ def _compute_cost(timeline, resolved):
 
 
 def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
-             source=None, capture_replay=False, simulator_call_guard=None):
+             source=None, capture_replay=False, simulator_call_guard=None,
+             target_probe=None):
     """One full-network run under ONE online arm.
 
     The four arms start from the SAME input trace and the SAME initial
@@ -1411,15 +1412,22 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
     sink, timeline = [], []
     call_scope = (simulator_call_guard(arm)
                   if simulator_call_guard is not None else None)
+    probe_kwargs = {}
+    if target_probe:
+        probe_kwargs = {
+            "target_probe_path": str(target_probe["path"]),
+            "target_probe_max": target_probe.get("max"),
+            "target_probe_stride": target_probe.get("stride"),
+        }
     if call_scope is None:
         result = kernel.run_simulation(
             local, rows, geometry=geometry, decision_sink=sink,
-            timeline_sink=timeline, control_audit=True)
+            timeline_sink=timeline, control_audit=True, **probe_kwargs)
     else:
         with call_scope:
             result = kernel.run_simulation(
                 local, rows, geometry=geometry, decision_sink=sink,
-                timeline_sink=timeline, control_audit=True)
+                timeline_sink=timeline, control_audit=True, **probe_kwargs)
     e2e = execution_compare._e2e(result["deliveries"],
                                  result["packet_events"])
     forwards = [r for r in sink if r.get("kind") == "forward"]
@@ -1558,6 +1566,7 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
         "congestion_metrics": congestion_metrics,
         "mechanisms": result["mechanisms"],
         "natural_end": result["natural_end"],
+        "target_probe": result.get("target_probe"),
         "stop_time_s": result["stop_time_s"],
         "horizon_s": result["horizon_s"],
         "replay": ({
@@ -1755,7 +1764,8 @@ def network_alignment(resolved, rows, geometry, source,
                      arms=NETWORK_ARMS, overrides=None, *, deadline_s=None,
                      window=None, capture_replay=False,
                      simulator_call_guard=None,
-                     allow_non_binding_deadline=False):
+                     allow_non_binding_deadline=False,
+                     target_probe=None):
     """The FOUR online arms, each running the WHOLE network to the horizon."""
     if overrides:
         cfg = copy.deepcopy(resolved["config"])
@@ -1771,11 +1781,18 @@ def network_alignment(resolved, rows, geometry, source,
             raise TaskError(f"unknown online arm {arm!r}")
         try:
             _log_publish_memory(f"arm_{arm}_begin")
+            probe = None
+            if target_probe is not None:
+                probe = dict(target_probe)
+                probe["path"] = str(
+                    Path(target_probe["dir"])
+                    / f"{target_probe['prefix']}-target-probe-{arm}.jsonl")
             row = _arm_row(
                 resolved, rows, geometry, arm, deadline_s=deadline_s,
                 window=window, source=source,
                 capture_replay=capture_replay,
-                simulator_call_guard=simulator_call_guard)
+                simulator_call_guard=simulator_call_guard,
+                target_probe=probe)
             replay = row.get("replay") if isinstance(row, dict) else None
             if isinstance(replay, dict) and replay.get("captured"):
                 # Keep complete observations, history and physical resource
@@ -1880,7 +1897,8 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
              overrides=None, arms=NETWORK_ARMS, capture_replay=False,
              calibrate_common_horizon=False,
              simulator_call_guard=None,
-             allow_non_binding_deadline=False):
+             allow_non_binding_deadline=False,
+             target_probe=None):
     """One entry point for the three task types.
 
     The suite only ever calls this, so budget enforcement, failure
@@ -1906,7 +1924,8 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
                                    capture_replay=capture_replay,
                                    simulator_call_guard=simulator_call_guard,
                                    allow_non_binding_deadline=(
-                                       allow_non_binding_deadline))
+                                       allow_non_binding_deadline),
+                                   target_probe=target_probe)
     else:
         driver = execution_compare.compare(
             resolved, rows, geometry, source,
@@ -2476,6 +2495,15 @@ def main(argv=None) -> int:
     parser.add_argument("--common-horizon-s", type=float, default=None)
     parser.add_argument("--calibrate-common-horizon", action="store_true",
                         help="project and compare predeclared common-future candidates on this development block")
+    parser.add_argument("--target-probe", action="store_true",
+                        help="audit-only same-run prediction->truth probe at each "
+                             "candidate's evaluation target instant; writes "
+                             "<out>-target-probe-<arm>.jsonl and never feeds the "
+                             "online policy")
+    parser.add_argument("--target-probe-max", type=int, default=None,
+                        help="hard cap on probe records per arm")
+    parser.add_argument("--target-probe-stride", type=int, default=None,
+                        help="deterministic 1-in-stride sampling of probe rows")
     raw_args = list(sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(raw_args)
     if bool(args.config) == bool(args.scenario):
@@ -2621,6 +2649,18 @@ def main(argv=None) -> int:
         if args.task == "network_alignment":
             _check_deadline_horizon(rows, resolved, deadline_value,
                                     window=window)
+        target_probe = None
+        if getattr(args, "target_probe", False):
+            if args.task != "network_alignment":
+                print("T1TASKS REFUSED: --target-probe only supports "
+                      "network_alignment")
+                return 2
+            target_probe = {
+                "dir": str(args.out.parent),
+                "prefix": args.out.stem,
+                "max": args.target_probe_max,
+                "stride": args.target_probe_stride,
+            }
         document = run_task(
             args.task, resolved, rows, geometry, source,
             deadline_s=deadline_value, max_branches=args.max_branches,
@@ -2632,7 +2672,8 @@ def main(argv=None) -> int:
             capture_replay=args.capture_replay,
             calibrate_common_horizon=args.calibrate_common_horizon,
             allow_non_binding_deadline=args.allow_non_binding_deadline,
-            simulator_call_guard=call_guard)
+            simulator_call_guard=call_guard,
+            target_probe=target_probe)
         if diagnostic is not None:
             if diagnostic_state["stop_fired"]:
                 raise TaskError(
