@@ -1,0 +1,138 @@
+# t1_city18_v7 系列：把"不排队"推到"有排队"的标定臂（2026-10-21 第二轮）
+#
+# 【为什么换城市集合（覆盖审计，实测）】
+# v5a/b/c 用 24 星/3 平面/53°/550 km 星座 + 18 城。容器内几何探针（probe_coverage.py，
+# model.Constellation 直接查 ground_visible）实测：beijing/shanghai/mumbai/dubai/moscow/
+# johannesburg/losangeles/sydney 共 8 城在整个 8 s 里一次都没有可见卫星，paris 在 8 s 内 0、
+# 60 s 内 0.41；只有 9/18 城有覆盖。这正是 v5a/b/c 的 access_admission_rate 恰好 ≈0.499
+# 的来源——一半需求永远进不了星上。本系列改用 21 个 duty15=1.00 城市中的 18 个真实城市
+# （probe_cities15.py 实测 duty15=1.00），星座/帧结构/ISL 参数全部保持 v5 不变。
+#
+# 【ratio_ser】实测该拓扑 ISL 一跳距离均值 4 641 km（p50 5 297 km，探针 probe_cities15.py），
+# tau_prop(mean)=15.5 ms；8000 bit / 10 Mbps 的 tau_ser=0.8 ms -> ratio=0.052 <= 0.1 达标。
+# 用户给的 6.7 ms 对应约 2 000 km 的短跳，本星座平均跳更长，故不需要改 ISL 速率或降包长。
+#
+# 归因臂 v7a0：v5c 接入旋钮原值（仅换城市集合）
+
+config_version: leo-sim-config/v1
+scenario:
+  name: t1-city18-v7a0
+  duration_s: 9
+  time_step_s: 0.1
+  num_satellites: 24
+  num_planes: 3
+  seed: 7
+  min_elevation_deg: 5
+endpoints:
+  sites:
+  - name: tokyo
+    lat: 35.68
+    lon: 139.69
+    demand_weight: 1.0
+  - name: manila
+    lat: 14.6
+    lon: 120.98
+    demand_weight: 1.0
+  - name: singapore
+    lat: 1.35
+    lon: 103.82
+    demand_weight: 1.0
+  - name: jakarta
+    lat: -6.21
+    lon: 106.85
+    demand_weight: 1.0
+  - name: tehran
+    lat: 35.69
+    lon: 51.39
+    demand_weight: 1.0
+  - name: istanbul
+    lat: 41.01
+    lon: 28.98
+    demand_weight: 1.0
+  - name: london
+    lat: 51.51
+    lon: -0.13
+    demand_weight: 1.0
+  - name: rome
+    lat: 41.9
+    lon: 12.5
+    demand_weight: 1.0
+  - name: cairo
+    lat: 30.04
+    lon: 31.24
+    demand_weight: 1.0
+  - name: lagos
+    lat: 6.52
+    lon: 3.38
+    demand_weight: 1.0
+  - name: accra
+    lat: 5.6
+    lon: -0.19
+    demand_weight: 1.0
+  - name: kinshasa
+    lat: -4.44
+    lon: 15.27
+    demand_weight: 1.0
+  - name: newyork
+    lat: 40.71
+    lon: -74.01
+    demand_weight: 1.0
+  - name: chicago
+    lat: 41.88
+    lon: -87.63
+    demand_weight: 1.0
+  - name: mexicocity
+    lat: 19.43
+    lon: -99.13
+    demand_weight: 1.0
+  - name: bogota
+    lat: 4.71
+    lon: -74.07
+    demand_weight: 1.0
+  - name: saopaulo
+    lat: -23.55
+    lon: -46.63
+    demand_weight: 1.0
+  - name: rio
+    lat: -22.91
+    lon: -43.17
+    demand_weight: 1.0
+demand:
+  mode: uniform
+  offered_mbps: 100
+  packet_bits: 8000
+access:
+  unavailable_policy: queue
+  slots_per_satellite: 32
+  slot_lease_s: 10.0
+  idle_release_s: 1
+  holding_queue_bits: 64000000
+  uplink_rate_mbps: 1000.0
+  downlink_rate_mbps: 1000.0
+  uplink_queue_bits: 4000000000
+  downlink_queue_bits: 4000000000
+  association: bbm
+  hysteresis_deg: 0
+  min_dwell_s: 0
+  acquisition_delay_s: 0.1
+links:
+  rate_model: constant
+  isl_rate_mbps: 10.0
+  isl_queue_bits: 1000000
+  ge_enabled: false
+control_plane:
+  enabled: true
+  advertise_interval_s: 0.2
+  vis_k: 2
+routing:
+  policy: hop
+learning:
+  algorithm: none
+execution:
+  max_events: 20000000
+  max_entities: 20000
+  max_packets: 400000
+  available_capacity_interval_s: 1.0
+outputs:
+  out_dir: leo_sim_out/t1-city18-v7a0
+  plotting: false

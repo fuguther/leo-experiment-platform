@@ -349,8 +349,10 @@ gates:
     requires:
       - scene_family_frozen
     purpose: >-
-      Measure the oracle information-value upper bound (perfect future state vs
-      now) before any predictor work. If the bound is below run-to-run variance,
+      Measure the information-value upper bounds before any predictor work:
+      ideal_current vs now, and candidate vs now (topic/SPEC.md v0.2 §0 criterion 2).
+      A true future oracle is NOT implemented (SPEC.md §5 P9). If the bound's
+      paired 95% CI includes 0,
       R2 stops; see topic/STATUS.md "R2 判定规格" (2026-10-20).
 
 experiments:
