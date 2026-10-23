@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
 import re
 import subprocess
@@ -25,6 +26,28 @@ from pathlib import Path
 from typing import Iterable, Mapping
 
 IDENTITY_SCHEMA = "t1-artifact-identity/v1"
+
+#: Environment variables that can change a result without changing the
+#: resolved config.  They MUST travel with the artifact: otherwise one
+#: config_sha256 can stand for several incompatible experiments.
+ENV_NAMES = (
+    "T1_OU_TAU_S",
+    "T1_QUEUE_WEIGHT",
+    "T1_AUDIT_MAX_DECISIONS",
+    "T1_AUDIT_MAX_ATTEMPTS",
+    "T1_SIM_CALL_LEDGER",
+    "T1_SIM_CALL_CONTEXT",
+    "T1_SUITE_RUNTIME_CONTEXT",
+    "T1_SUITE_LAUNCH_NONCE",
+    "T1_TRACE_PROGRAM_ROOT",
+    "T1_INPUT_POPULATION_RASTER",
+)
+
+
+def env_identity(environ=None) -> dict:
+    """The T1_* knobs actually visible to this process (never inferred)."""
+    env = os.environ if environ is None else environ
+    return {name: env[name] for name in ENV_NAMES if name in env}
 
 # CODE/experiment_platform/artifact_identity.py -> CODE -> repo
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -163,7 +186,8 @@ def git_identity(root: Path = REPO_ROOT) -> dict:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return {"available": False,
-                    "reason": "git not available and no launch manifest found"}
+                    "reason": ("no git repository at REPO_ROOT and no "
+                               "verified .deployment_commit/.release-manifest")}
         if not manifest.get("head"):
             return {"available": False, "reason": "launch manifest has no head"}
         return {
@@ -245,6 +269,7 @@ def build_identity(config: Mapping | None = None,
         "sources": source_identity(driver_paths, root),
         "runtime": runtime_identity(),
     }
+    doc["env"] = env_identity()
     if config is not None:
         doc["config_sha256"] = config.get("sha256")
     if trace_digest is not None:
