@@ -125,6 +125,7 @@ def summarize(rows):
         "by_age_bucket": {},
         "by_horizon_bucket": {},
         "by_selection": {},
+        "by_horizon_offset": {},
     }
     for arm in sorted({str(r.get("arm")) for r in labeled}):
         subset = [r for r in labeled if str(r.get("arm")) == arm]
@@ -151,6 +152,15 @@ def summarize(rows):
                 [_error(r) for r in subset],
                 [r["predicted_bits"] for r in subset],
                 [float(r["truth"]["work_ahead_bits"]) for r in subset])
+    offsets = sorted({r.get("horizon_offset_s") for r in labeled
+                      if isinstance(r.get("horizon_offset_s"), (int, float))})
+    for offset in offsets:
+        subset = [r for r in labeled
+                  if r.get("horizon_offset_s") == offset]
+        document["by_horizon_offset"]["+%.3fs" % offset] = _stats(
+            [_error(r) for r in subset],
+            [r["predicted_bits"] for r in subset],
+            [float(r["truth"]["work_ahead_bits"]) for r in subset])
     for key, flag in (("chosen", True), ("not_chosen", False)):
         subset = [r for r in labeled if bool(r.get("selected")) is flag]
         if subset:
@@ -183,6 +193,7 @@ def _print(document, stream=sys.stdout):
     for section, label in (("by_arm", "arm"), ("by_direction", "direction"),
                            ("by_age_bucket", "age"),
                            ("by_horizon_bucket", "horizon"),
+                           ("by_horizon_offset", "offset"),
                            ("by_selection", "selection")):
         for key, stats in document[section].items():
             line("%-12s %6d %12.1f %12.1f %12.1f %7.2f%% %7.2f%%" % (

@@ -62,6 +62,38 @@ import math
 SCHEMA = "leo-sim-target-probe/v1"
 
 
+def expand_horizons(rows, horizons):
+    """Repeat each probe row at eval_target + h for every declared horizon.
+
+    The prediction stays the one made for the original eval target; the extra
+    rows only move the truth-reading instant, so a consumer can measure how
+    fast the truth diverges from the predicted instant.  Rows without an eval
+    target are passed through unchanged (their reason is recorded upstream).
+    """
+    horizons = tuple(float(h) for h in (horizons or ()))
+    if not horizons:
+        return list(rows)
+    expanded = []
+    for row in rows:
+        base = row.get("eval_target_s")
+        if base is None:
+            expanded.append(row)
+            continue
+        # horizon 0 keeps the original prediction->truth pair explicit, so a
+        # consumer can compare "at the predicted instant" with "later".
+        base_row = dict(row)
+        base_row["base_eval_target_s"] = base
+        base_row["horizon_offset_s"] = 0.0
+        expanded.append(base_row)
+        for horizon in horizons:
+            copy = dict(row)
+            copy["base_eval_target_s"] = base
+            copy["horizon_offset_s"] = horizon
+            copy["eval_target_s"] = float(base) + horizon
+            expanded.append(copy)
+    return expanded
+
+
 class TargetProbe:
     """Audit-only recorder. One instance per kernel run (or None)."""
 

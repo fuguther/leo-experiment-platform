@@ -26,7 +26,10 @@ def _pct(value):
 
 
 def summary_block(path):
-    d = json.load(open(path))
+    return summary_block_from_document(json.load(open(path)))
+
+
+def summary_block_from_document(d):
     a = d["arms"][0]
     o = a["outcome"]
     net = a["network_outcome"]
@@ -159,6 +162,67 @@ def raw_block(path, code_root):
     }
 
 
+def journal_block(path):
+    """Per-link queue time series + loss attribution from the resource journal."""
+    states = []
+    losses = []
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            row = json.loads(line)
+            if row.get("kind") == "queue_state":
+                states.append(row)
+            elif row.get("kind") == "loss":
+                losses.append(row)
+    per_link = {}
+    for row in states:
+        key = row.get("resource_id")
+        entry = per_link.setdefault(key, {"n": 0, "max_bits": 0,
+                                          "sum_bits": 0, "busy": 0})
+        bits = row.get("queued_bits") or 0
+        entry["n"] += 1
+        entry["sum_bits"] += bits
+        entry["max_bits"] = max(entry["max_bits"], bits)
+        if bits:
+            entry["busy"] += 1
+    top = sorted(per_link.items(), key=lambda kv: kv[1]["max_bits"],
+                 reverse=True)[:10]
+    fate_counts = {}
+    link_losses = {}
+    sat_losses = {}
+    for row in losses:
+        fate_counts[row.get("fate")] = fate_counts.get(row.get("fate"), 0) + 1
+        key = "isl:%s:%s" % (row.get("sat"), row.get("peer"))
+        link_losses[key] = link_losses.get(key, 0) + 1
+        sat = str(row.get("sat"))
+        sat_losses[sat] = sat_losses.get(sat, 0) + 1
+    total_loss = sum(link_losses.values())
+    top_links = sorted(link_losses.items(), key=lambda kv: kv[1],
+                       reverse=True)[:10]
+    top_share = (sum(v for _, v in top_links) / total_loss
+                 if total_loss else None)
+    return {
+        "queue_state_rows": len(states),
+        "links_seen": len(per_link),
+        "time_span_s": ([min(r.get("t", 0) for r in states),
+                         max(r.get("t", 0) for r in states)] if states else None),
+        "top_links_by_max_queue": [
+            {"resource_id": k, "max_bits": v["max_bits"],
+             "mean_bits": round(v["sum_bits"] / v["n"], 1),
+             "busy_pct": round(100.0 * v["busy"] / v["n"], 1)}
+            for k, v in top],
+        "loss_rows": len(losses),
+        "loss_by_fate": fate_counts,
+        "top_loss_links": [{"resource_id": k, "losses": v}
+                            for k, v in top_links],
+        "top_loss_share": (round(top_share, 3)
+                           if top_share is not None else None),
+        "top_loss_satellites": [{"sat": k, "losses": v}
+                                for k, v in sorted(
+                                    sat_losses.items(),
+                                    key=lambda kv: kv[1], reverse=True)[:5]],
+    }
+
+
 def probe_block(path):
     rows, labeled = [], 0
     errors = []
@@ -189,7 +253,7 @@ def probe_block(path):
     }
 
 
-def verdicts(block, raw, probe):
+def verdicts(block, raw, probe, journal=None):
     lines = []
     budget = block.get("time_budget_ms") or {}
     shares = block.get("time_share_pct") or {}
@@ -233,6 +297,18 @@ def verdicts(block, raw, probe):
                      % (block["isl_n"], block.get("util_mean", 0),
                         block.get("util_p99", 0), block.get("util_max", 0),
                         block["util_ge_02_pct"]))
+    if journal:
+        top = (journal.get("top_links_by_max_queue") or [{}])[0]
+        lines.append(
+            "链路时间序列：%d 行/%d 条链路；最忙 %s（max %s bit，busy %s%%）"
+            % (journal.get("queue_state_rows", 0), journal.get("links_seen", 0),
+               top.get("resource_id"), top.get("max_bits"),
+               top.get("busy_pct")))
+        if journal.get("loss_rows"):
+            lines.append(
+                "丢包归属：%s；top-10 链路占 %.1f%%；最集中卫星 %s"
+                % (journal.get("loss_by_fate"), 100 * (journal.get("top_loss_share") or 0),
+                   (journal.get("top_loss_satellites") or [{}])[0].get("sat")))
     if block.get("rate_hotspot") and block.get("rate_mean"):
         lines.append("热点压力：max/mean = %.2f×"
                      % (block["rate_hotspot"] / block["rate_mean"]))
@@ -245,6 +321,7 @@ def main(argv=None):
     ap.add_argument("--raw")
     ap.add_argument("--code-root", default="CODE")
     ap.add_argument("--probe")
+    ap.add_argument("--journal")
     ap.add_argument("--label", default="")
     ap.add_argument("--json", dest="json_out")
     args = ap.parse_args(argv)
@@ -252,8 +329,10 @@ def main(argv=None):
     block["label"] = args.label or Path(args.summary).name
     raw = raw_block(args.raw, args.code_root) if args.raw else None
     probe = probe_block(args.probe) if args.probe else None
+    journal = journal_block(args.journal) if args.journal else None
     document = {"summary": block, "raw": raw, "probe": probe,
-                "verdicts": verdicts(block, raw, probe)}
+                "journal": journal,
+                "verdicts": verdicts(block, raw, probe, journal)}
     print("== %s ==" % block["label"])
     print("offered=%s delivered=%s delivery=%.4f fates=%s"
           % (block["offered"], block["delivered"], block["delivery"],
@@ -270,6 +349,8 @@ def main(argv=None):
         print("raw:", json.dumps(raw, ensure_ascii=False))
     if probe:
         print("probe:", json.dumps(probe, ensure_ascii=False))
+    if journal:
+        print("journal:", json.dumps(journal, ensure_ascii=False)[:1200])
     print("\n判读：")
     for line in document["verdicts"]:
         print(" -", line)

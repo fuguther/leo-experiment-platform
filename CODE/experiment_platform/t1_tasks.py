@@ -1394,7 +1394,8 @@ def _compute_cost(timeline, resolved):
 
 def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
              source=None, capture_replay=False, simulator_call_guard=None,
-             target_probe=None):
+             target_probe=None, target_probe_horizons=None,
+             resource_journal=None):
     """One full-network run under ONE online arm.
 
     The four arms start from the SAME input trace and the SAME initial
@@ -1419,7 +1420,13 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
             "target_probe_path": str(target_probe["path"]),
             "target_probe_max": target_probe.get("max"),
             "target_probe_stride": target_probe.get("stride"),
+            "target_probe_horizons": target_probe_horizons,
         }
+    if resource_journal:
+        probe_kwargs.update({
+            "resource_journal_path": str(resource_journal["path"]),
+            "resource_journal_stride": resource_journal.get("stride"),
+        })
     if call_scope is None:
         result = kernel.run_simulation(
             local, rows, geometry=geometry, decision_sink=sink,
@@ -1575,6 +1582,7 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
         "mechanisms": result["mechanisms"],
         "natural_end": result["natural_end"],
         "target_probe": result.get("target_probe"),
+        "resource_journal": result.get("resource_journal"),
         "prediction_accuracy": probe_accuracy,
         "stop_time_s": result["stop_time_s"],
         "horizon_s": result["horizon_s"],
@@ -1774,7 +1782,8 @@ def network_alignment(resolved, rows, geometry, source,
                      window=None, capture_replay=False,
                      simulator_call_guard=None,
                      allow_non_binding_deadline=False,
-                     target_probe=None):
+                     target_probe=None, target_probe_horizons=None,
+                     resource_journal=None):
     """The FOUR online arms, each running the WHOLE network to the horizon."""
     if overrides:
         cfg = copy.deepcopy(resolved["config"])
@@ -1796,12 +1805,20 @@ def network_alignment(resolved, rows, geometry, source,
                 probe["path"] = str(
                     Path(target_probe["dir"])
                     / f"{target_probe['prefix']}-target-probe-{arm}.jsonl")
+            journal = None
+            if resource_journal is not None:
+                journal = dict(resource_journal)
+                journal["path"] = str(
+                    Path(resource_journal["dir"])
+                    / f"{resource_journal['prefix']}-journal-{arm}.jsonl")
             row = _arm_row(
                 resolved, rows, geometry, arm, deadline_s=deadline_s,
                 window=window, source=source,
                 capture_replay=capture_replay,
                 simulator_call_guard=simulator_call_guard,
-                target_probe=probe)
+                target_probe=probe,
+                target_probe_horizons=target_probe_horizons,
+                resource_journal=journal)
             replay = row.get("replay") if isinstance(row, dict) else None
             if isinstance(replay, dict) and replay.get("captured"):
                 # Keep complete observations, history and physical resource
@@ -1907,7 +1924,8 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
              calibrate_common_horizon=False,
              simulator_call_guard=None,
              allow_non_binding_deadline=False,
-             target_probe=None):
+             target_probe=None, target_probe_horizons=None,
+             resource_journal=None):
     """One entry point for the three task types.
 
     The suite only ever calls this, so budget enforcement, failure
@@ -1934,7 +1952,10 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
                                    simulator_call_guard=simulator_call_guard,
                                    allow_non_binding_deadline=(
                                        allow_non_binding_deadline),
-                                   target_probe=target_probe)
+                                   target_probe=target_probe,
+                                   target_probe_horizons=(
+                                       target_probe_horizons),
+                                   resource_journal=resource_journal)
     else:
         driver = execution_compare.compare(
             resolved, rows, geometry, source,
@@ -2132,7 +2153,8 @@ def network_summary_document(document):
         "fallback_reason_counts", "compute", "control",
         "control_advertisement_audit", "query_service",
         "congestion_metrics", "mechanisms", "natural_end", "stop_time_s",
-        "horizon_s", "target_probe", "prediction_accuracy",
+        "horizon_s", "target_probe", "resource_journal",
+        "prediction_accuracy",
     )
     for arm in driver["arms"]:
         if not isinstance(arm, dict):
@@ -2513,6 +2535,18 @@ def main(argv=None) -> int:
                         help="hard cap on probe records per arm")
     parser.add_argument("--target-probe-stride", type=int, default=None,
                         help="deterministic 1-in-stride sampling of probe rows")
+    parser.add_argument("--target-probe-horizons", default=None,
+                        help="comma-separated extra horizons (seconds) after "
+                             "each eval target, e.g. 0.005,0.01,0.02,0.05")
+    parser.add_argument("--resource-journal", action="store_true",
+                        help="audit-only per-link queue time series + loss "
+                             "attribution; writes <out>-journal-<arm>.jsonl")
+    parser.add_argument("--resource-journal-stride", type=int, default=None,
+                        help="deterministic 1-in-stride sampling of queue "
+                             "states (loss rows are never sampled out)")
+    parser.add_argument("--autopsy", action="store_true",
+                        help="closing gate: build an autopsy sidecar from the "
+                             "summary (and probe) and fail if it cannot")
     raw_args = list(sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(raw_args)
     if bool(args.config) == bool(args.scenario):
@@ -2658,6 +2692,27 @@ def main(argv=None) -> int:
         if args.task == "network_alignment":
             _check_deadline_horizon(rows, resolved, deadline_value,
                                     window=window)
+        probe_horizons = None
+        if getattr(args, "target_probe_horizons", None):
+            try:
+                probe_horizons = tuple(
+                    float(x) for x in str(args.target_probe_horizons).split(",")
+                    if x.strip())
+            except ValueError:
+                print("T1TASKS REFUSED: --target-probe-horizons must be "
+                      "comma-separated seconds")
+                return 2
+        resource_journal = None
+        if getattr(args, "resource_journal", False):
+            if args.task != "network_alignment":
+                print("T1TASKS REFUSED: --resource-journal only supports "
+                      "network_alignment")
+                return 2
+            resource_journal = {
+                "dir": str(args.out.parent),
+                "prefix": args.out.stem,
+                "stride": args.resource_journal_stride,
+            }
         target_probe = None
         if getattr(args, "target_probe", False):
             if args.task != "network_alignment":
@@ -2682,7 +2737,9 @@ def main(argv=None) -> int:
             calibrate_common_horizon=args.calibrate_common_horizon,
             allow_non_binding_deadline=args.allow_non_binding_deadline,
             simulator_call_guard=call_guard,
-            target_probe=target_probe)
+            target_probe=target_probe,
+            target_probe_horizons=probe_horizons,
+            resource_journal=resource_journal)
         if diagnostic is not None:
             if diagnostic_state["stop_fired"]:
                 raise TaskError(
@@ -2702,7 +2759,37 @@ def main(argv=None) -> int:
                 args.out.stem + "-summary" + args.out.suffix)
             if summary_out == args.out:
                 raise TaskError("network summary path collides with full result")
-            publish(network_summary_document(document), summary_out)
+            summary_document = network_summary_document(document)
+            if getattr(args, "autopsy", False):
+                try:
+                    from CODE.experiment_platform import experiment_autopsy \
+                        as _autopsy
+                    block = _autopsy.summary_block_from_document(
+                        summary_document)
+                    probes = []
+                    for path in sorted(args.out.parent.glob(
+                            f"{args.out.stem}-target-probe-*.jsonl")):
+                        probes.append(_autopsy.probe_block(str(path)))
+                    journals = []
+                    for path in sorted(args.out.parent.glob(
+                            f"{args.out.stem}-journal-*.jsonl")):
+                        journals.append(_autopsy.journal_block(str(path)))
+                    verdicts = _autopsy.verdicts(
+                        block, None, probes[0] if probes else None,
+                        journals[0] if journals else None)
+                    autopsy = {"schema": "experiment-autopsy/v1",
+                               "summary": block, "probe": probes,
+                               "journal": journals,
+                               "verdicts": verdicts}
+                    sidecar = args.out.with_name(
+                        args.out.stem + "-autopsy.json")
+                    sidecar.write_text(json.dumps(autopsy, ensure_ascii=False,
+                                                  indent=1), encoding="utf-8")
+                    summary_document["autopsy"] = autopsy
+                except Exception as exc:
+                    raise TaskError(
+                        f"autopsy gate failed: {type(exc).__name__}: {exc}")
+            publish(summary_document, summary_out)
         publish_network_result(document, args.out)
     except _DiagnosticStop as exc:
         print(f"T1TASKS DIAGNOSTIC STOP: {exc}")
