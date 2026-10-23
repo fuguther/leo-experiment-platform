@@ -48,6 +48,7 @@ import time
 from pathlib import Path
 
 from CODE.experiment_platform import (artifact_identity, execution_compare,
+                                       prediction_accuracy,
                                       outcome_metrics)
 from CODE.experiment_platform import time_alignment_compare as tac
 from CODE.leo_sim import config as config_mod, kernel
@@ -1486,6 +1487,13 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
         "missing": sum(1 for a in audits if a.get("missing_directions")),
         "execution_mode": local["config"]["time_alignment"]["execution_mode"],
     }
+    probe_accuracy = None
+    probe_document = result.get("target_probe")
+    if isinstance(probe_document, dict):
+        probe_path = probe_document.get("path")
+        if probe_path and Path(probe_path).is_file():
+            probe_rows = prediction_accuracy.load_rows([Path(probe_path)])
+            probe_accuracy = prediction_accuracy.summarize(probe_rows)
     action_log = _arm_action_log(sink)
     audit_block["decisions_in_action_log"] = action_log["count"]
     audit_block["action_log_truncated"] = action_log["truncated"]
@@ -1567,6 +1575,7 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
         "mechanisms": result["mechanisms"],
         "natural_end": result["natural_end"],
         "target_probe": result.get("target_probe"),
+        "prediction_accuracy": probe_accuracy,
         "stop_time_s": result["stop_time_s"],
         "horizon_s": result["horizon_s"],
         "replay": ({
@@ -2123,7 +2132,7 @@ def network_summary_document(document):
         "fallback_reason_counts", "compute", "control",
         "control_advertisement_audit", "query_service",
         "congestion_metrics", "mechanisms", "natural_end", "stop_time_s",
-        "horizon_s",
+        "horizon_s", "target_probe", "prediction_accuracy",
     )
     for arm in driver["arms"]:
         if not isinstance(arm, dict):
