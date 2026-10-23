@@ -48,6 +48,7 @@ import time
 from pathlib import Path
 
 from CODE.experiment_platform import (artifact_identity, execution_compare,
+                                       prediction_accuracy,
                                       outcome_metrics)
 from CODE.experiment_platform import time_alignment_compare as tac
 from CODE.leo_sim import config as config_mod, kernel
@@ -631,6 +632,7 @@ def _candidate_outcomes(candidates):
     out = {}
     for direction, item in sorted((candidates or {}).items()):
         item = item or {}
+        outcome = item.get("outcome") or {}
         out[str(direction)] = {
             "valid": bool(item.get("valid")),
             "reason": item.get("reason"),
@@ -640,8 +642,43 @@ def _candidate_outcomes(candidates):
             "censored": item.get("censored"),
             "censor_reason": item.get("censor_reason"),
             "resource_mismatch": item.get("resource_mismatch"),
+            # Four-direction ETA truth: the arm only ever reports the chosen
+            # direction, but the counterfactual replay already produced the
+            # arrival instant for every forced candidate.  Publishing it is a
+            # data-movement change, not an extra simulation.
+            "fate": outcome.get("fate"),
+            "delivered_at_s": outcome.get("delivered_at"),
+            "emitted_at_s": outcome.get("emitted_at"),
+            "delay_s": outcome.get("delay_s"),
+            "eta_target_s": item.get("eta_target_s"),
+            "peer_arrival_at_s": item.get("peer_arrival_at_s"),
         }
     return out
+
+
+def _four_direction_eta(candidate_outcomes):
+    """Aggregate predicted-vs-actual first-hop arrival by direction."""
+    out = {}
+    for direction, item in sorted((candidate_outcomes or {}).items()):
+        item = item or {}
+        eta = item.get("eta_target_s")
+        actual = item.get("peer_arrival_at_s")
+        if not isinstance(eta, (int, float)) or not isinstance(
+                actual, (int, float)):
+            continue
+        bucket = out.setdefault(str(direction), {"errors": []})
+        bucket["errors"].append(float(actual) - float(eta))
+    result = {}
+    for direction, bucket in sorted(out.items()):
+        errors = bucket["errors"]
+        abs_errors = [abs(e) for e in errors]
+        result[direction] = {
+            "n": len(errors),
+            "mean_signed_error_s": statistics.fmean(errors),
+            "mean_abs_error_s": statistics.fmean(abs_errors),
+            "max_abs_error_s": max(abs_errors),
+        }
+    return result
 
 
 def _resource_target_evidence(value):
@@ -1184,6 +1221,8 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
             "arm_actions": _arm_actions(arms),
             "candidate_outcomes": _candidate_outcomes(
                 document.get("candidates") or {}),
+            "four_direction_eta": _four_direction_eta(
+                _candidate_outcomes(document.get("candidates") or {})),
             "common_horizon_candidates": document.get(
                 "common_horizon_candidates") or [],
             "resource_pressure": resource_pressure,
@@ -1194,6 +1233,28 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
         })
         if decision_id == capture_id:
             explanation_replay = document.get("replay")
+    eta_block = {}
+    for branch_row in branches:
+        for direction, stats in (branch_row.get("four_direction_eta") or {}).items():
+            bucket = eta_block.setdefault(direction, {"n": 0, "abs_sum": 0.0,
+                                                      "signed_sum": 0.0,
+                                                      "max_abs": 0.0})
+            bucket["n"] += stats["n"]
+            bucket["abs_sum"] += stats["mean_abs_error_s"] * stats["n"]
+            bucket["signed_sum"] += (stats["mean_signed_error_s"]
+                                     * stats["n"])
+            bucket["max_abs"] = max(bucket["max_abs"],
+                                    stats["max_abs_error_s"])
+    four_direction_eta = {
+        direction: {
+            "n": bucket["n"],
+            "mean_abs_error_s": bucket["abs_sum"] / bucket["n"],
+            "mean_signed_error_s": bucket["signed_sum"] / bucket["n"],
+            "max_abs_error_s": bucket["max_abs"],
+        }
+        for direction, bucket in sorted(eta_block.items())
+        if bucket["n"]
+    }
     identity = artifact_identity.build_identity(
         config=resolved, trace_digest=source.get("trace_sha256"),
         driver_paths=artifact_identity.execution_chain_paths(),
@@ -1226,6 +1287,7 @@ def branch_alignment_block(resolved, rows, geometry, *, deadline_s, source,
                                 "the future of the unchosen actions is "
                                 "never consulted"},
         "branches": branches,
+        "four_direction_eta": four_direction_eta,
         "common_horizon_calibration": (
             {
                 "status": ("projected" if horizon_offset_source["offsets"]
@@ -1396,7 +1458,9 @@ def _compute_cost(timeline, resolved):
 
 
 def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
-             source=None, capture_replay=False, simulator_call_guard=None):
+             source=None, capture_replay=False, simulator_call_guard=None,
+             target_probe=None, target_probe_horizons=None,
+             resource_journal=None):
     """One full-network run under ONE online arm.
 
     The four arms start from the SAME input trace and the SAME initial
@@ -1415,15 +1479,28 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
     sink, timeline = [], []
     call_scope = (simulator_call_guard(arm)
                   if simulator_call_guard is not None else None)
+    probe_kwargs = {}
+    if target_probe:
+        probe_kwargs = {
+            "target_probe_path": str(target_probe["path"]),
+            "target_probe_max": target_probe.get("max"),
+            "target_probe_stride": target_probe.get("stride"),
+            "target_probe_horizons": target_probe_horizons,
+        }
+    if resource_journal:
+        probe_kwargs.update({
+            "resource_journal_path": str(resource_journal["path"]),
+            "resource_journal_stride": resource_journal.get("stride"),
+        })
     if call_scope is None:
         result = kernel.run_simulation(
             local, rows, geometry=geometry, decision_sink=sink,
-            timeline_sink=timeline, control_audit=True)
+            timeline_sink=timeline, control_audit=True, **probe_kwargs)
     else:
         with call_scope:
             result = kernel.run_simulation(
                 local, rows, geometry=geometry, decision_sink=sink,
-                timeline_sink=timeline, control_audit=True)
+                timeline_sink=timeline, control_audit=True, **probe_kwargs)
     e2e = execution_compare._e2e(result["deliveries"],
                                  result["packet_events"])
     forwards = [r for r in sink if r.get("kind") == "forward"]
@@ -1482,6 +1559,13 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
         "missing": sum(1 for a in audits if a.get("missing_directions")),
         "execution_mode": local["config"]["time_alignment"]["execution_mode"],
     }
+    probe_accuracy = None
+    probe_document = result.get("target_probe")
+    if isinstance(probe_document, dict):
+        probe_path = probe_document.get("path")
+        if probe_path and Path(probe_path).is_file():
+            probe_rows = prediction_accuracy.load_rows([Path(probe_path)])
+            probe_accuracy = prediction_accuracy.summarize(probe_rows)
     action_log = _arm_action_log(sink)
     audit_block["decisions_in_action_log"] = action_log["count"]
     audit_block["action_log_truncated"] = action_log["truncated"]
@@ -1562,6 +1646,9 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
         "congestion_metrics": congestion_metrics,
         "mechanisms": result["mechanisms"],
         "natural_end": result["natural_end"],
+        "target_probe": result.get("target_probe"),
+        "resource_journal": result.get("resource_journal"),
+        "prediction_accuracy": probe_accuracy,
         "stop_time_s": result["stop_time_s"],
         "horizon_s": result["horizon_s"],
         "replay": ({
@@ -1759,7 +1846,9 @@ def network_alignment(resolved, rows, geometry, source,
                      arms=NETWORK_ARMS, overrides=None, *, deadline_s=None,
                      window=None, capture_replay=False,
                      simulator_call_guard=None,
-                     allow_non_binding_deadline=False):
+                     allow_non_binding_deadline=False,
+                     target_probe=None, target_probe_horizons=None,
+                     resource_journal=None):
     """The FOUR online arms, each running the WHOLE network to the horizon."""
     if overrides:
         cfg = copy.deepcopy(resolved["config"])
@@ -1775,11 +1864,26 @@ def network_alignment(resolved, rows, geometry, source,
             raise TaskError(f"unknown online arm {arm!r}")
         try:
             _log_publish_memory(f"arm_{arm}_begin")
+            probe = None
+            if target_probe is not None:
+                probe = dict(target_probe)
+                probe["path"] = str(
+                    Path(target_probe["dir"])
+                    / f"{target_probe['prefix']}-target-probe-{arm}.jsonl")
+            journal = None
+            if resource_journal is not None:
+                journal = dict(resource_journal)
+                journal["path"] = str(
+                    Path(resource_journal["dir"])
+                    / f"{resource_journal['prefix']}-journal-{arm}.jsonl")
             row = _arm_row(
                 resolved, rows, geometry, arm, deadline_s=deadline_s,
                 window=window, source=source,
                 capture_replay=capture_replay,
-                simulator_call_guard=simulator_call_guard)
+                simulator_call_guard=simulator_call_guard,
+                target_probe=probe,
+                target_probe_horizons=target_probe_horizons,
+                resource_journal=journal)
             replay = row.get("replay") if isinstance(row, dict) else None
             if isinstance(replay, dict) and replay.get("captured"):
                 # Keep complete observations, history and physical resource
@@ -1884,7 +1988,9 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
              overrides=None, arms=NETWORK_ARMS, capture_replay=False,
              calibrate_common_horizon=False,
              simulator_call_guard=None,
-             allow_non_binding_deadline=False):
+             allow_non_binding_deadline=False,
+             target_probe=None, target_probe_horizons=None,
+             resource_journal=None):
     """One entry point for the three task types.
 
     The suite only ever calls this, so budget enforcement, failure
@@ -1910,7 +2016,11 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
                                    capture_replay=capture_replay,
                                    simulator_call_guard=simulator_call_guard,
                                    allow_non_binding_deadline=(
-                                       allow_non_binding_deadline))
+                                       allow_non_binding_deadline),
+                                   target_probe=target_probe,
+                                   target_probe_horizons=(
+                                       target_probe_horizons),
+                                   resource_journal=resource_journal)
     else:
         driver = execution_compare.compare(
             resolved, rows, geometry, source,
@@ -2108,7 +2218,8 @@ def network_summary_document(document):
         "fallback_reason_counts", "compute", "control",
         "control_advertisement_audit", "query_service",
         "congestion_metrics", "mechanisms", "natural_end", "stop_time_s",
-        "horizon_s",
+        "horizon_s", "target_probe", "resource_journal",
+        "prediction_accuracy",
     )
     for arm in driver["arms"]:
         if not isinstance(arm, dict):
@@ -2481,6 +2592,27 @@ def main(argv=None) -> int:
     parser.add_argument("--common-horizon-s", type=float, default=None)
     parser.add_argument("--calibrate-common-horizon", action="store_true",
                         help="project and compare predeclared common-future candidates on this development block")
+    parser.add_argument("--target-probe", action="store_true",
+                        help="audit-only same-run prediction->truth probe at each "
+                             "candidate's evaluation target instant; writes "
+                             "<out>-target-probe-<arm>.jsonl and never feeds the "
+                             "online policy")
+    parser.add_argument("--target-probe-max", type=int, default=None,
+                        help="hard cap on probe records per arm")
+    parser.add_argument("--target-probe-stride", type=int, default=None,
+                        help="deterministic 1-in-stride sampling of probe rows")
+    parser.add_argument("--target-probe-horizons", default=None,
+                        help="comma-separated extra horizons (seconds) after "
+                             "each eval target, e.g. 0.005,0.01,0.02,0.05")
+    parser.add_argument("--resource-journal", action="store_true",
+                        help="audit-only per-link queue time series + loss "
+                             "attribution; writes <out>-journal-<arm>.jsonl")
+    parser.add_argument("--resource-journal-stride", type=int, default=None,
+                        help="deterministic 1-in-stride sampling of queue "
+                             "states (loss rows are never sampled out)")
+    parser.add_argument("--autopsy", action="store_true",
+                        help="closing gate: build an autopsy sidecar from the "
+                             "summary (and probe) and fail if it cannot")
     raw_args = list(sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(raw_args)
     if bool(args.config) == bool(args.scenario):
@@ -2626,6 +2758,39 @@ def main(argv=None) -> int:
         if args.task == "network_alignment":
             _check_deadline_horizon(rows, resolved, deadline_value,
                                     window=window)
+        probe_horizons = None
+        if getattr(args, "target_probe_horizons", None):
+            try:
+                probe_horizons = tuple(
+                    float(x) for x in str(args.target_probe_horizons).split(",")
+                    if x.strip())
+            except ValueError:
+                print("T1TASKS REFUSED: --target-probe-horizons must be "
+                      "comma-separated seconds")
+                return 2
+        resource_journal = None
+        if getattr(args, "resource_journal", False):
+            if args.task != "network_alignment":
+                print("T1TASKS REFUSED: --resource-journal only supports "
+                      "network_alignment")
+                return 2
+            resource_journal = {
+                "dir": str(args.out.parent),
+                "prefix": args.out.stem,
+                "stride": args.resource_journal_stride,
+            }
+        target_probe = None
+        if getattr(args, "target_probe", False):
+            if args.task != "network_alignment":
+                print("T1TASKS REFUSED: --target-probe only supports "
+                      "network_alignment")
+                return 2
+            target_probe = {
+                "dir": str(args.out.parent),
+                "prefix": args.out.stem,
+                "max": args.target_probe_max,
+                "stride": args.target_probe_stride,
+            }
         document = run_task(
             args.task, resolved, rows, geometry, source,
             deadline_s=deadline_value, max_branches=args.max_branches,
@@ -2637,7 +2802,10 @@ def main(argv=None) -> int:
             capture_replay=args.capture_replay,
             calibrate_common_horizon=args.calibrate_common_horizon,
             allow_non_binding_deadline=args.allow_non_binding_deadline,
-            simulator_call_guard=call_guard)
+            simulator_call_guard=call_guard,
+            target_probe=target_probe,
+            target_probe_horizons=probe_horizons,
+            resource_journal=resource_journal)
         if diagnostic is not None:
             if diagnostic_state["stop_fired"]:
                 raise TaskError(
@@ -2657,7 +2825,37 @@ def main(argv=None) -> int:
                 args.out.stem + "-summary" + args.out.suffix)
             if summary_out == args.out:
                 raise TaskError("network summary path collides with full result")
-            publish(network_summary_document(document), summary_out)
+            summary_document = network_summary_document(document)
+            if getattr(args, "autopsy", False):
+                try:
+                    from CODE.experiment_platform import experiment_autopsy \
+                        as _autopsy
+                    block = _autopsy.summary_block_from_document(
+                        summary_document)
+                    probes = []
+                    for path in sorted(args.out.parent.glob(
+                            f"{args.out.stem}-target-probe-*.jsonl")):
+                        probes.append(_autopsy.probe_block(str(path)))
+                    journals = []
+                    for path in sorted(args.out.parent.glob(
+                            f"{args.out.stem}-journal-*.jsonl")):
+                        journals.append(_autopsy.journal_block(str(path)))
+                    verdicts = _autopsy.verdicts(
+                        block, None, probes[0] if probes else None,
+                        journals[0] if journals else None)
+                    autopsy = {"schema": "experiment-autopsy/v1",
+                               "summary": block, "probe": probes,
+                               "journal": journals,
+                               "verdicts": verdicts}
+                    sidecar = args.out.with_name(
+                        args.out.stem + "-autopsy.json")
+                    sidecar.write_text(json.dumps(autopsy, ensure_ascii=False,
+                                                  indent=1), encoding="utf-8")
+                    summary_document["autopsy"] = autopsy
+                except Exception as exc:
+                    raise TaskError(
+                        f"autopsy gate failed: {type(exc).__name__}: {exc}")
+            publish(summary_document, summary_out)
         publish_network_result(document, args.out)
     except _DiagnosticStop as exc:
         print(f"T1TASKS DIAGNOSTIC STOP: {exc}")

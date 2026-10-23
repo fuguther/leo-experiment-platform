@@ -1238,7 +1238,9 @@ class Kernel:
                  learning_out_dir=None, decision_sink=None, timeline_sink=None,
                  forced_actions=None, control_audit=False,
                  inference_policy=None, target_probe_path=None,
-                 target_probe_max=None, target_probe_stride=None):
+                 target_probe_max=None, target_probe_stride=None,
+                 target_probe_horizons=None,
+                 resource_journal_path=None, resource_journal_stride=None):
         cfg = resolved["config"]
         self.resolved = resolved
         self.cfg_sc = cfg["scenario"]
@@ -1445,13 +1447,27 @@ class Kernel:
         # resource at each decision's evaluation target instant.  It is created
         # after the environment exists and is started from run(); nothing in
         # routing, learning, access, metrics or the fate ledger reads it.
+        # T1-MULTI-HORIZON target probe: each sampled candidate row is repeated
+        # at eval_target + h for every declared h.  Sampling happens BEFORE
+        # expansion (see TargetProbe.enqueue).
+        self.target_probe_horizons = tuple(
+            float(h) for h in (target_probe_horizons or ()))
         self.target_probe = None
         if target_probe_path is not None:
             from . import target_probe as _target_probe
             self.target_probe = _target_probe.TargetProbe(
                 self, target_probe_path, max_samples=target_probe_max,
                 stride=(target_probe_stride or 1),
+                horizons=self.target_probe_horizons,
                 note="same-run probe; truth read at the decision's eval target")
+        # T1-RESOURCE-JOURNAL: opt-in per-link queue time series + loss
+        # attribution.  Write-only audit; never read by routing.
+        self.resource_journal = None
+        if resource_journal_path is not None:
+            from . import resource_journal as _resource_journal
+            self.resource_journal = _resource_journal.ResourceJournal(
+                resource_journal_path,
+                stride=(resource_journal_stride or 1))
         # per-decision identity; allocated only when a sink can record it
         self._decision_seq = 0
         # T1-COUNTERFACTUAL-REPLAY: strictly opt-in override of the action
@@ -1824,7 +1840,7 @@ class Kernel:
     def _record_isl_queue_state(self, link: ISLLink, event: str, *,
                                 pid=None, control_iid=None, outcome=None):
         """Exact post-transition queue/in-service state for offline replay."""
-        if self.timeline_sink is None:
+        if self.timeline_sink is None and self.resource_journal is None:
             return
         current = link.current
         current_is_control = isinstance(current, ControlPacket)
@@ -1859,7 +1875,10 @@ class Kernel:
             "in_service_phase": link._svc_phase,
             "outcome": outcome,
         }
-        self.timeline_sink.append(row)
+        if self.timeline_sink is not None:
+            self.timeline_sink.append(row)
+        if self.resource_journal is not None:
+            self.resource_journal.append_queue_state(row)
 
     def _link_rate(self, kind: str, t: float, sat: int,
                    peer: int | None = None, ep=None) -> float:
@@ -7173,6 +7192,17 @@ class Kernel:
             self._timeline_decision_attempt(
                 pkt, sat, decision_id, "fail", status, direction_audit,
                 "all_routed_candidates_have_no_queue_room")
+            if self.resource_journal is not None:
+                unique = [d for d in (cands or ()) if d in self.isls[sat]]
+                direction = unique[0] if len(unique) == 1 else None
+                peer = (self.isls[sat][direction].peer
+                        if direction is not None else None)
+                self.resource_journal.record_loss(
+                    pkt=pkt, fate="ISL_QUEUE_OVERFLOW", sat=sat,
+                    peer=peer, direction=direction,
+                    candidates=list(cands or ()),
+                    hop_index=getattr(pkt, "current_hop_index", None),
+                    decision_id=decision_id, at=float(self.env.now))
             self._fail(pkt, "ISL_QUEUE_OVERFLOW", decision_id=decision_id)
         else:
             direction_audit = self._four_direction_audit(
@@ -7612,7 +7642,10 @@ def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
                          timeline_sink=None, forced_actions=None,
                          control_audit=False, inference_policy=None,
                          target_probe_path=None, target_probe_max=None,
-                         target_probe_stride=None) -> dict:
+                         target_probe_stride=None,
+                         target_probe_horizons=None,
+                         resource_journal_path=None,
+                         resource_journal_stride=None) -> dict:
     kern = Kernel(resolved, rows, geometry=geometry,
                   learning_out_dir=learning_out_dir,
                   decision_sink=decision_sink, timeline_sink=timeline_sink,
@@ -7620,8 +7653,13 @@ def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
                   inference_policy=inference_policy,
                   target_probe_path=target_probe_path,
                   target_probe_max=target_probe_max,
-                  target_probe_stride=target_probe_stride)
+                  target_probe_stride=target_probe_stride,
+                  target_probe_horizons=target_probe_horizons,
+                  resource_journal_path=resource_journal_path,
+                  resource_journal_stride=resource_journal_stride)
     result = kern.run()
+    if kern.resource_journal is not None:
+        result["resource_journal"] = kern.resource_journal.close()
     if kern.target_probe is not None:
         # Written AFTER the simulation stops, so an interrupted run still
         # carries whatever was sampled before the stop.
@@ -7649,7 +7687,9 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
                    timeline_sink=None, forced_actions=None,
                    control_audit=False, inference_policy=None,
                    target_probe_path=None, target_probe_max=None,
-                   target_probe_stride=None) -> dict:
+                   target_probe_stride=None, target_probe_horizons=None,
+                   resource_journal_path=None,
+                   resource_journal_stride=None) -> dict:
     """Run the kernel and, inside a metered T1 cell, record real call edges.
 
     The ledger is opt-in so ordinary library use stays unchanged.  A configured
@@ -7668,7 +7708,10 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
             inference_policy=inference_policy,
             target_probe_path=target_probe_path,
             target_probe_max=target_probe_max,
-            target_probe_stride=target_probe_stride)
+            target_probe_stride=target_probe_stride,
+            target_probe_horizons=target_probe_horizons,
+            resource_journal_path=resource_journal_path,
+            resource_journal_stride=resource_journal_stride)
 
     _SIMULATION_CALL_SEQUENCE += 1
     sequence = _SIMULATION_CALL_SEQUENCE
@@ -7689,7 +7732,10 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
             inference_policy=inference_policy,
             target_probe_path=target_probe_path,
             target_probe_max=target_probe_max,
-            target_probe_stride=target_probe_stride)
+            target_probe_stride=target_probe_stride,
+            target_probe_horizons=target_probe_horizons,
+            resource_journal_path=resource_journal_path,
+            resource_journal_stride=resource_journal_stride)
     except BaseException as exc:
         ended_ns = time.perf_counter_ns()
         _write_simulation_call_event(
