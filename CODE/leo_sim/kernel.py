@@ -7200,6 +7200,7 @@ class Kernel:
                 self.resource_journal.record_loss(
                     pkt=pkt, fate="ISL_QUEUE_OVERFLOW", sat=sat,
                     peer=peer, direction=direction,
+                    candidates=list(cands or ()),
                     hop_index=getattr(pkt, "current_hop_index", None),
                     decision_id=decision_id, at=float(self.env.now))
             self._fail(pkt, "ISL_QUEUE_OVERFLOW", decision_id=decision_id)

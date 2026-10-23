@@ -58,7 +58,8 @@ class ResourceJournal:
         self.rows += 1
 
     def record_loss(self, *, pkt, fate, sat=None, peer=None, direction=None,
-                    hop_index=None, decision_id=None, bits=None, at=None):
+                    candidates=None, hop_index=None, decision_id=None,
+                    bits=None, at=None):
         self.losses += 1
         row = {
             "kind": "loss",
@@ -68,6 +69,8 @@ class ResourceJournal:
             "sat": None if sat is None else int(sat),
             "peer": None if peer is None else int(peer),
             "direction": direction,
+            "candidates": (None if candidates is None
+                           else [str(c) for c in candidates]),
             "hop_index": hop_index,
             "decision_id": decision_id,
             "bits": (int(bits) if bits is not None
