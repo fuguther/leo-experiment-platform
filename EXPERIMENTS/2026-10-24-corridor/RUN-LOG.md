@@ -40,3 +40,13 @@
 `smoke2_c6_g_6g`：T=0.4 / W=0.1 / offered 6000 / B=24 → 1000 包、100 s、isl_n=364、util_max 0.46、
 frac(util≥0.2)=13.2%、e2e mean 88.7 ms / p95 143 ms、**reordered 81.0%**、fallback 44.5%。
 证明：走廊拓扑可跑通、机制确实会重排候选；K1d 的"路径病态"不成立。
+
+## 4. E 批次与 Stage C（04:28–05:25）
+
+- **E 批次（adv 杠杆，单臂 stale）**：`e1_6g_adv100` / `e2_6g_adv200` / `e3_72g_adv100` / `e4_72g_adv200`
+  （其余同上；`advertise_interval_s`=0.1/0.2，offered 6/7.2 Gbps）。全部跑完模拟段（journal 完整），
+  但 **summary/outcome 后处理超线性（10–20 min 未收尾）被主动 kill**；结论只取 journal（T2 已用完整 journal 算 |K|）。
+- **Stage C（四臂 + oracle，seed 7）**：profile `e2_6g_adv200.yaml`（6 Gbps, adv=0.2, B24, T1.2/W0.9）；
+  arms = stale/now/common/candidate + `ideal_now`（`o1_ideal_now_6g_adv200.yaml`, `state_source=ideal_current`）；
+  均带 `--target-probe`（stride50/max8000/horizons 0.005,0.01,0.02,0.05），audit cap 2000（keyed），无 journal。
+  manifest：VM `runs/stageC_s7-manifest.json`。**单 seed，只作机制判读，不作正式结论。**
