@@ -5277,19 +5277,49 @@ class Kernel:
         """The full per-packet scoring path (observation -> prediction ->
         scoring -> ranking).  Returns (order, audit)."""
         arm = str(self.cfg_ta["arm"])
+        # ZERO-RATE EGRESS GUARD (MCS abstraction).  A directed ISL whose
+        # DVB-S2X MCS rate is currently 0 (no step fits this range/SNR) cannot
+        # carry the packet at all: it is not a usable action, so it is excluded
+        # from the SCORED legal set instead of being scored with a zero rate
+        # (which used to abort the whole run in rate_model=mcs).  Constant-rate
+        # configs are unaffected because their rates are strictly positive.
+        dropped_zero_rate = []
+        scored_cands = list(cands)
+        for direction in list(cands):
+            peer = self.topo.get(int(sat), {}).get(direction)
+            if peer is None:
+                continue
+            try:
+                r = self._link_rate("isl", float(now), int(sat),
+                                   peer=int(peer))
+            except Exception:
+                r = 0.0
+            if not (isinstance(r, (int, float)) and not isinstance(r, bool)
+                    and math.isfinite(float(r)) and float(r) > 0.0):
+                dropped_zero_rate.append(direction)
+        if dropped_zero_rate:
+            scored_cands = [d for d in cands if d not in dropped_zero_rate]
+            if not scored_cands:
+                return list(cands), {
+                    "schema": "leo-sim-time-alignment-audit/v1",
+                    "fallback": True,
+                    "reason": "all_candidates_zero_rate",
+                    "dropped_zero_rate_directions": dropped_zero_rate,
+                    "rate_model": self.rate_model,
+                }
         try:
             rule = str(self.cfg_ta["common_rule"])
             if rule == "fixed_horizon":
                 horizon = float(self.cfg_ta["common_horizon_s"])
-                probe = self._build_ta_snapshot(pkt, sat, now, cands, own_q,
+                probe = self._build_ta_snapshot(pkt, sat, now, scored_cands, own_q,
                                                 arm, horizon)
             else:
-                probe = self._build_ta_snapshot(pkt, sat, now, cands, own_q,
+                probe = self._build_ta_snapshot(pkt, sat, now, scored_cands, own_q,
                                                 arm, None)
                 # the shared horizon resolver, so the online path and the
                 # benchmark cannot compute different common instants
                 horizon = _ta.resolve_common_horizon(probe, rule)
-                probe = self._build_ta_snapshot(pkt, sat, now, cands, own_q,
+                probe = self._build_ta_snapshot(pkt, sat, now, scored_cands, own_q,
                                                 arm, horizon)
             plan = _ta.plan_decision(probe)
             scored = plan.scored
@@ -5304,7 +5334,7 @@ class Kernel:
         except _ta.TimeAlignmentError as exc:
             raise KernelError(
                 f"time_alignment could not score decision at {now}: {exc}")
-        order = [d for d in scored.ranking if d in cands]
+        order = [d for d in scored.ranking if d in scored_cands]
         order += [d for d in cands if d not in order]
         if policy_choice is not None:
             # the inference policy owns the ACTION; the scorer still supplies
