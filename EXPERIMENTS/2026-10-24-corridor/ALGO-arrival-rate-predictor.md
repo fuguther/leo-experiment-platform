@@ -75,3 +75,18 @@
   分时段 1.05→1.00。⇒ **接线已验证；收益在低负载小场景未出现（预期：队列浅、drift 项小）**。
 - **诊断已发射**（11:45，e2 档：6Gbps/140 星/T=1.2/adv=0.2，arm=now 与 candidate，seed 7，probe stride=25/max=8000/h=0，D=0.1928）：
   `runs/drift_s7_{now,candidate}.json`。验收：**h=0 的 drift MAE < hold-last 代理（0.741 ms）且 >5% 改善**，才推进四臂。
+
+## 2d. 全量 drift 诊断结果（e2 档，seed 7，arm=now/common/candidate，12:18–12:20 落盘）——**负面，需调参**
+
+- **MAE（h=0，drift vs hold-last 代理）**：now 分时段 ratio **0.75 / 0.75 / 1.90**；common 总体 **1.112**（分时段 0.87/0.92/1.79）；
+  candidate 总体 **0.975**（分时段 0.77/0.79/1.77）。
+  ⇒ **早/中段 drift 明显更准（−13%~−25%），晚段（拥塞起来后）明显更差（+77%~+90%）**。
+- **业务（vs 同 seed 的 bounded_linear 基线，逐包配对）**：now **+11.42 ms / +6.84 pp**、
+  common **+19.06 / +13.75**、candidate **+19.83 / +13.20** ⇒ **全量 drift 让路由显著变差**。
+- **机制判读**：EWMA(λ̂, W=0.1s) 在拥塞期把 λ 估低（到达被服务吸收后队列净增长≈0，λ̂−μ 波动下行），
+  drift 项预测"队列在排空"，而真值维持高位 ⇒ 晚段系统性低估；且 200ms 广告间隔下 λ̂ 从测量到使用又衰减一次。
+  ⇒ 不是"arrival-rate 无信息"，而是**估计器/外推幅度需要收缩与平滑**。
+- **调参实验（12:29 发射，arm=now，seed 7，各 1 run）**：
+  `A` alpha=0.5, W=0.1；`B` alpha=0.5, W=0.5；`C` alpha=0.25, W=0.1（`runs/tune{A,B,C}_now.json`）。
+  验收：h=0 的 MAE **< 0.741 ms（hold-last）且比 0.696 ms（现役 now）好 ≥5%**，且业务 `now−stale` 不劣于基线；
+  未过则再改（饱和感知门控：仅当 |λ̂−μ|/μ > 阈值时才开 drift）。
