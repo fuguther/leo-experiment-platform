@@ -332,6 +332,10 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # (lambda_hat - mu) * elapsed term, in (0, 1].  None = 1.0, so an unset
         # profile resolves and hashes exactly as before.
         "drift_alpha": (int, float, type(None)),
+        # RATE-AWARE look-ahead horizon (seconds): the MCS service rate at
+        # now + rate_ahead_s is read from the known geometry.  None keeps
+        # every pre-existing profile unchanged.
+        "rate_ahead_s": (int, float, type(None)),
     },
     "async_routing": {
         "enabled": bool,
@@ -1286,6 +1290,13 @@ def _validate_time_alignment(ta: Mapping[str, Any],
         raise ConfigError(
             "time_alignment.arrival_window_s must be None or a finite positive "
             f"number, got {window!r}")
+    ahead = ta.get("rate_ahead_s")
+    if ahead is not None and (isinstance(ahead, bool)
+                              or not isinstance(ahead, (int, float))
+                              or not math.isfinite(ahead) or ahead <= 0):
+        raise ConfigError(
+            "time_alignment.rate_ahead_s must be None or a finite positive "
+            f"number, got {ahead!r}")
     alpha = ta.get("drift_alpha")
     if alpha is not None and (isinstance(alpha, bool)
                               or not isinstance(alpha, (int, float))

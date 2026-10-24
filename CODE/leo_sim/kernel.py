@@ -5157,6 +5157,29 @@ class Kernel:
                 record, peer_arrival_at)
             if projected is not None:
                 peer_process[direction] = projected
+        # RATE-AWARE look-ahead: under the MCS abstraction the service rate at
+        # now + rate_ahead_s follows deterministically from the known orbital
+        # geometry, so a rate change is OBSERVABLE rather than estimated.
+        # Unset (None) keeps every pre-existing profile byte-identical.
+        rate_ahead = {}
+        lookahead = self.cfg_ta.get("rate_ahead_s")
+        if lookahead is not None:
+            lookahead = float(lookahead)
+            for direction in legal:
+                peer = self.topo.get(int(sat), {}).get(direction)
+                if peer is None:
+                    continue
+                try:
+                    r_ahead = self._link_rate(
+                        "isl", float(now) + lookahead, int(sat),
+                        peer=int(peer))
+                except Exception:
+                    continue
+                if (isinstance(r_ahead, (int, float))
+                        and not isinstance(r_ahead, bool)
+                        and math.isfinite(float(r_ahead))
+                        and float(r_ahead) > 0.0):
+                    rate_ahead[direction] = float(r_ahead)
         self._ta_used_state = used_state
         return _ta.make_snapshot(
             satellite=int(sat), snapshot_at=float(now), history=tuple(history),
@@ -5190,6 +5213,7 @@ class Kernel:
             # drift-predictor shrinkage (None keeps alpha=1.0, so every
             # pre-existing profile is byte-identical).
             drift_alpha=self.cfg_ta.get("drift_alpha"),
+            rate_ahead_bps=rate_ahead,
             queue_weight=self.cfg_ta.get("queue_weight"),
             provenance=(scope,))
 

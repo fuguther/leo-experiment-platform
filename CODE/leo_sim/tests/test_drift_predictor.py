@@ -100,3 +100,25 @@ def test_drift_alpha_shrinks_toward_hold_last():
         predict_resource(h, 0.0, 0.1, method="drift", drift_alpha=0.0)
     with pytest.raises(TimeAlignmentError):
         predict_resource(h, 0.0, 0.1, method="drift", drift_alpha=1.5)
+
+
+def test_rate_aware_uses_lookahead_rate_not_measurement_rate():
+    # Q=1e8, lambda=1e9, mu_ahead=2e9 over 0.1 s -> 1e8 + (1e9-2e9)*0.1 = 0
+    h = [sample(0.0, 1e8, rate=1e9, arrival=1e9)]
+    p = predict_resource(h, 0.0, 0.1, method="rate_aware",
+                         rate_ahead_bps=2e9)
+    assert p.method == "rate_aware" and p.predicted_bits == pytest.approx(0.0)
+    # with the measurement-time rate (1e9) the same sample would predict 1e8
+    q = predict_resource(h, 0.0, 0.1, method="drift")
+    assert q.predicted_bits == pytest.approx(1e8)
+
+
+def test_rate_aware_refuses_without_lookahead_or_arrival():
+    h = [sample(0.0, 1e8, rate=1e9, arrival=1e9)]
+    p = predict_resource(h, 0.0, 0.1, method="rate_aware")
+    assert p.missing_reason == "no_rate_ahead"
+    h2 = [sample(0.0, 1e8, rate=1e9, arrival=None)]
+    p2 = predict_resource(h2, 0.0, 0.1, method="rate_aware", rate_ahead_bps=2e9)
+    assert p2.missing_reason == "no_arrival_rate"
+    p3 = predict_resource(h, 0.0, 0.1, method="rate_aware", rate_ahead_bps=0.0)
+    assert p3.missing_reason == "non_positive_rate_ahead"

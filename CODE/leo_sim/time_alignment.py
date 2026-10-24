@@ -49,7 +49,7 @@ ARMS = ("stale", "now", "common", "candidate")
 #                   nothing new arrives -- arrival-blind, so it can only ever
 #                   predict a DECREASING queue, and it says so by name.
 PREDICTORS = ("hold_last", "bounded_linear", "zero", "analytic_drain",
-              "ou_shrink", "drift")
+              "ou_shrink", "drift", "rate_aware")
 
 #: Default window of the continuous-time EWMA used to measure the ARRIVAL rate
 #: at an egress queue.  Only used when the profile does not set
@@ -361,6 +361,11 @@ class ObservationSnapshot:
     #: rate is bursty.  None = 1.0 (historical), so an unset profile is
     #: unchanged.
     drift_alpha: float | None = None
+    #: Service rate at the arm's look-ahead instant (one entry per direction).
+    #: In the MCS abstraction the rate is a deterministic function of the
+    #: known orbital geometry, so a rate change is OBSERVABLE rather than
+    #: estimated; `rate_aware` uses it instead of the measurement-time rate.
+    rate_ahead_bps: tuple = ()
     provenance: tuple = ()
     resource_service_rate_bps: tuple = ()
     terminal_propagation_s: tuple = ()
@@ -500,7 +505,7 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
                   resource_available=None,
                   local_egress_in_service_s=None,
                   ou_tau_s=None, queue_weight=None,
-                  drift_alpha=None) -> ObservationSnapshot:
+                  drift_alpha=None, rate_ahead_bps=None) -> ObservationSnapshot:
     """Build the frozen snapshot from kernel-selected fields only.
 
     Every accepted keyword is a field the kernel explicitly decided to expose;
@@ -569,6 +574,7 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
         queue_weight=(None if queue_weight is None
                       else _finite("queue_weight", queue_weight)),
         drift_alpha=alpha,
+        rate_ahead_bps=_pairs("rate_ahead_bps", rate_ahead_bps),
         provenance=tuple(str(p) for p in provenance),
         resource_service_rate_bps=_pairs(
             "resource_service_rate_bps", resource_service_rate_bps),
@@ -618,7 +624,8 @@ def predict_resource(history, snapshot_at: float, target_at: float,
                      max_queue_bits=None, resource=None,
                      allow_past: bool = False,
                      ou_tau_s: float | None = None,
-                     drift_alpha: float | None = None) -> ResourcePrediction:
+                     drift_alpha: float | None = None,
+                     rate_ahead_bps: float | None = None) -> ResourcePrediction:
     """Predict the work queued at one resource at target_at.
 
     Pure: it reads only the received history it is given.  Invalid data is an
@@ -723,6 +730,28 @@ def predict_resource(history, snapshot_at: float, target_at: float,
             value = max(0.0, value)
             if max_queue_bits is not None:
                 value = min(value, max_queue_bits)
+    elif method == "rate_aware":
+        # RATE-AWARE projection: the service rate at the query instant is a
+        # DETERMINISTIC function of the known orbital geometry under the MCS
+        # abstraction, so it is looked ahead instead of assumed constant.
+        lam = getattr(last, "arrival_rate_bps", None)
+        if lam is None:
+            return ResourcePrediction(res, snap, target, None, method,
+                                      missing_reason="no_arrival_rate")
+        if rate_ahead_bps is None:
+            return ResourcePrediction(res, snap, target, None, method,
+                                      missing_reason="no_rate_ahead")
+        mu_ahead = _finite("rate_ahead_bps", rate_ahead_bps)
+        if mu_ahead <= 0:
+            return ResourcePrediction(res, snap, target, None, method,
+                                      missing_reason="non_positive_rate_ahead")
+        alpha = 1.0 if drift_alpha is None else _finite(
+            "drift_alpha", drift_alpha)
+        elapsed = max(0.0, target - last.measured_at)
+        value = last.queue_bits + alpha * (float(lam) - mu_ahead) * elapsed
+        value = max(0.0, value)
+        if max_queue_bits is not None:
+            value = min(value, max_queue_bits)
     else:
         if len(series) < 2:
             value = last.queue_bits
@@ -1289,7 +1318,9 @@ def build_predictions(snapshot: ObservationSnapshot,
             max_queue_bits=snapshot.max_resource_queue_bits, resource=resource,
             allow_past=(snapshot.arm == "stale"),
             ou_tau_s=snapshot.ou_tau_s,
-            drift_alpha=snapshot.drift_alpha)
+            drift_alpha=snapshot.drift_alpha,
+            rate_ahead_bps=snapshot._lookup(snapshot.rate_ahead_bps,
+                                            direction))
     return predictions, etas, targets
 
 
