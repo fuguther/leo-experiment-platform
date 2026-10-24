@@ -47,7 +47,10 @@
   单 run 内存/并发上限见 `workspace 平台发现-20261024.md` P-8 更新。
   **到手结果（seed 21 完整一对，k=1，只作方向）**：Δdelay −0.235 ms（trim −1.494）、Δpp −0.98（all-packet）/ −1.42 pp（both-delivered）。
   **档位诊断（9 Gbps）**：util_max 0.833–0.846（<0.85）、frac(util≥0.2)=47.8–53.8%（>40% 上界）、loss 1.21–1.24%（>1%）、censor 7.6–10.6%（<15%）。
-  ⇒ 9 Gbps 不是 H4∧H5 的交点。s22_common 补跑中（-P1，ETA 10:35）；能否到 k=2 以到时为准。
+  ⇒ 9 Gbps 不是 H4∧H5 的交点。
+  **最终 k=2（s22_common 10:46 落盘）**：seed21 Δdelay −0.235 ms / trim −1.387 / Δpp −0.98 pp；
+  **seed22 Δdelay +21.036 ms / trim +16.540 / Δpp +12.70 pp（common 显著更差；common 臂 util_max 0.8625、frac 0.6154 vs stale 0.8335/0.478）**
+  ⇒ **两 seed 方向相反、不支持"拥塞→外推有益"**；按预注册只作描述、不做 PASS/FAIL。
 - **MDE 更正**：6-seed MDE 用**种子间 SD**（pp 3.8–4.3、ms 6.1–6.8）；早前 0.465/0.653 是逐包 SE 下界，作废。
 
 ## 4. 机制结论
