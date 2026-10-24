@@ -49,7 +49,7 @@ ARMS = ("stale", "now", "common", "candidate")
 #                   nothing new arrives -- arrival-blind, so it can only ever
 #                   predict a DECREASING queue, and it says so by name.
 PREDICTORS = ("hold_last", "bounded_linear", "zero", "analytic_drain",
-              "ou_shrink")
+              "ou_shrink", "drift")
 
 # Mean-reversion time constant for ou_shrink.  The HISTORICAL value was
 # derived from beta=0.271 at h=27 ms (tau=-h/ln(beta) = 0.0207 s); the current
@@ -206,6 +206,11 @@ class StateSample:
     received_at: float
     queue_bits: float
     rate_bps: float | None
+    #: Locally measured ARRIVAL rate at the source egress over a short window
+    #: (bit/s, same measured_at as queue_bits).  None means the advertisement
+    #: does not carry it; the `drift` predictor then reports
+    #: missing_reason="no_arrival_rate" instead of inventing a value.
+    arrival_rate_bps: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "measured_at", _finite("measured_at", self.measured_at))
@@ -213,6 +218,13 @@ class StateSample:
         object.__setattr__(self, "queue_bits", _finite("queue_bits", self.queue_bits))
         if self.rate_bps is not None:
             object.__setattr__(self, "rate_bps", _finite("rate_bps", self.rate_bps))
+        if self.arrival_rate_bps is not None:
+            object.__setattr__(self, "arrival_rate_bps",
+                               _finite("arrival_rate_bps", self.arrival_rate_bps))
+            if self.arrival_rate_bps < 0:
+                raise TimeAlignmentError(
+                    "arrival_rate_bps must be >= 0, got "
+                    f"{self.arrival_rate_bps}")
         if self.received_at < self.measured_at:
             raise TimeAlignmentError(
                 f"received_at {self.received_at} < measured_at {self.measured_at}")
@@ -626,6 +638,26 @@ def predict_resource(history, snapshot_at: float, target_at: float,
         else:
             elapsed = max(0.0, target - last.measured_at)
             value = max(0.0, last.queue_bits - float(rate) * elapsed)
+    elif method == "drift":
+        # Drift model: Q(t+elapsed) = Q(t) + (lambda_hat - mu) * elapsed.
+        # lambda_hat is measured LOCALLY by the advertising satellite over a
+        # short window and ships with the same source timestamp as Q and mu.
+        # Without it the prediction refuses to invent a value (missing_reason),
+        # because a queue sample alone cannot bound future arrivals.
+        rate = last.rate_bps
+        lam = getattr(last, "arrival_rate_bps", None)
+        if rate is None or rate <= 0:
+            value = last.queue_bits
+            method = "hold_last"
+        elif lam is None:
+            return ResourcePrediction(res, snap, target, None, method,
+                                      missing_reason="no_arrival_rate")
+        else:
+            elapsed = max(0.0, target - last.measured_at)
+            value = last.queue_bits + (float(lam) - float(rate)) * elapsed
+            value = max(0.0, value)
+            if max_queue_bits is not None:
+                value = min(value, max_queue_bits)
     else:
         if len(series) < 2:
             value = last.queue_bits
