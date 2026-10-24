@@ -251,3 +251,15 @@ now +2.680、common +0.692、candidate +0.629 ms；candidate−common −0.081 m
 **读法**：mcs 4500（util_max 0.724）下四臂效应量 ~2–3 ms、方向"预测更差"，与 constant 6G 的结论同型；
 **MCS 抽象本身没有自动带来正效应**——理论线预言的"速率可观测"优势需要**利用 MCS 轨迹的新预测器**，而不是把同一 bounded_linear 放进新场景。
 5500 档（util_max 0.795）s7/s8 四臂 16:16 发射，结果待补（`<MCS-B:TBD>`）。
+
+## 2n. MCS 5500 部分结果（seed 7/8 的 now 臂；17:00 第二次断网时 common/candidate 未收）
+
+| run | stale mean/pp | now mean/pp | Δnow−stale | Δpp |
+|---|---|---|---|---|
+| s7（trace `245980ec8f29`） | 113.96 / 10.07% | 114.56 / 9.80% | **+0.604 ms**（trim −0.273） | −0.271 |
+| s8（trace `0b70c9899e05`） | 115.64 / 12.03% | 113.64 / 9.92% | **−1.998 ms**（trim −0.195） | −2.112 |
+
+**读法**：5500 档（util_max 0.795）两 seed 的 now−stale 方向相反（+0.60 vs −2.00 ms），效应量 ~1–2 ms，
+与 4500 档（+2.2~+2.9 ms）同属"小效应、符号随 trace 变"。
+⇒ **MCS 抽象本身不产生系统正效应**；理论线预言的"速率可观测 ⇒ 效应 8 ms"需要**使用 MCS 轨迹的新预测器**才可能兑现，
+当前四臂（bounded_linear 预测队列）只是把同一干预放进新场景。s7 common/candidate 与 s8 common 待 VM 恢复后补。
