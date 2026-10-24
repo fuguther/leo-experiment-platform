@@ -49,3 +49,13 @@
 - 论文 §5（Freshness/load 之后的第三条 follow-up）与 §6.4（机制解释）：本算法是"状态表示缺 arrival/load 信息"论断的直接检验。
 - 专利 **B**：权利要求"广告消息新增到达率字段 + 接收端按 `Q+(λ̂−μ)Δ` 外推 + 与门控（专利 A）结合"；
   §1 即其说明书实施例的最小实现。
+
+## 2b. 已落地（分支 `research/arrival-rate-20261024`，从 `5e52ba3` 切出；2026-10-24 11:38）
+
+- ✅ `time_alignment.py`：`PREDICTORS += "drift"`；`StateSample.arrival_rate_bps`（默认 None、负值报错）；
+  `predict_resource(method="drift")`：`Q+(λ̂−μ)Δ`、clip [0,B]、缺 λ̂ → `missing_reason="no_arrival_rate"`（不静默置 0）。
+- ✅ `config.py`：`VALID_PREDICTORS += drift`。
+- ✅ `CODE/leo_sim/tests/test_drift_predictor.py`：7 条全过；既有 `test_time_alignment.py` 39 条全过（无回归）。
+- ⏳ 未做：kernel 侧本地 λ̂ 测量与广告携带（§2 第 1–3 项）、接收端写入 history、离线 MAE 验收、VM 小 run；
+  下一轮第一件事（验收门见 §3）。
+- commit：`d1a45f4`（已推 `origin/research/arrival-rate-20261024`）。
