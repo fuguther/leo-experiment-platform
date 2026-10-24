@@ -62,6 +62,14 @@
 预测层（bounded_linear/ou_shrink）相对 hold_last 显著更差（+11.0%/+15.5%/+19.4%，CI 不含 0）；
 离线验证 hold_last 在 100–200 ms 尺度最优 ⇒ SPEC §2C "预测层无可用增量"。
 
+## 4b. H_adv：部署式新鲜度检验（adv=20ms vs 200ms，k=3）
+
+单臂 stale，同 trace（trace_same=True）、同 config 除 `advertise_interval_s`，D=0.1928：
+逐 seed Δmean(fresh−stale200) = **−10.558 / +2.866 / −2.727 ms**（Δpp −4.032/+1.657/−0.033）；
+k=3 均值 **−3.473 ms**、SD 6.743、95% t-CI **[−20.2,+13.3]**、2/3 同向 ⇒ **未建立**（3-seed MDE ≈24.1 ms）。
+代价：`adv=20ms` 的控制面 offered = **9.6×**（1.204e9 vs 1.256e8 bit）。
+⇒ "直接买新鲜度"也无稳定收益；与 oracle k=4、四臂 k=6 一致。
+
 ## 5. 复现
 
 ```bash
