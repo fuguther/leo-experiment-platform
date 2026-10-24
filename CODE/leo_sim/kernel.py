@@ -5272,6 +5272,39 @@ class Kernel:
         return self._score_order(pkt, sat, now, cands, own_q,
                                  query_charge=query_charge)
 
+    def _split_zero_rate_directions(self, sat: int, now: float,
+                                    cands: list) -> tuple:
+        """Separate candidates whose directed egress cannot carry bits now.
+
+        Returns (kept, dropped, lookup_errors).  ``dropped`` entries carry the
+        sampled rate so the audit shows WHY a direction was excluded; a lookup
+        that raises goes to ``lookup_errors`` and the candidate is KEPT (a
+        modelling error must never masquerade as a dead link).
+        """
+        kept: list = []
+        dropped: list = []
+        errors: list = []
+        for direction in cands:
+            peer = self.topo.get(int(sat), {}).get(direction)
+            if peer is None:
+                kept.append(direction)
+                continue
+            try:
+                r = self._link_rate("isl", float(now), int(sat),
+                                   peer=int(peer))
+            except Exception as exc:
+                errors.append({"direction": direction,
+                               "error": "%s: %s" % (type(exc).__name__, exc)})
+                kept.append(direction)
+                continue
+            if (isinstance(r, (int, float)) and not isinstance(r, bool)
+                    and math.isfinite(float(r)) and float(r) > 0.0):
+                kept.append(direction)
+            else:
+                dropped.append({"direction": direction,
+                                "rate_bps": (None if r is None else float(r))})
+        return kept, dropped, errors
+
     def _score_order(self, pkt, sat: int, now: float, cands: list, own_q: dict,
                      query_charge=None):
         """The full per-packet scoring path (observation -> prediction ->
@@ -5283,30 +5316,21 @@ class Kernel:
         # from the SCORED legal set instead of being scored with a zero rate
         # (which used to abort the whole run in rate_model=mcs).  Constant-rate
         # configs are unaffected because their rates are strictly positive.
-        dropped_zero_rate = []
-        scored_cands = list(cands)
-        for direction in list(cands):
-            peer = self.topo.get(int(sat), {}).get(direction)
-            if peer is None:
-                continue
-            try:
-                r = self._link_rate("isl", float(now), int(sat),
-                                   peer=int(peer))
-            except Exception:
-                r = 0.0
-            if not (isinstance(r, (int, float)) and not isinstance(r, bool)
-                    and math.isfinite(float(r)) and float(r) > 0.0):
-                dropped_zero_rate.append(direction)
-        if dropped_zero_rate:
-            scored_cands = [d for d in cands if d not in dropped_zero_rate]
-            if not scored_cands:
-                return list(cands), {
-                    "schema": "leo-sim-time-alignment-audit/v1",
-                    "fallback": True,
-                    "reason": "all_candidates_zero_rate",
-                    "dropped_zero_rate_directions": dropped_zero_rate,
-                    "rate_model": self.rate_model,
-                }
+        # A rate LOOKUP that raises is reported separately and does NOT turn
+        # the candidate into a dead link: modelling errors must stay visible.
+        scored_cands, dropped_zero_rate, rate_lookup_errors = (
+            self._split_zero_rate_directions(int(sat), float(now), list(cands)))
+        if not scored_cands:
+            return list(cands), {
+                "schema": "leo-sim-time-alignment-at-start/v1",
+                "fallback": True,
+                "reason": "all_candidates_zero_rate",
+                "arm": arm,
+                "rate_model": self.rate_model,
+                "dropped_zero_rate_directions": dropped_zero_rate,
+                "rate_lookup_errors": rate_lookup_errors,
+                "applied_order": list(cands),
+            }
         try:
             rule = str(self.cfg_ta["common_rule"])
             if rule == "fixed_horizon":
@@ -5451,6 +5475,10 @@ class Kernel:
                     "predicted_bits": s.predicted_bits,
                     "service_rate_bps": s.service_rate_bps,
                 } for s in scored.scores},
+            # ZERO-RATE GUARD (partial drops are reported here too; the
+            # all-zero early exit above uses the same schema).
+            "dropped_zero_rate_directions": dropped_zero_rate,
+            "rate_lookup_errors": rate_lookup_errors,
             "execution_mode": self.exec_mode,
             "cache_hit": None,
             "query": dict(query_charge if query_charge is not None
