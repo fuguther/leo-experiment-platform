@@ -88,3 +88,15 @@ def test_arrival_ewma_rejects_bad_inputs():
         arrival_ewma(None, None, 1.0, 0.0, window_s=0.0)
     with pytest.raises(TimeAlignmentError):
         arrival_ewma(None, None, -1.0, 0.0, window_s=0.1)
+
+
+def test_drift_alpha_shrinks_toward_hold_last():
+    h = [sample(0.0, 0.0, rate=1e9, arrival=3e9)]
+    full = predict_resource(h, 0.0, 0.1, method="drift")
+    half = predict_resource(h, 0.0, 0.1, method="drift", drift_alpha=0.5)
+    assert full.predicted_bits == pytest.approx(2e8)
+    assert half.predicted_bits == pytest.approx(1e8)
+    with pytest.raises(TimeAlignmentError):
+        predict_resource(h, 0.0, 0.1, method="drift", drift_alpha=0.0)
+    with pytest.raises(TimeAlignmentError):
+        predict_resource(h, 0.0, 0.1, method="drift", drift_alpha=1.5)

@@ -328,6 +328,10 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # rate an advertisement carries for predictor="drift".  No default, so
         # every pre-existing profile resolves and hashes exactly as before.
         "arrival_window_s": (int, float, type(None)),
+        # DRIFT SHRINKAGE for predictor="drift": multiplier on the
+        # (lambda_hat - mu) * elapsed term, in (0, 1].  None = 1.0, so an unset
+        # profile resolves and hashes exactly as before.
+        "drift_alpha": (int, float, type(None)),
     },
     "async_routing": {
         "enabled": bool,
@@ -1282,6 +1286,14 @@ def _validate_time_alignment(ta: Mapping[str, Any],
         raise ConfigError(
             "time_alignment.arrival_window_s must be None or a finite positive "
             f"number, got {window!r}")
+    alpha = ta.get("drift_alpha")
+    if alpha is not None and (isinstance(alpha, bool)
+                              or not isinstance(alpha, (int, float))
+                              or not math.isfinite(alpha)
+                              or not 0.0 < alpha <= 1.0):
+        raise ConfigError(
+            "time_alignment.drift_alpha must be None or in (0, 1], got "
+            f"{alpha!r}")
     if tau is not None and ta["predictor"] != "ou_shrink":
         raise ConfigError(
             "time_alignment.ou_tau_s is only meaningful for "

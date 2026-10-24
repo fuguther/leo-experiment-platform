@@ -5187,6 +5187,9 @@ class Kernel:
             # ESTIMATOR PARAMETERS from the CONFIG, so they are part of
             # config_sha256.  None keeps the historical env/default behaviour.
             ou_tau_s=self.cfg_ta.get("ou_tau_s"),
+            # drift-predictor shrinkage (None keeps alpha=1.0, so every
+            # pre-existing profile is byte-identical).
+            drift_alpha=self.cfg_ta.get("drift_alpha"),
             queue_weight=self.cfg_ta.get("queue_weight"),
             provenance=(scope,))
 

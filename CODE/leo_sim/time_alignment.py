@@ -355,6 +355,12 @@ class ObservationSnapshot:
     # historical constant, so every pre-existing config is unchanged.
     ou_tau_s: float | None = None
     queue_weight: float | None = None
+    #: Multiplier applied to the `drift` predictor's (lambda_hat - mu) * elapsed
+    #: term.  1.0 keeps the physical rate; smaller values shrink the estimate
+    #: toward hold-last, which is the conservative choice when the EWMA arrival
+    #: rate is bursty.  None = 1.0 (historical), so an unset profile is
+    #: unchanged.
+    drift_alpha: float | None = None
     provenance: tuple = ()
     resource_service_rate_bps: tuple = ()
     terminal_propagation_s: tuple = ()
@@ -493,7 +499,8 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
                   terminal_propagation_s=None,
                   resource_available=None,
                   local_egress_in_service_s=None,
-                  ou_tau_s=None, queue_weight=None) -> ObservationSnapshot:
+                  ou_tau_s=None, queue_weight=None,
+                  drift_alpha=None) -> ObservationSnapshot:
     """Build the frozen snapshot from kernel-selected fields only.
 
     Every accepted keyword is a field the kernel explicitly decided to expose;
@@ -529,6 +536,11 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
         "max_resource_queue_bits", max_resource_queue_bits)
     if max_q is not None and max_q < 0:
         raise TimeAlignmentError("max_resource_queue_bits must be >= 0")
+    alpha = None if drift_alpha is None else _finite(
+        "drift_alpha", drift_alpha)
+    if alpha is not None and not (0.0 < alpha <= 1.0):
+        raise TimeAlignmentError(
+            f"drift_alpha must be in (0, 1], got {drift_alpha!r}")
     return ObservationSnapshot(
         satellite=int(satellite),
         snapshot_at=_finite("snapshot_at", snapshot_at),
@@ -556,6 +568,7 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
         ou_tau_s=(None if ou_tau_s is None else _finite("ou_tau_s", ou_tau_s)),
         queue_weight=(None if queue_weight is None
                       else _finite("queue_weight", queue_weight)),
+        drift_alpha=alpha,
         provenance=tuple(str(p) for p in provenance),
         resource_service_rate_bps=_pairs(
             "resource_service_rate_bps", resource_service_rate_bps),
@@ -604,7 +617,8 @@ def predict_resource(history, snapshot_at: float, target_at: float,
                      method: str = "bounded_linear", history_limit: int = 8,
                      max_queue_bits=None, resource=None,
                      allow_past: bool = False,
-                     ou_tau_s: float | None = None) -> ResourcePrediction:
+                     ou_tau_s: float | None = None,
+                     drift_alpha: float | None = None) -> ResourcePrediction:
     """Predict the work queued at one resource at target_at.
 
     Pure: it reads only the received history it is given.  Invalid data is an
@@ -700,7 +714,12 @@ def predict_resource(history, snapshot_at: float, target_at: float,
                                       missing_reason="no_arrival_rate")
         else:
             elapsed = max(0.0, target - last.measured_at)
-            value = last.queue_bits + (float(lam) - float(rate)) * elapsed
+            alpha = 1.0 if drift_alpha is None else _finite(
+                "drift_alpha", drift_alpha)
+            if not (0.0 < alpha <= 1.0):
+                raise TimeAlignmentError(
+                    f"drift_alpha must be in (0, 1], got {drift_alpha!r}")
+            value = last.queue_bits + alpha * (float(lam) - float(rate)) * elapsed
             value = max(0.0, value)
             if max_queue_bits is not None:
                 value = min(value, max_queue_bits)
@@ -1269,7 +1288,8 @@ def build_predictions(snapshot: ObservationSnapshot,
             method=snapshot.predictor, history_limit=snapshot.history_limit,
             max_queue_bits=snapshot.max_resource_queue_bits, resource=resource,
             allow_past=(snapshot.arm == "stale"),
-            ou_tau_s=snapshot.ou_tau_s)
+            ou_tau_s=snapshot.ou_tau_s,
+            drift_alpha=snapshot.drift_alpha)
     return predictions, etas, targets
 
 
