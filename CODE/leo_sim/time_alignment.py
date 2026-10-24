@@ -49,7 +49,7 @@ ARMS = ("stale", "now", "common", "candidate")
 #                   nothing new arrives -- arrival-blind, so it can only ever
 #                   predict a DECREASING queue, and it says so by name.
 PREDICTORS = ("hold_last", "bounded_linear", "zero", "analytic_drain",
-              "ou_shrink", "drift", "rate_aware")
+              "ou_shrink", "drift", "rate_aware", "ewma", "kalman")
 
 #: Default window of the continuous-time EWMA used to measure the ARRIVAL rate
 #: at an egress queue.  Only used when the profile does not set
@@ -752,6 +752,41 @@ def predict_resource(history, snapshot_at: float, target_at: float,
         value = max(0.0, value)
         if max_queue_bits is not None:
             value = min(value, max_queue_bits)
+    elif method == "ewma":
+        # Literature-standard exponential smoothing baseline (AR/EWMA family).
+        # Predicts the target with the age-weighted mean of received samples at
+        # a fixed half-life.  It never extrapolates a slope, which isolates
+        # "smoothing" from "trend".
+        half_life = 0.1
+        num = 0.0
+        den = 0.0
+        for s in series:
+            age = max(0.0, snap - float(s.measured_at))
+            w = math.pow(0.5, age / half_life)
+            num += w * float(s.queue_bits)
+            den += w
+        value = (num / den) if den > 0 else float(last.queue_bits)
+    elif method == "kalman":
+        # Scalar Kalman filter for a random-walk queue state with measurement
+        # noise: the standard estimator used when queue information is delayed.
+        # State is in Mbit; process variance per second q, measurement variance r.
+        q_proc = 0.05          # (Mbit)^2 per second
+        r_meas = 0.30 ** 2     # (Mbit)^2
+        est = None
+        var = None
+        prev_t = None
+        for s in series:
+            z = float(s.queue_bits) / 1e6
+            t = float(s.measured_at)
+            if est is None:
+                est, var, prev_t = z, r_meas, t
+                continue
+            p_pred = var + q_proc * max(1e-3, t - prev_t)
+            k = p_pred / (p_pred + r_meas)
+            est = est + k * (z - est)
+            var = (1.0 - k) * p_pred
+            prev_t = t
+        value = last.queue_bits if est is None else est * 1e6
     else:
         if len(series) < 2:
             value = last.queue_bits

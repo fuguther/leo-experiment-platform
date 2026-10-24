@@ -383,7 +383,7 @@ VALID_RATE_MODELS = {"constant", "mcs"}
 # taken at decision start and only checks legality at commit time.
 VALID_OBSERVATION_MODES = {"refresh", "frozen"}
 VALID_TIME_ARMS = {"stale", "now", "common", "candidate"}
-VALID_PREDICTORS = {"hold_last", "bounded_linear", "analytic_drain", "zero", "ou_shrink", "drift", "rate_aware"}
+VALID_PREDICTORS = {"hold_last", "bounded_linear", "analytic_drain", "zero", "ou_shrink", "drift", "rate_aware", "ewma", "kalman"}
 VALID_COMMON_RULES = {"median_eta", "mean_eta", "fixed_horizon"}
 VALID_EXECUTION_MODES = {
     "per_packet", "per_flow", "precomputed", "async_point", "async_window",
