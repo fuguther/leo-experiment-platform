@@ -263,3 +263,25 @@ now +2.680、common +0.692、candidate +0.629 ms；candidate−common −0.081 m
 与 4500 档（+2.2~+2.9 ms）同属"小效应、符号随 trace 变"。
 ⇒ **MCS 抽象本身不产生系统正效应**；理论线预言的"速率可观测 ⇒ 效应 8 ms"需要**使用 MCS 轨迹的新预测器**才可能兑现，
 当前四臂（bounded_linear 预测队列）只是把同一干预放进新场景。s7 common/candidate 与 s8 common 待 VM 恢复后补。
+
+## 2o. 新预测器 `rate_aware`：把 MCS 的"速率可观测"用起来（17:00 实现，分支 `8b77779`）
+
+**为什么这是目前唯一还没被证伪的机制路径**：理论 `theory/07` §5 指出，MCS 异速下
+**未来服务率 μ(t+Δ) 是已知轨道几何的确定性函数**（不是估计量），且 |Δμ| 由速率跳变直接给定（2–6× 大于扩散项）。
+之前的 mcs 四臂用的仍是 `bounded_linear`（预测队列、假设 μ 常值），所以"MCS 可观测性"完全没用上——
+这也解释了 4500 四臂只有 +2.2~+2.9 ms 的"预测更差"效应：**干预没吃到 MCS 的信息**。
+
+**算法**（`predictor=rate_aware`）：
+```
+Q̂(t+Δ) = clip[ Q(t) + α·(λ̂ − μ_ahead)·Δ , 0, B ]
+μ_ahead = _link_rate("isl", now + rate_ahead_s, sat, peer)   # 几何→MCS 表，确定性
+```
+- `rate_ahead_s`（config，无默认值）是"外推名义跨度"，默认实验用 0.2 s；λ̂ 来自已实现的到达率广告；α=`drift_alpha`。
+- 缺 λ̂ / 缺 μ_ahead / μ_ahead≤0 时**显式 missing_reason**（`no_arrival_rate` / `no_rate_ahead` / `non_positive_rate_ahead`），绝不静默置 0。
+- 语义边界：μ_ahead 是"名义目标时刻"的速率（不是每个候选 ETA 的精确时刻）；对 common（+200ms）最贴合，对 candidate 是近似——写清楚，不夸大。
+- 测试：2 条新测（用上 look-ahead 速率、三种拒绝），全套 **114 passed**。
+
+**实验（待 VM 恢复发射）**：`e2_ra_5500_s{7,8,9}`（mcs 5500 档，predictor=rate_aware, rate_ahead_s=0.2, W=0.05, α=0.25），
+arms = `common`、`candidate`；基线 = 同 seed `mcs2_5500_s*_stale`（已在 5500 档落盘 s7/s8）。
+判定（预注册）：**common−stale 与 candidate−stale 在 2–3 seeds 上同向为负 + 种子级 CI 不含 0** ⇒ PASS（速率可观测性带来正收益）；
+否则 ⇒ "MCS 可观测性"假设也被否，预测类干预在平台内全部关闭，转流级需求/传输层抽象（theory §5 (b)/(a)）。
