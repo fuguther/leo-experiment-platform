@@ -291,3 +291,15 @@ Q̂(t+Δ) = clip[ Q(t) + α·(λ̂ − μ_ahead)·Δ , 0, B ]
 arms = `common`、`candidate`；基线 = 同 seed `mcs2_5500_s*_stale`（已在 5500 档落盘 s7/s8）。
 判定（预注册）：**common−stale 与 candidate−stale 在 2–3 seeds 上同向为负 + 种子级 CI 不含 0** ⇒ PASS（速率可观测性带来正收益）；
 否则 ⇒ "MCS 可观测性"假设也被否，预测类干预在平台内全部关闭，转流级需求/传输层抽象（theory §5 (b)/(a)）。
+
+## 2p. `rate_aware` 首测（Mac 诊断，4500 档 seed 7）——**仍为负**
+
+本机 Mac 诊断（非 formal；同 profile/seed，与 local stale 配对，trace 相同）：
+- rate_aware common：117.54 ms / 12.27%（**+19.736 ms**、trim +8.944、Δpp **+8.368**，n=6542）
+- rate_aware candidate：117.54 / 12.27%（**完全相同**——candidate 与 common 逐位同决策，ETA 对比度再次塌缩）
+- 对照同一 local stale（98.54 / 4.78）与 local bounded_linear（common +0.692、candidate +0.629）。
+
+**读法**：把"未来服务率可观测"喂进 drift 后，误差项 (λ̂ − μ_ahead) 的方差比 (λ̂ − μ) 更大（μ_ahead 与测量时刻 μ 的差本身就含几何跳变），
+**预测更激进 ⇒ 决策更差**（+19.7 ms 与 joint 的 +22 ms 同量级）。这说明**"速率可观测"本身不足以带来正收益**：
+需要的是对**未来到达过程**的准确认识，而不是对**未来服务率**的精确投影；队列在 10–200ms 尺度的随机性仍由到达项主导（theory/07 §1 的 Var(A)=κλΔ）。
+VM formal（`ra5500_s{7,8}_{common,candidate}`，17:31 发射）落盘后补；若同向，**预测类干预全部关闭**，下一步只剩改流量抽象（流级/突发需求）。
