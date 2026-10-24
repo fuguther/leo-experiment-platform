@@ -208,3 +208,27 @@ python3 -m CODE.experiment_platform.t1_tasks --task network_alignment \
 ④ **代码中立性差分 run**（`5e52ba3` vs `a8ece27`、constant 档同 profile/seed，比 summary sha256 + rows_digest）；
 ⑤ 补跑 `now@adv20 + hold_last`（joint 的干净对照）；⑥ T1/T3 的逐 Δ R²/ρ_pred；⑦ witness 字段路径。
 
+
+## 2l. VM 复算第一批（16:16，VM 恢复后立即执行红队 §7 的 ①–③）
+
+**① 配对身份**：drift/tune/joint/fa20/witness 的 `source.trace_sha256` **全部 = `26c3c77e54cc9d99`** ⇒ 同 trace，配对成立；
+`config_sha256` 随 alpha/W/predictor/adv 变化（预期）；`identity.git.available=false` 仍成立（scratch 级，无 commit 绑定）。
+
+**③ fallback 结构（红队指出的混淆）**：
+- `stageC_s7_now`：direction_marked_fallback **5530**，无 `no_arrival_rate`；drift_s7_now：**15755**，其中 **`unknown_term:no_arrival_rate` 4801**；
+  tuneC 同样 15755/4801；joint_s7_now：5546（`no_arrival_rate` 仅 177，因 adv=20ms 早就有 λ̂）；fa20_s7：5359。
+- ⇒ **drift 业务劣化确实与"回退结构变化"共变**（缺 λ̂ 时方向被标 fallback）；joint 的 adv20 对照则基本无此混淆，
+  但 joint 又混了 arm 规则（stale vs now）。**干净的 `now@adv20 + hold_last` 对照尚未跑**（红队 §7 ⑤）。
+
+**② 同窗 MAE（都截到 t≤0.48 s，drift/hold 以各自 run 的 hold 代理为分母）**：
+| run | full ratio | t≤0.48 ratio | t≤0.48 绝对（drift / hold, bit） |
+|---|---|---|---|
+| stageC_s7_now（bounded_linear） | 1.222 | **1.238** | 702,570 / 567,333 |
+| drift_s7_now（α=1, W=0.1） | 0.949 | **0.797** | 761,745 / 955,402 |
+| tuneA（0.5/0.1） | 0.943 | 0.858 | 849,622 / 990,688 |
+| tuneB（0.5/0.5） | 1.031 | 0.842 | 796,440 / 945,484 |
+| tuneC（0.25/0.1） | 0.903 | 0.857 | 893,926 / 1,043,270 |
+
+**读法（对红队 §1 的回应）**：同窗之后 drift 系仍优于 hold（ratio 0.80–0.86），而现役 bounded_linear 在同窗下**劣于** hold（1.24）
+⇒ "drift 的 MAE 改善"不是窗口伪象；但**绝对 MAE 口径的预注册验收（<0.741 ms）仍未过**（drift 0.762 ms），且业务更差
+⇒ 红队结论不变：**只能写"MAE 改善不等于业务改善"，不能写"相对现役预测器改善"**。业务劣化与 fallback 结构共变，归因仍待 ⑤ 干净对照。
