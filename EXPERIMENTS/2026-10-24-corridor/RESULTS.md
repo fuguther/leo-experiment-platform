@@ -41,7 +41,10 @@
 - **oracle（ideal_now）k=4 也未建立**：−12.59/+2.44/−3.09/−12.80 ms ⇒ 均值 −6.51 ms、SD 7.49、CI [−18.4,+5.4]、3/4 同向。
 - **within-run 预测层判死**：now/common/candidate 的外推相对 hold_last 差 +11.0%/+15.5%/+19.4%（CI 不含 0）；
   离线 hold_last 在 100–200 ms 尺度最优 ⇒ SPEC §2C "无可用增量"。
-- **H_load（offered 9000，seeds 21–23）**：`<HLOAD:TBD>`（首轮 5 并发触发 cgroup OOM，3/6 被 SIGKILL；已改 3 并发补跑）。
+- **H_load（offered 9000，seeds 21–23）：批次未完成**。首轮 `xargs -P 5` × ~15.4 GB/run ⇒ 容器 64 GiB OOM
+  （`oom_kill 110`、3 run rc=137、0 产物）；幸存者（s21 stale/common、s22 stale）在 swap 下 55 min+ 未收尾；
+  补跑降为 `-P 2`（s22_common、s23_stale）。**最终最多 k=2，按方向/描述写，不执行 3/3 PASS/FAIL**。
+  单 run 内存/并发上限见 `workspace 平台发现-20261024.md` P-8 更新。
 - **MDE 更正**：6-seed MDE 用**种子间 SD**（pp 3.8–4.3、ms 6.1–6.8）；早前 0.465/0.653 是逐包 SE 下界，作废。
 
 ## 4. 机制结论
