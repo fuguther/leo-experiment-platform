@@ -90,3 +90,35 @@
   `A` alpha=0.5, W=0.1；`B` alpha=0.5, W=0.5；`C` alpha=0.25, W=0.1（`runs/tune{A,B,C}_now.json`）。
   验收：h=0 的 MAE **< 0.741 ms（hold-last）且比 0.696 ms（现役 now）好 ≥5%**，且业务 `now−stale` 不劣于基线；
   未过则再改（饱和感知门控：仅当 |λ̂−μ|/μ > 阈值时才开 drift）。
+
+## 2e. 调参结果（A/B/C，arm=now，seed 7；13:00–13:02 落盘）——**MAE 改善但业务更差**
+
+| 变体 | alpha / W | drift MAE vs hold | 分时段 ratio（早/中/晚） | 业务 mean/pp | vs 基线 now | vs stale |
+|---|---|---|---|---|---|---|
+| 基线 now（bounded_linear） | — | — | — | 124.69 / 16.37% | — | +0.34 / +0.89 |
+| 全量 drift | 1.0 / 0.1 | 见 §2d（早好晚差） | 0.75/0.75/1.90 | 135.76 / 23.20% | +11.42 / +6.84 | — |
+| **A** | 0.5 / 0.1 | **0.826 Mbit vs 0.876（ratio 0.943）** | 0.83/0.85/**1.37** | 136.59 / 24.50% | **+11.80 / +8.13** | +13.26 / +9.02 |
+| **B** | 0.5 / 0.5 | ratio 1.031 | 0.70/0.83/**2.36** | 135.34 / 22.57% | +10.26 / +6.21 | +11.83 / +7.10 |
+| **C** | 0.25 / 0.1 | **0.834 vs 0.924（ratio 0.903）** | 0.91/0.78/**1.16** | 137.86 / 24.48% | **+12.39 / +8.11** | +13.91 / +9.00 |
+
+**结论（关键）**：
+1. **收缩 alpha 能在 MAE 上赢 hold-last**：C 的 drift MAE 比 hold-last 低 **9.7%**，早/中段低 22–25%；但**晚段（拥塞期）仍输**（ratio 1.16–2.36）。
+2. **MAE 赢了，路由反而更差**：三个变体的业务 `now−baseline` 一致为 **+10…+12 ms / +6…+8 pp**（配对、同 seed/trace）。
+   ⇒ **"预测更准 ≠ 路由更好"** 的直接反例：drift 改变了决策空间里的近并列选择，把系统推向更拥塞的均衡（与 H_load seed22 的正反馈现象同型）。
+   这解释了为什么四臂/预测器路线反复失败：**误差是相关的（都来自同一个陈旧观测），不是独立噪声**；降低平均误差不改变"在拥塞爬升期把旧趋势外推过头"的系统性偏差。
+3. **到达率状态本身也受信息年龄限制**：λ̂ 由 0.1–0.5 s 窗口测、随广告 200 ms 老化；在接收端使用时已陈旧 100 ms+ ⇒ 它预测的是"过去的趋势"。
+   ⇒ 要真正受益，需要 **更短的广告周期 + drift**（联合干预），但 H_adv 已表明单纯缩短 adv 无稳定收益（k=3，2/3，控制面 9.6×）。
+4. 归档判定：**arrival-rate drift 路线在本抽象内判定失败**（14 次 run 证据：3 全量 + 3 调参 + 基线；业务全部劣化）。
+   下一轮若继续，优先级改为（i）联合干预（adv=20ms + drift，需重标 D）或（ii）放弃预测类干预、把"信息价值被反馈/混沌吞掉"写成定论并转 existence witness。
+
+## 2f. 复现
+
+```bash
+# 代码：分支 research/arrival-rate-20261024（7e31c79 纯层 / 21acfd5 alpha）
+# VM：CODE 这三文件已覆盖；profiles e2_drift*.yaml
+python3 -m CODE.experiment_platform.t1_tasks --task network_alignment \
+  --config profiles/e2_driftC_alpha025_s7.yaml --arms now --deadline-s 0.1928 \
+  --target-probe --target-probe-stride 25 --target-probe-max 8000 --target-probe-horizons 0.0 \
+  --out runs/tuneC_alpha025_now.json
+# 分析：scratch/drift_mae.py（MAE/分时段）与 配对业务差（见 §2e 表）
+```
