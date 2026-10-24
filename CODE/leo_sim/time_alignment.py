@@ -51,6 +51,52 @@ ARMS = ("stale", "now", "common", "candidate")
 PREDICTORS = ("hold_last", "bounded_linear", "zero", "analytic_drain",
               "ou_shrink", "drift")
 
+#: Default window of the continuous-time EWMA used to measure the ARRIVAL rate
+#: at an egress queue.  Only used when the profile does not set
+#: ``time_alignment.arrival_window_s``; profiles that opt in carry the value in
+#: config_sha256, so two runs cannot differ only by a hidden constant.
+ARRIVAL_WINDOW_DEFAULT_S = 0.100
+
+
+def arrival_ewma(prev_rate_bps, prev_at, bits, now, window_s):
+    """Continuous-time EWMA of the arrival rate at ONE directed egress.
+
+    The estimator is the causal filter ``d(lambda)/dt = (r(t) - lambda)/W``
+    where ``r(t) = sum_i bits_i * delta(t - t_i)``.  Between arrivals it decays
+    as ``exp(-dt/W)``; an arrival of ``bits`` adds ``bits/W``.
+
+    It reads only arrivals that have already happened (``now`` and earlier),
+    so an online caller cannever leak future traffic into a prediction.
+    """
+    window = _finite("window_s", window_s)
+    if window <= 0:
+        raise TimeAlignmentError(f"window_s must be > 0, got {window_s!r}")
+    t = _finite("now", now)
+    b = _finite("bits", bits)
+    if b < 0:
+        raise TimeAlignmentError(f"arrival bits must be >= 0, got {bits!r}")
+    if prev_rate_bps is None or prev_at is None:
+        lam = 0.0
+    else:
+        prev = _finite("prev_rate_bps", prev_rate_bps)
+        if prev < 0:
+            raise TimeAlignmentError(
+                f"prev_rate_bps must be >= 0, got {prev_rate_bps!r}")
+        dt = max(0.0, t - _finite("prev_at", prev_at))
+        lam = prev * math.exp(-dt / window)
+    return lam + b / window
+
+
+def arrival_rate_at(rate_bps, last_at, now, window_s):
+    """Decay a stored EWMA arrival rate to ``now`` (pure; no arrivals seen)."""
+    if rate_bps is None or last_at is None:
+        return None
+    window = _finite("window_s", window_s)
+    if window <= 0:
+        raise TimeAlignmentError(f"window_s must be > 0, got {window_s!r}")
+    dt = max(0.0, _finite("now", now) - _finite("last_at", last_at))
+    return float(rate_bps) * math.exp(-dt / window)
+
 # Mean-reversion time constant for ou_shrink.  The HISTORICAL value was
 # derived from beta=0.271 at h=27 ms (tau=-h/ln(beta) = 0.0207 s); the current
 # default is 0.100 s, chosen by the offline tau sweep.  Both tau and the

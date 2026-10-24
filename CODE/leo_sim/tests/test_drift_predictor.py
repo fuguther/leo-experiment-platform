@@ -1,9 +1,11 @@
 """Tests for the arrival-rate `drift` predictor (air-gapped from any kernel)."""
+import math
+
 import pytest
 
 from CODE.leo_sim.time_alignment import (
     KIND_ISL, ResourceKey, StateSample, TimeAlignmentError, TruthSample,
-    predict_resource)
+    arrival_ewma, arrival_rate_at, predict_resource)
 
 RES = ResourceKey(1, "N", KIND_ISL)
 
@@ -58,3 +60,31 @@ def test_drift_rejects_offline_truth_samples():
 def test_negative_arrival_rate_rejected():
     with pytest.raises(TimeAlignmentError):
         sample(0.0, 0.0, 1e9, -1.0)
+
+
+# ---------------------------------------------------------------------------
+# arrival_rate EWMA (the state the `drift` predictor consumes)
+# ---------------------------------------------------------------------------
+
+def test_arrival_ewma_is_a_rate_over_the_window():
+    # one impulse of W bits in a W-second window => 1 bit/s, then decays
+    W = 0.1
+    lam = arrival_ewma(None, None, bits=W, now=0.0, window_s=W)
+    assert lam == pytest.approx(1.0)
+    assert arrival_rate_at(lam, 0.0, 0.0, W) == pytest.approx(1.0)
+    assert arrival_rate_at(lam, 0.0, W, W) == pytest.approx(math.exp(-1.0))
+
+
+def test_arrival_ewma_decays_between_arrivals():
+    W = 0.2
+    first = arrival_ewma(None, None, bits=1e6, now=0.0, window_s=W)
+    # no arrivals for half a window: decays by exp(-0.5)
+    later = arrival_ewma(first, 0.0, bits=0.0, now=0.5 * W, window_s=W)
+    assert later == pytest.approx(first * math.exp(-0.5))
+
+
+def test_arrival_ewma_rejects_bad_inputs():
+    with pytest.raises(TimeAlignmentError):
+        arrival_ewma(None, None, 1.0, 0.0, window_s=0.0)
+    with pytest.raises(TimeAlignmentError):
+        arrival_ewma(None, None, -1.0, 0.0, window_s=0.1)

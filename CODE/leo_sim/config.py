@@ -324,6 +324,10 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # queue_weight multiplicative weight on the queue term in the scorer
         "ou_tau_s": (int, float, type(None)),
         "queue_weight": (int, float, type(None)),
+        # ARRIVAL-RATE STATE: EWMA window (seconds) used to measure the arrival
+        # rate an advertisement carries for predictor="drift".  No default, so
+        # every pre-existing profile resolves and hashes exactly as before.
+        "arrival_window_s": (int, float, type(None)),
     },
     "async_routing": {
         "enabled": bool,
@@ -1271,6 +1275,13 @@ def _validate_time_alignment(ta: Mapping[str, Any],
         raise ConfigError(
             "time_alignment.queue_weight must be None or a finite positive "
             f"number, got {weight!r}")
+    window = ta.get("arrival_window_s")
+    if window is not None and (isinstance(window, bool)
+                               or not isinstance(window, (int, float))
+                               or not math.isfinite(window) or window <= 0):
+        raise ConfigError(
+            "time_alignment.arrival_window_s must be None or a finite positive "
+            f"number, got {window!r}")
     if tau is not None and ta["predictor"] != "ou_shrink":
         raise ConfigError(
             "time_alignment.ou_tau_s is only meaningful for "

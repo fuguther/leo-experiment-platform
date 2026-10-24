@@ -919,6 +919,16 @@ class ISLLink:
         # counting that generation in later intervals.
         self.drained_at: float | None = None
         self.drained = kern.env.event()
+        # ARRIVAL-RATE STATE (T1-ARRIVAL-RATE).  Locally measured rate of bits
+        # actually enqueued at this directed egress, as a continuous-time EWMA.
+        # A receiver cannot infer this from a queue sample, so it is advertised
+        # and a `drift` predictor can bound future arrivals instead of assuming
+        # there are none.  None = no arrival seen yet (missing, never zero).
+        self._arrival_ewma_bps: float | None = None
+        self._arrival_last_at: float | None = None
+        self._arrival_window_s = float(
+            (getattr(kern, "cfg_ta", None) or {}).get("arrival_window_s")
+            or _ta.ARRIVAL_WINDOW_DEFAULT_S)
         ge_cfg = kern.cfg_links["ge_isl"]
         self.ge = outage.GilbertElliott(
             ge_cfg["mean_good_s"], ge_cfg["mean_bad_s"],
@@ -931,6 +941,24 @@ class ISLLink:
 
     def room(self, bits: int) -> bool:
         return self._used() + bits <= self.k.cfg_links["isl_queue_bits"]
+
+    def note_arrival(self, bits: int) -> None:
+        """Account for bits that have JUST enqueued at this egress.
+
+        Only fresh enqueues call this; requeues after a stalled service keep
+        their original arrival and must not be counted twice.
+        """
+        now = float(self.k.env.now)
+        self._arrival_ewma_bps = _ta.arrival_ewma(
+            self._arrival_ewma_bps, self._arrival_last_at, float(bits), now,
+            self._arrival_window_s)
+        self._arrival_last_at = now
+
+    def arrival_rate_bps(self, now: float):
+        """Arrival-rate estimate at ``now``; None when never measured."""
+        return _ta.arrival_rate_at(self._arrival_ewma_bps,
+                                   self._arrival_last_at, float(now),
+                                   self._arrival_window_s)
 
     def available_now(self) -> bool:
         k = self.k
@@ -965,6 +993,7 @@ class ISLLink:
         pkt.isl_enqueued_at = self.k.env.now
         self.data_q.append(pkt)
         self.data_bits += pkt.bits
+        self.note_arrival(pkt.bits)
         self.data_area.add(pkt.bits, self.k.env.now)
         self.k._metric_queue_enter(pkt, "isl", f"isl:{self.sat}:{self.peer}",
                                    decision_id=pkt.decision_id,
@@ -998,6 +1027,7 @@ class ISLLink:
         self.ctrl_q.append(pkt)
         self.ctrl_bits += pkt.bits
         self.ctrl_area.add(pkt.bits, self.k.env.now)
+        self.note_arrival(pkt.bits)
         self.k._record_isl_queue_state(self, "enqueue_control",
                                        control_iid=pkt.iid)
         self.k._poke(self.wake)
@@ -3766,6 +3796,10 @@ class Kernel:
             "generation": int(link.gen),
             "rate_bps": rate,
             "work_ahead_bits_proxy": work_ahead,
+            # Locally measured arrival rate at this egress (bit/s).  It is the
+            # only field that lets a receiver bound FUTURE arrivals; without it
+            # a queue sample cannot justify any drift other than zero.
+            "arrival_rate_bps": link.arrival_rate_bps(float(now)),
         }
 
     @staticmethod
@@ -4375,6 +4409,7 @@ class Kernel:
             advertised = {}
             generations = {}
             rates = {}
+            arrival_rates = {}
             work_ahead = {}
             for direction, record in (payload.get("isl_queue_bits")
                                       or {}).items():
@@ -4401,6 +4436,11 @@ class Kernel:
                         and not isinstance(rate, bool)
                         and math.isfinite(float(rate)) and rate >= 0.0):
                     rates[direction] = float(rate)
+                arrival = record.get("arrival_rate_bps")
+                if (isinstance(arrival, (int, float))
+                        and not isinstance(arrival, bool)
+                        and math.isfinite(float(arrival)) and arrival >= 0.0):
+                    arrival_rates[direction] = float(arrival)
                 bits = record.get("work_ahead_bits_proxy")
                 if (isinstance(bits, (int, float))
                         and not isinstance(bits, bool)
@@ -4416,6 +4456,7 @@ class Kernel:
                 "advertised_isl_queue_bits": advertised,
                 "advertised_isl_generation": generations,
                 "advertised_isl_rate_bps": rates,
+                "advertised_isl_arrival_rate_bps": arrival_rates,
                 "advertised_isl_work_ahead_bits_proxy": work_ahead,
                 "advertised_serve_cells": sorted(
                     payload.get("serve_cells", ())),
@@ -4497,6 +4538,7 @@ class Kernel:
             advertised = {}
             generations = {}
             rates = {}
+            arrival_rates = {}
             work_ahead = {}
             for direction, record in (payload.get("isl_queue_bits")
                                       or {}).items():
@@ -4519,6 +4561,11 @@ class Kernel:
                         and not isinstance(rate, bool)
                         and math.isfinite(float(rate)) and rate >= 0.0):
                     rates[direction] = float(rate)
+                arrival = record.get("arrival_rate_bps")
+                if (isinstance(arrival, (int, float))
+                        and not isinstance(arrival, bool)
+                        and math.isfinite(float(arrival)) and arrival >= 0.0):
+                    arrival_rates[direction] = float(arrival)
                 bits = record.get("work_ahead_bits_proxy")
                 if (isinstance(bits, (int, float))
                         and not isinstance(bits, bool)
@@ -4555,6 +4602,7 @@ class Kernel:
                 "advertised_isl_queue_bits": advertised,
                 "advertised_isl_generation": generations,
                 "advertised_isl_rate_bps": rates,
+                "advertised_isl_arrival_rate_bps": arrival_rates,
                 "advertised_isl_work_ahead_bits_proxy": work_ahead,
                 "advertised_processing": (
                     payload.get("processing_resources")
@@ -4973,11 +5021,15 @@ class Kernel:
                         res_link, now)
                 ideal_bits = (None if ideal_state is None
                               else ideal_state.get("work_ahead_bits_proxy"))
+                ideal_arrival = (None if ideal_state is None
+                                 else ideal_state.get("arrival_rate_bps"))
                 if ideal_bits is not None:
                     history.append(_ta.StateSample(
                         key, float(now), float(now), float(ideal_bits),
                         None if ideal_state.get("rate_bps") is None
-                        else float(ideal_state["rate_bps"])))
+                        else float(ideal_state["rate_bps"]),
+                        None if ideal_arrival is None
+                        else float(ideal_arrival)))
                     used_state[str(direction)] = {
                         "source": "ideal_current",
                         "resource_id": "isl:%d:%d" % (
@@ -5000,6 +5052,7 @@ class Kernel:
                                        else terminal.get("queue_bits"))
                     sample_rate = (None if terminal is None
                                    else terminal.get("rate_bps"))
+                    sample_arrival = None
                 else:
                     resource_direction = str(cr["egress_direction"])
                     generation = (rec.get("advertised_isl_generation")
@@ -5011,6 +5064,9 @@ class Kernel:
                         or {}).get(resource_direction)
                     sample_rate = (rec.get("advertised_isl_rate_bps")
                                    or {}).get(resource_direction)
+                    sample_arrival = (
+                        rec.get("advertised_isl_arrival_rate_bps")
+                        or {}).get(resource_direction)
                 if advertised_bits is None:
                     continue
                 if age_cutoff is not None \
@@ -5023,7 +5079,9 @@ class Kernel:
                 history.append(_ta.StateSample(
                     key, float(rec["generated_at"]), float(rec["received_at"]),
                     float(advertised_bits),
-                    None if sample_rate is None else float(sample_rate)))
+                    None if sample_rate is None else float(sample_rate),
+                    None if sample_arrival is None
+                    else float(sample_arrival)))
                 if (key.kind == _ta.KIND_ISL
                         and (str(direction) not in used_state
                              or float(rec["generated_at"]) >=
