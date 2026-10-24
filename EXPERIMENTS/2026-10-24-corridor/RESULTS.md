@@ -45,6 +45,9 @@
   （`oom_kill 110`、3 run rc=137、0 产物）；幸存者（s21 stale/common、s22 stale）在 swap 下 55 min+ 未收尾；
   补跑降为 `-P 2`（s22_common、s23_stale）。**最终最多 k=2，按方向/描述写，不执行 3/3 PASS/FAIL**。
   单 run 内存/并发上限见 `workspace 平台发现-20261024.md` P-8 更新。
+  **到手结果（seed 21 完整一对，k=1，只作方向）**：Δdelay −0.235 ms（trim −1.494）、Δpp −0.98（all-packet）/ −1.42 pp（both-delivered）。
+  **档位诊断（9 Gbps）**：util_max 0.833–0.846（<0.85）、frac(util≥0.2)=47.8–53.8%（>40% 上界）、loss 1.21–1.24%（>1%）、censor 7.6–10.6%（<15%）。
+  ⇒ 9 Gbps 不是 H4∧H5 的交点。s22_common 补跑中（-P1，ETA 10:35）；能否到 k=2 以到时为准。
 - **MDE 更正**：6-seed MDE 用**种子间 SD**（pp 3.8–4.3、ms 6.1–6.8）；早前 0.465/0.653 是逐包 SE 下界，作废。
 
 ## 4. 机制结论
