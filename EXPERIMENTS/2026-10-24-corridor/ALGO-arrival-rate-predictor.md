@@ -122,3 +122,14 @@ python3 -m CODE.experiment_platform.t1_tasks --task network_alignment \
   --out runs/tuneC_alpha025_now.json
 # 分析：scratch/drift_mae.py（MAE/分时段）与 配对业务差（见 §2e 表）
 ```
+
+## 2g. 联合干预 H_joint（adv=20ms + drift α=0.25，13:09 发射，数据前写死）
+
+- 动机：drift 的两处失败都指向**输入陈旧**——λ̂ 由 0.1–0.5s 窗口测、随 200ms 广告老化 100ms+；晚段外推过头。
+  把广告压到 20ms 后：λ̂ 年龄 ~10ms、外推跨度 ~10ms（同一 drift 的输入误差与跨度都小一个量级）。
+  H_adv 只证明"单独缩短 adv 无稳定收益"，H_drift 只证明"单独 drift 更差"；**联合是最后一个现实组合**。
+- 设计：单臂 `now` + `predictor=drift, drift_alpha=0.25, arrival_window_s=0.05`，`advertise_interval_s=0.02`；
+  seeds 7/8/9（3 run 并发；probe stride25/max8000/h=0）；基线 = 同 seed `fa20_s{7,8,9}`（adv=20ms stale，stale 不读预测器）。
+- 判定（数据前）：**3/3 同向为负 + 种子级 t-CI(df=2) 不含 0 + trim 同号** ⇒ PASS（"状态够新时 drift 有价值"）；
+  否则 ⇒ **预测类干预在本平台全部证伪**，下一步使用用户目标允许的 **existence witness**（复现文献式极端陈旧环境，明确标注非现实设置）。
+- 已同时 stage：witness 档（adv=1.0，stale + ideal_now，seeds 7/8/9），仅在 joint 失败后启动。
