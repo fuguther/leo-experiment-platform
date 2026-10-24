@@ -428,3 +428,19 @@ def test_tie_digits_refuses_anything_ambiguous():
         with pytest.raises(ta.TimeAlignmentError):
             ta._tie_digits("tie_sig_digits", bad)
 
+
+
+def test_state_age_tau_validation():
+    """TAP-DAR style age-reliability weighting: positive tau or None only."""
+    import pytest as _pytest
+    from CODE.leo_sim.time_alignment import make_snapshot
+    base = dict(satellite=0, snapshot_at=1.0, history=(), legal_directions=(),
+                resources=())
+    snap = make_snapshot(**base, state_age_tau_s=0.1)
+    assert snap.state_age_tau_s == _pytest.approx(0.1)
+    snap2 = make_snapshot(**base)
+    assert snap2.state_age_tau_s is None
+    with _pytest.raises(Exception):
+        make_snapshot(**base, state_age_tau_s=0.0)
+    with _pytest.raises(Exception):
+        make_snapshot(**base, state_age_tau_s=-1.0)

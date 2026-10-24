@@ -5213,6 +5213,7 @@ class Kernel:
             # drift-predictor shrinkage (None keeps alpha=1.0, so every
             # pre-existing profile is byte-identical).
             drift_alpha=self.cfg_ta.get("drift_alpha"),
+            state_age_tau_s=self.cfg_ta.get("state_age_tau_s"),
             rate_ahead_bps=rate_ahead,
             queue_weight=self.cfg_ta.get("queue_weight"),
             provenance=(scope,))

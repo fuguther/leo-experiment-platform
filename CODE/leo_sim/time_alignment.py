@@ -361,6 +361,11 @@ class ObservationSnapshot:
     #: rate is bursty.  None = 1.0 (historical), so an unset profile is
     #: unchanged.
     drift_alpha: float | None = None
+    #: Age-reliability weighting (TAP-DAR style): the predicted queue work of a
+    #: candidate is multiplied by exp(-age / tau), where age is the age of the
+    #: newest received sample for that resource.  Older state is trusted less
+    #: instead of being used at full weight.  None = historical (weight 1.0).
+    state_age_tau_s: float | None = None
     #: Service rate at the arm's look-ahead instant (one entry per direction).
     #: In the MCS abstraction the rate is a deterministic function of the
     #: known orbital geometry, so a rate change is OBSERVABLE rather than
@@ -505,7 +510,8 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
                   resource_available=None,
                   local_egress_in_service_s=None,
                   ou_tau_s=None, queue_weight=None,
-                  drift_alpha=None, rate_ahead_bps=None) -> ObservationSnapshot:
+                  drift_alpha=None, rate_ahead_bps=None,
+                  state_age_tau_s=None) -> ObservationSnapshot:
     """Build the frozen snapshot from kernel-selected fields only.
 
     Every accepted keyword is a field the kernel explicitly decided to expose;
@@ -546,6 +552,11 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
     if alpha is not None and not (0.0 < alpha <= 1.0):
         raise TimeAlignmentError(
             f"drift_alpha must be in (0, 1], got {drift_alpha!r}")
+    age_tau = None if state_age_tau_s is None else _finite(
+        "state_age_tau_s", state_age_tau_s)
+    if age_tau is not None and age_tau <= 0:
+        raise TimeAlignmentError(
+            f"state_age_tau_s must be > 0, got {state_age_tau_s!r}")
     return ObservationSnapshot(
         satellite=int(satellite),
         snapshot_at=_finite("snapshot_at", snapshot_at),
@@ -574,6 +585,7 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
         queue_weight=(None if queue_weight is None
                       else _finite("queue_weight", queue_weight)),
         drift_alpha=alpha,
+        state_age_tau_s=age_tau,
         rate_ahead_bps=_pairs("rate_ahead_bps", rate_ahead_bps),
         provenance=tuple(str(p) for p in provenance),
         resource_service_rate_bps=_pairs(
@@ -1110,7 +1122,15 @@ def score_candidates(snapshot: ObservationSnapshot, predictions, etas) -> Scored
         elif service_rate is None or service_rate <= 0:
             missing.append("resource_service_rate")
         else:
-            terms["resource_work_s"] = prediction.predicted_bits / service_rate
+            work_bits = prediction.predicted_bits
+            tau = snapshot.state_age_tau_s
+            if tau is not None:
+                series = snapshot.history_for(resource)
+                if series:
+                    age = max(0.0, snapshot.snapshot_at
+                              - float(series[-1].measured_at))
+                    work_bits = work_bits * math.exp(-age / tau)
+            terms["resource_work_s"] = work_bits / service_rate
         resource_key = snapshot.resource_for(direction)
         if resource_key is not None and resource_key.kind == KIND_ISL:
             # The target resource is reached after the local first hop.  Its
