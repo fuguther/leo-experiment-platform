@@ -332,6 +332,10 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # (lambda_hat - mu) * elapsed term, in (0, 1].  None = 1.0, so an unset
         # profile resolves and hashes exactly as before.
         "drift_alpha": (int, float, type(None)),
+        # AGE-RELIABILITY WEIGHTING (TAP-DAR style): predicted queue work is
+        # multiplied by exp(-age/tau) using the newest sample's age.  None keeps
+        # the historical weight of 1.0, so old profiles hash unchanged.
+        "state_age_tau_s": (int, float, type(None)),
         # RATE-AWARE look-ahead horizon (seconds): the MCS service rate at
         # now + rate_ahead_s is read from the known geometry.  None keeps
         # every pre-existing profile unchanged.
@@ -1297,6 +1301,13 @@ def _validate_time_alignment(ta: Mapping[str, Any],
         raise ConfigError(
             "time_alignment.rate_ahead_s must be None or a finite positive "
             f"number, got {ahead!r}")
+    age_tau = ta.get("state_age_tau_s")
+    if age_tau is not None and (isinstance(age_tau, bool)
+                                or not isinstance(age_tau, (int, float))
+                                or not math.isfinite(age_tau) or age_tau <= 0):
+        raise ConfigError(
+            "time_alignment.state_age_tau_s must be None or a finite positive "
+            f"number, got {age_tau!r}")
     alpha = ta.get("drift_alpha")
     if alpha is not None and (isinstance(alpha, bool)
                               or not isinstance(alpha, (int, float))
