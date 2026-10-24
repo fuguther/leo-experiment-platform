@@ -232,3 +232,22 @@ python3 -m CODE.experiment_platform.t1_tasks --task network_alignment \
 **读法（对红队 §1 的回应）**：同窗之后 drift 系仍优于 hold（ratio 0.80–0.86），而现役 bounded_linear 在同窗下**劣于** hold（1.24）
 ⇒ "drift 的 MAE 改善"不是窗口伪象；但**绝对 MAE 口径的预注册验收（<0.741 ms）仍未过**（drift 0.762 ms），且业务更差
 ⇒ 红队结论不变：**只能写"MAE 改善不等于业务改善"，不能写"相对现役预测器改善"**。业务劣化与 fallback 结构共变，归因仍待 ⑤ 干净对照。
+
+## 2m. MCS 四臂首批结果（4500 Mbps，seed 7）
+
+**VM（formal，15:47–15:49 落盘，`runs/mcs2_4500_s7_*`）**：
+| arm | mean / pp | Δ vs stale |
+|---|---|---|
+| stale | 98.95 / 4.47%（基线） | — |
+| now | 101.16 / 5.69% | **+2.214 ms**（trim −0.005）/ +1.225 pp |
+| common | 102.03 / 6.23% | **+2.896 ms**（trim +0.204）/ +1.763 |
+| candidate | 102.03 / 6.23% | **+2.895 ms**（trim +0.203）/ +1.763 |
+| candidate−common | — | **−0.001 ms**（逐位相同决策） |
+
+**本机 Mac 复算诊断（非 formal，`$TMPDIR/corridor/localruns`，同一 trace `49dc1d891b59` 完全一致）**：
+now +2.680、common +0.692、candidate +0.629 ms；candidate−common −0.081 ms ⇒ **方向一致（预测臂不优于 stale；ETA 对比度再次塌缩）**。
+（Mac 与 VM 绝对值有小差：Py3.14 vs 3.11 的浮点/迭代差异，trace 相同、方向相同；formal 数字以 VM 为准。）
+
+**读法**：mcs 4500（util_max 0.724）下四臂效应量 ~2–3 ms、方向"预测更差"，与 constant 6G 的结论同型；
+**MCS 抽象本身没有自动带来正效应**——理论线预言的"速率可观测"优势需要**利用 MCS 轨迹的新预测器**，而不是把同一 bounded_linear 放进新场景。
+5500 档（util_max 0.795）s7/s8 四臂 16:16 发射，结果待补（`<MCS-B:TBD>`）。
