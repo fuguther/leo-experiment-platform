@@ -444,3 +444,21 @@ def test_state_age_tau_validation():
         make_snapshot(**base, state_age_tau_s=0.0)
     with _pytest.raises(Exception):
         make_snapshot(**base, state_age_tau_s=-1.0)
+
+
+# ---- P1: candidate arm targets the USAGE instant, not the arrival instant ----
+def test_candidate_usage_instant_includes_predicted_peer_queue_wait():
+    from CODE.leo_sim import time_alignment as ta
+    const = ta.ResourceKey(2, "N", "isl")
+    history = (ta.StateSample(const, 0.0, 0.1, 800.0, 8000.0),
+               ta.StateSample(const, 1.0, 1.1, 800.0, 8000.0))
+    snap = _snapshot(history=history, arm="candidate",
+                     predictor="hold_last", legal_directions=("N",),
+                     resource_service_rate_bps={"N": 8000.0, "E": 8000.0})
+    preds, etas, targets = ta.build_predictions(snap)
+    for direction in snap.legal_directions:
+        rate = snap.resource_rate_for(direction)
+        bits = preds[direction].predicted_bits
+        assert bits is not None
+        assert targets[direction] == pytest.approx(
+            etas[direction].target_at + float(bits) / float(rate), rel=1e-9)

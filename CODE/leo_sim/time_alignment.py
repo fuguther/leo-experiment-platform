@@ -1365,17 +1365,39 @@ def build_predictions(snapshot: ObservationSnapshot,
                 last_measured_at=last_measured,
                 common_horizon_s=snapshot.common_horizon_s,
                 candidate_target_at=eta.target_at)
+        history = (snapshot.history_for(resource)
+                   if resource is not None else ())
+
+        def predict_at(instant):
+            return predict_resource(
+                history, snapshot_at=snapshot.snapshot_at, target_at=instant,
+                method=snapshot.predictor, history_limit=snapshot.history_limit,
+                max_queue_bits=snapshot.max_resource_queue_bits,
+                resource=resource,
+                allow_past=(snapshot.arm == "stale"),
+                ou_tau_s=snapshot.ou_tau_s,
+                drift_alpha=snapshot.drift_alpha,
+                rate_ahead_bps=snapshot._lookup(snapshot.rate_ahead_bps,
+                                                direction))
+
+        prediction = predict_at(target)
+        if (snapshot.arm == "candidate" and explicit_target is None
+                and last_measured is not None and resource is not None):
+            # P1: the CANDIDATE arm promises the instant the packet actually
+            # USES the resource, i.e. arrival PLUS the queueing it will find
+            # there.  estimate_eta deliberately excludes future arrivals, so
+            # the wait is taken from the prediction itself (one fixed-point
+            # step) instead of being silently dropped.  Other arms keep their
+            # documented instants untouched.
+            rate = resource_service_bps(snapshot, direction)
+            bits = prediction.predicted_bits
+            if (rate is not None and rate > 0.0 and isinstance(bits, (int, float))
+                    and not isinstance(bits, bool) and math.isfinite(float(bits))
+                    and float(bits) > 0.0):
+                target = target + float(bits) / float(rate)
+                prediction = predict_at(target)
         targets[direction] = target
-        predictions[direction] = predict_resource(
-            snapshot.history_for(resource) if resource is not None else (),
-            snapshot_at=snapshot.snapshot_at, target_at=target,
-            method=snapshot.predictor, history_limit=snapshot.history_limit,
-            max_queue_bits=snapshot.max_resource_queue_bits, resource=resource,
-            allow_past=(snapshot.arm == "stale"),
-            ou_tau_s=snapshot.ou_tau_s,
-            drift_alpha=snapshot.drift_alpha,
-            rate_ahead_bps=snapshot._lookup(snapshot.rate_ahead_bps,
-                                            direction))
+        predictions[direction] = prediction
     return predictions, etas, targets
 
 
