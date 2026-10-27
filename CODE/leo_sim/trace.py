@@ -323,7 +323,7 @@ def _dst_choices(gen, mode, endpoints, i, t, dm, mlab_weights=None):
 
 
 def _rate_multiplier(mode, t, src_lon, dm):
-    if mode in ("burst", "mlab", "population_gravity") \
+    if mode in ("burst", "gravity", "mlab", "population_gravity") \
             and dm["burst_start_s"] is not None:
         start, dur = dm["burst_start_s"], dm["burst_duration_s"]
         if start <= t < start + dur:
@@ -1056,7 +1056,7 @@ def materialization_report(resolved: dict, rows: list[dict],
                 f"emitted {label} cell(s) {outside} are outside the resolved "
                 "endpoint set")
 
-    if mode in ("burst", "mlab", "population_gravity") \
+    if mode in ("burst", "gravity", "mlab", "population_gravity") \
             and dm["burst_start_s"] is not None:
         start = float(dm["burst_start_s"])
         window_end = start + float(dm["burst_duration_s"])
@@ -1378,7 +1378,7 @@ def compile_trace(resolved: dict, out_dir: str,
                 continue
             # thinning with max multiplier keeps diurnal/burst deterministic
             max_mult = 1.0
-            if mode in ("burst", "mlab", "population_gravity") \
+            if mode in ("burst", "gravity", "mlab", "population_gravity") \
                     and dm["burst_start_s"] is not None:
                 max_mult = max(1.0, dm["burst_multiplier"])
             elif mode == "diurnal":
@@ -1563,7 +1563,7 @@ def compile_trace(resolved: dict, out_dir: str,
                 **({"longitude_window_deg": [
                     float(dm["burst_lon_min"]), float(dm["burst_lon_max"])]}
                    if dm.get("burst_lon_min") is not None else {}),
-            } if mode in ("burst", "mlab", "population_gravity")
+            } if mode in ("burst", "gravity", "mlab", "population_gravity")
             and dm["burst_start_s"] is not None else None),
             # legacy mode:diurnal keeps its historical two-key value
             # exactly; only the new population-local-time combination uses

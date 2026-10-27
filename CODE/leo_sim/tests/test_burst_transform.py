@@ -233,6 +233,18 @@ def test_the_declared_transform_holds_at_every_probed_boundary():
     assert by_name[("before_window", -180.0)]["multiplier"] == 1.0
 
 
+def test_gravity_mode_applies_the_burst_transform():
+    """The non-stationary probe keeps the Stage-1 gravity OD and adds burst.
+
+    If gravity silently ignored the window the probe would be a plain
+    baseline while the profile declared a burst; this test pins the mode.
+    """
+    resolved = _burst_cfg(mode="gravity")
+    report = trace_mod.verify_burst_transform(resolved)
+    assert report["mismatched_probes"] == 0
+    assert report["mode"] == "gravity"
+
+
 def test_regional_window_applies_only_inside_the_declared_band():
     """A pre-declared regional burst is a config field, not a code edit.
 

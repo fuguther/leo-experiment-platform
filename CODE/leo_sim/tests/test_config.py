@@ -196,7 +196,9 @@ def test_a_burst_window_under_a_mode_that_ignores_it_is_refused():
     downstream could distinguish "no burst intended" from "burst intended and
     dropped" (audit L18).
     """
-    for mode in ("uniform", "gravity", "hotspot", "diurnal", "csv",
+    # gravity is NOT in this list: gravity OD + burst is an implemented
+    # combination (used by the non-stationary probe), so it resolves.
+    for mode in ("uniform", "hotspot", "diurnal", "csv",
                  "population_gravity"):
         demand = {"mode": mode, "burst_start_s": 1.0, "burst_duration_s": 2.0}
         if mode == "csv":
@@ -214,6 +216,11 @@ def test_a_burst_window_under_a_mode_that_ignores_it_is_refused():
         "mode": "burst", "burst_start_s": 1.0, "burst_duration_s": 2.0,
         "burst_multiplier": 5.0}})
     assert ok["config"]["demand"]["burst_start_s"] == 1.0
+    # gravity OD + burst is implemented (regional burst on a gravity scene)
+    ok_gravity = config.resolve_config({"demand": {
+        "mode": "gravity", "burst_start_s": 1.0, "burst_duration_s": 2.0,
+        "burst_multiplier": 5.0}})
+    assert ok_gravity["config"]["demand"]["burst_start_s"] == 1.0
 
 
 def test_regional_burst_requires_both_bounds_and_a_window():

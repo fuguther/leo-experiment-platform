@@ -805,7 +805,7 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         or dm["burst_duration_s"] is not None
     )
     if burst_declared and dm["mode"] not in {
-            "burst", "mlab", "population_gravity"}:
+            "burst", "gravity", "mlab", "population_gravity"}:
         # The transform exists ONLY in _rate_multiplier() for mode in
         # {burst, mlab} (trace.py:302-307).  Declaring the window under any
         # other mode used to resolve happily and then be silently dropped:
@@ -827,7 +827,7 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
     # or not the author asked for it; a non-default value is a claim that
     # something will use it.
     default_multiplier = DEFAULTS["demand"]["burst_multiplier"]
-    if dm["mode"] not in {"burst", "mlab", "population_gravity"} \
+    if dm["mode"] not in {"burst", "gravity", "mlab", "population_gravity"} \
             and dm["burst_multiplier"] != default_multiplier:
         raise ConfigError(
             f"demand.burst_multiplier={dm['burst_multiplier']} is declared but "
@@ -835,13 +835,13 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             "the value would be silently ignored. Use demand.mode=burst or "
             f"demand.mode=mlab, or leave burst_multiplier at its default "
             f"({default_multiplier})")
-    if dm["mode"] in {"burst", "mlab", "population_gravity"} and (
+    if dm["mode"] in {"burst", "gravity", "mlab", "population_gravity"} and (
             dm["mode"] == "burst" or burst_declared):
         if dm["burst_start_s"] is None or dm["burst_duration_s"] is None:
             raise ConfigError(
                 f"demand.mode={dm['mode']} requires burst_start_s and "
                 "burst_duration_s")
-    if dm["mode"] in {"burst", "mlab", "population_gravity"} and (
+    if dm["mode"] in {"burst", "gravity", "mlab", "population_gravity"} and (
             dm["mode"] == "burst" or burst_declared):
         if dm["burst_start_s"] < 0 or dm["burst_duration_s"] <= 0:
             raise ConfigError("burst window invalid")
