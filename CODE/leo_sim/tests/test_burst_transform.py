@@ -233,6 +233,26 @@ def test_the_declared_transform_holds_at_every_probed_boundary():
     assert by_name[("before_window", -180.0)]["multiplier"] == 1.0
 
 
+def test_regional_window_applies_only_inside_the_declared_band():
+    """A pre-declared regional burst is a config field, not a code edit.
+
+    The band is per source longitude; the two reference sites sit at 0 and 10
+    degrees, so a [-5, 5] band must burst exactly one of them.
+    """
+    resolved = _burst_cfg(burst_lon_min=-5.0, burst_lon_max=5.0)
+    report = trace_mod.verify_burst_transform(resolved, [0.0, 10.0])
+    assert report["mismatched_probes"] == 0
+    assert report["regional_longitude_window_deg"] == [-5.0, 5.0]
+    by = {(probe["probe"], probe["longitude_deg"]): probe
+          for probe in report["probes"]}
+    assert by[("window_middle", 0.0)]["multiplier"] == 5.0
+    assert by[("window_middle", 10.0)]["multiplier"] == 1.0
+    assert by[("before_window", 0.0)]["multiplier"] == 1.0
+    # expectation arithmetic uses the band share: base * (1 + 4 * 0.5) = 3x
+    burst, base, _ = trace_mod._expected_in_window(resolved, 10.0, 20.0)
+    assert burst == pytest.approx(3.0 * base)
+
+
 @pytest.mark.parametrize("sabotage, description", [
     (lambda mode, t, lon, dm: 1.0, "never applied"),
     (lambda mode, t, lon, dm: float(dm["burst_multiplier"]), "leaks everywhere"),

@@ -327,6 +327,14 @@ def _rate_multiplier(mode, t, src_lon, dm):
             and dm["burst_start_s"] is not None:
         start, dur = dm["burst_start_s"], dm["burst_duration_s"]
         if start <= t < start + dur:
+            # Optional regional window (pre-declared): only sources inside
+            # [burst_lon_min, burst_lon_max] receive the multiplier.  Absent
+            # bounds keep the historical global behaviour byte-identically.
+            lon_min = dm.get("burst_lon_min")
+            lon_max = dm.get("burst_lon_max")
+            if lon_min is not None and lon_max is not None \
+                    and not (float(lon_min) <= float(src_lon) <= float(lon_max)):
+                return 1.0
             return dm["burst_multiplier"]
         return 1.0
     if mode == "diurnal":
@@ -632,6 +640,28 @@ def _poisson_band(mean: float) -> float:
     return INTENSITY_SIGMA * math.sqrt(mean)
 
 
+def _burst_band_fraction(resolved: dict) -> float:
+    """Share of sources inside the declared regional burst window.
+
+    Returns 1.0 when no regional window is declared (global burst), so the
+    historical expectation arithmetic is unchanged.  The share is over the
+    configured endpoint sites; the generator applies the band per source
+    longitude, so this is the exact expectation factor for this config.
+    """
+    dm = resolved["config"]["demand"]
+    lon_min, lon_max = dm.get("burst_lon_min"), dm.get("burst_lon_max")
+    if lon_min is None or lon_max is None:
+        return 1.0
+    sites = (resolved["config"].get("endpoints") or {}).get("sites") or []
+    lons = [float(site["lon"]) for site in sites
+            if isinstance(site, dict) and "lon" in site]
+    if not lons:
+        return 1.0
+    inside = sum(1 for lon in lons
+                 if float(lon_min) <= lon <= float(lon_max))
+    return inside / len(lons)
+
+
 def _expected_in_window(resolved: dict, start: float,
                         window_end: float) -> tuple[float, float, float]:
     """The declared expectation, as exact arithmetic rather than a fit."""
@@ -645,7 +675,10 @@ def _expected_in_window(resolved: dict, start: float,
     inclusion = (1.0 if dm["nested_master_offered_mbps"] is None
                  else float(dm["offered_mbps"])
                  / float(dm["nested_master_offered_mbps"]))
-    return (total_rate * effective_multiplier * width * inclusion,
+    fraction = _burst_band_fraction(resolved)
+    # In-window rate = base * (1 + (multiplier - 1) * band_share).
+    burst_rate = total_rate * (1.0 + (effective_multiplier - 1.0) * fraction)
+    return (burst_rate * width * inclusion,
             total_rate * width * inclusion, effective_multiplier)
 
 
@@ -729,20 +762,27 @@ def verify_burst_transform(resolved: dict, longitudes=None,
         probe_instants.append((f"window_sweep_{index}", instant, multiplier))
         index += 1
         instant = start + index * step
+    lon_min = dm.get("burst_lon_min")
+    lon_max = dm.get("burst_lon_max")
+    regional = lon_min is not None and lon_max is not None
     probes = []
     for longitude in probe_longitudes:
+        in_band = (not regional
+                   or float(lon_min) <= float(longitude) <= float(lon_max))
         for label, t, expected in probe_instants:
+            expected_here = expected if in_band else 1.0
             actual = _rate_multiplier(mode, t, longitude, dm)
             proposal = total_rate * max_multiplier
             accepted = proposal * (actual / max_multiplier)
             probes.append({
                 "probe": label, "longitude_deg": longitude, "t": t,
-                "multiplier": actual, "expected": expected,
+                "in_regional_window": bool(in_band),
+                "multiplier": actual, "expected": expected_here,
                 "thinning_rate": accepted,
-                "declared_rate": total_rate * expected,
-                "matches": (actual == expected
+                "declared_rate": total_rate * expected_here,
+                "matches": (actual == expected_here
                             and math.isclose(accepted,
-                                             total_rate * expected,
+                                             total_rate * expected_here,
                                              rel_tol=1e-12, abs_tol=0.0)),
             })
     broken = [probe for probe in probes if not probe["matches"]]
@@ -755,6 +795,8 @@ def verify_burst_transform(resolved: dict, longitudes=None,
         "probes": probes,
         "checked_probes": len(probes),
         "checked_longitudes": list(probe_longitudes),
+        "regional_longitude_window_deg": (
+            [float(lon_min), float(lon_max)] if regional else None),
         # precedence matters: the backstop grid is a property of THIS function,
         # the caller's label is only a label.  An independent review showed the
         # first version let a caller-supplied sentence describe the backstop
@@ -1518,6 +1560,9 @@ def compile_trace(resolved: dict, out_dir: str,
                 "start_s": float(dm["burst_start_s"]),
                 "duration_s": float(dm["burst_duration_s"]),
                 "multiplier": float(dm["burst_multiplier"]),
+                **({"longitude_window_deg": [
+                    float(dm["burst_lon_min"]), float(dm["burst_lon_max"])]}
+                   if dm.get("burst_lon_min") is not None else {}),
             } if mode in ("burst", "mlab", "population_gravity")
             and dm["burst_start_s"] is not None else None),
             # legacy mode:diurnal keeps its historical two-key value

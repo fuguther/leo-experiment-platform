@@ -116,6 +116,12 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "burst_start_s": (int, float, type(None)),
         "burst_duration_s": (int, float, type(None)),
         "burst_multiplier": (int, float),
+        # Optional regional burst window: when set, only sources whose
+        # longitude lies in [burst_lon_min, burst_lon_max] receive the
+        # multiplier during the window (all sources otherwise).  This is a
+        # controlled, pre-declared traffic transform, not a scene knob.
+        "burst_lon_min": (int, float, type(None)),
+        "burst_lon_max": (int, float, type(None)),
         "diurnal_amplitude": (int, float),
         "diurnal_phase_h": (int, float),
         # Global populated-land direct-access scene (frozen in Task 1):
@@ -443,6 +449,8 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "burst_start_s": None,
         "burst_duration_s": None,
         "burst_multiplier": 2.0,
+        "burst_lon_min": None,
+        "burst_lon_max": None,
         "diurnal_amplitude": 0.5,
         "diurnal_phase_h": 12.0,
         "temporal_model": "constant",
@@ -833,6 +841,8 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             raise ConfigError(
                 f"demand.mode={dm['mode']} requires burst_start_s and "
                 "burst_duration_s")
+    if dm["mode"] in {"burst", "mlab", "population_gravity"} and (
+            dm["mode"] == "burst" or burst_declared):
         if dm["burst_start_s"] < 0 or dm["burst_duration_s"] <= 0:
             raise ConfigError("burst window invalid")
         # The window must lie inside the interval in which packets are
@@ -856,6 +866,21 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             raise ConfigError(
                 "population_gravity cannot combine its burst window with "
                 "local_diurnal_cosine in the same demand profile")
+    lon_min, lon_max = dm["burst_lon_min"], dm["burst_lon_max"]
+    if (lon_min is None) != (lon_max is None):
+        raise ConfigError(
+            "demand.burst_lon_min and demand.burst_lon_max must be set "
+            "together (one-sided regional window is ambiguous)")
+    if lon_min is not None:
+        if not (-180.0 <= float(lon_min) < float(lon_max) <= 180.0):
+            raise ConfigError(
+                "demand.burst_lon_min/max must satisfy "
+                "-180 <= min < max <= 180 (degrees east)")
+        if not burst_declared:
+            raise ConfigError(
+                "demand.burst_lon_min/burst_lon_max are declared without a "
+                "burst window; the regional filter would be silently unused. "
+                "Also set burst_start_s and burst_duration_s")
     if dm["deadline_s"] is not None and dm["deadline_s"] <= 0:
         raise ConfigError("demand.deadline_s must be > 0 when set")
     if dm["research_deadline_s"] is not None and (

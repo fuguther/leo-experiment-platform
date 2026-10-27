@@ -216,6 +216,34 @@ def test_a_burst_window_under_a_mode_that_ignores_it_is_refused():
     assert ok["config"]["demand"]["burst_start_s"] == 1.0
 
 
+def test_regional_burst_requires_both_bounds_and_a_window():
+    """A one-sided or windowless regional filter must fail loud.
+
+    A regional burst is a pre-declared transform: if only one bound is set, or
+    the band is declared without a window, the filter would be silently unused
+    or ambiguous, so the config is refused instead.
+    """
+    one_sided = {"demand": {"mode": "burst", "burst_start_s": 1.0,
+                            "burst_duration_s": 2.0, "burst_multiplier": 5.0,
+                            "burst_lon_min": -5.0}}
+    with pytest.raises(config.ConfigError, match="must be set together"):
+        config.resolve_config(one_sided)
+    inverted = {"demand": {"mode": "burst", "burst_start_s": 1.0,
+                           "burst_duration_s": 2.0, "burst_multiplier": 5.0,
+                           "burst_lon_min": 5.0, "burst_lon_max": -5.0}}
+    with pytest.raises(config.ConfigError, match="must satisfy"):
+        config.resolve_config(inverted)
+    windowless = {"demand": {"mode": "gravity", "burst_lon_min": -5.0,
+                            "burst_lon_max": 5.0}}
+    with pytest.raises(config.ConfigError, match="without a burst window"):
+        config.resolve_config(windowless)
+    ok = config.resolve_config({"demand": {
+        "mode": "burst", "burst_start_s": 1.0, "burst_duration_s": 2.0,
+        "burst_multiplier": 5.0, "burst_lon_min": -5.0, "burst_lon_max": 5.0}})
+    assert ok["config"]["demand"]["burst_lon_min"] == -5.0
+    assert ok["config"]["demand"]["burst_lon_max"] == 5.0
+
+
 def test_mlab_burst_requires_complete_window_inside_the_emission_window():
     with pytest.raises(config.ConfigError, match="mode=mlab"):
         config.resolve_config({
