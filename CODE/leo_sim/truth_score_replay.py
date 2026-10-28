@@ -28,8 +28,8 @@ def _visible_order(decision: dict, ranking: list[str]) -> dict[str, int]:
 def replay_decision(decision: dict, probe_rows: Iterable[dict]) -> dict:
     """Replay one recorded decision after substituting target-time truth.
 
-    ``probe_rows`` must refer to the same decision.  Only candidates that had a
-    finite, non-fallback online score are part of the comparison.  The replay is
+    ``probe_rows`` must refer to the same decision. Only candidates that had a
+    finite, non-fallback online score are part of the comparison. The replay is
     marked non-comparable unless every such candidate has target truth and a
     positive service rate; silently dropping a missing candidate could invent a
     ranking flip.
@@ -47,8 +47,11 @@ def replay_decision(decision: dict, probe_rows: Iterable[dict]) -> dict:
             continue
         eligible.append(direction)
 
-    rows = {str(row.get("direction")): row for row in probe_rows
-            if row.get("direction") is not None}
+    rows = {
+        str(row.get("direction")): row
+        for row in probe_rows
+        if row.get("direction") is not None
+    }
     missing: list[str] = []
     replayed: dict[str, dict] = {}
 
@@ -62,8 +65,13 @@ def replay_decision(decision: dict, probe_rows: Iterable[dict]) -> dict:
             rate = row.get("service_rate_bps")
         terms = score.get("terms") or {}
         predicted_work_s = terms.get("resource_work_s")
-        if (row is None or truth_bits is None or rate is None
-                or float(rate) <= 0 or predicted_work_s is None):
+        if (
+            row is None
+            or truth_bits is None
+            or rate is None
+            or float(rate) <= 0
+            or predicted_work_s is None
+        ):
             missing.append(direction)
             continue
 
@@ -111,12 +119,18 @@ def replay_decision(decision: dict, probe_rows: Iterable[dict]) -> dict:
     )
     online_choice = online_rank[0]
     truth_choice = truth_rank[0]
-    online_margin = (replayed[online_rank[1]]["online_total_s"]
-                     - replayed[online_rank[0]]["online_total_s"])
-    truth_margin = (replayed[truth_rank[1]]["truth_proxy_total_s"]
-                    - replayed[truth_rank[0]]["truth_proxy_total_s"])
-    proxy_regret = (replayed[online_choice]["truth_proxy_total_s"]
-                    - replayed[truth_choice]["truth_proxy_total_s"])
+    online_margin = (
+        replayed[online_rank[1]]["online_total_s"]
+        - replayed[online_rank[0]]["online_total_s"]
+    )
+    truth_margin = (
+        replayed[truth_rank[1]]["truth_proxy_total_s"]
+        - replayed[truth_rank[0]]["truth_proxy_total_s"]
+    )
+    proxy_regret = (
+        replayed[online_choice]["truth_proxy_total_s"]
+        - replayed[truth_choice]["truth_proxy_total_s"]
+    )
     deltas = [replayed[d]["delta_resource_work_s"] for d in eligible]
 
     return {
@@ -130,4 +144,112 @@ def replay_decision(decision: dict, probe_rows: Iterable[dict]) -> dict:
         "online_top2_margin_s": online_margin,
         "truth_top2_margin_s": truth_margin,
         "differential_perturbation_span_s": max(deltas) - min(deltas),
+    }
+
+
+def _numeric_summary(values: Iterable[float]) -> dict:
+    data = sorted(float(v) for v in values)
+    if not data:
+        return {"n": 0, "mean": None, "median": None, "p95": None, "max": None}
+    n = len(data)
+    if n % 2:
+        median = data[n // 2]
+    else:
+        median = 0.5 * (data[n // 2 - 1] + data[n // 2])
+    p95 = data[int(0.95 * (n - 1))]
+    return {
+        "n": n,
+        "mean": sum(data) / n,
+        "median": median,
+        "p95": p95,
+        "max": data[-1],
+    }
+
+
+def summarize_replays(results: Iterable[dict]) -> dict:
+    """Aggregate replay rows without conflating score flips with final actions."""
+    rows = list(results)
+    comparable = [r for r in rows if r.get("comparable")]
+    flips = [r for r in comparable if r.get("ranking_flipped") is True]
+    action_auditable = [
+        r
+        for r in comparable
+        if r.get("actual_chosen") is not None and r.get("online_choice") is not None
+    ]
+    online_matches = sum(
+        1
+        for r in action_auditable
+        if r.get("actual_chosen") == r.get("online_choice")
+    )
+    n_comp = len(comparable)
+    n_action = len(action_auditable)
+    return {
+        "decisions": len(rows),
+        "comparable": n_comp,
+        "comparable_rate": (n_comp / len(rows)) if rows else None,
+        "ranking_flips": len(flips),
+        "ranking_flip_rate": (len(flips) / n_comp) if n_comp else None,
+        "action_auditable": n_action,
+        "online_top1_matches_actual": online_matches,
+        "online_top1_match_rate": (online_matches / n_action) if n_action else None,
+        "proxy_regret_s": _numeric_summary(
+            r["proxy_regret_s"]
+            for r in comparable
+            if r.get("proxy_regret_s") is not None
+        ),
+        "proxy_regret_s_on_flips": _numeric_summary(
+            r["proxy_regret_s"] for r in flips if r.get("proxy_regret_s") is not None
+        ),
+        "online_top2_margin_s": _numeric_summary(
+            r["online_top2_margin_s"]
+            for r in comparable
+            if r.get("online_top2_margin_s") is not None
+        ),
+        "differential_perturbation_span_s": _numeric_summary(
+            r["differential_perturbation_span_s"]
+            for r in comparable
+            if r.get("differential_perturbation_span_s") is not None
+        ),
+    }
+
+
+def replay_dataset(decisions: Iterable[dict], probe_rows: Iterable[dict]) -> dict:
+    """Join decision records with systematic probe rows and aggregate results.
+
+    Forced/debug-only probe groups are excluded from the statistical cohort. If
+    a decision has both systematic and forced rows, only systematic rows are
+    used so debug oversampling cannot change the ranking-flip rate.
+    """
+    decision_index = {
+        (d.get("pid"), d.get("decision_id")): d
+        for d in decisions
+        if d.get("pid") is not None and d.get("decision_id") is not None
+    }
+    grouped: dict[tuple[object, object], list[dict]] = {}
+    for row in probe_rows:
+        key = (row.get("pid"), row.get("decision_id"))
+        if key[0] is None or key[1] is None:
+            continue
+        grouped.setdefault(key, []).append(row)
+
+    results: list[dict] = []
+    forced_only = 0
+    missing_decisions = 0
+    for key, rows in grouped.items():
+        systematic = [r for r in rows if not r.get("forced")]
+        if not systematic:
+            forced_only += 1
+            continue
+        decision = decision_index.get(key)
+        if decision is None:
+            missing_decisions += 1
+            continue
+        results.append(replay_decision(decision, systematic))
+
+    return {
+        "probe_decisions": len(grouped),
+        "forced_groups_excluded": forced_only,
+        "missing_decision_records": missing_decisions,
+        "summary": summarize_replays(results),
+        "results": results,
     }
