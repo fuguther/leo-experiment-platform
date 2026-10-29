@@ -110,3 +110,10 @@ work_ahead_bits        = queued_bits + in_service_remaining
 ## 第二次 VM 探针（重跑，stride=4）
 
 见 `PROBE-RESULTS-20261019.md`（跑完后填）。
+
+
+## 2026-10-29：truth-score replay 的抽样单位审查
+
+旧版 TargetProbe 在候选行循环内部执行 stride，因此 stride=4 是“每四条候选记录取一条”，不是“每四个决策保留一个完整候选集”。每次决策会生成多条方向记录，而排名翻转需要同一决策下全部有限、非 fallback 候选的目标时刻真值。候选级抽样不能保证这一点；缺失候选必须判为 non-comparable，不能用剩下的一条或两条方向计算排名。
+
+run 17 的预测误差统计仍可按其已报告的候选样本口径使用，但当前仓库没有该 run 的逐决策候选覆盖审计，也没有 truth-score replay 汇总，因此不得将其描述成已完成 ranking replay。新版已把 stride 改为按 (pid, decision_id) 决策组抽样，并让上限整组接收或整组丢弃；同时新增强制动作标记和资源、generation、目标时刻、采样时刻、服务率与分项加和检查。旧 run 使用旧代码身份，不能追溯性地变成新版抽样；需要用新代码身份重跑诊断格。

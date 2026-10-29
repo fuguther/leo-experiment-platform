@@ -8,6 +8,7 @@ change the *existing scorer's* ranking when all other terms are held fixed.
 """
 from __future__ import annotations
 
+import math
 from typing import Iterable
 
 
@@ -25,75 +26,153 @@ def _visible_order(decision: dict, ranking: list[str]) -> dict[str, int]:
     return {direction: index for index, direction in enumerate(ordered)}
 
 
-def replay_decision(decision: dict, probe_rows: Iterable[dict]) -> dict:
-    """Replay one recorded decision after substituting target-time truth.
+def _finite_number(value) -> bool:
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(float(value)))
 
-    ``probe_rows`` must refer to the same decision. Only candidates that had a
-    finite, non-fallback online score are part of the comparison. The replay is
-    marked non-comparable unless every such candidate has target truth and a
-    positive service rate; silently dropping a missing candidate could invent a
-    ranking flip.
-    """
+
+def _same_number(left, right, *, abs_tol: float = 1e-9) -> bool:
+    return (_finite_number(left) and _finite_number(right)
+            and math.isclose(float(left), float(right), rel_tol=0.0,
+                             abs_tol=abs_tol))
+
+
+def replay_decision(decision: dict, probe_rows: Iterable[dict]) -> dict:
+    """Replay only when every eligible candidate has aligned target-time truth."""
     ta = _time_alignment(decision)
     scores = ta.get("scores") or {}
     ranking = [str(d) for d in (ta.get("ranking") or [])]
     visible = _visible_order(decision, ranking)
+    decision_candidates = [str(d) for d in (decision.get("candidates") or [])]
+    used_state = ta.get("used_state") or {}
+    eta_targets = ta.get("eta_targets") or {}
 
     eligible: list[str] = []
     for direction in ranking:
         score = scores.get(direction) or {}
         total = score.get("total_s")
-        if score.get("fallback") or score.get("missing") or total is None:
+        if score.get("fallback") or score.get("missing") or not _finite_number(total):
             continue
         eligible.append(direction)
 
-    rows = {
-        str(row.get("direction")): row
-        for row in probe_rows
-        if row.get("direction") is not None
-    }
+    rows_by_direction: dict[str, list[dict]] = {}
+    for row in probe_rows:
+        if row.get("direction") is not None:
+            rows_by_direction.setdefault(str(row["direction"]), []).append(row)
+
     missing: list[str] = []
+    invalid: list[str] = []
+    duplicates: list[str] = []
     replayed: dict[str, dict] = {}
+    integrity_errors: dict[str, list[str]] = {}
 
     for direction in eligible:
-        score = scores[direction]
-        row = rows.get(direction)
-        truth = None if row is None else row.get("truth")
-        truth_bits = None if not truth else truth.get("work_ahead_bits")
-        rate = score.get("service_rate_bps")
-        if rate is None and row is not None:
-            rate = row.get("service_rate_bps")
-        terms = score.get("terms") or {}
-        predicted_work_s = terms.get("resource_work_s")
-        if (
-            row is None
-            or truth_bits is None
-            or rate is None
-            or float(rate) <= 0
-            or predicted_work_s is None
-        ):
+        matches = rows_by_direction.get(direction, [])
+        if not matches:
             missing.append(direction)
+            integrity_errors[direction] = ["missing_probe_row"]
+            continue
+        if len(matches) != 1:
+            duplicates.append(direction)
+            integrity_errors[direction] = ["duplicate_probe_rows"]
+            continue
+
+        row = matches[0]
+        truth = row.get("truth")
+        if truth is None:
+            missing.append(direction)
+            integrity_errors[direction] = [str(row.get("missing_reason") or "missing_truth")]
+            continue
+
+        score = scores[direction]
+        terms = score.get("terms") or {}
+        expected = used_state.get(direction) or {}
+        errors: list[str] = []
+
+        if row.get("forced") is not False:
+            errors.append("forced_status_not_explicit_false")
+        if [str(x) for x in (row.get("candidate_directions") or [])] != decision_candidates:
+            errors.append("candidate_set_mismatch")
+
+        expected_resource_id = expected.get("resource_id")
+        expected_generation = expected.get("generation")
+        if (not expected_resource_id or expected_generation is None
+                or row.get("identity_source") != "used_state"):
+            errors.append("decision_resource_identity_missing_or_not_used")
+        if (row.get("resource_id") != expected_resource_id
+                or row.get("generation") != expected_generation):
+            errors.append("decision_resource_identity_mismatch")
+        if (row.get("sampled_resource_id") != row.get("resource_id")
+                or row.get("sampled_generation") != row.get("generation")):
+            errors.append("sampled_resource_identity_mismatch")
+        if (truth.get("resource_id") != row.get("resource_id")
+                or truth.get("generation") != row.get("generation")):
+            errors.append("truth_resource_identity_mismatch")
+
+        expected_target = eta_targets.get(direction)
+        if not _same_number(row.get("eval_target_s"), expected_target):
+            errors.append("evaluation_target_mismatch")
+        if not _same_number(row.get("sampled_at_s"), row.get("eval_target_s")):
+            errors.append("sampled_instant_mismatch")
+
+        rate = score.get("service_rate_bps")
+        if not _finite_number(rate) or float(rate) <= 0:
+            errors.append("score_service_rate_invalid")
+        if not _same_number(row.get("service_rate_bps"), rate):
+            errors.append("recorded_service_rate_mismatch")
+
+        predicted_work_s = terms.get("resource_work_s")
+        online_total = score.get("total_s")
+        truth_bits = truth.get("work_ahead_bits")
+        if not _finite_number(predicted_work_s):
+            errors.append("predicted_resource_work_invalid")
+        if not _finite_number(online_total):
+            errors.append("online_score_invalid")
+        if not _same_number(row.get("predicted_work_s"), predicted_work_s):
+            errors.append("recorded_resource_work_mismatch")
+        if row.get("score_total_s") is not None and not _same_number(
+                row.get("score_total_s"), online_total):
+            errors.append("recorded_total_score_mismatch")
+        try:
+            if any(not _finite_number(v) for v in terms.values()):
+                raise ValueError("non-finite score term")
+            term_sum = sum(float(v) for v in terms.values())
+            if not _same_number(term_sum, online_total):
+                errors.append("score_terms_not_additive")
+        except (TypeError, ValueError, OverflowError):
+            errors.append("score_terms_not_finite_or_additive")
+        if not _finite_number(truth_bits) or float(truth_bits) < 0:
+            errors.append("target_truth_work_invalid")
+
+        if errors:
+            invalid.append(direction)
+            integrity_errors[direction] = sorted(set(errors))
             continue
 
         truth_work_s = float(truth_bits) / float(rate)
         delta = truth_work_s - float(predicted_work_s)
-        online_total = float(score["total_s"])
-        truth_total = online_total + delta
+        truth_total = float(online_total) + delta
         replayed[direction] = {
-            "online_total_s": online_total,
+            "online_total_s": float(online_total),
             "predicted_resource_work_s": float(predicted_work_s),
             "truth_resource_work_s": truth_work_s,
             "delta_resource_work_s": delta,
             "truth_proxy_total_s": truth_total,
         }
 
-    comparable = len(eligible) >= 2 and not missing and len(replayed) == len(eligible)
+    comparable = (
+        len(eligible) >= 2 and not missing and not invalid and not duplicates
+        and len(replayed) == len(eligible)
+    )
     base = {
         "pid": decision.get("pid"),
         "decision_id": decision.get("decision_id"),
         "comparable": comparable,
         "eligible_directions": eligible,
         "missing_truth_directions": missing,
+        "invalid_directions": invalid,
+        "duplicate_directions": duplicates,
+        "integrity_errors": integrity_errors,
         "directions": replayed,
         "actual_chosen": decision.get("chosen"),
     }
@@ -214,41 +293,69 @@ def summarize_replays(results: Iterable[dict]) -> dict:
 
 
 def replay_dataset(decisions: Iterable[dict], probe_rows: Iterable[dict]) -> dict:
-    """Join decision records with systematic probe rows and aggregate results.
+    """Join sampled decision groups and report provenance/coverage failures."""
+    decision_rows = list(decisions)
+    decision_index: dict[tuple[object, object], dict] = {}
+    for decision in decision_rows:
+        pid, decision_id = decision.get("pid"), decision.get("decision_id")
+        if pid is None or decision_id is None:
+            continue
+        key = (pid, decision_id)
+        if key in decision_index:
+            raise ValueError(f"duplicate decision key (pid, decision_id)={key!r}")
+        decision_index[key] = decision
 
-    Forced/debug-only probe groups are excluded from the statistical cohort. If
-    a decision has both systematic and forced rows, only systematic rows are
-    used so debug oversampling cannot change the ranking-flip rate.
-    """
-    decision_index = {
-        (d.get("pid"), d.get("decision_id")): d
-        for d in decisions
-        if d.get("pid") is not None and d.get("decision_id") is not None
-    }
+    probe_list = list(probe_rows)
     grouped: dict[tuple[object, object], list[dict]] = {}
-    for row in probe_rows:
+    for row in probe_list:
         key = (row.get("pid"), row.get("decision_id"))
         if key[0] is None or key[1] is None:
             continue
         grouped.setdefault(key, []).append(row)
 
+    alignment_keys = {
+        (d.get("pid"), d.get("decision_id"))
+        for d in decision_rows
+        if d.get("pid") is not None and d.get("decision_id") is not None
+        and bool(_time_alignment(d).get("scores"))
+    }
+    alignment_with_probe = alignment_keys.intersection(grouped)
+
     results: list[dict] = []
-    forced_only = 0
+    forced_groups_excluded = 0
+    forced_status_unknown_groups = 0
+    mixed_forced_status_groups = 0
     missing_decisions = 0
     for key, rows in grouped.items():
-        systematic = [r for r in rows if not r.get("forced")]
-        if not systematic:
-            forced_only += 1
-            continue
         decision = decision_index.get(key)
         if decision is None:
             missing_decisions += 1
             continue
-        results.append(replay_decision(decision, systematic))
+        flags = [row.get("forced") for row in rows]
+        if any(not isinstance(flag, bool) for flag in flags):
+            forced_status_unknown_groups += 1
+            continue
+        if len(set(flags)) != 1:
+            mixed_forced_status_groups += 1
+            continue
+        if flags[0] is True:
+            forced_groups_excluded += 1
+            continue
+        results.append(replay_decision(decision, rows))
 
     return {
+        "decision_records": len(decision_rows),
+        "alignment_decision_records": len(alignment_keys),
+        "alignment_decisions_with_probe_rows": len(alignment_with_probe),
+        "alignment_decisions_without_probe_rows": len(alignment_keys - set(grouped)),
+        "alignment_probe_coverage_rate": (
+            len(alignment_with_probe) / len(alignment_keys) if alignment_keys else None
+        ),
+        "candidate_rows_received": len(probe_list),
         "probe_decisions": len(grouped),
-        "forced_groups_excluded": forced_only,
+        "forced_groups_excluded": forced_groups_excluded,
+        "forced_status_unknown_groups": forced_status_unknown_groups,
+        "mixed_forced_status_groups": mixed_forced_status_groups,
         "missing_decision_records": missing_decisions,
         "summary": summarize_replays(results),
         "results": results,

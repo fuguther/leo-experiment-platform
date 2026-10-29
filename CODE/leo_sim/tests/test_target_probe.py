@@ -242,3 +242,42 @@ def test_out_of_order_targets_are_each_read_at_their_own_instant(tmp_path):
     assert sampled == [0.4, 1.0]
     assert all(abs(r["sampled_at_s"] - r["eval_target_s"]) < 1e-12
                for r in probe.records)
+
+
+def test_stride_samples_complete_decision_groups():
+    probe = TargetProbe(None, "/tmp/never-written.jsonl", stride=2)
+    rows = []
+    for decision_id in (1, 2, 3):
+        for i, direction in enumerate(("E", "W", "N", "S")):
+            rows.append({
+                "pid": 7, "decision_id": decision_id, "direction": direction,
+                "eval_target_s": float(decision_id) + i * 0.01,
+            })
+    probe.enqueue(rows)
+
+    selected = {(r["pid"], r["decision_id"]) for r in probe.pending}
+    assert selected == {(7, 2)}
+    assert len(probe.pending) == 4
+    assert {r["direction"] for r in probe.pending} == {"E", "W", "N", "S"}
+    assert probe.counters["decision_groups_seen"] == 3
+    assert probe.counters["decision_groups_enqueued"] == 1
+    assert probe.counters["decision_groups_skipped_by_stride"] == 2
+    assert probe.counters["skipped_by_stride"] == 8
+
+
+def test_sample_cap_drops_whole_decision_group():
+    probe = TargetProbe(None, "/tmp/never-written.jsonl",
+                        max_samples=3, stride=1)
+    rows = []
+    for decision_id in (1, 2):
+        for i, direction in enumerate(("E", "W")):
+            rows.append({
+                "pid": 7, "decision_id": decision_id, "direction": direction,
+                "eval_target_s": float(decision_id) + i * 0.01,
+            })
+    probe.enqueue(rows)
+
+    assert {(r["pid"], r["decision_id"]) for r in probe.pending} == {(7, 1)}
+    assert probe.counters["enqueued"] == 2
+    assert probe.counters["dropped_overflow"] == 2
+    assert probe.counters["decision_groups_dropped_overflow"] == 1

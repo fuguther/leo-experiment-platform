@@ -49,7 +49,7 @@ def main() -> int:
     result = replay_dataset(_jsonl(decisions_path), _jsonl(probe_path))
     details = result.pop("results")
     payload = {
-        "schema": "target-truth-score-replay/v1",
+        "schema": "target-truth-score-replay/v2",
         "probe": str(probe_path),
         "decisions": str(decisions_path),
         "scope": {
@@ -57,7 +57,8 @@ def main() -> int:
             "changed_term": "resource_work_s only",
             "truth_term": "truth.work_ahead_bits / service_rate_bps",
             "all_other_score_terms_frozen": True,
-            "statistical_cohort": "non-forced probe rows only",
+            "statistical_cohort": "sampled decision groups with explicit forced=false and complete candidate provenance",
+            "sampling_unit": "decision_group",
         },
         **result,
     }

@@ -27,6 +27,11 @@ def _decision(
         "observation_at_start": {
             "time_alignment": {
                 "ranking": ["E", "W"],
+                "used_state": {
+                    "E": {"resource_id": "isl:0:1", "generation": 1},
+                    "W": {"resource_id": "isl:1:0", "generation": 1},
+                },
+                "eta_targets": {"E": 2.0, "W": 2.0},
                 "scores": {
                     "E": {
                         "total_s": e_total,
@@ -63,9 +68,23 @@ def _probe(
         "decision_id": decision_id,
         "direction": direction,
         "forced": forced,
+        "candidate_directions": ["E", "W"],
+        "eval_target_s": 2.0,
+        "sampled_at_s": 2.0,
+        "identity_source": "used_state",
+        "resource_id": ("isl:0:1" if direction == "E" else "isl:1:0"),
+        "generation": 1,
+        "sampled_resource_id": ("isl:0:1" if direction == "E" else "isl:1:0"),
+        "sampled_generation": 1,
         "predicted_bits": 1.0,
         "service_rate_bps": 1000.0,
-        "truth": {"work_ahead_bits": truth_bits},
+        "predicted_work_s": 0.001,
+        "score_total_s": (0.010 if direction == "E" else 0.012),
+        "truth": {
+            "work_ahead_bits": truth_bits,
+            "resource_id": ("isl:0:1" if direction == "E" else "isl:1:0"),
+            "generation": 1,
+        },
     }
 
 
@@ -165,3 +184,63 @@ def test_dataset_excludes_forced_only_groups_and_reports_missing_decisions() -> 
     assert result["missing_decision_records"] == 1
     assert result["summary"]["decisions"] == 1
     assert result["summary"]["ranking_flips"] == 1
+
+
+
+def test_incomplete_candidate_set_is_not_comparable():
+    from CODE.leo_sim.truth_score_replay import replay_decision
+
+    result = replay_decision(_decision(0.010, 0.012), [_probe("E", 10.0)])
+    assert result["comparable"] is False
+    assert result["missing_truth_directions"] == ["W"]
+    assert result["integrity_errors"]["W"] == ["missing_probe_row"]
+
+
+def test_truth_generation_mismatch_fails_closed():
+    from CODE.leo_sim.truth_score_replay import replay_decision
+
+    row_e = _probe("E", 10.0)
+    row_e["truth"]["generation"] = 99
+    result = replay_decision(_decision(0.010, 0.012), [row_e, _probe("W", 0.0)])
+    assert result["comparable"] is False
+    assert "E" in result["invalid_directions"]
+    assert "truth_resource_identity_mismatch" in result["integrity_errors"]["E"]
+
+
+def test_target_time_mismatch_fails_closed():
+    from CODE.leo_sim.truth_score_replay import replay_decision
+
+    row_e = _probe("E", 10.0)
+    row_e["eval_target_s"] = 2.01
+    result = replay_decision(_decision(0.010, 0.012), [row_e, _probe("W", 0.0)])
+    assert result["comparable"] is False
+    assert "evaluation_target_mismatch" in result["integrity_errors"]["E"]
+
+
+def test_duplicate_candidate_rows_are_not_silently_overwritten():
+    from CODE.leo_sim.truth_score_replay import replay_decision
+
+    row_e = _probe("E", 10.0)
+    result = replay_decision(_decision(0.010, 0.012), [row_e, dict(row_e), _probe("W", 0.0)])
+    assert result["comparable"] is False
+    assert result["duplicate_directions"] == ["E"]
+
+
+def test_dataset_excludes_groups_without_explicit_forced_status():
+    from CODE.leo_sim.truth_score_replay import replay_dataset
+
+    decision = _decision(0.010, 0.012, pid=1, decision_id=1)
+    rows = [_probe("E", 10.0, pid=1, decision_id=1), _probe("W", 0.0, pid=1, decision_id=1)]
+    for row in rows:
+        row.pop("forced")
+    result = replay_dataset([decision], rows)
+    assert result["forced_status_unknown_groups"] == 1
+    assert result["summary"]["decisions"] == 0
+
+
+def test_duplicate_decision_keys_fail_loudly():
+    from CODE.leo_sim.truth_score_replay import replay_dataset
+
+    decision = _decision(0.010, 0.012, pid=1, decision_id=1)
+    with pytest.raises(ValueError, match="duplicate decision key"):
+        replay_dataset([decision, dict(decision)], [])
