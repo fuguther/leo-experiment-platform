@@ -244,3 +244,42 @@ def test_duplicate_decision_keys_fail_loudly():
     decision = _decision(0.010, 0.012, pid=1, decision_id=1)
     with pytest.raises(ValueError, match="duplicate decision key"):
         replay_dataset([decision, dict(decision)], [])
+
+
+def test_missing_recorded_total_score_fails_closed():
+    from CODE.leo_sim.truth_score_replay import replay_decision
+
+    row_e = _probe("E", 10.0)
+    row_e.pop("score_total_s")
+    result = replay_decision(
+        _decision(0.010, 0.012), [row_e, _probe("W", 0.0)]
+    )
+    assert result["comparable"] is False
+    assert "recorded_total_score_missing_or_invalid" in result["integrity_errors"]["E"]
+
+
+def test_unexpected_probe_direction_invalidates_decision():
+    from CODE.leo_sim.truth_score_replay import replay_decision
+
+    result = replay_decision(
+        _decision(0.010, 0.012),
+        [_probe("E", 10.0), _probe("W", 0.0), _probe("N", 5.0)],
+    )
+    assert result["comparable"] is False
+    assert result["unexpected_probe_directions"] == ["N"]
+    assert "unexpected_probe_direction" in result["group_integrity_errors"]
+
+
+def test_unkeyed_probe_rows_are_reported():
+    from CODE.leo_sim.truth_score_replay import replay_dataset
+
+    decision = _decision(0.010, 0.012, pid=1, decision_id=1)
+    rows = [
+        _probe("E", 10.0, pid=1, decision_id=1),
+        _probe("W", 0.0, pid=1, decision_id=1),
+        _probe("E", 5.0, pid=1, decision_id=None),
+    ]
+    result = replay_dataset([decision], rows)
+    assert result["unkeyed_probe_rows"] == 1
+    assert result["summary"]["decisions"] == 1
+    assert result["summary"]["comparable"] == 1

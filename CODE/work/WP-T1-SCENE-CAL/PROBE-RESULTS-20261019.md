@@ -141,3 +141,6 @@ ISL 积压比接入侧小 **约 3–4 个数量级**，且近四分之一的包�
 run 17 的原报告确认探针按 stride=4 输出 47,755 行，并报告了同一次运行内的目标时刻误差与资源身份核验。随后对源码做了审查：旧版 stride 在候选行循环内部应用，而不是按决策组应用。每个决策有多个候选方向，truth-score replay 又要求每个有限、非 fallback 候选都具备同一决策的真值，所以旧抽样方案没有保证候选集完整。
 
 这不推翻原报告的候选级预测误差统计，也不证明原始文件中每个决策都恰好缺少某个特定方向；它说明的是：**没有逐决策候选完整性核验，就不能把 run 17 当作 ranking-flip replay 的有效输入。** 当前版本化仓库没有该 replay 的实际汇总。代码已改为按决策组抽样、整组处理 cap，并对强制标记、资源身份、generation、目标时刻和分数加和进行 fail-closed 核验。要取得 ranking_flip_rate 与 proxy_regret，必须在新代码身份下重新运行同一诊断格并核验回执。
+
+
+A further review tightened two edge cases in the revised implementation: decision-group stride now advances even when all candidate target times are missing, and replay fails closed on unexpected candidate directions, inconsistent candidate lists, or a missing recorded score total. Unkeyed probe rows are counted explicitly. These are implementation safeguards only; they do not supply new empirical results.

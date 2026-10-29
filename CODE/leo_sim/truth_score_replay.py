@@ -55,10 +55,26 @@ def replay_decision(decision: dict, probe_rows: Iterable[dict]) -> dict:
             continue
         eligible.append(direction)
 
+    probe_list = list(probe_rows)
     rows_by_direction: dict[str, list[dict]] = {}
-    for row in probe_rows:
+    for row in probe_list:
         if row.get("direction") is not None:
             rows_by_direction.setdefault(str(row["direction"]), []).append(row)
+
+    unexpected_probe_directions = sorted(
+        set(rows_by_direction) - set(decision_candidates)
+    )
+    group_integrity_errors: list[str] = []
+    if unexpected_probe_directions:
+        group_integrity_errors.append("unexpected_probe_direction")
+    if any(row.get("direction") is None for row in probe_list):
+        group_integrity_errors.append("probe_row_missing_direction")
+    if any(
+        [str(x) for x in (row.get("candidate_directions") or [])]
+        != decision_candidates
+        for row in probe_list
+    ):
+        group_integrity_errors.append("candidate_set_mismatch")
 
     missing: list[str] = []
     invalid: list[str] = []
@@ -130,8 +146,10 @@ def replay_decision(decision: dict, probe_rows: Iterable[dict]) -> dict:
             errors.append("online_score_invalid")
         if not _same_number(row.get("predicted_work_s"), predicted_work_s):
             errors.append("recorded_resource_work_mismatch")
-        if row.get("score_total_s") is not None and not _same_number(
-                row.get("score_total_s"), online_total):
+        recorded_total = row.get("score_total_s")
+        if not _finite_number(recorded_total):
+            errors.append("recorded_total_score_missing_or_invalid")
+        elif not _same_number(recorded_total, online_total):
             errors.append("recorded_total_score_mismatch")
         try:
             if any(not _finite_number(v) for v in terms.values()):
@@ -162,6 +180,7 @@ def replay_decision(decision: dict, probe_rows: Iterable[dict]) -> dict:
 
     comparable = (
         len(eligible) >= 2 and not missing and not invalid and not duplicates
+        and not group_integrity_errors
         and len(replayed) == len(eligible)
     )
     base = {
@@ -172,6 +191,8 @@ def replay_decision(decision: dict, probe_rows: Iterable[dict]) -> dict:
         "missing_truth_directions": missing,
         "invalid_directions": invalid,
         "duplicate_directions": duplicates,
+        "unexpected_probe_directions": unexpected_probe_directions,
+        "group_integrity_errors": sorted(set(group_integrity_errors)),
         "integrity_errors": integrity_errors,
         "directions": replayed,
         "actual_chosen": decision.get("chosen"),
@@ -306,6 +327,10 @@ def replay_dataset(decisions: Iterable[dict], probe_rows: Iterable[dict]) -> dic
         decision_index[key] = decision
 
     probe_list = list(probe_rows)
+    unkeyed_probe_rows = sum(
+        1 for row in probe_list
+        if row.get("pid") is None or row.get("decision_id") is None
+    )
     grouped: dict[tuple[object, object], list[dict]] = {}
     for row in probe_list:
         key = (row.get("pid"), row.get("decision_id"))
@@ -352,6 +377,7 @@ def replay_dataset(decisions: Iterable[dict], probe_rows: Iterable[dict]) -> dic
             len(alignment_with_probe) / len(alignment_keys) if alignment_keys else None
         ),
         "candidate_rows_received": len(probe_list),
+        "unkeyed_probe_rows": unkeyed_probe_rows,
         "probe_decisions": len(grouped),
         "forced_groups_excluded": forced_groups_excluded,
         "forced_status_unknown_groups": forced_status_unknown_groups,

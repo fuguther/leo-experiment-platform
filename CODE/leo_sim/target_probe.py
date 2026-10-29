@@ -90,6 +90,7 @@ class TargetProbe:
             "enqueued": 0, "sampled": 0, "dropped_overflow": 0,
             "skipped_by_stride": 0,
             "decision_groups_seen": 0,
+            "decision_groups_without_valid_targets": 0,
             "decision_groups_enqueued": 0,
             "decision_groups_skipped_by_stride": 0,
             "decision_groups_dropped_overflow": 0,
@@ -125,15 +126,21 @@ class TargetProbe:
             groups.setdefault((pid, decision_id), []).append(row)
 
         for group_rows in groups.values():
+            self.counters["decision_groups_seen"] += 1
+            self._decision_seq += 1
             valid_rows = [row for row in group_rows
                           if row.get("eval_target_s") is not None]
             if not valid_rows:
-                continue
-            self.counters["decision_groups_seen"] += 1
-            self._decision_seq += 1
+                self.counters["decision_groups_without_valid_targets"] += 1
+
+            # Advance stride over every keyed decision group, including groups
+            # whose target times are unavailable. Otherwise sample inclusion
+            # would depend on whether the prediction produced a usable target.
             if self.stride > 1 and self._decision_seq % self.stride:
                 self.counters["skipped_by_stride"] += len(valid_rows)
                 self.counters["decision_groups_skipped_by_stride"] += 1
+                continue
+            if not valid_rows:
                 continue
             if (self.max_samples is not None
                     and self.counters["enqueued"] + len(valid_rows) > self.max_samples):
@@ -318,13 +325,15 @@ class TargetProbe:
             "stride": int(self.stride),
             "sampling_unit": "decision_group",
             "decision_groups_seen": self.counters["decision_groups_seen"],
+            "decision_groups_without_valid_targets": self.counters["decision_groups_without_valid_targets"],
             "decision_groups_enqueued": self.counters["decision_groups_enqueued"],
             "decision_groups_skipped_by_stride": self.counters["decision_groups_skipped_by_stride"],
             "decision_groups_dropped_overflow": self.counters["decision_groups_dropped_overflow"],
             "skipped_by_stride": self.counters["skipped_by_stride"],
-            "sampling_rule": ("deterministic 1-in-stride over (pid, decision_id) "
-                              "groups; every valid-target candidate in a selected "
-                              "group is kept; overflow drops whole groups"),
+            "sampling_rule": ("deterministic 1-in-stride over all keyed (pid, decision_id) "
+                              "groups, including groups with no valid target; every "
+                              "valid-target candidate in a selected group is kept; "
+                              "overflow drops whole groups"),
             "sampled": self.counters["sampled"],
             "dropped_overflow": self.counters["dropped_overflow"],
             "reason_counts": dict(sorted(self.reasons.items())),

@@ -281,3 +281,23 @@ def test_sample_cap_drops_whole_decision_group():
     assert probe.counters["enqueued"] == 2
     assert probe.counters["dropped_overflow"] == 2
     assert probe.counters["decision_groups_dropped_overflow"] == 1
+
+
+def test_stride_advances_over_groups_without_valid_targets():
+    probe = TargetProbe(None, "/tmp/never-written.jsonl", stride=2)
+    rows = [
+        {"pid": 7, "decision_id": 1, "direction": "E", "eval_target_s": None},
+        {"pid": 7, "decision_id": 1, "direction": "W", "eval_target_s": None},
+        {"pid": 7, "decision_id": 2, "direction": "E", "eval_target_s": 2.0},
+        {"pid": 7, "decision_id": 2, "direction": "W", "eval_target_s": 2.01},
+        {"pid": 7, "decision_id": 3, "direction": "E", "eval_target_s": 3.0},
+        {"pid": 7, "decision_id": 3, "direction": "W", "eval_target_s": 3.01},
+    ]
+    probe.enqueue(rows)
+
+    assert {(r["pid"], r["decision_id"]) for r in probe.pending} == {(7, 2)}
+    assert probe.counters["decision_groups_seen"] == 3
+    assert probe.counters["decision_groups_without_valid_targets"] == 1
+    assert probe.counters["decision_groups_enqueued"] == 1
+    assert probe.counters["decision_groups_skipped_by_stride"] == 2
+    assert probe.counters["skipped_by_stride"] == 2
