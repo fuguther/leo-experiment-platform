@@ -59,7 +59,7 @@ import json
 import math
 
 
-SCHEMA = "leo-sim-target-probe/v1"
+SCHEMA = "leo-sim-target-probe/v2"
 
 
 class TargetProbe:
@@ -70,15 +70,13 @@ class TargetProbe:
         self.kernel = kernel
         self.path = str(path)
         self.note = note
-        # Deterministic 1-in-stride statistical sample over the monotone
-        # candidate stream.  A hard max_samples alone would keep only the
-        # EARLIEST rows: the first probe run hit the cap at 40 000 of 191 023
-        # candidates and therefore described the first 55 ms of the run only.
+        # Deterministic 1-in-stride sampling is performed over decision groups,
+        # not individual candidate rows. This preserves the complete candidate
+        # set required for a ranking replay.
         self.stride = max(1, int(stride))
-        self._seq = 0
-        # Largest number of DIRECTION records the probe will schedule.  The
-        # cap is on records, not on decisions, and every dropped record is
-        # counted in dropped_overflow.
+        self._decision_seq = 0
+        # max_samples remains a candidate-record cap, but groups are admitted or
+        # dropped atomically so the cap can never leave a partial candidate set.
         self.max_samples = None if max_samples is None else int(max_samples)
         self.pending = []
         # Targets in ascending order, parallel to pending.  The sampler can only
@@ -88,8 +86,15 @@ class TargetProbe:
         # 2508/6313 rows were read 8 us to 10.9 ms late).
         self._targets = []
         self.records = []
-        self.counters = {"enqueued": 0, "sampled": 0, "dropped_overflow": 0,
-                         "skipped_by_stride": 0}
+        self.counters = {
+            "enqueued": 0, "sampled": 0, "dropped_overflow": 0,
+            "skipped_by_stride": 0,
+            "decision_groups_seen": 0,
+            "decision_groups_without_valid_targets": 0,
+            "decision_groups_enqueued": 0,
+            "decision_groups_skipped_by_stride": 0,
+            "decision_groups_dropped_overflow": 0,
+        }
         self.reasons = {}
         self.started = False
         self.finished = False
@@ -103,35 +108,61 @@ class TargetProbe:
 
     # ------------------------------------------------------------------ input
     def enqueue(self, rows):
-        """Queue already-built audit rows (no simulation effect)."""
+        """Queue candidate rows by decision, sampling/dropping only whole groups."""
         if not rows:
             return
+        groups = {}
         for row in rows:
             if row.get("eval_target_s") is None:
-                # No evaluation instant => no label can ever be taken.  Record
-                # the reason instead of inventing an instant.
+                # Preserve the missing-target audit even though this row cannot
+                # be scheduled. A selected decision with a missing candidate
+                # remains incomplete and will fail closed in the replay.
                 self._reason("no_eval_target")
+            pid = row.get("pid")
+            decision_id = row.get("decision_id")
+            if pid is None or decision_id is None:
+                self._reason("no_decision_identity")
                 continue
-            self._seq += 1
-            if self.stride > 1 and (self._seq % self.stride):
-                self.counters["skipped_by_stride"] += 1
+            groups.setdefault((pid, decision_id), []).append(row)
+
+        for group_rows in groups.values():
+            self.counters["decision_groups_seen"] += 1
+            self._decision_seq += 1
+            valid_rows = [row for row in group_rows
+                          if row.get("eval_target_s") is not None]
+            if not valid_rows:
+                self.counters["decision_groups_without_valid_targets"] += 1
+
+            # Advance stride over every keyed decision group, including groups
+            # whose target times are unavailable. Otherwise sample inclusion
+            # would depend on whether the prediction produced a usable target.
+            if self.stride > 1 and self._decision_seq % self.stride:
+                self.counters["skipped_by_stride"] += len(valid_rows)
+                self.counters["decision_groups_skipped_by_stride"] += 1
+                continue
+            if not valid_rows:
                 continue
             if (self.max_samples is not None
-                    and self.counters["enqueued"] >= self.max_samples):
-                self.counters["dropped_overflow"] += 1
-                self._reason("overflow")
+                    and self.counters["enqueued"] + len(valid_rows) > self.max_samples):
+                self.counters["dropped_overflow"] += len(valid_rows)
+                self.counters["decision_groups_dropped_overflow"] += 1
+                for _ in valid_rows:
+                    self._reason("overflow")
                 continue
-            self.counters["enqueued"] += 1
-            target = float(row["eval_target_s"])
-            position = bisect.bisect_right(self._targets, target)
-            self._targets.insert(position, target)
-            self.pending.insert(position, row)
-            if self.started and self._wake is not None \
-                    and not self._wake.triggered:
-                # A newer target may be EARLIER than the one the sampler is
-                # sleeping to.  Wake it so every target is read at its own
-                # instant, never late.
-                self._wake.succeed()
+
+            self.counters["decision_groups_enqueued"] += 1
+            for row in valid_rows:
+                self.counters["enqueued"] += 1
+                target = float(row["eval_target_s"])
+                position = bisect.bisect_right(self._targets, target)
+                self._targets.insert(position, target)
+                self.pending.insert(position, row)
+                if self.started and self._wake is not None \
+                        and not self._wake.triggered:
+                    # A newer target may be EARLIER than the one the sampler is
+                    # sleeping to. Wake it so every target is read at its own
+                    # instant, never late.
+                    self._wake.succeed()
 
     # ---------------------------------------------------------------- process
     def start(self):
@@ -292,10 +323,17 @@ class TargetProbe:
             "sampler_parked_at_stop": bool(self._parked),
             "enqueued": self.counters["enqueued"],
             "stride": int(self.stride),
+            "sampling_unit": "decision_group",
+            "decision_groups_seen": self.counters["decision_groups_seen"],
+            "decision_groups_without_valid_targets": self.counters["decision_groups_without_valid_targets"],
+            "decision_groups_enqueued": self.counters["decision_groups_enqueued"],
+            "decision_groups_skipped_by_stride": self.counters["decision_groups_skipped_by_stride"],
+            "decision_groups_dropped_overflow": self.counters["decision_groups_dropped_overflow"],
             "skipped_by_stride": self.counters["skipped_by_stride"],
-            "sampling_rule": ("deterministic 1-in-stride over the monotone "
-                              "candidate stream; the overflow cap is a hard "
-                              "stop on top of it"),
+            "sampling_rule": ("deterministic 1-in-stride over all keyed (pid, decision_id) "
+                              "groups, including groups with no valid target; every "
+                              "valid-target candidate in a selected group is kept; "
+                              "overflow drops whole groups"),
             "sampled": self.counters["sampled"],
             "dropped_overflow": self.counters["dropped_overflow"],
             "reason_counts": dict(sorted(self.reasons.items())),
