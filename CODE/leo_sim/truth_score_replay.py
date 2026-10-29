@@ -327,10 +327,6 @@ def replay_dataset(decisions: Iterable[dict], probe_rows: Iterable[dict]) -> dic
     mixed_forced_status_groups = 0
     missing_decisions = 0
     for key, rows in grouped.items():
-        decision = decision_index.get(key)
-        if decision is None:
-            missing_decisions += 1
-            continue
         flags = [row.get("forced") for row in rows]
         if any(not isinstance(flag, bool) for flag in flags):
             forced_status_unknown_groups += 1
@@ -340,6 +336,10 @@ def replay_dataset(decisions: Iterable[dict], probe_rows: Iterable[dict]) -> dic
             continue
         if flags[0] is True:
             forced_groups_excluded += 1
+            continue
+        decision = decision_index.get(key)
+        if decision is None:
+            missing_decisions += 1
             continue
         results.append(replay_decision(decision, rows))
 
