@@ -1,0 +1,477 @@
+{
+ "schema": "t1-c5-fork-summary/v1",
+ "forks": 3,
+ "R_d_computed": 3,
+ "R_d_positive": 2,
+ "R_d_negative": 1,
+ "R_d_zero": 0,
+ "R_d_values_s": [
+  -0.05181953968656916,
+  0.08968496458467534,
+  0.23461866010061494
+ ],
+ "rows": [
+  {
+   "file": "cf-d18589.json",
+   "target_decision_id": 18589,
+   "forced_action": "E",
+   "verification": {
+    "branch_states_identical": true,
+    "baseline_action": "S",
+    "forced_action": "E",
+    "action_changed": true,
+    "legal_at_branch_point": true
+   },
+   "tagged_packet": {
+    "pid": 1438,
+    "baseline": {
+     "fate": "DELIVERED",
+     "emitted_at": 0.247846,
+     "delivered_at": 0.36837719723379714,
+     "e2e_s": 0.12053119723379713,
+     "path": [
+      139,
+      120,
+      121,
+      122,
+      123,
+      124,
+      4,
+      3,
+      2,
+      1,
+      0
+     ],
+     "first_queue_enter_s": 0.247846,
+     "propagation_hops_observed": 0,
+     "last_event_s": 0.36837719723379714
+    },
+    "counterfactual": {
+     "fate": "DELIVERED",
+     "emitted_at": 0.247846,
+     "delivered_at": 0.4201967369203663,
+     "e2e_s": 0.1723507369203663,
+     "path": [
+      139,
+      120,
+      121,
+      122,
+      123,
+      124,
+      4,
+      24,
+      23,
+      22,
+      21,
+      20,
+      39,
+      38,
+      37,
+      36,
+      16,
+      17,
+      18,
+      19,
+      0
+     ],
+     "first_queue_enter_s": 0.247846,
+     "propagation_hops_observed": 0,
+     "last_event_s": 0.4201967369203663
+    }
+   },
+   "R_d_e2e_s": -0.05181953968656916,
+   "R_d_status": "computed",
+   "cohort": {
+    "n_common_delivered": 8860,
+    "n_delta_positive": 3198,
+    "n_delta_negative": 2915,
+    "n_delta_zero": 2747,
+    "p50_delta_s": 0.0,
+    "max_abs_delta_s": 0.23469416764500117,
+    "fate_changes": 18,
+    "fate_change_detail": {
+     "3783": {
+      "baseline": "DELIVERED",
+      "counterfactual": "ISL_QUEUE_OVERFLOW"
+     },
+     "3825": {
+      "baseline": "DELIVERED",
+      "counterfactual": "ISL_QUEUE_OVERFLOW"
+     },
+     "3841": {
+      "baseline": "DELIVERED",
+      "counterfactual": "ISL_QUEUE_OVERFLOW"
+     },
+     "6768": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "6779": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     },
+     "6807": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "6811": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     },
+     "6948": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "7033": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     },
+     "8179": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "8348": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "8365": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "8419": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "8450": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "8687": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     },
+     "8740": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     },
+     "8802": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     },
+     "8852": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     }
+    }
+   },
+   "outcome_delta": {
+    "access": {},
+    "events_processed": 14062,
+    "fate_counts": {
+     "DELIVERED": -2,
+     "IN_SYSTEM_AT_STOP": -1,
+     "ISL_QUEUE_OVERFLOW": 3
+    },
+    "occupied": {
+     "gsl_downlink_s": -2.999999999997449e-05,
+     "isl_s": 0.8001414757548986
+    },
+    "queue_area_bits_s": {
+     "downlink": -509.3703154747885,
+     "holding": 104347.55491957953,
+     "isl_ctrl": 19.90917444229126,
+     "isl_data": 28254.11712680757
+    },
+    "totals": {
+     "delivered_bits": -1200000,
+     "in_system_bits_at_stop": -600000,
+     "terminal_loss_bits": 1800000
+    }
+   }
+  },
+  {
+   "file": "cf-d43570.json",
+   "target_decision_id": 43570,
+   "forced_action": "S",
+   "verification": {
+    "branch_states_identical": true,
+    "baseline_action": "E",
+    "forced_action": "S",
+    "action_changed": true,
+    "legal_at_branch_point": true
+   },
+   "tagged_packet": {
+    "pid": 3266,
+    "baseline": {
+     "fate": "DELIVERED",
+     "emitted_at": 0.430723,
+     "delivered_at": 0.61127443997575,
+     "e2e_s": 0.18055143997575002,
+     "path": [
+      139,
+      120,
+      121,
+      122,
+      123,
+      124,
+      4,
+      24,
+      23,
+      22,
+      21,
+      20,
+      39,
+      38,
+      37,
+      36,
+      16,
+      17,
+      18,
+      19,
+      0
+     ],
+     "first_queue_enter_s": 0.430723,
+     "propagation_hops_observed": 0,
+     "last_event_s": 0.61127443997575
+    },
+    "counterfactual": {
+     "fate": "DELIVERED",
+     "emitted_at": 0.430723,
+     "delivered_at": 0.5215894753910747,
+     "e2e_s": 0.09086647539107467,
+     "path": [
+      139,
+      120,
+      121,
+      122,
+      123,
+      124,
+      4,
+      3,
+      2,
+      1,
+      0
+     ],
+     "first_queue_enter_s": 0.430723,
+     "propagation_hops_observed": 0,
+     "last_event_s": 0.5215894753910747
+    }
+   },
+   "R_d_e2e_s": 0.08968496458467534,
+   "R_d_status": "computed",
+   "cohort": {
+    "n_common_delivered": 8864,
+    "n_delta_positive": 1247,
+    "n_delta_negative": 1647,
+    "n_delta_zero": 5970,
+    "p50_delta_s": 0.0,
+    "max_abs_delta_s": 0.2319217882077228,
+    "fate_changes": 13,
+    "fate_change_detail": {
+     "6807": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "6948": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "8179": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "8348": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "8365": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "8419": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "8450": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "8687": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     },
+     "8723": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     },
+     "8740": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     },
+     "8789": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     },
+     "8852": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     },
+     "8857": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     }
+    }
+   },
+   "outcome_delta": {
+    "access": {},
+    "events_processed": -1037,
+    "fate_counts": {
+     "DELIVERED": 1,
+     "IN_SYSTEM_AT_STOP": -1
+    },
+    "occupied": {
+     "gsl_downlink_s": 2.999999999997449e-05,
+     "isl_s": -0.03631139727404786
+    },
+    "queue_area_bits_s": {
+     "downlink": 201.84172455677276,
+     "holding": -186147.84404792648,
+     "isl_ctrl": 64.37946359813213,
+     "isl_data": 68903.98297144473
+    },
+    "totals": {
+     "delivered_bits": 600000,
+     "in_system_bits_at_stop": -600000
+    }
+   }
+  },
+  {
+   "file": "cf-d96253.json",
+   "target_decision_id": 96253,
+   "forced_action": "E",
+   "verification": {
+    "branch_states_identical": true,
+    "baseline_action": "N",
+    "forced_action": "E",
+    "action_changed": true,
+    "legal_at_branch_point": true
+   },
+   "tagged_packet": {
+    "pid": 6779,
+    "baseline": {
+     "fate": "DELIVERED",
+     "emitted_at": 0.784935,
+     "delivered_at": 1.082996074199509,
+     "e2e_s": 0.298061074199509,
+     "path": [
+      139,
+      120,
+      121,
+      122,
+      123,
+      124,
+      125,
+      5,
+      25,
+      45,
+      65,
+      85,
+      105,
+      104,
+      84,
+      64,
+      63,
+      62,
+      61,
+      60,
+      79,
+      78,
+      77,
+      76,
+      56,
+      36,
+      37,
+      38,
+      39,
+      20,
+      21,
+      22,
+      23,
+      24,
+      4,
+      3
+     ],
+     "first_queue_enter_s": 0.784935,
+     "propagation_hops_observed": 0,
+     "last_event_s": 1.082996074199509
+    },
+    "counterfactual": {
+     "fate": "DELIVERED",
+     "emitted_at": 0.784935,
+     "delivered_at": 0.8483774140988941,
+     "e2e_s": 0.06344241409889406,
+     "path": [
+      139,
+      120,
+      121,
+      122,
+      123,
+      124,
+      4,
+      3
+     ],
+     "first_queue_enter_s": 0.784935,
+     "propagation_hops_observed": 0,
+     "last_event_s": 0.8483774140988941
+    }
+   },
+   "R_d_e2e_s": 0.23461866010061494,
+   "R_d_status": "computed",
+   "cohort": {
+    "n_common_delivered": 8869,
+    "n_delta_positive": 498,
+    "n_delta_negative": 560,
+    "n_delta_zero": 7811,
+    "p50_delta_s": 0.0,
+    "max_abs_delta_s": 0.23461866010061494,
+    "fate_changes": 3,
+    "fate_change_detail": {
+     "6807": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "6948": {
+      "baseline": "IN_SYSTEM_AT_STOP",
+      "counterfactual": "DELIVERED"
+     },
+     "8474": {
+      "baseline": "DELIVERED",
+      "counterfactual": "IN_SYSTEM_AT_STOP"
+     }
+    }
+   },
+   "outcome_delta": {
+    "access": {},
+    "events_processed": -28,
+    "fate_counts": {
+     "DELIVERED": 1,
+     "IN_SYSTEM_AT_STOP": -1
+    },
+    "occupied": {
+     "gsl_downlink_s": 5.999999999994898e-05,
+     "isl_s": 0.0014639763156765184
+    },
+    "queue_area_bits_s": {
+     "downlink": 60.30448353651059,
+     "holding": -185449.14917698433,
+     "isl_ctrl": 29.494402706623077,
+     "isl_data": -53944.31857216358
+    },
+    "totals": {
+     "delivered_bits": 600000,
+     "in_system_bits_at_stop": -600000
+    }
+   }
+  }
+ ]
+}
