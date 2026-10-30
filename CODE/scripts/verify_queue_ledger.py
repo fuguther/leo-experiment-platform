@@ -109,6 +109,7 @@ def stage_of(queue):
 
 
 def conservation(packet_events, windows, final_level):
+    final_level = _aggregate_level(final_level)
     """Per-queue bits conservation from the verbatim packet events.
 
     leaves are derived three ways, because the platform has three exit kinds:
@@ -164,13 +165,42 @@ def conservation(packet_events, windows, final_level):
 
 
 def _queue_key(queue, link_id):
+    """Normalise an event's (queue, link_id) to the ledger's physical qid.
+
+    Three naming mismatches have to be reconciled, otherwise entered and left
+    sets never meet and every queue looks unconserved:
+      * uplink enqueue names the pending queue ``gsl:uplink:pending:<cell>``
+        while the service names ``gsl:uplink:<sat>:<cell>``;
+      * the downlink queue is shared per satellite, so its qid is
+        ``downlink:sat:<sat>``, not per destination cell;
+      * the ISL qid carries a link generation, which the packet events do not.
+    """
     if queue == "isl":
-        return f"isl_data:{link_id}"
-    if queue in ("uplink", "downlink"):
-        return f"{queue}:{link_id}"
+        sat, peer = link_id.split(":")[1], link_id.split(":")[2]
+        return f"isl_data:isl:{sat}:{peer}"
+    if queue == "uplink":
+        cell = link_id.split("gsl:uplink:pending:", 1)[1] \
+            if "pending:" in link_id else link_id.split(":", 3)[-1]
+        return f"uplink:cell:{cell}"
+    if queue == "downlink":
+        sat = link_id.split(":")[2]
+        return f"downlink:sat:{sat}"
     if queue == "holding":
-        return f"holding:{link_id}"
+        return f"holding:sat:{link_id.split(':')[-1]}"
     return f"{queue}:{link_id}"
+
+
+def _physical(qid):
+    """Strip the ISL generation suffix: conservation is per physical link."""
+    marker = ":gen"
+    return qid.split(marker, 1)[0] if marker in qid else qid
+
+
+def _aggregate_level(final_level):
+    out = defaultdict(int)
+    for qid, bits in final_level.items():
+        out[_physical(qid)] += int(bits)
+    return dict(out)
 
 
 def main(argv=None):
@@ -231,7 +261,8 @@ def main(argv=None):
             continue
         level_rows = read_levels(files["levels"])
         area, final_level, last_t, transitions = reconstruct_area(level_rows)
-        native = arm.get("queue_area_bits_s") or {}
+        native = ((arm.get("outcome") or {}).get("queue_area_bits_s")
+                  or arm.get("queue_area_bits_s") or {})
         stages = {}
         worst_abs = 0.0
         worst_rel = 0.0
