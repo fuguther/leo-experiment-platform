@@ -1456,7 +1456,7 @@ def _compute_cost(timeline, resolved):
 def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
              source=None, capture_replay=False, simulator_call_guard=None,
              target_probe=None, target_probe_horizons=None,
-             resource_journal=None):
+             resource_journal=None, queue_ledger=None):
     """One full-network run under ONE online arm.
 
     The four arms start from the SAME input trace and the SAME initial
@@ -1487,6 +1487,11 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
         probe_kwargs.update({
             "resource_journal_path": str(resource_journal["path"]),
             "resource_journal_stride": resource_journal.get("stride"),
+        })
+    if queue_ledger:
+        probe_kwargs.update({
+            "queue_ledger_dir": str(queue_ledger["dir"]),
+            "queue_ledger_prefix": str(queue_ledger["prefix"]),
         })
     if call_scope is None:
         result = kernel.run_simulation(
@@ -1644,6 +1649,7 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
         "natural_end": result["natural_end"],
         "target_probe": result.get("target_probe"),
         "resource_journal": result.get("resource_journal"),
+        "queue_ledger": result.get("queue_ledger_audit"),
         "prediction_accuracy": probe_accuracy,
         "stop_time_s": result["stop_time_s"],
         "horizon_s": result["horizon_s"],
@@ -1844,7 +1850,7 @@ def network_alignment(resolved, rows, geometry, source,
                      simulator_call_guard=None,
                      allow_non_binding_deadline=False,
                      target_probe=None, target_probe_horizons=None,
-                     resource_journal=None):
+                     resource_journal=None, queue_ledger=None):
     """The FOUR online arms, each running the WHOLE network to the horizon."""
     if overrides:
         cfg = copy.deepcopy(resolved["config"])
@@ -1879,7 +1885,11 @@ def network_alignment(resolved, rows, geometry, source,
                 simulator_call_guard=simulator_call_guard,
                 target_probe=probe,
                 target_probe_horizons=target_probe_horizons,
-                resource_journal=journal)
+                resource_journal=journal,
+                queue_ledger=(None if queue_ledger is None else {
+                    "dir": str(queue_ledger["dir"]),
+                    "prefix": f"{queue_ledger['prefix']}-{arm}",
+                }))
             replay = row.get("replay") if isinstance(row, dict) else None
             if isinstance(replay, dict) and replay.get("captured"):
                 # Keep complete observations, history and physical resource
@@ -1986,7 +1996,7 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
              simulator_call_guard=None,
              allow_non_binding_deadline=False,
              target_probe=None, target_probe_horizons=None,
-             resource_journal=None):
+             resource_journal=None, queue_ledger=None):
     """One entry point for the three task types.
 
     The suite only ever calls this, so budget enforcement, failure
@@ -2016,7 +2026,8 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
                                    target_probe=target_probe,
                                    target_probe_horizons=(
                                        target_probe_horizons),
-                                   resource_journal=resource_journal)
+                                   resource_journal=resource_journal,
+                                   queue_ledger=queue_ledger)
     else:
         driver = execution_compare.compare(
             resolved, rows, geometry, source,
@@ -2214,7 +2225,7 @@ def network_summary_document(document):
         "fallback_reason_counts", "compute", "control",
         "control_advertisement_audit", "query_service",
         "congestion_metrics", "mechanisms", "natural_end", "stop_time_s",
-        "horizon_s", "target_probe", "resource_journal",
+        "horizon_s", "target_probe", "resource_journal", "queue_ledger",
         "prediction_accuracy",
     )
     for arm in driver["arms"]:
@@ -2605,6 +2616,11 @@ def main(argv=None) -> int:
     parser.add_argument("--resource-journal-stride", type=int, default=None,
                         help="deterministic 1-in-stride sampling of queue "
                              "states (loss rows are never sampled out)")
+    parser.add_argument("--queue-ledger", action="store_true",
+                        help="audit-only exact queue-level ledger plus the "
+                             "verbatim packet_events/link_service_windows; "
+                             "writes <out>-<arm>-queue-levels.jsonl.gz and "
+                             "siblings. Opt-in; changes no existing field.")
     parser.add_argument("--autopsy", action="store_true",
                         help="closing gate: build an autopsy sidecar from the "
                              "summary (and probe) and fail if it cannot")
@@ -2774,6 +2790,16 @@ def main(argv=None) -> int:
                 "prefix": args.out.stem,
                 "stride": args.resource_journal_stride,
             }
+        queue_ledger = None
+        if getattr(args, "queue_ledger", False):
+            if args.task != "network_alignment":
+                print("T1TASKS REFUSED: --queue-ledger only supports "
+                      "network_alignment")
+                return 2
+            queue_ledger = {
+                "dir": str(args.out.parent),
+                "prefix": args.out.stem,
+            }
         target_probe = None
         if getattr(args, "target_probe", False):
             if args.task != "network_alignment":
@@ -2800,7 +2826,8 @@ def main(argv=None) -> int:
             simulator_call_guard=call_guard,
             target_probe=target_probe,
             target_probe_horizons=probe_horizons,
-            resource_journal=resource_journal)
+            resource_journal=resource_journal,
+            queue_ledger=queue_ledger)
         if diagnostic is not None:
             if diagnostic_state["stop_fired"]:
                 raise TaskError(

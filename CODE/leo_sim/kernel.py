@@ -212,31 +212,52 @@ class DataPacket:
         self.current_hop_index = None
 
 
+# T1-QUEUE-LEDGER: the single opt-in recorder, or None.  Every simulator queue
+# mutation goes through QueueArea.add/remove, so one hook here covers every
+# queue of every stage without touching a caller.  Write-only: when it is None
+# (the default) the cost is one global lookup and the run is unchanged.
+_QUEUE_LEDGER = None
+
+
 class QueueArea:
     """Exact queued-bits x seconds integral. Mutations call add/remove with
-    the current time; close(t) settles the integral at the stop time."""
+    the current time; close(t) settles the integral at the stop time.
 
-    __slots__ = ("area", "bits", "last")
+    ``qid`` names the physical queue (uplink / downlink / holding / isl data /
+    isl ctrl).  It is consulted only by the optional queue ledger; the integral
+    itself never depends on it, so an untagged QueueArea behaves as before.
+    """
 
-    def __init__(self):
+    __slots__ = ("area", "bits", "last", "qid")
+
+    def __init__(self, qid=None):
         self.area = 0.0
         self.bits = 0
         self.last = 0.0
+        self.qid = qid
 
     def _acc(self, now: float):
         self.area += self.bits * (now - self.last)
         self.last = now
 
+    def _emit(self, now: float, event: str):
+        ledger = _QUEUE_LEDGER
+        if ledger is not None and self.qid is not None:
+            ledger.level(now, self.qid, self.bits, event)
+
     def add(self, bits: int, now: float):
         self._acc(now)
         self.bits += bits
+        self._emit(now, "add")
 
     def remove(self, bits: int, now: float):
         self._acc(now)
         self.bits -= bits
+        self._emit(now, "remove")
 
     def close(self, t: float):
         self._acc(t)
+        self._emit(t, "close")
 
 
 class SatelliteHoldingQueue:
@@ -440,7 +461,7 @@ class TrafficEndpoint:
         self.queue: deque[DataPacket] = deque()
         self.queued_bits = 0
         self.links: dict[int, Link] = {}
-        self.area = QueueArea()
+        self.area = QueueArea(qid=f"uplink:cell:{cell}")
 
     def primary_link(self) -> Link | None:
         """The newest non-retiring link, if any."""
@@ -683,7 +704,7 @@ class DownlinkServer(_DRRMixin):
         self.sat = sat
         self.queues: dict[str, deque[DataPacket]] = {}
         self.queued_bits = 0
-        self.area = QueueArea()
+        self.area = QueueArea(qid=f"downlink:sat:{sat}")
         self.wake = kern.env.event()
         self.current: DataPacket | None = None
         self._svc = None
@@ -902,8 +923,8 @@ class ISLLink:
         self.ctrl_q: deque[ControlPacket] = deque()
         self.data_bits = 0
         self.ctrl_bits = 0
-        self.data_area = QueueArea()
-        self.ctrl_area = QueueArea()
+        self.data_area = QueueArea(qid=f"isl_data:isl:{sat}:{peer}:gen{gen}")
+        self.ctrl_area = QueueArea(qid=f"isl_ctrl:isl:{sat}:{peer}:gen{gen}")
         self.wake = kern.env.event()
         self.current: DataPacket | ControlPacket | None = None
         self._svc = None
@@ -1270,7 +1291,8 @@ class Kernel:
                  inference_policy=None, target_probe_path=None,
                  target_probe_max=None, target_probe_stride=None,
                  target_probe_horizons=None,
-                 resource_journal_path=None, resource_journal_stride=None):
+                 resource_journal_path=None, resource_journal_stride=None,
+                 queue_ledger_dir=None, queue_ledger_prefix=None):
         cfg = resolved["config"]
         self.resolved = resolved
         self.cfg_sc = cfg["scenario"]
@@ -1498,6 +1520,18 @@ class Kernel:
             self.resource_journal = _resource_journal.ResourceJournal(
                 resource_journal_path,
                 stride=(resource_journal_stride or 1))
+        # T1-QUEUE-LEDGER: opt-in exact queue-level ledger for offline truth
+        # reconstruction.  Write-only audit; never read by routing, metrics,
+        # learning, the deadline objective or the predictor.  It writes three
+        # separate files, so no existing artifact field changes.
+        self.queue_ledger = None
+        if queue_ledger_dir is not None:
+            from . import queue_ledger as _queue_ledger
+            self.queue_ledger = _queue_ledger.QueueLedger(
+                queue_ledger_dir,
+                queue_ledger_prefix or "queue-ledger")
+            global _QUEUE_LEDGER
+            _QUEUE_LEDGER = self.queue_ledger
         # per-decision identity; allocated only when a sink can record it
         self._decision_seq = 0
         # T1-COUNTERFACTUAL-REPLAY: strictly opt-in override of the action
@@ -1662,7 +1696,8 @@ class Kernel:
         # per-satellite state
         self.slots: list[set[str]] = [set() for _ in range(self.num_sats)]
         self.caches: list[control.LocalCache] = [control.LocalCache() for _ in range(self.num_sats)]
-        self.holding_areas = [QueueArea() for _ in range(self.num_sats)]
+        self.holding_areas = [QueueArea(qid=f"holding:sat:{s}")
+                              for s in range(self.num_sats)]
         self.pending: list[SatelliteHoldingQueue] = [
             SatelliteHoldingQueue(
                 self.cfg_access["holding_queue_bits"], self.holding_areas[s],
@@ -7788,7 +7823,9 @@ def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
                          target_probe_stride=None,
                          target_probe_horizons=None,
                          resource_journal_path=None,
-                         resource_journal_stride=None) -> dict:
+                         resource_journal_stride=None,
+                         queue_ledger_dir=None,
+                         queue_ledger_prefix=None) -> dict:
     kern = Kernel(resolved, rows, geometry=geometry,
                   learning_out_dir=learning_out_dir,
                   decision_sink=decision_sink, timeline_sink=timeline_sink,
@@ -7799,8 +7836,25 @@ def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
                   target_probe_stride=target_probe_stride,
                   target_probe_horizons=target_probe_horizons,
                   resource_journal_path=resource_journal_path,
-                  resource_journal_stride=resource_journal_stride)
-    result = kern.run()
+                  resource_journal_stride=resource_journal_stride,
+                  queue_ledger_dir=queue_ledger_dir,
+                  queue_ledger_prefix=queue_ledger_prefix)
+    try:
+        result = kern.run()
+    finally:
+        # The recorder is a module global; a failed run must not leave it
+        # armed for the next run in the same process.
+        globals()["_QUEUE_LEDGER"] = None
+    if kern.queue_ledger is not None:
+        events = result.get("packet_events") or []
+        windows = result.get("link_service_windows") or []
+        event_rows = kern.queue_ledger.export_packet_events(events)
+        window_rows = kern.queue_ledger.export_service_windows(windows)
+        # Written AFTER the simulation stops, so an interrupted run still
+        # carries whatever was recorded before the stop.
+        result["queue_ledger_audit"] = kern.queue_ledger.close(
+            float(result.get("stop_time_s") or 0.0),
+            packet_events=event_rows, service_windows=window_rows)
     if kern.resource_journal is not None:
         result["resource_journal"] = kern.resource_journal.close()
     if kern.target_probe is not None:
@@ -7832,7 +7886,9 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
                    target_probe_path=None, target_probe_max=None,
                    target_probe_stride=None, target_probe_horizons=None,
                    resource_journal_path=None,
-                   resource_journal_stride=None) -> dict:
+                   resource_journal_stride=None,
+                   queue_ledger_dir=None,
+                   queue_ledger_prefix=None) -> dict:
     """Run the kernel and, inside a metered T1 cell, record real call edges.
 
     The ledger is opt-in so ordinary library use stays unchanged.  A configured
@@ -7854,7 +7910,9 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
             target_probe_stride=target_probe_stride,
             target_probe_horizons=target_probe_horizons,
             resource_journal_path=resource_journal_path,
-            resource_journal_stride=resource_journal_stride)
+            resource_journal_stride=resource_journal_stride,
+            queue_ledger_dir=queue_ledger_dir,
+            queue_ledger_prefix=queue_ledger_prefix)
 
     _SIMULATION_CALL_SEQUENCE += 1
     sequence = _SIMULATION_CALL_SEQUENCE
@@ -7878,7 +7936,9 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
             target_probe_stride=target_probe_stride,
             target_probe_horizons=target_probe_horizons,
             resource_journal_path=resource_journal_path,
-            resource_journal_stride=resource_journal_stride)
+            resource_journal_stride=resource_journal_stride,
+            queue_ledger_dir=queue_ledger_dir,
+            queue_ledger_prefix=queue_ledger_prefix)
     except BaseException as exc:
         ended_ns = time.perf_counter_ns()
         _write_simulation_call_event(
