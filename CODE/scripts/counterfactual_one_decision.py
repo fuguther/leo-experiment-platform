@@ -30,6 +30,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import shutil
@@ -89,6 +90,20 @@ def _packet_events(events, pid):
 
 def run(args) -> dict:
     resolved = config_mod.load_config_file(str(args.config))
+    arm_override = None
+    if args.arm is not None:
+        # The analysed run pinned the arm through t1_tasks (`--arms now`), which
+        # rewrites time_alignment.arm and re-resolves.  A replay driven straight
+        # from the profile file would otherwise run the PROFILE's arm
+        # (candidate), i.e. a different trajectory whose decision_id 96253 is a
+        # different decision.  Apply the same override the task applied, and
+        # record it so the pairing with the analysed run is auditable.
+        cfg = copy.deepcopy(resolved["config"])
+        cfg.setdefault("time_alignment", {})
+        cfg["time_alignment"]["enabled"] = True
+        cfg["time_alignment"]["arm"] = args.arm
+        resolved = config_mod.resolve_config(cfg)
+        arm_override = args.arm
     algorithm = resolved["config"]["learning"]["algorithm"]
     if algorithm != "none":
         raise SystemExit(
@@ -164,6 +179,7 @@ def run(args) -> dict:
         "schema": SCHEMA,
         "source": {
             "config": str(args.config),
+            "arm_override": arm_override,
             "config_sha256": resolved["sha256"],
             "trace_sha256": (manifest.get("__trace_sha256")
                              or manifest.get("trace_sha256")),
@@ -199,6 +215,10 @@ def main(argv=None) -> int:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--decision-id", type=int, required=True)
     parser.add_argument("--forced-action", required=True)
+    parser.add_argument("--arm", default=None,
+                        choices=["stale", "now", "common", "candidate"],
+                        help="pin the time-alignment arm exactly as the task "
+                             "did; omit to use the profile value")
     parser.add_argument("--root", default="/tmp")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
