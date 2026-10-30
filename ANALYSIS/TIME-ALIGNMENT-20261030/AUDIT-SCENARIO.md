@@ -23,7 +23,7 @@
    ⇒ 用它的结果只能说"在 140 星对比层、6 城重力 OD 下……"，**不能**说"（预注册机制场景的）时态失配严重"。
 3. **它真正压的是一条跨洲干线 + 少数几条方向性干线，不是全网拥塞。**
    `[解析]` tokyo↔singapore 双向各 560/589 Mbps（占各自源端发出量的 56.0%/58.9%），压在同一条 1000 Mbps 有向 ISL 序列上（5 跳、36.0 ms 传播）；下一层是 lagos↔london（433/388）、newyork↔london（425/314）。
-   `[解析]` 按"单一最短跳路径"假设：85 条有向 ISL 承载、其中 60% ≥0.2、13 条 ≥0.5、**单链路最大 in-window 载流比 0.935（上界）**；而全网 ISL 平均只有 **7.1%**（23.16 Gbit 转发 / 327.6 Gbit 容量，0.9 s 窗内）。即**点拥塞、面空闲**。
+   `[实测]`（seed 7，§4.0）364 条可用 ISL 中 242 条有流量；**u p50 0.145 / p90 0.692 / max 0.798**，u≥0.2 占 29.9%，**u≥0.9 占 0%** ⇒ "排队可见但无链路长期饱和"。`[解析]` 全网 ISL 平均负载仅 **7.1%**（23.16 Gbit 转发 / 327.6 Gbit 容量）= **点拥塞、面空闲**。
    `[解析]` OD top-5 = **40.3%**（SPEC §2D 目标 40–70%，**刚压线**）、top-1 = 9.8%。
 4. **1.2 s 内几何几乎冻结：这里的"时间失配"只可能是队列状态年龄，不可能是位置/拓扑陈旧。**
    `[解析]` 轨道角速度 360°/5792.3 s ⇒ 1.2 s 走 **0.0746°**（ISL 长度变化 ~9 km、传播 ~30 µs）；`[解析]` 6 城可见卫星数在 `[0,1.2]` 内按 0.1 s 网格采样**始终不变**（tokyo 5/singapore 3/london 4/newyork 4/saopaulo 4/lagos 2）⇒ 无切换事件（0.1 s 分辨率下）；`topology.recompute_interval_s` 缺省 `None`（静态拓扑）⇒ **0 次重匹配**（`config.py:516`；`routing.py:70-93`）。
@@ -31,8 +31,8 @@
 5. **主终点当前不可用：profile 没有 `demand.deadline_s`，且 T=1.2 s 会让有效期限被 horizon 截断。**
    `[CODE]` D4 主终点 = `100×|{p: not(DELIVERED 且 delay≤D)}|/|population|`（`outcome_metrics.py:452-467`），必须有 D；profile 未给，只能用 CLI `--deadline-s` 注入（`t1_tasks.py:2654`），且 D 是**场景选择旋钮**，必须与臂一起冻结。
    `[CODE]` 逐包有效期限实为 `min(D, T−e)`（e=发射时刻，T=horizon）；平台自身要求 `deadline_binding.binding == true` 才算 cell success（`t1_tasks.py:2270-2280`）。见 §4.4 的截断检查。
-6. **预冻结区制规则见 §5**：唯一物理旋钮 `g`（`--offered-mbps 6000g`，λ_ij → g·λ_ij），分类标量 = **in-window ISL 利用率 p90**，门槛 = queue-share，6 条点级有效性门 + 1 条轮级覆盖门；**分类表冻结前不得计算任何臂间对比**（§5.7）。
-7. **成本量级**：`[解析/拟合]` 1.2 s @g=1 ≈ **612–862 s（10–14 min）/run**、峰值 RSS 8.1–9.7 GB、输出 ~158 MB；**4 s 但发射窗仍 0.9 s ≈ 同价**（+5–10 s）；4 s 且发射窗拉到 3.7 s ⇒ **43–60 min/run、32–40 GB、并发上限 C=1**。见 §6。
+6. **预冻结区制规则见 §5**：唯一物理旋钮 `g`（`--offered-mbps 6000g`，λ_ij → g·λ_ij）；分类标量 = **平台口径 ISL 利用率 p90**（`u_p90`，分母=可用容量，冻结）；门槛 = queue-share（`φ_isl`）；6 条点级门 + 1 条轮级覆盖门；**分类表冻结前不得计算任何臂间对比**（§5.7）。
+7. **成本量级**：`[解析/拟合]` 1.2 s @g=1 ≈ **612–862 s（10–14 min）/run**、峰值 RSS 8.1–9.7 GB、输出 ~158 MB；**4 s 但发射窗仍 0.9 s ≈ 同价**（+5–10 s）；4 s 且发射窗拉到 3.7 s ⇒ **43–60 min/run、32–40 GB、并发上限 C=1**。`[实测]` 开 `--queue-ledger` 的一次 1.2 s run = **34 min**（账本+序列化约 2.4–3.3×，见 §6.3）。
 
 ---
 
@@ -182,7 +182,7 @@ g ≡ offered_mbps / 6000        λ_ij → g · λ_ij  (对所有 i,j 同倍)
 | N7 | "复现了 Kepler 星座" / "复现了任何真实壳层" | 只有名字有出处，参数与相位设计无来源（P5） |
 | N8 | "实测突发 / 重尾 ON-OFF 到达" | 无 burst 变换（P14）；库内 burst 只被定义为"预注册的受控压力变换"（`F3-LITERATURE`/SPEC §2D） |
 | N9 | "陈旧拓扑 / 陈旧几何导致的失配" | 1.2 s 内 0 切换、0 重匹配、几何冻结（§0.4） |
-| N10 | "这个场景通过了 SPEC §2D 的流量结构判据" | OD top-5 = 40.3%（压线）；有排队链路占比取决于分母口径（14.0% 或 60.0%），**两种口径都不在 20–40% 带内**；结构性判据**未满足** |
+| N10 | "本场景已满足 SPEC §2D 的**全部**流量结构判据" | 实测（§4.0）把四条变成了 ✓/✗ 混合：OD top-5 **40.3%** ✓（压线）、u≥0.2 链路占比 **29.9%** ✓（带内）、缓冲 **3.3×BDP** ✓、丢包 <1% ✓；但 **hotspot ρ 未进 0.85–0.95 带（实测 max 0.798）**，且负载只有单档（三档要求未做）⇒ **不能**说"全部满足" |
 | N11 | "丢包通道已打开 / 丢包由 ISL 缓冲导致" | F3 线的教训：`ISL_QUEUE_OVERFLOW` 仅 0.5–0.8%，`util` 不够高才是原因（`F2-STOPPED-20261027.md` §2、`00-论证方案.md` §11.3-2）；本 profile 的溢出量**未实测**；若按 M/M/1/40 在 ρ≈0.94 处粗估约 0.5%/跳（纯估计，不作证据） |
 | N12 | "1.2 s 的运行代表稳态" | 队列从空开始、只 0.9 s 发射、0.2 s 排水；2026-10-17 线已记录"填充瞬态"会把短窗结论做反（`STATUS.md` 第四轮）：统计须从 `emission_start+0.20 s` 起，且最小可用发射窗 0.35 s |
 
@@ -190,23 +190,49 @@ g ≡ offered_mbps / 6000        λ_ij → g · λ_ij  (对所有 i,j 同倍)
 
 ## 4. 可测区制指标：定义、出处、本 profile 的状态
 
+### 4.0 本 profile 已有一次实测（2026-10-30，seed 7，arm=`now`，D=0.15）
+
+> 来源：同目录 `FINDINGS-20261030.md`（run `instr-20261030-ledger1`，release `7e7fd5a…`，VM 实跑，`--queue-ledger` 开启）
+> 与 `00-CURRENT-VS-TARGET.md` §2。属 **EXPLORATORY/DIAGNOSTIC**，不是本文件的产出，也不是预注册证据。
+
+| 项 | 实测值 |
+|---|---|
+| 规模 | 8 878 包 / **133 743** 决策 / **1 580 147** events / 1.2 s 仿真 / 墙钟 **≈34 min** |
+| ISL 利用率（**平台口径**，分母 = `available_capacity_interval_s=1.0` 的可用容量网格） | 364 条 ISL 中 **242** 条有流量；**p50 0.145 / p90 0.692 / p99 0.796 / max 0.798**；u≥0.2 占 **29.9%**、≥0.5 占 13.7%、**≥0.9 占 0%** |
+| 交付 / 主终点 | 交付率 **99.91%**；`D=0.15 s` 时 miss **34.8 pp**；e2e **p50 117 ms / p95 236 ms** |
+| 决策多样性 | 124 873 个决策中 **103 900（83.1%）** 被时间臂重排；5 000 条采样中 **2 545（50.9%）** 有 ≥2 个可用 ISL 候选 |
+| 状态年龄 / margin | 广告龄 `A_d` p50 **103.2 ms** / p90 186.2 ms；候选 margin `M` p50 **11.03 ms**（与 P-10 的 10.9 ms 一致） |
+
+**按 §5.4 规则分类（同一标量、同一口径）**：`u_p90 = 0.692` ⇒ **Step B = T（过渡区）**，位于 T 上缘（距 C 界 0.058）。**Step C 尚未复核**：该 run 没有 φ_isl（§4.1 缺口），所以 g=1 目前是"分类通过、门槛待验"，**不得**据此宣布区制已定。
+
+**解析 vs 实测交叉核对**（同一场景，几何/负载部分）：
+
+| 量 | `[解析]`（§1/§4.1） | `[实测]` | 判读 |
+|---|---|---|---|
+| 可用有向 ISL 条数 | 364（280 同面 + 84 面间） | **364** | 几何解析与实测**完全一致** |
+| 有流量的 ISL | 85（单一最短跳假设） | **242** | 真实逐包选路把负载分散到 **2.8×** 更多链路 ⇒ 解析值是"单路径上界" |
+| u_max（平台口径） | 0.935×0.75 ≈ **0.70** | **0.798** | 同量级（差 14%），解析可作量级锚 |
+| f(u≥0.2)（全 364 为分母） | 0.140 | **0.299** | 解析低估 2.1×，原因同上 |
+
+⇒ **几何解析可信（364 精确命中），负载分布解析只能当上/下界**；任何区制判定**必须**用实测。
+
 ### 4.1 可用指标（全部可从 `*-summary.json` 取到）
 
 > 结构：`arms[i].outcome.*`（`t1_tasks.py:1590-1650`）、`arms[i].congestion_metrics.*`（`metrics.summarize`，含 `packets` 与 `links`）、`arms[i].measurement_window`、`arms[i].network_outcome`。summary 保留完整 `congestion_metrics`（`t1_tasks.py:2217-2225`），只丢弃 replay/action-log/routing 逐条记录。
 
 | 指标 | 精确定义 | 输出位置 | 本 profile 状态 |
 |---|---|---|---|
-| **ISL 利用率分布** u_k | 平台 `links[k].utilization = served_bits / available_capacity_bits`，分母 = `available_capacity_interval_s=1.0` 网格上**实际可用**容量（`metrics.py:332-345`；`kernel.py:2520-2543`，`max(1.0,...)` 截顶）。**分母覆盖整个 horizon（1.2 s），不是发射窗** | `congestion_metrics.links[link_id ∈ isl:*]` | `[未测]`；`[解析]` in-window 上界 p50 0.235 / p90 0.745 / max 0.935 |
-| **in-window 利用率** u^W_k（本文件定义，见 §5.3） | `served_bits_k / (isl_rate_bps · W)`，`W = last_emission − first_emission = 0.9 s` | 由 `served_bits` + 冻结常数算出 | `[未测]`；与平台 u_k 的关系：u_k ≈ u^W_k × (W/available_time)，本 profile `available_time≈1.2 s` ⇒ **u_k ≈ 0.75·u^W_k** |
-| **queue share**（队列占 e2e 份额） | `φ = mean(queue_wait_s)/mean(e2e_s)`（ISL egress 队列；`queue_wait_s` 不含 `holding_wait_s`，两者分列） | `congestion_metrics.packets[pid].{queue_wait_s,holding_wait_s,e2e_s}`；`[uncoded]` 需自查 | `[未测]`；锚点见 §4.2 |
+| **ISL 利用率分布** u_k | 平台 `links[k].utilization = served_bits / available_capacity_bits`，分母 = `available_capacity_interval_s=1.0` 网格上**实际可用**容量（`metrics.py:332-345`；`kernel.py:2520-2543`，`max(1.0,...)` 截顶）。**分母覆盖整个 horizon（1.2 s），不是发射窗** | `congestion_metrics.links[link_id ∈ isl:*]` | `[实测]` p50 0.145 / p90 0.692 / max 0.798（§4.0）；`[解析]` 单路径上界 0.70 |
+| **in-window 利用率** u^W_k（**仅描述，不作判据**，理由见 §5.3） | `served_bits_k / (isl_rate_bps · W)`，`W = last_emission − first_emission = 0.9 s` | 由 `served_bits` + 冻结常数算出 | `[实测换算]` 由 §4.0 的 u_max 0.798 得 ≈**1.06**（>1，因为含排水期服务）⇒ **该口径不成立为"利用率"，禁止用于区制判定** |
+| **queue share**（队列占 e2e 份额） | `φ = mean(queue_wait_s)/mean(e2e_s)`（ISL egress 队列；`queue_wait_s` 不含 `holding_wait_s`，两者分列） | `congestion_metrics.packets[pid].{queue_wait_s,holding_wait_s,e2e_s}` | `[未测]` —— **当前最关键的缺口**：§4.0 的 run 有 util/delivery/miss/e2e，但**没有 φ_isl**，故按 §5.4 的 Step C 门槛复核**尚未完成**；这是下一 run 唯一必须补的量 |
 | **queue area** | `queue_area_bits_s` = ∫ backlog dt，分 `uplink/downlink/holding/isl_data/isl_ctrl` | `outcome.queue_area_bits_s`（`kernel.py:7630-7640`） | `[未测]`；F3 同族实测 holding 8.69 vs isl_data 3.24 Mbit·s（2.7×，holding 主导）——**这是 2 Mbps 场景，不可外推到 1 Gbps** |
-| **delivery** | `delivered/offered`（窗口内），并单列 censoring（`IN_SYSTEM_AT_STOP`，**不是损失**） | `outcome.delivery_ratio`、`outcome.censoring`、`network_outcome.terminal_loss` | `[未测]` |
+| **delivery** | `delivered/offered`（窗口内），并单列 censoring（`IN_SYSTEM_AT_STOP`，**不是损失**） | `outcome.delivery_ratio.by_packets`、`outcome.censoring`、`network_outcome.terminal_loss` | `[实测]` 交付率 99.91%（§4.0） |
 | **drop（终局损失）** | 仅 `ACCESS_REJECTED / ACCESS_QUEUE_OVERFLOW / HOLDING_QUEUE_OVERFLOW / ISL_QUEUE_OVERFLOW / NO_ROUTE / DATA_DEADLINE_EXPIRED / GEOMETRY_LOSS_IN_FLIGHT / RANDOM_OUTAGE_IN_FLIGHT` | `outcome.fate_counts`、`terminal_loss.by_fate`（词表：`outcome_metrics.py:100-112`） | `[未测]` |
 | **NO_ROUTE** | `known_serving` 下 = "有服务星但无有向可达路径"；`no_info`（无星服务该 cell）走 **holding** 而非 NO_ROUTE | `fate_counts.NO_ROUTE`；`kernel.py:7254-7276` | `[未测]`；`[解析]` 连通性充分、覆盖恒定 ⇒ 预期待为 0 |
-| **miss（D4）** | `100·|{p: not(DELIVERED 且 delay≤D)}|/|population|` | `outcome.deadline_primary_loss.miss_pp` | `[未测]`；**且当前 profile 无 D**（§0.5） |
+| **miss（D4）** | `100·|{p: not(DELIVERED 且 delay≤D)}|/|population|` | `outcome.deadline_primary_loss.miss_pp` | `[实测]` D=0.15 s ⇒ 34.8 pp（§4.0）；profile 本身无 D，靠 CLI 注入（§0.5） |
 | **deadline binding** | D 是否真的能拒包（有 late 或 expired 才算） | `deadline_primary_loss.binding.binding` | `[未测]`；平台强制要求为 true 才算 cell success |
-| **e2e / p90 / p95 / p99** | 逐包 `delivered_at − emitted_at` | `outcome.e2e_*` | `[未测]`；`[解析]` 传播地板 7.3–58.2 ms（1–8 跳，见下） |
-| **events** | `events_processed` | `outcome.events_processed` | `[未测]`；`[解析/同族]` 1.16–1.62 M |
+| **e2e / p90 / p95 / p99** | 逐包 `delivered_at − emitted_at` | `outcome.e2e_*` | `[实测]` p50 117 ms / p95 236 ms（§4.0）；`[解析]` 传播地板 7.3–58.2 ms（1–8 跳，见下） |
+| **events** | `events_processed` | `outcome.events_processed` | `[实测]` 1 580 147（=178 ev/包，落在 §6 的 129–180 上端） |
 
 `[解析]` 30 条有向 OD 的最小跳/传播地板（单最短跳假设）：
 
@@ -218,14 +244,15 @@ sing→lond 6 42.8 | lond→toky 3 21.8 | ... 最长 saop→toky 8 跳 58.2 ms
 流量加权平均跳数 = 4.29；全网 ISL 转发 23.16 Gbit / 容量 327.6 Gbit = 7.1%
 ```
 
-### 4.2 最近的实测锚点（**不是**本 profile 的实测）
+### 4.2 实测锚点（三个异场景 + 本 profile 的一点）
 
 | 锚点 | 场景 | 实测 | 归类（按 §5 阈值，事后回看） |
 |---|---|---|---|
 | `mtu1500_s7` | 1500 B / ISL 200 Mbps / offered 40 / T=1.2 | util_max **0.0145**、ISL 排队 0.21 ms（0.30% e2e）、orc−stale **−0.0004 ms** | **P**（零效应） |
 | F3 `control/stale`（6 seeds 均值） | 1500 B / ISL **2 Mbps** / offered 50 / T=1.6 / D=0.5 | util p50 **0.36** / p90 **0.62** / max **0.76**；ISL 溢出 0.5–0.8%；送达率 **≈92–94%**；miss **18.31 pp**；真值 vs 广告 `orc−nowadv` **−1.90 pp**（6/6） | **T**（主效应存在） |
 | `c6big_s7` | 2 Mbit / ISL 200 Mbps / offered 2000 / T=1.2 | util_max **0.90**、ISL 排队 184.6 ms（**45.4%** e2e）、orc−stale **−4.26 ms** | **C**（效应最大） |
-| `stageC_s7`（20 城，脏 CODE `815606ae`） | 600 kbit / ISL **1 Gbps** / offered **6000** / T=1.2 | util_max **0.792**、frac(≥0.2)=**0.291**、ISL 排队 **19.2 ms（15.5%** e2e）、e2e 124.07 ms、miss 32.2% | 本 profile 的**最接近类比**；但 20 城、且代码不可复现（不得当证据） |
+| `stageC_s7`（20 城，脏 CODE `815606ae`） | 600 kbit / ISL **1 Gbps** / offered **6000** / T=1.2 | util_max **0.792**、frac(≥0.2)=**0.291**、ISL 排队 **19.2 ms（15.5%** e2e）、e2e 124.07 ms、miss 32.2% | 6 城版的近似类比；但 20 城、且代码不可复现（不得当证据） |
+| **本 profile**（6 城，`7e7fd5a`，§4.0） | 600 kbit / 1 Gbps / 6000 / T=1.2 / D=0.15 | u p50 **0.145** / p90 **0.692** / max **0.798**、u≥0.2 占 **29.9%**、交付 **99.91%**、e2e p50 **117 ms**、miss **34.8 pp** | **T**（Step B 通过；φ 未测 ⇒ Step C 待复核） |
 
 **可用的方向性观察（注意三种对比不同口径，不能相加或直接比大小）**：φ 0.3% ⇒ `orc−stale` ≈ −0.0004 ms；φ 15.5% ⇒ `orc−nowadv` −1.90 pp 的 miss 收益；φ 45.4% ⇒ `orc−stale` −4.26 ms。方向上"φ 越大、状态项越有杠杆"一致，因此支持"用 queue-share 当门槛"，但**不构成**对本 profile 的定量预测。
 
@@ -256,7 +283,10 @@ M_decl = miss(D)            M_eff = miss(D_p(e)), D_p(e) = min(D, T − e)
 若 |M_decl − M_eff| > 1.0 pp ⇒ 场景对主终点无效（延长 T 或缩短 D），不得出 D4 结论。
 ```
 
-本 profile：`T=1.2`、`last_emission=1.0` ⇒ 若 `D ≥ 0.3 s`，最后 0.1 s 发出的包其有效期限会被压到 `T−e < 0.3 s`（是否真被截断取决于时延分布，**所以必须跑上面的检查**而不是推断）。F2/F3 用 `T=1.6` 与 `D=0.5`（`T−last_emission=0.6 > 0.5`）因此**没有**这个问题。
+本 profile：`T=1.2`、`last_emission=1.0`。若 `D ≥ 0.3 s`，最后 0.1 s 发出的包其有效期限会被压到 `T−e < 0.3 s`（是否真被截断取决于时延分布，**必须跑上面的检查**而不是推断）。
+- **已验证的可行选择**：2026-10-30 的实测 run 用 `D=0.15 s`（`0.15 < T−last_emission = 0.2`）⇒ 不触发截断，主终点可解释（§4.0 的 miss 34.8 pp 是真迟到/未达，不是 horizon 伪影）。
+- F2/F3 用 `T=1.6` 与 `D=0.5`（`T−last_emission=0.6 > 0.5`）因此也**没有**这个问题。
+- 若希望 D≈0.5 s（更接近 F2/F3 口径），必须 `T ≥ 1.6 s`；取 4 s 更稳（§6.4 表里的方案 A：代价几乎不变）。
 ⇒ **冻结建议：`T ≥ last_emission + D + 0.1 s`**（D=0.5 ⇒ T≥1.6 s；取 4 s 更稳，代价见 §6）。
 
 ---
@@ -287,13 +317,13 @@ g ∈ G = {0.25, 0.50, 1.00, 2.00, 4.00}         （offered = 6000·g Mbps）
 
 ### 5.3 指标定义（写死公式，防分母口径漂移）
 
-以 `ls` = `congestion_metrics.links` 中 `stage=="isl"` 的条目集合（每个有向 ISL 一条）。
+以 `congestion_metrics.links` 中 `stage=="isl"` 的条目集合 `Ls` 为准（每个有向 ISL 一条；本 profile |Ls| = 364）。**分位数的分母口径必须写在产物里**（F3 结果没写，见 §4.3）。
 
 ```
-W            = measurement_window.last_emission_s − measurement_window.start_s      (= 0.9 s，冻结)
-u^W_k        = links[k].served_bits / (1000e6 · W)          # in-window 载流比，k∈ls
-u^W_p90      = P90({u^W_k : k∈ls 且 served_bits>0})         # 只对"活跃链路"取分位
-f_02         = |{k∈ls : u^W_k ≥ 0.20}| / |ls|               # |ls| = 有 available-capacity 分母的全部有向 ISL（含 0），对齐 SPEC "有排队链路占比"
+Ls           = {k ∈ congestion_metrics.links : k.stage=="isl" 且 k.available_capacity_bits>0}   # 本 profile |Ls|=364
+u_k          = links[k].utilization = served_bits_k / available_capacity_bits_k    # 平台口径（冻结）
+u_p90        = P90({u_k : k∈Ls})                    # 分母含 0；提取脚本必须同时打印 |Ls| 与 served_bits>0 的条数
+f_02         = |{k∈Ls : u_k ≥ 0.20}| / |Ls|         # 对齐 SPEC "有排队链路占比"，分母=全部可用 ISL
 φ_isl        = mean(packets[p].queue_wait_s) / mean(packets[p].e2e_s)      # 仅对 DELIVERED 的 p
 φ_hold       = mean(packets[p].holding_wait_s) / mean(packets[p].e2e_s)
 f_noroute    = fate_counts.NO_ROUTE / outcome.offered
@@ -305,15 +335,19 @@ M_decl, M_eff = §4.4 的两个 miss
 n_cand2      = 至少 2 个合法候选方向的决策数 / 总决策数（**仅 raw result 可得**，见 §4.3）
 ```
 
+> **口径为什么必须是平台 `u_k`，不能用"in-window"换算**：`served_bits` 含 0.2 s 排水期内的服务，把它除以 `rate×W`（W=0.9 s）会得到**可以 >1 的比值**（本 profile 实测 `u_max=0.798` ⇒ 该比值 ≈1.06）。两口径相差 1.33×，足以把 g=1 从 T（0.692）推到 C（0.92）。因此：**冻结 `u_k` 一个口径，全项目只用它**；`[不可用]` 任何以 `rate×发射窗` 为分母的"in-window 利用率"，除非同时给出该比值的 >1 情况说明。
+
 ### 5.4 分类阈值（PRE-FROZEN：分类器只用一个标量，门槛另判）
 
 ```
 Step A 有效性门（§5.5 G1..G6）：不通过 ⇒ INVALID，不进任何区制。
-Step B 分类器（只按 u^W_p90，全覆盖、无 gap、无并列）：
+Step B 分类器（只按 u_p90，全覆盖、无 gap、无并列）：
 
-   P  传播主导     u^W_p90 <  0.30
-   T  过渡        0.30 ≤ u^W_p90 < 0.75
-   C  拥塞敏感     u^W_p90 ≥ 0.75
+   P  传播主导     u_p90 <  0.30
+   T  过渡        0.30 ≤ u_p90 < 0.75
+   C  拥塞敏感     u_p90 ≥ 0.75
+
+   （g=1 的实测点：u_p90 = 0.692 ⇒ T，距 C 界 0.058，见 §4.0）
 
 Step C 门槛复核（决定该点是否真的可用）：
    P：无 φ 要求
@@ -328,9 +362,9 @@ Step C 门槛复核（决定该点是否真的可用）：
 
 | 阈值 | 依据 |
 |---|---|
-| `u^W_p90 = 0.30` 下界 | 零效应锚点 `mtu1500` 的实测 u_max 0.0145（T=1.2、W=0.5）⇒ in-window ≈ 0.0145×1.2/0.5 ≈ **0.035**；0.30 比它高一个数量级，仍远低于拥塞。物理上 0.30 ⇒ 每跳排队 ≈ 0.43·τ_ser ≈ 0.26 ms（M/M/1 近似）≪ 候选 margin p50（10.9 ms）⇒ 状态项不可能翻决策 |
-| `u^W_p90 = 0.75` 上界 | SPEC §2D 把"热点 ρ 0.85–0.95"定为机制场景的目标带；0.75 放在带下缘之前，使"带宽内"自动落进 T、只有真的过载才进 C。物理上 0.75 ⇒ 每跳排队 ≈ 3·τ_ser ≈ 1.8 ms（M/M/1 近似），仍 < margin p50，但 p90 margin 会更小 |
-| `φ_isl = 0.10` | 三个实测锚点的 φ：0.3%（mtu1500，零效应）/ 15.5%（stageC 类比）/ 45.4%（c6big，效应最大）。0.10 把"零效应区"排除，且不去动中间锚点 |
+| `u_p90 = 0.30` 下界 | 零效应锚点 `mtu1500` 的实测 `u_max = 0.0145`（**同一平台口径**）⇒ 其 p90 更低；0.30 比它高一个数量级，仍远低于拥塞。物理上 p90=0.30 ⇒ 每跳排队 ≈ 0.43·τ_ser ≈ 0.26 ms（M/M/1 近似）≪ 候选 margin p50（11.03 ms 实测）⇒ 状态项不可能翻决策 |
+| `u_p90 = 0.75` 上界 | 三个同口径实测锚点：F3（2 Mbps）p90 **0.62** → T；本 profile p90 **0.692** → T；c6big u_max **0.90** → C。0.75 落在 0.692 与 0.90 之间，是本规则唯一的"由实测夹出来"的常数。SPEC §2D 的"热点 ρ 0.85–0.95"是同一方向的旁证（0.75 放在该带下缘之前，使带宽内自动落进 T）。物理上 0.75 ⇒ 每跳排队 ≈ 3·τ_ser ≈ 1.8 ms（M/M/1 近似），仍 < 实测 margin p50 11.03 ms，但 p90 margin 会更小 |
+| `φ_isl = 0.10` | 三个实测锚点的 φ：0.3%（mtu1500，零效应）/ 15.5%（stageC 类比）/ 45.4%（c6big，效应最大）。0.10 把"零效应区"排除，且不去动中间锚点。**本 profile 的 φ 尚未测**（§4.1 缺口），所以 g=1 的 T 判定目前**只是 Step B 通过、Step C 待复核** |
 | `φ_isl = 0.25` | 同上，0.25 位于 15.5% 与 45.4% 之间；C 要求队列确实是 e2e 的主项 |
 | `f_02` 不参与分类 | §3 N10：本场景 f_02 随分母口径在 14%–60% 之间跳，**口径不安全**，只作报告量、不作判据 |
 
@@ -365,7 +399,7 @@ Step 4  g=4.00 分类
 
 Step 5  若已覆盖 {P,T,C} 三个 VALID 点 ⇒ 停扫描
         否则把 5 个 g 全部测完，按 G7 处理
-Step 6  预算门：单点若触发 §6.5 的停止线（>60 min 或 RSS>40 GB）⇒ 记 "NOT_RUN_BUDGET"，
+Step 6  预算门：单点若触发 §6.6 的停止线（>60 min 或 RSS>40 GB）⇒ 记 "NOT_RUN_BUDGET"，
         不许用其它 g 顶替，也不许缩减臂数来偷跑
 
 Step 7  时态矩阵只允许跑在"VALID 且被 §5.7 冻结表收录"的 g 上；
@@ -384,10 +418,10 @@ Step 7  时态矩阵只允许跑在"VALID 且被 §5.7 冻结表收录"的 g 上
 ### 5.7 冻结机制（"在看到时态结果之前"的可核验实现）
 
 1. 跑 Step 0–5 的参考臂（`--arms stale`），只导出 §5.3 的场景指标。
-2. 把 `{g, u^W_p90, φ_isl, f_02, d_deliv, f_censor, f_noroute, f_loss, G1..G6 判定, 归类}` 写成一个 JSON 表。
+2. 把 `{g, |Ls|, served_bits>0 条数, u_p90, u_max, f_02, φ_isl, φ_hold, d_deliv, f_censor, f_noroute, f_loss, M_decl, M_eff, G1..G6 判定, 归类}` 写成一个 JSON 表。
 3. **对该表算 sha256，写入 `TIME-ALIGNMENT-20261030/PREREG-REGIME-<date>.md` 并提交**；表里同时写死 §5.4/§5.5 的全部数字与 6 个 seed 列表。
 4. **第 3 步完成之前，禁止发射任何 `now`/`candidate`/`orc` 臂，禁止计算任何臂间差。**
-5. 此后若发现分类表与实测不符（例如重跑同一 g 得到不同 u^W_p90），只能追加"重测记录"，不得改判历史点。
+5. 此后若发现分类表与实测不符（例如重跑同一 g 得到不同 `u_p90`），只能追加"重测记录"，不得改判历史点。
 
 ### 5.8 本规则如何防止"事后挑场景"
 
@@ -395,7 +429,7 @@ Step 7  时态矩阵只允许跑在"VALID 且被 §5.7 冻结表收录"的 g 上
 |---|---|
 | 看完结果再选 g | §5.6 固定顺序 + §5.7 冻结表；顺序与门槛在看结果前已写死 |
 | 只报最有利的 g | §5.6 主报告量是 Δ(g) 的剂量-反应/斜率，且 G7 要求覆盖三区制 |
-| 换分母口径让场景看起来"过渡" | §5.3 把 u^W 钉成 `served_bits/(1000e6·0.9)`；平台 u_k 只能作对照（×0.75） |
+| 换分母口径让场景看起来"过渡"或"拥塞" | §5.3 把 `u_k`（平台口径，分母=可用容量）钉成唯一判据；明令禁止 rate×发射窗 的换算口径 |
 | 把不可达/丢包型失败混进"时态失配" | G3/G5 直接判 INVALID |
 | 用 1.2 s 短窗 + 大 D 制造高 miss | G2 截断检查 + §4.4 的 `T ≥ last_emission + D + 0.1` |
 | 用"holding 主导"的场景宣称测到了队列时态价值 | G6：φ_isl 门槛；机制在物理上碰不到 access/holding（`03` §2.4） |
@@ -434,7 +468,17 @@ RSS(g)      ≈ 8.1…9.7 GB at g=1           （两式：310517+913.9·packets 
 output(g)   ≈ 61 + 96.6·g MB             （audit 2000：7.18 + 10730·9000g + 54.0 MB）
 ```
 
-### 6.3 估计表（**ESTIMATE**，双模型；并发按 `C = min((24−4)/1.01, (64−16)/RSS_GB, 磁盘/输出)`）
+### 6.3 已有实测锚点（**MEASURED**，2026-10-30）
+
+| 项 | 值 | 说明 |
+|---|---|---|
+| packets / events | 8 878 / **1 580 147**（=178 ev/包） | 落在 §6.2 的 129–180 上端，**events/packet 估计得到验证** |
+| 墙钟 | **≈34 min（2 040 s）** | **含** `--queue-ledger` + 165 MB lossless graph + 3 份 gz 账本序列化 |
+| 与成本模型对比 | 模型 612–862 s ⇒ 实测是 **2.4–3.3×** | 差额应记在 **instrumentation**（账本/序列化）上，**不是**场景本身；ledger 关闭时按 §6.4 估计表排程 |
+
+⇒ **排程口径**：正式时态矩阵（需要 miss/e2e/util 但**不需要**逐次队列账本）按 612–862 s/run 的模型值排；只有需要重建 `Q_ρ(t)` 的那几次 run 才付 34 min。
+
+### 6.4 估计表（**ESTIMATE**，双模型；并发按 `C = min((24−4)/1.01, (64−16)/RSS_GB, 磁盘/输出)`）
 
 | g | offered | packets | events | wall 主（events 线性） | wall 对照（0.32–0.52 ms/ev） | RSS | 输出 | C |
 |---|---|---|---|---|---|---|---|---|
@@ -455,14 +499,14 @@ output(g)   ≈ 61 + 96.6·g MB             （audit 2000：7.18 + 10730·9000g 
 
 `duration^1.61` 外推（仅作上界参考，**不推荐**用）：1.2 s→198 s、4.0 s→1 380 s；与 events 轴差 3–4×，见 §6.1 的警告。
 
-### 6.4 批次预算（ESTIMATE）
+### 6.5 批次预算（ESTIMATE）
 
 - **区制扫描（§5.6 Step 0–5）**：5 个 g × 1 run（stale, seed 7）≈ 0.6–1.5 h 串行；按 C=4 并发（g≤1）+ 其余串行，**≈ 40–70 min**。
 - **时态矩阵（每个 g）**：3 臂 × 6 seeds = 18 run。g=1 ⇒ 18×13 min ÷ 4 ≈ **1.0 h**；g=0.5 ⇒ 18×6 min ÷ 9 ≈ **12 min**；g=2 ⇒ 18×26 min ÷ 2 ≈ **3.9 h**。
 - **覆盖 {P,T,C} 的最坏情况**（g=0.5,1,2 三个点）：**≈ 5.2 h 墙钟**、输出 18×(0.11+0.16+0.25) ≈ **9.4 GB**、峰值内存 g=2 时 2×19 GB = 38 GB（64 GiB 的 59%）。
 - 若改用方案 A（T=4 s、发射窗不变），以上数字**不变**（±5%）。
 
-### 6.5 停止线（照抄 2026-10-28 线的发射前规则，本场景沿用）
+### 6.6 停止线（照抄 2026-10-28 线的发射前规则，本场景沿用）
 
 | 指标 | 正常 | 警戒 | 停止（停本批） |
 |---|---|---|---|
@@ -478,7 +522,7 @@ output(g)   ≈ 61 + 96.6·g MB             （audit 2000：7.18 + 10730·9000g 
 | # | 交接里的说法 | 核实结果 |
 |---|---|---|
 | 1 | "ISL constant 1000 Mbps with 24 Mbit queue 和 **3 Mbit**…" | profile 里**不存在任何 3 Mbit 常数**。实测值：`isl_queue_bits: 24000000`（24 Mbit，40 包）、`holding_queue_bits: 268435456`（256 Mibit）、`uplink/downlink_queue_bits: 4e9`、`control_plane.packet_bits` 未设 ⇒ 缺省 8000 bit（`config.py:524`）。"3 Mbit" 疑为笔误，**不得引用** |
-| 2 | "prior line found ISL util p50 **0.36**" | 该数字属于 **F3 底座场景**（1500 B / ISL **2 Mbps** / offered 50 / T=1.6），**不是**本 profile（600 kbit / 1 Gbps / 6000 / T=1.2）。见 `F3-RESULTS-20261028.md:36`、`MORNING-REPORT-20261028.md:50`。本 profile **无任何实测** |
+| 2 | "prior line found ISL util p50 **0.36**" | 该数字属于 **F3 底座场景**（1500 B / ISL **2 Mbps** / offered 50 / T=1.6），**不是**本 profile。见 `F3-RESULTS-20261028.md:36`、`MORNING-REPORT-20261028.md:50`。本 profile 的实测是 **p50 0.145 / p90 0.692 / max 0.798**（§4.0，seed 7、arm=now、D=0.15） |
 | 3 | "access-side holding dominated" | 属 2 Mbps / 400 Mbps 族（`holding 8.69 vs isl_data 3.24 Mbit·s`）。本 profile 的接入侧是 256 槽 / 20 Gbps / 268 Mbit holding，`[解析]` 每城 1000 Mbps 只占上行 5% ⇒ **不能沿用该结论**，必须重测 |
 | 4 | 交接未提 | profile **没有 `demand.deadline_s`** ⇒ 主终点必须靠 CLI `--deadline-s` 注入，且 D 是场景旋钮（§4.4） |
 | 5 | 交接未提 | 1.2 s 内 **无切换（0.1 s 网格）/ 0 次拓扑重匹配 / 几何只走 0.075°** ⇒ 只能测"队列状态年龄"，不能测"几何/拓扑陈旧"（§0.4） |
