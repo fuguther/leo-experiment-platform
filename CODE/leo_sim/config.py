@@ -292,6 +292,11 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
     "time_alignment": {
         "enabled": bool,
         "arm": str,  # stale | now | common | candidate
+        # Where the CANDIDATE arm says the packet will USE the resource.
+        # "arrival" = arrival-before-enqueue (no extra target-queue wait);
+        # "arrival_plus_queue" = historical behaviour.  Absent keeps every
+        # pre-existing profile byte-identical.
+        "candidate_target_rule": str,
         "predictor": str,  # hold_last | bounded_linear
         "history_limit": int,
         "common_rule": str,  # median_eta | mean_eta | fixed_horizon
@@ -1276,6 +1281,11 @@ def _validate_time_alignment(ta: Mapping[str, Any],
         raise ConfigError(
             "time_alignment.tie_sig_digits must be None or an integer within "
             f"1..15, got {tie!r}")
+    target_rule = ta.get("candidate_target_rule", "arrival_plus_queue")
+    if target_rule not in ("arrival", "arrival_plus_queue"):
+        raise ConfigError(
+            "time_alignment.candidate_target_rule must be 'arrival' or "
+            f"'arrival_plus_queue', got {target_rule!r}")
     source = ta["state_source"]
     if source not in ("advertised", "ideal_current"):
         raise ConfigError(

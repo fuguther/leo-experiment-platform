@@ -5251,6 +5251,11 @@ class Kernel:
             state_age_tau_s=self.cfg_ta.get("state_age_tau_s"),
             rate_ahead_bps=rate_ahead,
             queue_weight=self.cfg_ta.get("queue_weight"),
+            # CANDIDATE query instant rule.  Absent keeps the historical
+            # "arrival_plus_queue" behaviour byte-identical.
+            candidate_target_rule=str(
+                self.cfg_ta.get("candidate_target_rule")
+                or "arrival_plus_queue"),
             provenance=(scope,))
 
     def _ta_common_horizon(self, probe, rule):

@@ -462,3 +462,26 @@ def test_candidate_usage_instant_includes_predicted_peer_queue_wait():
         assert bits is not None
         assert targets[direction] == pytest.approx(
             etas[direction].target_at + float(bits) / float(rate), rel=1e-9)
+
+
+# ---- P1-b: explicit ARRIVAL rule stops at the ETA instant (contract E0/K) ---
+def test_candidate_arrival_rule_queries_exactly_the_eta_instant():
+    from CODE.leo_sim import time_alignment as ta
+    const = ta.ResourceKey(2, "N", "isl")
+    history = (ta.StateSample(const, 0.0, 0.1, 800.0, 8000.0),
+               ta.StateSample(const, 1.0, 1.1, 800.0, 8000.0))
+    kw = dict(history=history, arm="candidate", predictor="hold_last",
+              legal_directions=("N",),
+              resource_service_rate_bps={"N": 8000.0, "E": 8000.0})
+    snap = _snapshot(candidate_target_rule="arrival", **kw)
+    _, etas, targets = ta.build_predictions(snap)
+    assert targets["N"] == pytest.approx(etas["N"].target_at, rel=1e-12)
+    # The legacy rule (default) must stay byte-identical: it adds one queue
+    # wait step, so its instant is strictly later than the arrival.
+    legacy = _snapshot(**kw)
+    _, etas_legacy, targets_legacy = ta.build_predictions(legacy)
+    assert targets_legacy["N"] > etas_legacy["N"].target_at
+    # An unknown rule is refused instead of silently defaulting.
+    with pytest.raises(Exception):
+        _snapshot(candidate_target_rule="fastest")
+

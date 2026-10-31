@@ -376,6 +376,11 @@ class ObservationSnapshot:
     terminal_propagation_s: tuple = ()
     resource_available: tuple = ()
     local_egress_in_service_s: tuple = ()
+    #: Query instant rule of the CANDIDATE arm.  "arrival_plus_queue" keeps
+    #: the historical behaviour; "arrival" is the contract's arrival-before-
+    #: enqueue semantic (the wait is then what the prediction at arrival says,
+    #: not an extra fixed-point step).
+    candidate_target_rule: str = "arrival_plus_queue"
 
     def _lookup(self, table: tuple, direction: str):
         for key, value in table:
@@ -511,7 +516,9 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
                   local_egress_in_service_s=None,
                   ou_tau_s=None, queue_weight=None,
                   drift_alpha=None, rate_ahead_bps=None,
-                  state_age_tau_s=None) -> ObservationSnapshot:
+                  state_age_tau_s=None,
+                  candidate_target_rule: str = "arrival_plus_queue",
+                  ) -> ObservationSnapshot:
     """Build the frozen snapshot from kernel-selected fields only.
 
     Every accepted keyword is a field the kernel explicitly decided to expose;
@@ -554,6 +561,10 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
             f"drift_alpha must be in (0, 1], got {drift_alpha!r}")
     age_tau = None if state_age_tau_s is None else _finite(
         "state_age_tau_s", state_age_tau_s)
+    if candidate_target_rule not in ("arrival", "arrival_plus_queue"):
+        raise TimeAlignmentError(
+            "candidate_target_rule must be 'arrival' or 'arrival_plus_queue',"
+            f" got {candidate_target_rule!r}")
     if age_tau is not None and age_tau <= 0:
         raise TimeAlignmentError(
             f"state_age_tau_s must be > 0, got {state_age_tau_s!r}")
@@ -596,6 +607,7 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
             "resource_available", resource_available),
         local_egress_in_service_s=_pairs(
             "local_egress_in_service_s", local_egress_in_service_s),
+        candidate_target_rule=str(candidate_target_rule),
     )
 
 
@@ -1382,13 +1394,16 @@ def build_predictions(snapshot: ObservationSnapshot,
 
         prediction = predict_at(target)
         if (snapshot.arm == "candidate" and explicit_target is None
-                and last_measured is not None and resource is not None):
-            # P1: the CANDIDATE arm promises the instant the packet actually
-            # USES the resource, i.e. arrival PLUS the queueing it will find
-            # there.  estimate_eta deliberately excludes future arrivals, so
-            # the wait is taken from the prediction itself (one fixed-point
-            # step) instead of being silently dropped.  Other arms keep their
-            # documented instants untouched.
+                and last_measured is not None and resource is not None
+                and snapshot.candidate_target_rule != "arrival"):
+            # P1 (LEGACY, "arrival_plus_queue"): the CANDIDATE arm promises the
+            # instant the packet actually USES the resource, i.e. arrival PLUS
+            # the queueing it will find there.  estimate_eta deliberately
+            # excludes future arrivals, so the wait is taken from the prediction
+            # itself (one fixed-point step) instead of being silently dropped.
+            # The explicit rule "arrival" skips this step: the query instant is
+            # the ETA and the wait is whatever the prediction AT THAT INSTANT
+            # reports.  Other arms keep their documented instants untouched.
             rate = resource_service_bps(snapshot, direction)
             bits = prediction.predicted_bits
             if (rate is not None and rate > 0.0 and isinstance(bits, (int, float))
