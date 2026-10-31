@@ -1,0 +1,1050 @@
+{
+ "assertion_count": 12,
+ "assertions": [
+  {
+   "detail": {
+    "actual": 8.0,
+    "expected": 8.0
+   },
+   "label": "data_1 owns a full S/R window",
+   "pass": true
+  },
+  {
+   "detail": {
+    "data1_window": [
+     4.010001384571189,
+     12.01000138457119
+    ],
+    "served_inside": []
+   },
+   "label": "no control packet is served inside data_1's window (no preemption)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "data1_window": [
+     4.010001384571189,
+     12.01000138457119
+    ],
+    "enqueued_at": [
+     5.0,
+     6.0,
+     7.0,
+     8.0,
+     9.0,
+     10.0,
+     11.0,
+     12.0
+    ]
+   },
+   "label": "a control packet is enqueued while data_1 transmits",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 5.0,
+    "expected": 5.0
+   },
+   "label": "the first control enqueue during data_1 is its next advertisement (t=5.0)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "link_id": "isl:0:1",
+    "served_control_packets": 30
+   },
+   "label": "control packets were really served on the shared ISL",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 12.01000138457119,
+    "expected": 12.01000138457119
+   },
+   "label": "the queued control is served exactly when data_1 completes",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": [
+     0.008
+    ],
+    "expected": 0.008
+   },
+   "label": "the control packet really transmits (duration == ctrl_bits/R)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "backlog": [
+     7010001.384571189,
+     6010001.384571189,
+     5010001.384571189,
+     4010001.384571189,
+     3010001.384571189,
+     2010001.384571189,
+     1010001.3845711891,
+     10001.38457118906
+    ]
+   },
+   "label": "control backlog was measured behind a data packet still in service (non-preemptive wait)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "control_enqueue": 5.0,
+    "data2_enqueue": 4.018001384571189
+   },
+   "label": "data_2 is already waiting when the control packet arrives",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 12.074001384571183,
+    "expected": 12.074001384571183
+   },
+   "label": "data_2 starts only after the last queued control completes",
+   "pass": true
+  },
+  {
+   "detail": {
+    "data2_start": 12.074001384571183,
+    "served_controls": 8
+   },
+   "label": "data_2 cannot skip the control packets",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": [
+     [
+      "data",
+      1
+     ],
+     [
+      "ctrl",
+      11
+     ],
+     [
+      "ctrl",
+      13
+     ],
+     [
+      "ctrl",
+      15
+     ],
+     [
+      "ctrl",
+      17
+     ],
+     [
+      "ctrl",
+      19
+     ],
+     [
+      "ctrl",
+      21
+     ],
+     [
+      "ctrl",
+      23
+     ],
+     [
+      "ctrl",
+      25
+     ],
+     [
+      "data",
+      2
+     ]
+    ],
+    "expected": [
+     [
+      "data",
+      1
+     ],
+     [
+      "ctrl",
+      11
+     ],
+     [
+      "ctrl",
+      13
+     ],
+     [
+      "ctrl",
+      15
+     ],
+     [
+      "ctrl",
+      17
+     ],
+     [
+      "ctrl",
+      19
+     ],
+     [
+      "ctrl",
+      21
+     ],
+     [
+      "ctrl",
+      23
+     ],
+     [
+      "ctrl",
+      25
+     ],
+     [
+      "data",
+      2
+     ]
+    ]
+   },
+   "label": "raw service order is data_1 -> control* -> data_2",
+   "pass": true
+  }
+ ],
+ "case": "C1-control-nonpreemptive",
+ "error": null,
+ "events": {
+  "control_queue_entries": [
+   {
+    "at": 0.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 1
+   },
+   {
+    "at": 1.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 3
+   },
+   {
+    "at": 2.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 5
+   },
+   {
+    "at": 3.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 7
+   },
+   {
+    "at": 4.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 9
+   },
+   {
+    "at": 5.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 7010001.384571189,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 8000000,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 8000000,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 11
+   },
+   {
+    "at": 6.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 6010001.384571189,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 8008000,
+     "queued_ctrl_bits_before": 8000,
+     "queued_data_bits_before": 8000000,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 13
+   },
+   {
+    "at": 7.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 5010001.384571189,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 8016000,
+     "queued_ctrl_bits_before": 16000,
+     "queued_data_bits_before": 8000000,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 15
+   },
+   {
+    "at": 8.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 4010001.384571189,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 8024000,
+     "queued_ctrl_bits_before": 24000,
+     "queued_data_bits_before": 8000000,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 17
+   },
+   {
+    "at": 9.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 3010001.384571189,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 8032000,
+     "queued_ctrl_bits_before": 32000,
+     "queued_data_bits_before": 8000000,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 19
+   },
+   {
+    "at": 10.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 2010001.384571189,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 8040000,
+     "queued_ctrl_bits_before": 40000,
+     "queued_data_bits_before": 8000000,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 21
+   },
+   {
+    "at": 11.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 1010001.3845711891,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 8048000,
+     "queued_ctrl_bits_before": 48000,
+     "queued_data_bits_before": 8000000,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 23
+   },
+   {
+    "at": 12.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 10001.38457118906,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 8056000,
+     "queued_ctrl_bits_before": 56000,
+     "queued_data_bits_before": 8000000,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 25
+   },
+   {
+    "at": 13.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 7074001.384571183,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 27
+   },
+   {
+    "at": 14.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 6074001.384571183,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 8000,
+     "queued_ctrl_bits_before": 8000,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 29
+   },
+   {
+    "at": 15.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 5074001.3845711835,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 16000,
+     "queued_ctrl_bits_before": 16000,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 31
+   },
+   {
+    "at": 16.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 4074001.384571183,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 24000,
+     "queued_ctrl_bits_before": 24000,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 33
+   },
+   {
+    "at": 17.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 3074001.3845711825,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 32000,
+     "queued_ctrl_bits_before": 32000,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 35
+   },
+   {
+    "at": 18.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 2074001.3845711825,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 40000,
+     "queued_ctrl_bits_before": 40000,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 37
+   },
+   {
+    "at": 19.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 1074001.3845711825,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 48000,
+     "queued_ctrl_bits_before": 48000,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 39
+   },
+   {
+    "at": 20.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": 74001.38457118254,
+     "in_service_remaining_method": "linear_at_constant_rate",
+     "measured": "before_insertion",
+     "queued_bits_before": 56000,
+     "queued_ctrl_bits_before": 56000,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 41
+   },
+   {
+    "at": 21.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 43
+   },
+   {
+    "at": 22.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 45
+   },
+   {
+    "at": 23.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 47
+   },
+   {
+    "at": 24.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 49
+   },
+   {
+    "at": 25.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 51
+   },
+   {
+    "at": 26.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 53
+   },
+   {
+    "at": 27.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 55
+   },
+   {
+    "at": 28.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 57
+   },
+   {
+    "at": 29.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 59
+   },
+   {
+    "at": 30.0,
+    "backlog_before": {
+     "excludes": "the enqueueing packet",
+     "in_service_remaining_bits_before": null,
+     "in_service_remaining_method": "no_service",
+     "measured": "before_insertion",
+     "queued_bits_before": 0,
+     "queued_ctrl_bits_before": 0,
+     "queued_data_bits_before": 0,
+     "resource": "isl:0:1",
+     "resource_kind": "isl_egress"
+    },
+    "link_id": "isl:0:1",
+    "origin": 0,
+    "seq": 61
+   }
+  ],
+  "control_service_windows": [
+   {
+    "duration": 0.008,
+    "finish": 0.008,
+    "origin": 0,
+    "seq": 1,
+    "start": 0.0
+   },
+   {
+    "duration": 0.008000000000000007,
+    "finish": 1.008,
+    "origin": 0,
+    "seq": 3,
+    "start": 1.0
+   },
+   {
+    "duration": 0.008000000000000007,
+    "finish": 2.008,
+    "origin": 0,
+    "seq": 5,
+    "start": 2.0
+   },
+   {
+    "duration": 0.008000000000000007,
+    "finish": 3.008,
+    "origin": 0,
+    "seq": 7,
+    "start": 3.0
+   },
+   {
+    "duration": 0.008000000000000007,
+    "finish": 4.008,
+    "origin": 0,
+    "seq": 9,
+    "start": 4.0
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 12.018001384571189,
+    "origin": 0,
+    "seq": 11,
+    "start": 12.01000138457119
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 12.026001384571188,
+    "origin": 0,
+    "seq": 13,
+    "start": 12.018001384571189
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 12.034001384571187,
+    "origin": 0,
+    "seq": 15,
+    "start": 12.026001384571188
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 12.042001384571186,
+    "origin": 0,
+    "seq": 17,
+    "start": 12.034001384571187
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 12.050001384571186,
+    "origin": 0,
+    "seq": 19,
+    "start": 12.042001384571186
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 12.058001384571185,
+    "origin": 0,
+    "seq": 21,
+    "start": 12.050001384571186
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 12.066001384571184,
+    "origin": 0,
+    "seq": 23,
+    "start": 12.058001384571185
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 12.074001384571183,
+    "origin": 0,
+    "seq": 25,
+    "start": 12.066001384571184
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 20.082001384571182,
+    "origin": 0,
+    "seq": 27,
+    "start": 20.074001384571183
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 20.09000138457118,
+    "origin": 0,
+    "seq": 29,
+    "start": 20.082001384571182
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 20.09800138457118,
+    "origin": 0,
+    "seq": 31,
+    "start": 20.09000138457118
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 20.10600138457118,
+    "origin": 0,
+    "seq": 33,
+    "start": 20.09800138457118
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 20.11400138457118,
+    "origin": 0,
+    "seq": 35,
+    "start": 20.10600138457118
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 20.122001384571178,
+    "origin": 0,
+    "seq": 37,
+    "start": 20.11400138457118
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 20.130001384571177,
+    "origin": 0,
+    "seq": 39,
+    "start": 20.122001384571178
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 20.138001384571176,
+    "origin": 0,
+    "seq": 41,
+    "start": 20.130001384571177
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 21.008,
+    "origin": 0,
+    "seq": 43,
+    "start": 21.0
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 22.008,
+    "origin": 0,
+    "seq": 45,
+    "start": 22.0
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 23.008,
+    "origin": 0,
+    "seq": 47,
+    "start": 23.0
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 24.008,
+    "origin": 0,
+    "seq": 49,
+    "start": 24.0
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 25.008,
+    "origin": 0,
+    "seq": 51,
+    "start": 25.0
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 26.008,
+    "origin": 0,
+    "seq": 53,
+    "start": 26.0
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 27.008,
+    "origin": 0,
+    "seq": 55,
+    "start": 27.0
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 28.008,
+    "origin": 0,
+    "seq": 57,
+    "start": 28.0
+   },
+   {
+    "duration": 0.007999999999999119,
+    "finish": 29.008,
+    "origin": 0,
+    "seq": 59,
+    "start": 29.0
+   }
+  ],
+  "data_queue_entries": [
+   {
+    "at": 1.0999999999999999,
+    "kind": "queue_enter",
+    "link_id": "isl:0:1",
+    "pid": 99,
+    "queue": "isl",
+    "queue_id": 13
+   },
+   {
+    "at": 4.010001384571189,
+    "kind": "queue_enter",
+    "link_id": "isl:0:1",
+    "pid": 1,
+    "queue": "isl",
+    "queue_id": 17
+   },
+   {
+    "at": 4.018001384571189,
+    "kind": "queue_enter",
+    "link_id": "isl:0:1",
+    "pid": 2,
+    "queue": "isl",
+    "queue_id": 18
+   }
+  ],
+  "fates": {
+   "1": "DELIVERED",
+   "2": "DELIVERED",
+   "99": "DELIVERED"
+  },
+  "isl_service_windows": [
+   {
+    "bits": 8000,
+    "capacity_bits": 8000.000000000007,
+    "end": 1.1079999999999999,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 99,
+    "rate_bps": 1000000.0,
+    "served_bits": 8000,
+    "stage": "isl",
+    "start": 1.0999999999999999
+   },
+   {
+    "bits": 8000000,
+    "capacity_bits": 8000000.0,
+    "end": 12.01000138457119,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 1,
+    "rate_bps": 1000000.0,
+    "served_bits": 8000000,
+    "stage": "isl",
+    "start": 4.010001384571189
+   },
+   {
+    "bits": 8000000,
+    "capacity_bits": 8000000.0,
+    "end": 20.074001384571183,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 2,
+    "rate_bps": 1000000.0,
+    "served_bits": 8000000,
+    "stage": "isl",
+    "start": 12.074001384571183
+   }
+  ]
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "control_advertise_interval_s": 1.0,
+  "control_packet_bits": 8000,
+  "expected_ctrl_service_s": 0.008,
+  "expected_data_service_s": 8.0,
+  "isl_rate_mbps": 1.0,
+  "packet_bits": 8000000,
+  "rows": [
+   {
+    "bits": 8000,
+    "emit_time_s": 0.0,
+    "pid": 99
+   },
+   {
+    "bits": 8000000,
+    "emit_time_s": 4.0,
+    "pid": 1
+   },
+   {
+    "bits": 8000000,
+    "emit_time_s": 4.0,
+    "pid": 2
+   }
+  ]
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

@@ -18,6 +18,7 @@ from typing import Any, Mapping
 import yaml
 
 from . import link_budget
+from . import state_policy as _state_policy
 
 CONFIG_SCHEMA_VERSION = "leo-sim-config/v1"
 TRACE_IDENTITY_VERSION_V1 = "leo-sim-trace-identity/v1"
@@ -351,6 +352,22 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # now + rate_ahead_s is read from the known geometry.  None keeps
         # every pre-existing profile unchanged.
         "rate_ahead_s": (int, float, type(None)),
+        # STATE POLICY (POLICY-SPEC-20261031).  One frozen rule maps the SAME
+        # scored candidate set to an action order; candidate generation,
+        # legality/loop filtering, the physical model, the control plane and
+        # the scorer's term semantics are untouched.
+        #   legacy                   no policy layer (existing ranking)
+        #   geometry                 tx + prop + remaining_prop only
+        #   queue_greedy             existing total (hold-last queue)
+        #   queue_greedy_hysteresis  queue_greedy + per-(sat, dst) memory
+        #   queue_greedy_ewma        queue_greedy + arrived-sample EWMA queue
+        "state_policy": str,
+        # Hysteresis margin (seconds), frozen grid {0, 0.002, 0.005, 0.010}.
+        # Meaningful only for state_policy=queue_greedy_hysteresis.
+        "hysteresis_eta_s": (int, float),
+        # EWMA weight, frozen grid {0.1, 0.25, 0.5}.  Meaningful only for
+        # state_policy=queue_greedy_ewma.
+        "ewma_alpha": (int, float),
     },
     "async_routing": {
         "enabled": bool,
@@ -404,6 +421,10 @@ VALID_EXECUTION_MODES = {
     "per_packet", "per_flow", "precomputed", "async_point", "async_window",
 }
 VALID_ASYNC_TRIGGERS = {"periodic"}
+# STATE POLICY (POLICY-SPEC-20261031): one frozen candidate-ranking rule.
+# The name set, the hysteresis eta grid and the EWMA alpha grid live in
+# state_policy.py so the config validator and the pure ranker cannot drift.
+VALID_STATE_POLICIES = frozenset(_state_policy.POLICIES)
 RF_KEYS = {
     "frequency_hz", "bandwidth_hz", "max_ptx_w",
     "antenna_diameter_tx_m", "antenna_diameter_rx_m",
@@ -607,6 +628,15 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         # every existing profile, silently invalidating the identity of all
         # archived evidence.  Absent means "historical constant"; the kernel
         # reads them with .get(), so an unset profile hashes exactly as before.
+        # STATE POLICY: these three ARE defaulted on purpose (POLICY-SPEC
+        # §6): the routing rule is part of the experiment identity, and a run
+        # whose action rule is not in its config_sha256 would be a different
+        # experiment under the same identity.  Defaults are the policy-off
+        # values (legacy / eta 0 / alpha 0.25), so an unconfigured profile runs
+        # the historical ranking; its config_sha256 necessarily moves once.
+        "state_policy": "legacy",
+        "hysteresis_eta_s": 0.0,
+        "ewma_alpha": 0.25,
     },
     "async_routing": {
         "enabled": False,
@@ -1386,6 +1416,46 @@ def _validate_time_alignment(ta: Mapping[str, Any],
     if (isinstance(ttl, bool) or not isinstance(ttl, (int, float))
             or not math.isfinite(ttl) or ttl <= 0):
         raise ConfigError("time_alignment.per_flow_ttl_s must be > 0")
+    # STATE POLICY (POLICY-SPEC-20261031).  The action rule is part of the
+    # experiment identity, so an unknown name, an off-grid parameter, or a
+    # request that would silently NOT enter the run is refused before the
+    # kernel exists.  Definition and validation live in state_policy.py.
+    policy = ta["state_policy"]
+    if policy not in VALID_STATE_POLICIES:
+        raise ConfigError(
+            f"time_alignment.state_policy must be one of "
+            f"{sorted(VALID_STATE_POLICIES)}, got {policy!r}")
+    eta = ta["hysteresis_eta_s"]
+    try:
+        _state_policy.validate_eta_s(eta)
+    except _state_policy.StatePolicyError as exc:
+        raise ConfigError(f"time_alignment.{exc}") from exc
+    alpha = ta["ewma_alpha"]
+    try:
+        _state_policy.validate_alpha(alpha)
+    except _state_policy.StatePolicyError as exc:
+        raise ConfigError(f"time_alignment.{exc}") from exc
+    if policy != "queue_greedy_hysteresis" and float(eta) != 0.0:
+        # Same discipline as ou_tau_s/predictor: a parameter that can never be
+        # read would make the profile look like a hysteresis run while the
+        # kernel keeps the plain greedy order.
+        raise ConfigError(
+            "time_alignment.hysteresis_eta_s is only meaningful for "
+            "state_policy='queue_greedy_hysteresis', got "
+            f"{policy!r}; an unused parameter would silently not enter the run")
+    if policy != "legacy" and not ta["enabled"]:
+        raise ConfigError(
+            f"time_alignment.state_policy={policy!r} requires "
+            "time_alignment.enabled=true: the policy ranks the time-alignment "
+            "scorer's candidates and has nothing to rank otherwise")
+    if policy != "legacy" and ta["execution_mode"] in (
+            "precomputed", "async_point", "async_window"):
+        raise ConfigError(
+            f"time_alignment.state_policy={policy!r} is applied by the "
+            "per-decision scoring path and cannot enter "
+            f"execution_mode={ta['execution_mode']!r}: that path reads an "
+            "installed table/action and never ranks candidates, so the policy "
+            "would silently not enter the run. Use per_packet or per_flow.")
     qd = ta["query_delay_s"]
     if (isinstance(qd, bool) or not isinstance(qd, (int, float))
             or not math.isfinite(qd) or qd < 0):

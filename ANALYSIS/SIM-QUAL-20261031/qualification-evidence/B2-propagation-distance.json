@@ -1,0 +1,118 @@
+{
+ "assertion_count": 5,
+ "assertions": [
+  {
+   "detail": {
+    "actual": 0.0033356409519815205,
+    "expected": 0.0033356409519815205
+   },
+   "label": "d=1000 km: T_prop == d/c",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.20733702552317046,
+    "expected": 0.20733702552317046
+   },
+   "label": "d=1000 km: arrival == start + T_tx + T_prop",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.006671281903963041,
+    "expected": 0.006671281903963041
+   },
+   "label": "d=2000 km: T_prop == d/c",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.21067266647515198,
+    "expected": 0.21067266647515198
+   },
+   "label": "d=2000 km: arrival == start + T_tx + T_prop",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.006671281903963041,
+    "expected": 0.006671281903963041
+   },
+   "label": "doubling the distance doubles the propagation delay",
+   "pass": true
+  }
+ ],
+ "case": "B2-propagation-distance",
+ "error": null,
+ "events": {
+  "events_d_1000": [
+   {
+    "at": 0.004001384571188912,
+    "bits": 2000000,
+    "kind": "service_start",
+    "link_id": "isl:0:1",
+    "pid": 1,
+    "queue_id": 2,
+    "rate_bps": 10000000.0,
+    "stage": "isl"
+   },
+   {
+    "at": 0.20400138457118894,
+    "delay_s": 0.0033356409519815205,
+    "kind": "propagation_start",
+    "link_id": "isl:0:1",
+    "pid": 1,
+    "prop_id": 1,
+    "stage": "isl"
+   },
+   {
+    "at": 0.20733702552317046,
+    "kind": "propagation_arrival",
+    "pid": 1,
+    "prop_id": 1
+   }
+  ],
+  "events_d_2000": [
+   {
+    "at": 0.004001384571188912,
+    "bits": 2000000,
+    "kind": "service_start",
+    "link_id": "isl:0:1",
+    "pid": 1,
+    "queue_id": 2,
+    "rate_bps": 10000000.0,
+    "stage": "isl"
+   },
+   {
+    "at": 0.20400138457118894,
+    "delay_s": 0.006671281903963041,
+    "kind": "propagation_start",
+    "link_id": "isl:0:1",
+    "pid": 1,
+    "prop_id": 1,
+    "stage": "isl"
+   },
+   {
+    "at": 0.21067266647515198,
+    "kind": "propagation_arrival",
+    "pid": 1,
+    "prop_id": 1
+   }
+  ]
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "distances_km": [
+   1000.0,
+   2000.0
+  ],
+  "expected_T_prop_s": [
+   0.0033356409519815205,
+   0.006671281903963041
+  ],
+  "isl_rate_mbps": 10.0,
+  "packet_bits": 2000000
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

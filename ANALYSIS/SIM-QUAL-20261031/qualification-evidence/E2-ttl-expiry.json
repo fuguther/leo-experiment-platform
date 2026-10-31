@@ -1,0 +1,544 @@
+{
+ "assertion_count": 5,
+ "assertions": [
+  {
+   "detail": {
+    "expiry": 2.5,
+    "received_at": 2.0113356409519816
+   },
+   "label": "the entry is received before the expiry instant",
+   "pass": true
+  },
+  {
+   "detail": {
+    "aoi": 1.0,
+    "ttl": 0.5,
+    "valid": false
+   },
+   "label": "the entry is expired at the stop instant",
+   "pass": true
+  },
+  {
+   "detail": {
+    "expiry": 2.5,
+    "forward": {
+     "cache_entries": {
+      "1": {
+       "age_s": 0.40200938457118873,
+       "generated_at": 2.0,
+       "received_at": 2.0113356409519816
+      }
+     },
+     "candidates": [
+      "E"
+     ],
+     "chosen": "E",
+     "kind": "forward",
+     "obs_mode": "refresh",
+     "observation_source": "commit_time_state",
+     "observation_t_observed": 2.4020093845711887,
+     "pid": 1,
+     "sat": 0,
+     "t": 2.4020093845711887,
+     "t_decision_start": 2.4020093845711887
+    }
+   },
+   "label": "a packet decided while the entry is valid still uses it",
+   "pass": true
+  },
+  {
+   "detail": {
+    "attempts": [
+     {
+      "at": 2.602009384571189,
+      "route_status": "no_info"
+     },
+     {
+      "at": 2.700000000000001,
+      "route_status": "no_info"
+     },
+     {
+      "at": 2.800000000000001,
+      "route_status": "no_info"
+     },
+     {
+      "at": 2.9000000000000012,
+      "route_status": "no_info"
+     }
+    ],
+    "expiry": 2.5
+   },
+   "label": "after expiry the state cannot be read (no_info holds)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "decisions": [],
+    "fate": "IN_SYSTEM_AT_STOP"
+   },
+   "label": "the expired packet never forwards and settles in system",
+   "pass": true
+  }
+ ],
+ "case": "E2-ttl-expiry",
+ "error": null,
+ "events": {
+  "audit_arrived": [
+   {
+    "at": 2.0113356409519816,
+    "audit": "control_plane",
+    "decision_id": null,
+    "downlink_resources": {},
+    "hops": 1,
+    "milestone": "ctrl_advert_arrived",
+    "origin": 1,
+    "payload_fields": [
+     "access_slots_cap",
+     "access_slots_used",
+     "generated_at",
+     "isl_propagation_s",
+     "isl_queue_bits",
+     "origin",
+     "position",
+     "serve_cells",
+     "visible_cells"
+    ],
+    "pid": null,
+    "remaining_hops": 2,
+    "sat": 0,
+    "seq": 4,
+    "serve_cells": [
+     "G1:90:190"
+    ]
+   }
+  ],
+  "audit_generated": [
+   {
+    "advertisement_protocol_version": 1,
+    "at": 2.0,
+    "audit": "control_plane",
+    "base_packet_bits": 8000,
+    "children": [
+     "W"
+    ],
+    "decision_id": null,
+    "downlink_resources": {
+     "G1:90:190": {
+      "available": true,
+      "propagation_s": 0.0020013845711889123,
+      "queue_bits": 0.0,
+      "queue_scope": "satellite_shared_drr",
+      "queue_semantics": "all_waiting_bits_plus_active_residual_work_proxy",
+      "rate_bps": 1000000000.0
+     }
+    },
+    "hops": 0,
+    "milestone": "ctrl_advert_generated",
+    "origin": 1,
+    "packet_bits": 8000,
+    "pid": null,
+    "resource_telemetry_bits": 0,
+    "seq": 4,
+    "serve_cells": [
+     "G1:90:190"
+    ],
+    "ttl_s": 0.5,
+    "vis_k": 2,
+    "wire_cost": null
+   }
+  ],
+  "cache_sat0": {
+   "1": {
+    "aoi": 1.0,
+    "generated_at": 2.0,
+    "received_at": 2.0113356409519816,
+    "serve_cells": [
+     "G1:90:190"
+    ],
+    "valid": false,
+    "visible_cells": [
+     "G1:90:190"
+    ]
+   }
+  },
+  "decision_attempts": [
+   {
+    "action": "hold",
+    "at": 0.0020093845711889125,
+    "decision_id": 0,
+    "hop_index": 0,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 0.0020093845711889125,
+    "decision_id": 1,
+    "hop_index": 1,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 0.1,
+    "decision_id": 2,
+    "hop_index": 2,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 0.2,
+    "decision_id": 3,
+    "hop_index": 3,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 0.30000000000000004,
+    "decision_id": 4,
+    "hop_index": 4,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 0.4,
+    "decision_id": 5,
+    "hop_index": 5,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 0.5,
+    "decision_id": 6,
+    "hop_index": 6,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 0.6,
+    "decision_id": 7,
+    "hop_index": 7,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 0.7,
+    "decision_id": 8,
+    "hop_index": 8,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 0.7999999999999999,
+    "decision_id": 9,
+    "hop_index": 9,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 0.8999999999999999,
+    "decision_id": 10,
+    "hop_index": 10,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 0.9999999999999999,
+    "decision_id": 11,
+    "hop_index": 11,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 1.0999999999999999,
+    "decision_id": 12,
+    "hop_index": 12,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 1.2,
+    "decision_id": 13,
+    "hop_index": 13,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 1.3,
+    "decision_id": 14,
+    "hop_index": 14,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 1.4000000000000001,
+    "decision_id": 15,
+    "hop_index": 15,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 1.5000000000000002,
+    "decision_id": 16,
+    "hop_index": 16,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 1.6000000000000003,
+    "decision_id": 17,
+    "hop_index": 17,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 1.7000000000000004,
+    "decision_id": 18,
+    "hop_index": 18,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 1.8000000000000005,
+    "decision_id": 19,
+    "hop_index": 19,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 1.9000000000000006,
+    "decision_id": 20,
+    "hop_index": 20,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 2.0000000000000004,
+    "decision_id": 21,
+    "hop_index": 21,
+    "pid": 99,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 2.602009384571189,
+    "decision_id": 26,
+    "hop_index": 0,
+    "pid": 2,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 2.700000000000001,
+    "decision_id": 27,
+    "hop_index": 1,
+    "pid": 2,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 2.800000000000001,
+    "decision_id": 28,
+    "hop_index": 2,
+    "pid": 2,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   },
+   {
+    "action": "hold",
+    "at": 2.9000000000000012,
+    "decision_id": 29,
+    "hop_index": 3,
+    "pid": 2,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   }
+  ],
+  "decisions": [
+   {
+    "cache_entries": {
+     "1": {
+      "age_s": 0.10000000000000053,
+      "generated_at": 2.0,
+      "received_at": 2.0113356409519816
+     }
+    },
+    "candidates": [
+     "E"
+    ],
+    "chosen": "E",
+    "kind": "forward",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 2.1000000000000005,
+    "pid": 99,
+    "sat": 0,
+    "t": 2.1000000000000005,
+    "t_decision_start": 2.1000000000000005
+   },
+   {
+    "cache_entries": {
+     "0": {
+      "age_s": 0.11133564095198212,
+      "generated_at": 2.0,
+      "received_at": 2.0113356409519816
+     }
+    },
+    "candidates": [
+     "deliver"
+    ],
+    "chosen": "deliver",
+    "kind": "deliver",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 2.111335640951982,
+    "pid": 99,
+    "sat": 1,
+    "t": 2.111335640951982,
+    "t_decision_start": 2.111335640951982
+   },
+   {
+    "cache_entries": {
+     "1": {
+      "age_s": 0.40200938457118873,
+      "generated_at": 2.0,
+      "received_at": 2.0113356409519816
+     }
+    },
+    "candidates": [
+     "E"
+    ],
+    "chosen": "E",
+    "kind": "forward",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 2.4020093845711887,
+    "pid": 1,
+    "sat": 0,
+    "t": 2.4020093845711887,
+    "t_decision_start": 2.4020093845711887
+   },
+   {
+    "cache_entries": {
+     "0": {
+      "age_s": 0.4133450255231703,
+      "generated_at": 2.0,
+      "received_at": 2.0113356409519816
+     }
+    },
+    "candidates": [
+     "deliver"
+    ],
+    "chosen": "deliver",
+    "kind": "deliver",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 2.4133450255231703,
+    "pid": 1,
+    "sat": 1,
+    "t": 2.4133450255231703,
+    "t_decision_start": 2.4133450255231703
+   }
+  ],
+  "fates": {
+   "1": "DELIVERED",
+   "2": "IN_SYSTEM_AT_STOP",
+   "99": "DELIVERED"
+  }
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "advert_seq": 4,
+  "advertise_interval_s": 2.0,
+  "control_packet_bits": 8000,
+  "duration_s": 3.0,
+  "expected_expiry_at_s": 2.5,
+  "isl_rate_mbps": 1.0,
+  "rows": [
+   {
+    "emit_time_s": 0.0,
+    "pid": 99
+   },
+   {
+    "emit_time_s": 2.4,
+    "pid": 1
+   },
+   {
+    "emit_time_s": 2.6,
+    "pid": 2
+   }
+  ],
+  "ttl_s": 0.5
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

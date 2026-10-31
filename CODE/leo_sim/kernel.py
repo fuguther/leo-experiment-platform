@@ -57,6 +57,7 @@ from . import deadline_objective as _deadline_objective
 from . import async_routing as _async
 from . import inference as _inference
 from . import outage, rng as rngmod, routing
+from . import state_policy as _state_policy
 from . import time_alignment as _ta
 from . import trace as tracemod
 
@@ -1331,6 +1332,18 @@ class Kernel:
         raw_age = self.cfg_ta.get("min_observation_age_s")
         self._min_observation_age_s = (None if raw_age in (None, "")
                                        else float(raw_age))
+        # STATE POLICY (POLICY-SPEC-20261031).  One frozen rule ranks the SAME
+        # scored candidates; "legacy" keeps the historical scorer ranking.
+        # The per-(satellite, destination cell) memory is written ONLY by a
+        # committed forward action (never by an observation, hold, deliver or
+        # fail), so a frozen observation cannot teach the policy anything.
+        self._state_policy = _state_policy.validate_policy(
+            str(self.cfg_ta.get("state_policy") or _state_policy.LEGACY))
+        self._state_policy_eta_s = _state_policy.validate_eta_s(
+            self.cfg_ta.get("hysteresis_eta_s", 0.0))
+        self._state_policy_alpha = _state_policy.validate_alpha(
+            self.cfg_ta.get("ewma_alpha", 0.25))
+        self._state_policy_last: dict = {}
         # EVENT-ADVERT: the deployable alternative to the periodic schedule.
         # A satellite emits an extra report when ITS OWN serving set changes
         # (an association becomes active, or a link is released).  The trigger
@@ -5394,6 +5407,31 @@ class Kernel:
                 "rate_model": self.rate_model,
                 "dropped_zero_rate_directions": dropped_zero_rate,
                 "rate_lookup_errors": rate_lookup_errors,
+                # Same block shape as the scored path, with no candidate to
+                # rank: an analysis reader can tell "no action was ranked"
+                # from "the policy was absent" without a second schema.
+                "state_policy": {
+                    "schema": _state_policy.SCHEMA,
+                    "policy": self._state_policy,
+                    "hysteresis_eta_s": (
+                        self._state_policy_eta_s
+                        if self._state_policy
+                        == _state_policy.QUEUE_GREEDY_HYSTERESIS else None),
+                    "ewma_alpha": (
+                        self._state_policy_alpha
+                        if self._state_policy
+                        == _state_policy.QUEUE_GREEDY_EWMA else None),
+                    "last_direction": None,
+                    "snapshot_at": float(now),
+                    "per_direction": {},
+                    "selection": {"winner": None, "rule": "argmin",
+                                  "kept_direction": None},
+                    "reason": "all_candidates_zero_rate: no scored candidate "
+                              "to rank",
+                    "applied_order": list(cands),
+                    "scorer_ranking": [],
+                    "source": "leo_sim.kernel zero-rate early exit",
+                },
                 "applied_order": list(cands),
             }
         try:
@@ -5423,7 +5461,37 @@ class Kernel:
         except _ta.TimeAlignmentError as exc:
             raise KernelError(
                 f"time_alignment could not score decision at {now}: {exc}")
-        order = [d for d in scored.ranking if d in scored_cands]
+        # STATE POLICY (POLICY-SPEC-20261031).  ONE frozen rule maps this
+        # already-scored candidate set to an action order; candidate
+        # generation, legality/physics filtering, the control plane and the
+        # scorer's term semantics are untouched.  "legacy" returns the scorer
+        # ranking unchanged, so the historical path cannot drift.
+        state_history = None
+        if self._state_policy == _state_policy.QUEUE_GREEDY_EWMA:
+            # The EWMA is recomputed from the samples that already ARRIVED at
+            # snapshot_at, using the SAME helpers the predictor reads
+            # (order_history / _latest_by_resource), so "what was read" and
+            # "what is recorded" cannot drift apart.
+            ordered_history = _ta.order_history(probe.history,
+                                                probe.snapshot_at)
+            state_history = (_ta._latest_by_resource(ordered_history)
+                             if ordered_history else {})
+        state_last = None
+        if pkt is not None:
+            state_last = self._state_policy_last.get(
+                (int(sat), str(pkt.dst)))
+        ranked, state_policy_audit = _state_policy.rank(
+            scored,
+            history_by_resource=state_history,
+            snapshot_at=probe.snapshot_at,
+            policy=self._state_policy,
+            eta_s=self._state_policy_eta_s,
+            alpha=self._state_policy_alpha,
+            last_direction=state_last,
+            visible_order=probe.legal_directions,
+            tie_sig_digits=self.cfg_ta.get("tie_sig_digits"),
+        )
+        order = [d for d in ranked if d in scored_cands]
         order += [d for d in cands if d not in order]
         if policy_choice is not None:
             # the inference policy owns the ACTION; the scorer still supplies
@@ -5540,6 +5608,13 @@ class Kernel:
                     "predicted_bits": s.predicted_bits,
                     "service_rate_bps": s.service_rate_bps,
                 } for s in scored.scores},
+            # STATE POLICY (POLICY-SPEC-20261031 §6).  Fixed audit contract:
+            # policy name, the frozen parameters actually used, the committed
+            # memory entry, the per-direction J this policy sorted on, the
+            # queue work it actually counted and the EWMA sample count, so an
+            # offline replay can rebuild a FRESH-action J as
+            # j_used_s - resource_work_used_s + truth_bits/service_rate_bps.
+            "state_policy": state_policy_audit,
             # ZERO-RATE GUARD (partial drops are reported here too; the
             # all-zero early exit above uses the same schema).
             "dropped_zero_rate_directions": dropped_zero_rate,
@@ -6001,6 +6076,14 @@ class Kernel:
         state when the computation landed (refresh), which is then recorded
         as such rather than left to be inferred from the numbers.
         """
+        # STATE POLICY MEMORY (POLICY-SPEC-20261031 §4).  The committed
+        # direction memory is written ONLY when a FORWARD action is actually
+        # committed: deliver/hold/fail never update it, and a frozen
+        # observation that is not committed never reaches this function.  It
+        # sits BEFORE the decision-sink early return because the memory
+        # belongs to the routing rule, not to the optional ledger.
+        if kind == "forward" and self._state_policy != _state_policy.LEGACY:
+            self._state_policy_last[(int(sat), str(pkt.dst))] = str(chosen)
         if self.decision_sink is None:
             return
         obs = pkt.learning_state

@@ -83,7 +83,15 @@ OVERRIDE_FIELDS = {
                "downlink_rate_mbps"},
     "control_plane": {"advertise_interval_s", "vis_k",
                       "initial_sync_burst_s", "event_advert_enabled",
-                      "event_advert_min_interval_s"},
+                      "event_advert_min_interval_s",
+                      # The state-age study's "strong synchronisation"
+                      # baseline is defined as fast advertisements PLUS small
+                      # control packets; both are declared knobs of the
+                      # control plane, so the control packet size must be
+                      # expressible as a cell override.  It is not a hidden
+                      # change of the wire model: the same field is already
+                      # part of the frozen base profile.
+                      "packet_bits"},
     # mode and csv_path are injected ONLY by the declared trace_program path
     # below, never typed by a cell: a cell that names its own CSV could smuggle
     # in a trace the calibration never saw.
@@ -110,6 +118,13 @@ OVERRIDE_FIELDS = {
                        "common_horizon_s", "history_limit",
                        "execution_mode", "min_observation_age_s",
                        "state_source", "enabled",
+                       # STATE POLICY (POLICY-SPEC-20261031): the candidate
+                       # ranking rule and its two frozen parameters are the
+                       # Phase-1 treatment, so they must be expressible as
+                       # cell overrides.  The base profile keeps
+                       # state_policy="legacy", i.e. every pre-existing
+                       # contract is unchanged.
+                       "state_policy", "hysteresis_eta_s", "ewma_alpha",
                        # Diagnostics-only score quantisation, used by the
                        # tie-break A/B intervention.  Absent keeps the
                        # historical sort key exactly.

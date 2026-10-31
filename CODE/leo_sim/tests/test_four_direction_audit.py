@@ -60,6 +60,11 @@ def test_four_direction_audit_preserves_platform_masks_and_reasons():
 def test_queue_state_trace_contains_exact_resource_counts():
     kernel = object.__new__(Kernel)
     kernel.timeline_sink = []
+    # The queue-state channel has TWO optional sinks since the resource
+    # journal was added; a real Kernel.__init__ always sets the journal to
+    # None when it is not requested, so the half-constructed fixture must do
+    # the same (otherwise the channel reads an attribute only __init__ sets).
+    kernel.resource_journal = None
     kernel.env = SimpleNamespace(now=3.5)
     link = _Link(7, data_bits=300, ctrl_bits=50)
     link.sat = 2

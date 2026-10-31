@@ -1,0 +1,221 @@
+{
+ "assertion_count": 12,
+ "assertions": [
+  {
+   "detail": {
+    "actual": 0.8,
+    "expected": 0.8
+   },
+   "label": "pid1: transmission starts at the service start and lasts exactly S/R",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.0033356409519815205,
+    "expected": 0.0033356409519815205
+   },
+   "label": "pid1: propagation delay equals d/c for the real distance",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.8133370255231704,
+    "expected": 0.8133370255231704
+   },
+   "label": "pid1: t_arrival == t_service_start + T_tx + T_prop",
+   "pass": true
+  },
+  {
+   "detail": {
+    "arrival": 0.8133370255231704,
+    "transmission_end": 0.810001384571189
+   },
+   "label": "pid1: arrival happens strictly after transmission ends",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.8000000000000002,
+    "expected": 0.8
+   },
+   "label": "pid2: transmission starts at the service start and lasts exactly S/R",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.0033356409519815205,
+    "expected": 0.0033356409519815205
+   },
+   "label": "pid2: propagation delay equals d/c for the real distance",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 1.6133370255231707,
+    "expected": 1.6133370255231707
+   },
+   "label": "pid2: t_arrival == t_service_start + T_tx + T_prop",
+   "pass": true
+  },
+  {
+   "detail": {
+    "arrival": 1.6133370255231707,
+    "transmission_end": 1.6100013845711891
+   },
+   "label": "pid2: arrival happens strictly after transmission ends",
+   "pass": true
+  },
+  {
+   "detail": {
+    "packet1_arrival": 0.8133370255231704,
+    "packet2_service_start": 0.810001384571189
+   },
+   "label": "the link serves packet 2 while packet 1 is still propagating",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.810001384571189,
+    "expected": 0.810001384571189
+   },
+   "label": "packet 2 is served back-to-back after packet 1 (no propagation hold on the transmitter)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "arrival": 0.8133370255231704,
+    "first_read_at": 0.8133370255231704
+   },
+   "label": "the next hop first reads the packet at/after its arrival",
+   "pass": true
+  },
+  {
+   "detail": {
+    "arrival": 0.8133370255231704,
+    "delivered_at": 0.8233384100943594
+   },
+   "label": "delivery cannot precede the propagation arrival",
+   "pass": true
+  }
+ ],
+ "case": "B1-tx-propagation-separation",
+ "error": null,
+ "events": {
+  "arrivals": [
+   {
+    "at": 0.8133370255231704,
+    "pid": 1,
+    "prop_id": 2
+   },
+   {
+    "at": 1.6133370255231707,
+    "pid": 2,
+    "prop_id": 4
+   }
+  ],
+  "isl_propagation_starts": [
+   {
+    "at": 0.810001384571189,
+    "delay_s": 0.0033356409519815205,
+    "kind": "propagation_start",
+    "link_id": "isl:0:1",
+    "pid": 1,
+    "prop_id": 2,
+    "stage": "isl"
+   },
+   {
+    "at": 1.6100013845711891,
+    "delay_s": 0.0033356409519815205,
+    "kind": "propagation_start",
+    "link_id": "isl:0:1",
+    "pid": 2,
+    "prop_id": 4,
+    "stage": "isl"
+   }
+  ],
+  "isl_service_starts": [
+   {
+    "at": 0.010001384571188912,
+    "bits": 8000000,
+    "kind": "service_start",
+    "link_id": "isl:0:1",
+    "pid": 1,
+    "queue_id": 3,
+    "rate_bps": 10000000.0,
+    "stage": "isl"
+   },
+   {
+    "at": 0.810001384571189,
+    "bits": 8000000,
+    "kind": "service_start",
+    "link_id": "isl:0:1",
+    "pid": 2,
+    "queue_id": 4,
+    "rate_bps": 10000000.0,
+    "stage": "isl"
+   }
+  ],
+  "isl_service_windows": [
+   {
+    "bits": 8000000,
+    "capacity_bits": 8000000.0,
+    "end": 0.810001384571189,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 1,
+    "rate_bps": 10000000.0,
+    "served_bits": 8000000,
+    "stage": "isl",
+    "start": 0.010001384571188912
+   },
+   {
+    "bits": 8000000,
+    "capacity_bits": 8000000.000000002,
+    "end": 1.6100013845711891,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 2,
+    "rate_bps": 10000000.0,
+    "served_bits": 8000000,
+    "stage": "isl",
+    "start": 0.810001384571189
+   }
+  ],
+  "pid1_downstream_events": [
+   {
+    "at": 0.8133370255231704,
+    "kind": "queue_enter",
+    "link_id": "gsl:downlink:1:G1:90:190",
+    "pid": 1,
+    "queue": "downlink",
+    "queue_id": 5
+   },
+   {
+    "at": 0.8133370255231704,
+    "bits": 8000000,
+    "kind": "service_start",
+    "link_id": "gsl:downlink:1:G1:90:190",
+    "pid": 1,
+    "queue_id": 5,
+    "rate_bps": 1000000000.0,
+    "stage": "downlink"
+   },
+   {
+    "at": 0.8233384100943594,
+    "kind": "delivered",
+    "pid": 1
+   }
+  ]
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "expected_T_prop_s": 0.0033356409519815205,
+  "expected_T_tx_s": 0.8,
+  "expected_arrival_formula": "service_start + T_tx + T_prop",
+  "isl_distance_km": 1000.0,
+  "isl_rate_mbps": 10.0,
+  "packet_bits": 8000000
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

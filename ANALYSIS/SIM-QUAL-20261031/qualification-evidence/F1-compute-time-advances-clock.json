@@ -1,0 +1,1230 @@
+{
+ "assertion_count": 15,
+ "assertions": [
+  {
+   "detail": {
+    "decisions": [
+     {
+      "cache_entries": {},
+      "candidates": [
+       "E"
+      ],
+      "chosen": "E",
+      "kind": "forward",
+      "obs_mode": "refresh",
+      "observation_source": "commit_time_state",
+      "observation_t_observed": 0.0020093845711889125,
+      "pid": 99,
+      "sat": 0,
+      "t": 0.0020093845711889125,
+      "t_decision_start": 0.0020093845711889125
+     },
+     {
+      "cache_entries": {
+       "0": {
+        "age_s": 0.019335640951981523,
+        "generated_at": 0.0,
+        "received_at": 0.01133564095198152
+       }
+      },
+      "candidates": [
+       "deliver"
+      ],
+      "chosen": "deliver",
+      "kind": "deliver",
+      "obs_mode": "refresh",
+      "observation_source": "commit_time_state",
+      "observation_t_observed": 0.019335640951981523,
+      "pid": 99,
+      "sat": 1,
+      "t": 0.019335640951981523,
+      "t_decision_start": 0.019335640951981523
+     },
+     {
+      "cache_entries": {
+       "1": {
+        "age_s": 1.0020093845711888,
+        "generated_at": 1.0,
+        "received_at": 1.0113356409519816
+       }
+      },
+      "candidates": [
+       "E"
+      ],
+      "chosen": "E",
+      "kind": "forward",
+      "obs_mode": "refresh",
+      "observation_source": "commit_time_state",
+      "observation_t_observed": 2.002009384571189,
+      "pid": 1,
+      "sat": 0,
+      "t": 2.002009384571189,
+      "t_decision_start": 2.002009384571189
+     },
+     {
+      "cache_entries": {
+       "0": {
+        "age_s": 0.019335640951981592,
+        "generated_at": 2.0,
+        "received_at": 2.0113356409519816
+       }
+      },
+      "candidates": [
+       "deliver"
+      ],
+      "chosen": "deliver",
+      "kind": "deliver",
+      "obs_mode": "refresh",
+      "observation_source": "commit_time_state",
+      "observation_t_observed": 2.0193356409519816,
+      "pid": 1,
+      "sat": 1,
+      "t": 2.0193356409519816,
+      "t_decision_start": 2.0193356409519816
+     },
+     {
+      "cache_entries": {
+       "1": {
+        "age_s": 1.0020093845711888,
+        "generated_at": 2.0,
+        "received_at": 2.0113356409519816
+       }
+      },
+      "candidates": [
+       "E"
+      ],
+      "chosen": "E",
+      "kind": "forward",
+      "obs_mode": "refresh",
+      "observation_source": "commit_time_state",
+      "observation_t_observed": 3.002009384571189,
+      "pid": 2,
+      "sat": 0,
+      "t": 3.002009384571189,
+      "t_decision_start": 3.002009384571189
+     },
+     {
+      "cache_entries": {
+       "0": {
+        "age_s": 0.019335640951981592,
+        "generated_at": 3.0,
+        "received_at": 3.0113356409519816
+       }
+      },
+      "candidates": [
+       "deliver"
+      ],
+      "chosen": "deliver",
+      "kind": "deliver",
+      "obs_mode": "refresh",
+      "observation_source": "commit_time_state",
+      "observation_t_observed": 3.0193356409519816,
+      "pid": 2,
+      "sat": 1,
+      "t": 3.0193356409519816,
+      "t_decision_start": 3.0193356409519816
+     }
+    ],
+    "max_interval": 0.0
+   },
+   "label": "compute=0 keeps every decision synchronous",
+   "pass": true
+  },
+  {
+   "detail": {
+    "mode": "refresh"
+   },
+   "label": "refresh: the target packet commits after a computation",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 1.9999999999999996,
+    "expected": 2.0
+   },
+   "label": "refresh: commit == start + compute_delay",
+   "pass": true
+  },
+  {
+   "detail": {
+    "milestones": [
+     "compute_request",
+     "compute_start",
+     "compute_wait",
+     "ctrl_advert_arrived",
+     "ctrl_advert_generated",
+     "peer_arrival",
+     "queue_enter",
+     "queue_state",
+     "satellite_ingress",
+     "service_finish",
+     "service_start"
+    ]
+   },
+   "label": "refresh: control advertisements keep arriving during the computation",
+   "pass": true
+  },
+  {
+   "detail": {
+    "milestones": [
+     "compute_request",
+     "compute_start",
+     "compute_wait",
+     "ctrl_advert_arrived",
+     "ctrl_advert_generated",
+     "peer_arrival",
+     "queue_enter",
+     "queue_state",
+     "satellite_ingress",
+     "service_finish",
+     "service_start"
+    ]
+   },
+   "label": "refresh: link service keeps running during the computation",
+   "pass": true
+  },
+  {
+   "detail": {
+    "milestones": [
+     "compute_request",
+     "compute_start",
+     "compute_wait",
+     "ctrl_advert_arrived",
+     "ctrl_advert_generated",
+     "peer_arrival",
+     "queue_enter",
+     "queue_state",
+     "satellite_ingress",
+     "service_finish",
+     "service_start"
+    ]
+   },
+   "label": "refresh: queues keep mutating during the computation",
+   "pass": true
+  },
+  {
+   "detail": {
+    "pids": [
+     2
+    ]
+   },
+   "label": "refresh: another packet is being processed during the computation",
+   "pass": true
+  },
+  {
+   "detail": {
+    "mode": "frozen"
+   },
+   "label": "frozen: the target packet commits after a computation",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 1.9999999999999996,
+    "expected": 2.0
+   },
+   "label": "frozen: commit == start + compute_delay",
+   "pass": true
+  },
+  {
+   "detail": {
+    "milestones": [
+     "compute_request",
+     "compute_start",
+     "compute_wait",
+     "ctrl_advert_arrived",
+     "ctrl_advert_generated",
+     "peer_arrival",
+     "queue_enter",
+     "queue_state",
+     "satellite_ingress",
+     "service_finish",
+     "service_start"
+    ]
+   },
+   "label": "frozen: control advertisements keep arriving during the computation",
+   "pass": true
+  },
+  {
+   "detail": {
+    "milestones": [
+     "compute_request",
+     "compute_start",
+     "compute_wait",
+     "ctrl_advert_arrived",
+     "ctrl_advert_generated",
+     "peer_arrival",
+     "queue_enter",
+     "queue_state",
+     "satellite_ingress",
+     "service_finish",
+     "service_start"
+    ]
+   },
+   "label": "frozen: link service keeps running during the computation",
+   "pass": true
+  },
+  {
+   "detail": {
+    "milestones": [
+     "compute_request",
+     "compute_start",
+     "compute_wait",
+     "ctrl_advert_arrived",
+     "ctrl_advert_generated",
+     "peer_arrival",
+     "queue_enter",
+     "queue_state",
+     "satellite_ingress",
+     "service_finish",
+     "service_start"
+    ]
+   },
+   "label": "frozen: queues keep mutating during the computation",
+   "pass": true
+  },
+  {
+   "detail": {
+    "pids": [
+     2,
+     99
+    ]
+   },
+   "label": "frozen: another packet is being processed during the computation",
+   "pass": true
+  },
+  {
+   "detail": {
+    "source": "frozen_snapshot_before_compute",
+    "t_decision_start": 2.002009384571189,
+    "t_observed": 2.002009384571189
+   },
+   "label": "frozen: the observation is taken at compute start",
+   "pass": true
+  },
+  {
+   "detail": {
+    "commit": 4.002009384571188,
+    "t_observed": 2.002009384571189
+   },
+   "label": "frozen: the committed decision is based on the start observation, not on the post-compute state",
+   "pass": true
+  }
+ ],
+ "case": "F1-compute-time-advances-clock",
+ "error": null,
+ "events": {
+  "frozen_events_inside_compute": [
+   {
+    "at": 2.008,
+    "link_id": "isl:0:1",
+    "milestone": "service_finish",
+    "origin": 0,
+    "pid": null,
+    "seq": 5
+   },
+   {
+    "at": 2.008,
+    "link_id": "isl:1:0",
+    "milestone": "service_finish",
+    "origin": 1,
+    "pid": null,
+    "seq": 6
+   },
+   {
+    "at": 2.008,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 2.008,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 2.0113356409519816,
+    "link_id": null,
+    "milestone": "ctrl_advert_arrived",
+    "origin": 0,
+    "pid": null,
+    "seq": 5
+   },
+   {
+    "at": 2.0113356409519816,
+    "link_id": null,
+    "milestone": "ctrl_advert_arrived",
+    "origin": 1,
+    "pid": null,
+    "seq": 6
+   },
+   {
+    "at": 2.1000000000000005,
+    "link_id": null,
+    "milestone": "compute_request",
+    "origin": null,
+    "pid": 99,
+    "seq": null
+   },
+   {
+    "at": 2.1000000000000005,
+    "link_id": null,
+    "milestone": "compute_wait",
+    "origin": null,
+    "pid": 99,
+    "seq": null
+   },
+   {
+    "at": 2.1000000000000005,
+    "link_id": null,
+    "milestone": "compute_start",
+    "origin": null,
+    "pid": 99,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "ctrl_advert_generated",
+    "origin": 0,
+    "pid": null,
+    "seq": 7
+   },
+   {
+    "at": 3.0,
+    "link_id": "isl:0:1",
+    "milestone": "queue_enter",
+    "origin": 0,
+    "pid": null,
+    "seq": 7
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "ctrl_advert_generated",
+    "origin": 1,
+    "pid": null,
+    "seq": 8
+   },
+   {
+    "at": 3.0,
+    "link_id": "isl:1:0",
+    "milestone": "queue_enter",
+    "origin": 1,
+    "pid": null,
+    "seq": 8
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": "gsl:uplink:pending:G1:90:180",
+    "milestone": "queue_enter",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": "isl:0:1",
+    "milestone": "service_start",
+    "origin": 0,
+    "pid": null,
+    "seq": 7
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": "isl:1:0",
+    "milestone": "service_start",
+    "origin": 1,
+    "pid": null,
+    "seq": 8
+   },
+   {
+    "at": 3.0,
+    "link_id": "gsl:uplink:0:G1:90:180",
+    "milestone": "service_start",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.000008,
+    "link_id": "gsl:uplink:0:G1:90:180",
+    "milestone": "service_finish",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.002009384571189,
+    "link_id": null,
+    "milestone": "peer_arrival",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.002009384571189,
+    "link_id": null,
+    "milestone": "satellite_ingress",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.002009384571189,
+    "link_id": null,
+    "milestone": "compute_request",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.002009384571189,
+    "link_id": null,
+    "milestone": "compute_wait",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.002009384571189,
+    "link_id": null,
+    "milestone": "compute_start",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.008,
+    "link_id": "isl:0:1",
+    "milestone": "service_finish",
+    "origin": 0,
+    "pid": null,
+    "seq": 7
+   },
+   {
+    "at": 3.008,
+    "link_id": "isl:1:0",
+    "milestone": "service_finish",
+    "origin": 1,
+    "pid": null,
+    "seq": 8
+   },
+   {
+    "at": 3.008,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.008,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0113356409519816,
+    "link_id": null,
+    "milestone": "ctrl_advert_arrived",
+    "origin": 0,
+    "pid": null,
+    "seq": 7
+   },
+   {
+    "at": 3.0113356409519816,
+    "link_id": null,
+    "milestone": "ctrl_advert_arrived",
+    "origin": 1,
+    "pid": null,
+    "seq": 8
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "ctrl_advert_generated",
+    "origin": 0,
+    "pid": null,
+    "seq": 9
+   },
+   {
+    "at": 4.0,
+    "link_id": "isl:0:1",
+    "milestone": "queue_enter",
+    "origin": 0,
+    "pid": null,
+    "seq": 9
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "ctrl_advert_generated",
+    "origin": 1,
+    "pid": null,
+    "seq": 10
+   },
+   {
+    "at": 4.0,
+    "link_id": "isl:1:0",
+    "milestone": "queue_enter",
+    "origin": 1,
+    "pid": null,
+    "seq": 10
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 4.0,
+    "link_id": "isl:0:1",
+    "milestone": "service_start",
+    "origin": 0,
+    "pid": null,
+    "seq": 9
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 4.0,
+    "link_id": "isl:1:0",
+    "milestone": "service_start",
+    "origin": 1,
+    "pid": null,
+    "seq": 10
+   }
+  ],
+  "frozen_target_decision": {
+   "cache_entries": {
+    "1": {
+     "age_s": 1.0020093845711884,
+     "generated_at": 3.0,
+     "received_at": 3.0113356409519816
+    }
+   },
+   "candidates": [
+    "E"
+   ],
+   "chosen": "E",
+   "kind": "forward",
+   "obs_mode": "frozen",
+   "observation_source": "frozen_snapshot_before_compute",
+   "observation_t_observed": 2.002009384571189,
+   "pid": 1,
+   "sat": 0,
+   "t": 4.002009384571188,
+   "t_decision_start": 2.002009384571189
+  },
+  "refresh_events_inside_compute": [
+   {
+    "at": 2.008,
+    "link_id": "isl:0:1",
+    "milestone": "service_finish",
+    "origin": 0,
+    "pid": null,
+    "seq": 5
+   },
+   {
+    "at": 2.008,
+    "link_id": "isl:1:0",
+    "milestone": "service_finish",
+    "origin": 1,
+    "pid": null,
+    "seq": 6
+   },
+   {
+    "at": 2.008,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 2.008,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 2.0113356409519816,
+    "link_id": null,
+    "milestone": "ctrl_advert_arrived",
+    "origin": 0,
+    "pid": null,
+    "seq": 5
+   },
+   {
+    "at": 2.0113356409519816,
+    "link_id": null,
+    "milestone": "ctrl_advert_arrived",
+    "origin": 1,
+    "pid": null,
+    "seq": 6
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "ctrl_advert_generated",
+    "origin": 0,
+    "pid": null,
+    "seq": 7
+   },
+   {
+    "at": 3.0,
+    "link_id": "isl:0:1",
+    "milestone": "queue_enter",
+    "origin": 0,
+    "pid": null,
+    "seq": 7
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "ctrl_advert_generated",
+    "origin": 1,
+    "pid": null,
+    "seq": 8
+   },
+   {
+    "at": 3.0,
+    "link_id": "isl:1:0",
+    "milestone": "queue_enter",
+    "origin": 1,
+    "pid": null,
+    "seq": 8
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": "gsl:uplink:pending:G1:90:180",
+    "milestone": "queue_enter",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": "isl:0:1",
+    "milestone": "service_start",
+    "origin": 0,
+    "pid": null,
+    "seq": 7
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0,
+    "link_id": "isl:1:0",
+    "milestone": "service_start",
+    "origin": 1,
+    "pid": null,
+    "seq": 8
+   },
+   {
+    "at": 3.0,
+    "link_id": "gsl:uplink:0:G1:90:180",
+    "milestone": "service_start",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.000008,
+    "link_id": "gsl:uplink:0:G1:90:180",
+    "milestone": "service_finish",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.002009384571189,
+    "link_id": null,
+    "milestone": "peer_arrival",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.002009384571189,
+    "link_id": null,
+    "milestone": "satellite_ingress",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.002009384571189,
+    "link_id": null,
+    "milestone": "compute_request",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.002009384571189,
+    "link_id": null,
+    "milestone": "compute_wait",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.002009384571189,
+    "link_id": null,
+    "milestone": "compute_start",
+    "origin": null,
+    "pid": 2,
+    "seq": null
+   },
+   {
+    "at": 3.008,
+    "link_id": "isl:0:1",
+    "milestone": "service_finish",
+    "origin": 0,
+    "pid": null,
+    "seq": 7
+   },
+   {
+    "at": 3.008,
+    "link_id": "isl:1:0",
+    "milestone": "service_finish",
+    "origin": 1,
+    "pid": null,
+    "seq": 8
+   },
+   {
+    "at": 3.008,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.008,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 3.0113356409519816,
+    "link_id": null,
+    "milestone": "ctrl_advert_arrived",
+    "origin": 0,
+    "pid": null,
+    "seq": 7
+   },
+   {
+    "at": 3.0113356409519816,
+    "link_id": null,
+    "milestone": "ctrl_advert_arrived",
+    "origin": 1,
+    "pid": null,
+    "seq": 8
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "ctrl_advert_generated",
+    "origin": 0,
+    "pid": null,
+    "seq": 9
+   },
+   {
+    "at": 4.0,
+    "link_id": "isl:0:1",
+    "milestone": "queue_enter",
+    "origin": 0,
+    "pid": null,
+    "seq": 9
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "ctrl_advert_generated",
+    "origin": 1,
+    "pid": null,
+    "seq": 10
+   },
+   {
+    "at": 4.0,
+    "link_id": "isl:1:0",
+    "milestone": "queue_enter",
+    "origin": 1,
+    "pid": null,
+    "seq": 10
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 4.0,
+    "link_id": "isl:0:1",
+    "milestone": "service_start",
+    "origin": 0,
+    "pid": null,
+    "seq": 9
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 4.0,
+    "link_id": null,
+    "milestone": "queue_state",
+    "origin": null,
+    "pid": null,
+    "seq": null
+   },
+   {
+    "at": 4.0,
+    "link_id": "isl:1:0",
+    "milestone": "service_start",
+    "origin": 1,
+    "pid": null,
+    "seq": 10
+   }
+  ],
+  "refresh_target_decision": {
+   "cache_entries": {
+    "1": {
+     "age_s": 1.0020093845711884,
+     "generated_at": 3.0,
+     "received_at": 3.0113356409519816
+    }
+   },
+   "candidates": [
+    "E"
+   ],
+   "chosen": "E",
+   "kind": "forward",
+   "obs_mode": "refresh",
+   "observation_source": "commit_time_state",
+   "observation_t_observed": 4.002009384571188,
+   "pid": 1,
+   "sat": 0,
+   "t": 4.002009384571188,
+   "t_decision_start": 2.002009384571189
+  },
+  "zero_delay_decisions": [
+   {
+    "cache_entries": {},
+    "candidates": [
+     "E"
+    ],
+    "chosen": "E",
+    "kind": "forward",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 0.0020093845711889125,
+    "pid": 99,
+    "sat": 0,
+    "t": 0.0020093845711889125,
+    "t_decision_start": 0.0020093845711889125
+   },
+   {
+    "cache_entries": {
+     "0": {
+      "age_s": 0.019335640951981523,
+      "generated_at": 0.0,
+      "received_at": 0.01133564095198152
+     }
+    },
+    "candidates": [
+     "deliver"
+    ],
+    "chosen": "deliver",
+    "kind": "deliver",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 0.019335640951981523,
+    "pid": 99,
+    "sat": 1,
+    "t": 0.019335640951981523,
+    "t_decision_start": 0.019335640951981523
+   },
+   {
+    "cache_entries": {
+     "1": {
+      "age_s": 1.0020093845711888,
+      "generated_at": 1.0,
+      "received_at": 1.0113356409519816
+     }
+    },
+    "candidates": [
+     "E"
+    ],
+    "chosen": "E",
+    "kind": "forward",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 2.002009384571189,
+    "pid": 1,
+    "sat": 0,
+    "t": 2.002009384571189,
+    "t_decision_start": 2.002009384571189
+   },
+   {
+    "cache_entries": {
+     "0": {
+      "age_s": 0.019335640951981592,
+      "generated_at": 2.0,
+      "received_at": 2.0113356409519816
+     }
+    },
+    "candidates": [
+     "deliver"
+    ],
+    "chosen": "deliver",
+    "kind": "deliver",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 2.0193356409519816,
+    "pid": 1,
+    "sat": 1,
+    "t": 2.0193356409519816,
+    "t_decision_start": 2.0193356409519816
+   },
+   {
+    "cache_entries": {
+     "1": {
+      "age_s": 1.0020093845711888,
+      "generated_at": 2.0,
+      "received_at": 2.0113356409519816
+     }
+    },
+    "candidates": [
+     "E"
+    ],
+    "chosen": "E",
+    "kind": "forward",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 3.002009384571189,
+    "pid": 2,
+    "sat": 0,
+    "t": 3.002009384571189,
+    "t_decision_start": 3.002009384571189
+   },
+   {
+    "cache_entries": {
+     "0": {
+      "age_s": 0.019335640951981592,
+      "generated_at": 3.0,
+      "received_at": 3.0113356409519816
+     }
+    },
+    "candidates": [
+     "deliver"
+    ],
+    "chosen": "deliver",
+    "kind": "deliver",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 3.0193356409519816,
+    "pid": 2,
+    "sat": 1,
+    "t": 3.0193356409519816,
+    "t_decision_start": 3.0193356409519816
+   }
+  ]
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "compute_delay_s": 2.0,
+  "control_advertise_interval_s": 1.0,
+  "observation_modes": [
+   "refresh",
+   "frozen"
+  ],
+  "row_emit_s": [
+   0.0,
+   2.0,
+   3.0
+  ]
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

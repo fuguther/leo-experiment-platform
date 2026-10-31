@@ -1,0 +1,468 @@
+{
+ "assertion_count": 21,
+ "assertions": [
+  {
+   "detail": {
+    "actual": 0.011335640951981585,
+    "expected": 0.01133564095198152
+   },
+   "label": "the advertisement needed T_tx + T_prop to arrive",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 2.0,
+    "expected": 2.0
+   },
+   "label": "the receiver cache entry carries generated_at == t_m",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 2.0113356409519816,
+    "expected": 2.0113356409519816
+   },
+   "label": "the receiver cache entry carries received_at == t_rx",
+   "pass": true
+  },
+  {
+   "detail": {
+    "attempts": [
+     {
+      "action": "hold",
+      "at": 2.0030093845711887,
+      "route_status": "no_info"
+     }
+    ],
+    "t_rx": 2.0113356409519816
+   },
+   "label": "before t_rx the packet cannot read the state (binding hold attempt, no information)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "early_decisions": [],
+    "t_rx": 2.0113356409519816
+   },
+   "label": "no decision for pid1 is committed before t_rx (no future state is read)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "forward": {
+     "cache_entries": {
+      "1": {
+       "age_s": 0.10000000000000053,
+       "generated_at": 2.0,
+       "received_at": 2.0113356409519816
+      }
+     },
+     "candidates": [
+      "E"
+     ],
+     "chosen": "E",
+     "kind": "forward",
+     "obs_mode": "refresh",
+     "observation_source": "commit_time_state",
+     "observation_t_observed": 2.1000000000000005,
+     "pid": 1,
+     "sat": 0,
+     "t": 2.1000000000000005,
+     "t_decision_start": 2.1000000000000005
+    },
+    "t_rx": 2.0113356409519816
+   },
+   "label": "once t >= t_rx the state is usable (pid1 forwards)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "expected_ingress": 2.3020093845711886,
+    "forward": {
+     "cache_entries": {
+      "1": {
+       "age_s": 0.30200938457118864,
+       "generated_at": 2.0,
+       "received_at": 2.0113356409519816
+      }
+     },
+     "candidates": [
+      "E"
+     ],
+     "chosen": "E",
+     "kind": "forward",
+     "obs_mode": "refresh",
+     "observation_source": "commit_time_state",
+     "observation_t_observed": 2.3020093845711886,
+     "pid": 2,
+     "sat": 0,
+     "t": 2.3020093845711886,
+     "t_decision_start": 2.3020093845711886
+    },
+    "hold_attempts": 0,
+    "t_rx": 2.0113356409519816
+   },
+   "label": "a packet whose ingress happens after t_rx forwards immediately (no hold attempt, commit at ingress)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "decision_t": 2.1000000000000005,
+    "received_at": 2.0113356409519816
+   },
+   "label": "pid99 @t=2.100000: cache entry origin 1 had already arrived (received_at <= t)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.10000000000000053,
+    "expected": 0.10000000000000053
+   },
+   "label": "pid99 @t=2.100000: AoI(t) = t - t_m for origin 1",
+   "pass": true
+  },
+  {
+   "detail": {
+    "decision_t": 2.1000000000000005,
+    "received_at": 2.0113356409519816
+   },
+   "label": "pid1 @t=2.100000: cache entry origin 1 had already arrived (received_at <= t)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.10000000000000053,
+    "expected": 0.10000000000000053
+   },
+   "label": "pid1 @t=2.100000: AoI(t) = t - t_m for origin 1",
+   "pass": true
+  },
+  {
+   "detail": {
+    "decision_t": 2.111335640951982,
+    "received_at": 2.0113356409519816
+   },
+   "label": "pid99 @t=2.111336: cache entry origin 0 had already arrived (received_at <= t)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.11133564095198212,
+    "expected": 0.11133564095198212
+   },
+   "label": "pid99 @t=2.111336: AoI(t) = t - t_m for origin 0",
+   "pass": true
+  },
+  {
+   "detail": {
+    "decision_t": 2.119335640951982,
+    "received_at": 2.0113356409519816
+   },
+   "label": "pid1 @t=2.119336: cache entry origin 0 had already arrived (received_at <= t)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.11933564095198212,
+    "expected": 0.11933564095198212
+   },
+   "label": "pid1 @t=2.119336: AoI(t) = t - t_m for origin 0",
+   "pass": true
+  },
+  {
+   "detail": {
+    "decision_t": 2.3020093845711886,
+    "received_at": 2.0113356409519816
+   },
+   "label": "pid2 @t=2.302009: cache entry origin 1 had already arrived (received_at <= t)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.30200938457118864,
+    "expected": 0.30200938457118864
+   },
+   "label": "pid2 @t=2.302009: AoI(t) = t - t_m for origin 1",
+   "pass": true
+  },
+  {
+   "detail": {
+    "decision_t": 2.3133450255231702,
+    "received_at": 2.0113356409519816
+   },
+   "label": "pid2 @t=2.313345: cache entry origin 0 had already arrived (received_at <= t)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.31334502552317023,
+    "expected": 0.31334502552317023
+   },
+   "label": "pid2 @t=2.313345: AoI(t) = t - t_m for origin 0",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 1.0,
+    "expected": 1.0
+   },
+   "label": "AoI at the stop instant is t - t_m",
+   "pass": true
+  },
+  {
+   "detail": {
+    "valid": true
+   },
+   "label": "the entry is still valid at stop (TTL not exceeded)",
+   "pass": true
+  }
+ ],
+ "case": "E1-state-message-chain",
+ "error": null,
+ "events": {
+  "audit_arrived": [
+   {
+    "at": 2.0113356409519816,
+    "audit": "control_plane",
+    "decision_id": null,
+    "downlink_resources": {},
+    "hops": 1,
+    "milestone": "ctrl_advert_arrived",
+    "origin": 1,
+    "payload_fields": [
+     "access_slots_cap",
+     "access_slots_used",
+     "generated_at",
+     "isl_propagation_s",
+     "isl_queue_bits",
+     "origin",
+     "position",
+     "serve_cells",
+     "visible_cells"
+    ],
+    "pid": null,
+    "remaining_hops": 2,
+    "sat": 0,
+    "seq": 4,
+    "serve_cells": [
+     "G1:90:190"
+    ]
+   }
+  ],
+  "audit_generated": [
+   {
+    "advertisement_protocol_version": 1,
+    "at": 2.0,
+    "audit": "control_plane",
+    "base_packet_bits": 8000,
+    "children": [
+     "W"
+    ],
+    "decision_id": null,
+    "downlink_resources": {
+     "G1:90:190": {
+      "available": true,
+      "propagation_s": 0.0020013845711889123,
+      "queue_bits": 0.0,
+      "queue_scope": "satellite_shared_drr",
+      "queue_semantics": "all_waiting_bits_plus_active_residual_work_proxy",
+      "rate_bps": 1000000000.0
+     }
+    },
+    "hops": 0,
+    "milestone": "ctrl_advert_generated",
+    "origin": 1,
+    "packet_bits": 8000,
+    "pid": null,
+    "resource_telemetry_bits": 0,
+    "seq": 4,
+    "serve_cells": [
+     "G1:90:190"
+    ],
+    "ttl_s": 30.0,
+    "vis_k": 2,
+    "wire_cost": null
+   }
+  ],
+  "cache_sat0": {
+   "1": {
+    "aoi": 1.0,
+    "generated_at": 2.0,
+    "received_at": 2.0113356409519816,
+    "serve_cells": [
+     "G1:90:190"
+    ],
+    "valid": true,
+    "visible_cells": [
+     "G1:90:190"
+    ]
+   }
+  },
+  "decision_attempts_pid1": [
+   {
+    "action": "hold",
+    "at": 2.0030093845711887,
+    "decision_id": 22,
+    "hop_index": 0,
+    "pid": 1,
+    "reason": "no_current_routing_information",
+    "route_status": "no_info",
+    "sat": 0
+   }
+  ],
+  "decisions": [
+   {
+    "cache_entries": {
+     "1": {
+      "age_s": 0.10000000000000053,
+      "generated_at": 2.0,
+      "received_at": 2.0113356409519816
+     }
+    },
+    "candidates": [
+     "E"
+    ],
+    "chosen": "E",
+    "kind": "forward",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 2.1000000000000005,
+    "pid": 99,
+    "sat": 0,
+    "t": 2.1000000000000005,
+    "t_decision_start": 2.1000000000000005
+   },
+   {
+    "cache_entries": {
+     "1": {
+      "age_s": 0.10000000000000053,
+      "generated_at": 2.0,
+      "received_at": 2.0113356409519816
+     }
+    },
+    "candidates": [
+     "E"
+    ],
+    "chosen": "E",
+    "kind": "forward",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 2.1000000000000005,
+    "pid": 1,
+    "sat": 0,
+    "t": 2.1000000000000005,
+    "t_decision_start": 2.1000000000000005
+   },
+   {
+    "cache_entries": {
+     "0": {
+      "age_s": 0.11133564095198212,
+      "generated_at": 2.0,
+      "received_at": 2.0113356409519816
+     }
+    },
+    "candidates": [
+     "deliver"
+    ],
+    "chosen": "deliver",
+    "kind": "deliver",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 2.111335640951982,
+    "pid": 99,
+    "sat": 1,
+    "t": 2.111335640951982,
+    "t_decision_start": 2.111335640951982
+   },
+   {
+    "cache_entries": {
+     "0": {
+      "age_s": 0.11933564095198212,
+      "generated_at": 2.0,
+      "received_at": 2.0113356409519816
+     }
+    },
+    "candidates": [
+     "deliver"
+    ],
+    "chosen": "deliver",
+    "kind": "deliver",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 2.119335640951982,
+    "pid": 1,
+    "sat": 1,
+    "t": 2.119335640951982,
+    "t_decision_start": 2.119335640951982
+   },
+   {
+    "cache_entries": {
+     "1": {
+      "age_s": 0.30200938457118864,
+      "generated_at": 2.0,
+      "received_at": 2.0113356409519816
+     }
+    },
+    "candidates": [
+     "E"
+    ],
+    "chosen": "E",
+    "kind": "forward",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 2.3020093845711886,
+    "pid": 2,
+    "sat": 0,
+    "t": 2.3020093845711886,
+    "t_decision_start": 2.3020093845711886
+   },
+   {
+    "cache_entries": {
+     "0": {
+      "age_s": 0.31334502552317023,
+      "generated_at": 2.0,
+      "received_at": 2.0113356409519816
+     }
+    },
+    "candidates": [
+     "deliver"
+    ],
+    "chosen": "deliver",
+    "kind": "deliver",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 2.3133450255231702,
+    "pid": 2,
+    "sat": 1,
+    "t": 2.3133450255231702,
+    "t_decision_start": 2.3133450255231702
+   }
+  ]
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "advert_seq": 4,
+  "advertise_interval_s": 2.0,
+  "control_packet_bits": 8000,
+  "expected_t_m_plus_tx_plus_prop": 0.01133564095198152,
+  "isl_distance_km": 1000.0,
+  "isl_rate_mbps": 1.0,
+  "rows": [
+   {
+    "emit_time_s": 0.0,
+    "pid": 99
+   },
+   {
+    "emit_time_s": 2.001,
+    "pid": 1
+   },
+   {
+    "emit_time_s": 2.3,
+    "pid": 2
+   }
+  ],
+  "ttl_s": 30.0
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

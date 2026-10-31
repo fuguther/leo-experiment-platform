@@ -1,0 +1,712 @@
+{
+ "assertion_count": 6,
+ "assertions": [
+  {
+   "detail": {
+    "queued_at_5s": 24000000,
+    "queued_at_stop": 208000000
+   },
+   "label": "the queue grows without bound while lambda > mu",
+   "pass": true
+  },
+  {
+   "detail": {
+    "fitted_slope_bps": 6003066.683100875,
+    "theory_slope_bps": 6000000.0
+   },
+   "label": "the fitted slope is positive (sustained growth)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "fitted_slope_bps": 6003066.683100875,
+    "relative_error": 0.000511113850145756,
+    "theory_slope_bps": 6000000.0
+   },
+   "label": "the fitted slope magnitude matches lambda - mu",
+   "pass": true
+  },
+  {
+   "detail": {
+    "window_means": [
+     42000000.0,
+     72470588.23529412,
+     103000000.0,
+     133000000.0,
+     162000000.0
+    ]
+   },
+   "label": "queue growth is sustained (successive 5 s means increase)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "fate_counts": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 49,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 27,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 0,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    }
+   },
+   "label": "overload leaves packets in system at the horizon (the queue really was growing)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 4653919712.009195,
+    "expected": 4653919712.009195
+   },
+   "label": "event-rebuilt queue area matches native isl_data",
+   "pass": true
+  }
+ ],
+ "case": "D2-queue-overload",
+ "error": null,
+ "events": {
+  "fates": {
+   "1": "DELIVERED",
+   "10": "DELIVERED",
+   "11": "DELIVERED",
+   "12": "DELIVERED",
+   "13": "DELIVERED",
+   "14": "DELIVERED",
+   "15": "DELIVERED",
+   "16": "DELIVERED",
+   "17": "DELIVERED",
+   "18": "DELIVERED",
+   "19": "DELIVERED",
+   "2": "DELIVERED",
+   "20": "DELIVERED",
+   "21": "DELIVERED",
+   "22": "DELIVERED",
+   "23": "DELIVERED",
+   "24": "DELIVERED",
+   "25": "DELIVERED",
+   "26": "DELIVERED",
+   "27": "DELIVERED",
+   "28": "DELIVERED",
+   "29": "DELIVERED",
+   "3": "DELIVERED",
+   "30": "DELIVERED",
+   "31": "DELIVERED",
+   "32": "DELIVERED",
+   "33": "DELIVERED",
+   "34": "DELIVERED",
+   "35": "DELIVERED",
+   "36": "DELIVERED",
+   "37": "DELIVERED",
+   "38": "DELIVERED",
+   "39": "DELIVERED",
+   "4": "DELIVERED",
+   "40": "DELIVERED",
+   "41": "DELIVERED",
+   "42": "DELIVERED",
+   "43": "DELIVERED",
+   "44": "DELIVERED",
+   "45": "DELIVERED",
+   "46": "DELIVERED",
+   "47": "DELIVERED",
+   "48": "DELIVERED",
+   "49": "DELIVERED",
+   "5": "DELIVERED",
+   "50": "IN_SYSTEM_AT_STOP",
+   "51": "IN_SYSTEM_AT_STOP",
+   "52": "IN_SYSTEM_AT_STOP",
+   "53": "IN_SYSTEM_AT_STOP",
+   "54": "IN_SYSTEM_AT_STOP",
+   "55": "IN_SYSTEM_AT_STOP",
+   "56": "IN_SYSTEM_AT_STOP",
+   "57": "IN_SYSTEM_AT_STOP",
+   "58": "IN_SYSTEM_AT_STOP",
+   "59": "IN_SYSTEM_AT_STOP",
+   "6": "DELIVERED",
+   "60": "IN_SYSTEM_AT_STOP",
+   "61": "IN_SYSTEM_AT_STOP",
+   "62": "IN_SYSTEM_AT_STOP",
+   "63": "IN_SYSTEM_AT_STOP",
+   "64": "IN_SYSTEM_AT_STOP",
+   "65": "IN_SYSTEM_AT_STOP",
+   "66": "IN_SYSTEM_AT_STOP",
+   "67": "IN_SYSTEM_AT_STOP",
+   "68": "IN_SYSTEM_AT_STOP",
+   "69": "IN_SYSTEM_AT_STOP",
+   "7": "DELIVERED",
+   "70": "IN_SYSTEM_AT_STOP",
+   "71": "IN_SYSTEM_AT_STOP",
+   "72": "IN_SYSTEM_AT_STOP",
+   "73": "IN_SYSTEM_AT_STOP",
+   "74": "IN_SYSTEM_AT_STOP",
+   "75": "IN_SYSTEM_AT_STOP",
+   "76": "IN_SYSTEM_AT_STOP",
+   "8": "DELIVERED",
+   "9": "DELIVERED"
+  },
+  "queue_series": [
+   {
+    "queued_bits": 0,
+    "t": 0.0
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 0.5100013845711889
+   },
+   {
+    "queued_bits": 0,
+    "t": 0.5100013845711889
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 1.0100013845711888
+   },
+   {
+    "queued_bits": 0,
+    "t": 1.3100013845711889
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 1.5100013845711888
+   },
+   {
+    "queued_bits": 16000000,
+    "t": 2.010001384571189
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 2.1100013845711887
+   },
+   {
+    "queued_bits": 16000000,
+    "t": 2.510001384571189
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 2.9100013845711885
+   },
+   {
+    "queued_bits": 16000000,
+    "t": 3.010001384571189
+   },
+   {
+    "queued_bits": 24000000,
+    "t": 3.510001384571189
+   },
+   {
+    "queued_bits": 16000000,
+    "t": 3.7100013845711883
+   },
+   {
+    "queued_bits": 24000000,
+    "t": 4.010001384571189
+   },
+   {
+    "queued_bits": 16000000,
+    "t": 4.510001384571188
+   },
+   {
+    "queued_bits": 24000000,
+    "t": 4.510001384571189
+   },
+   {
+    "queued_bits": 32000000,
+    "t": 5.010001384571189
+   },
+   {
+    "queued_bits": 24000000,
+    "t": 5.310001384571188
+   },
+   {
+    "queued_bits": 32000000,
+    "t": 5.510001384571189
+   },
+   {
+    "queued_bits": 40000000,
+    "t": 6.010001384571189
+   },
+   {
+    "queued_bits": 32000000,
+    "t": 6.110001384571188
+   },
+   {
+    "queued_bits": 40000000,
+    "t": 6.510001384571189
+   },
+   {
+    "queued_bits": 32000000,
+    "t": 6.910001384571188
+   },
+   {
+    "queued_bits": 40000000,
+    "t": 7.010001384571189
+   },
+   {
+    "queued_bits": 48000000,
+    "t": 7.510001384571189
+   },
+   {
+    "queued_bits": 40000000,
+    "t": 7.710001384571187
+   },
+   {
+    "queued_bits": 48000000,
+    "t": 8.010001384571188
+   },
+   {
+    "queued_bits": 56000000,
+    "t": 8.510001384571188
+   },
+   {
+    "queued_bits": 48000000,
+    "t": 8.510001384571188
+   },
+   {
+    "queued_bits": 56000000,
+    "t": 9.010001384571188
+   },
+   {
+    "queued_bits": 48000000,
+    "t": 9.310001384571189
+   },
+   {
+    "queued_bits": 56000000,
+    "t": 9.510001384571188
+   },
+   {
+    "queued_bits": 64000000,
+    "t": 10.010001384571188
+   },
+   {
+    "queued_bits": 56000000,
+    "t": 10.11000138457119
+   },
+   {
+    "queued_bits": 64000000,
+    "t": 10.510001384571188
+   },
+   {
+    "queued_bits": 56000000,
+    "t": 10.91000138457119
+   },
+   {
+    "queued_bits": 64000000,
+    "t": 11.010001384571188
+   },
+   {
+    "queued_bits": 72000000,
+    "t": 11.510001384571188
+   },
+   {
+    "queued_bits": 64000000,
+    "t": 11.710001384571191
+   },
+   {
+    "queued_bits": 72000000,
+    "t": 12.010001384571188
+   },
+   {
+    "queued_bits": 80000000,
+    "t": 12.510001384571188
+   },
+   {
+    "queued_bits": 72000000,
+    "t": 12.510001384571192
+   },
+   {
+    "queued_bits": 80000000,
+    "t": 13.010001384571188
+   },
+   {
+    "queued_bits": 72000000,
+    "t": 13.310001384571192
+   },
+   {
+    "queued_bits": 80000000,
+    "t": 13.510001384571188
+   },
+   {
+    "queued_bits": 88000000,
+    "t": 14.010001384571188
+   },
+   {
+    "queued_bits": 80000000,
+    "t": 14.110001384571193
+   },
+   {
+    "queued_bits": 88000000,
+    "t": 14.510001384571188
+   },
+   {
+    "queued_bits": 80000000,
+    "t": 14.910001384571194
+   },
+   {
+    "queued_bits": 88000000,
+    "t": 15.010001384571188
+   },
+   {
+    "queued_bits": 96000000,
+    "t": 15.510001384571188
+   },
+   {
+    "queued_bits": 88000000,
+    "t": 15.710001384571195
+   },
+   {
+    "queued_bits": 96000000,
+    "t": 16.010001384571186
+   },
+   {
+    "queued_bits": 104000000,
+    "t": 16.510001384571186
+   },
+   {
+    "queued_bits": 96000000,
+    "t": 16.510001384571193
+   },
+   {
+    "queued_bits": 104000000,
+    "t": 17.010001384571186
+   },
+   {
+    "queued_bits": 96000000,
+    "t": 17.310001384571194
+   },
+   {
+    "queued_bits": 104000000,
+    "t": 17.510001384571186
+   },
+   {
+    "queued_bits": 112000000,
+    "t": 18.010001384571186
+   },
+   {
+    "queued_bits": 104000000,
+    "t": 18.110001384571195
+   },
+   {
+    "queued_bits": 112000000,
+    "t": 18.510001384571186
+   },
+   {
+    "queued_bits": 104000000,
+    "t": 18.910001384571196
+   },
+   {
+    "queued_bits": 112000000,
+    "t": 19.010001384571186
+   },
+   {
+    "queued_bits": 120000000,
+    "t": 19.510001384571186
+   },
+   {
+    "queued_bits": 112000000,
+    "t": 19.710001384571196
+   },
+   {
+    "queued_bits": 120000000,
+    "t": 20.010001384571186
+   },
+   {
+    "queued_bits": 128000000,
+    "t": 20.510001384571186
+   },
+   {
+    "queued_bits": 120000000,
+    "t": 20.510001384571197
+   },
+   {
+    "queued_bits": 128000000,
+    "t": 21.010001384571186
+   },
+   {
+    "queued_bits": 120000000,
+    "t": 21.310001384571198
+   },
+   {
+    "queued_bits": 128000000,
+    "t": 21.510001384571186
+   },
+   {
+    "queued_bits": 136000000,
+    "t": 22.010001384571186
+   },
+   {
+    "queued_bits": 128000000,
+    "t": 22.1100013845712
+   },
+   {
+    "queued_bits": 136000000,
+    "t": 22.510001384571186
+   },
+   {
+    "queued_bits": 128000000,
+    "t": 22.9100013845712
+   },
+   {
+    "queued_bits": 136000000,
+    "t": 23.010001384571186
+   },
+   {
+    "queued_bits": 144000000,
+    "t": 23.510001384571186
+   },
+   {
+    "queued_bits": 136000000,
+    "t": 23.7100013845712
+   },
+   {
+    "queued_bits": 144000000,
+    "t": 24.010001384571186
+   },
+   {
+    "queued_bits": 152000000,
+    "t": 24.510001384571186
+   },
+   {
+    "queued_bits": 144000000,
+    "t": 24.5100013845712
+   },
+   {
+    "queued_bits": 152000000,
+    "t": 25.010001384571186
+   },
+   {
+    "queued_bits": 144000000,
+    "t": 25.3100013845712
+   },
+   {
+    "queued_bits": 152000000,
+    "t": 25.510001384571186
+   },
+   {
+    "queued_bits": 160000000,
+    "t": 26.010001384571186
+   },
+   {
+    "queued_bits": 152000000,
+    "t": 26.110001384571202
+   },
+   {
+    "queued_bits": 160000000,
+    "t": 26.510001384571186
+   },
+   {
+    "queued_bits": 152000000,
+    "t": 26.910001384571203
+   },
+   {
+    "queued_bits": 160000000,
+    "t": 27.010001384571186
+   },
+   {
+    "queued_bits": 168000000,
+    "t": 27.510001384571186
+   },
+   {
+    "queued_bits": 160000000,
+    "t": 27.710001384571203
+   },
+   {
+    "queued_bits": 168000000,
+    "t": 28.010001384571186
+   },
+   {
+    "queued_bits": 176000000,
+    "t": 28.510001384571186
+   },
+   {
+    "queued_bits": 168000000,
+    "t": 28.510001384571204
+   },
+   {
+    "queued_bits": 176000000,
+    "t": 29.010001384571186
+   },
+   {
+    "queued_bits": 168000000,
+    "t": 29.310001384571205
+   },
+   {
+    "queued_bits": 176000000,
+    "t": 29.510001384571186
+   },
+   {
+    "queued_bits": 184000000,
+    "t": 30.010001384571186
+   },
+   {
+    "queued_bits": 176000000,
+    "t": 30.110001384571206
+   },
+   {
+    "queued_bits": 184000000,
+    "t": 30.510001384571186
+   },
+   {
+    "queued_bits": 176000000,
+    "t": 30.910001384571206
+   },
+   {
+    "queued_bits": 184000000,
+    "t": 31.010001384571186
+   },
+   {
+    "queued_bits": 192000000,
+    "t": 31.510001384571186
+   },
+   {
+    "queued_bits": 184000000,
+    "t": 31.710001384571207
+   },
+   {
+    "queued_bits": 192000000,
+    "t": 32.01000138457119
+   },
+   {
+    "queued_bits": 200000000,
+    "t": 32.51000138457119
+   },
+   {
+    "queued_bits": 192000000,
+    "t": 32.510001384571204
+   },
+   {
+    "queued_bits": 200000000,
+    "t": 33.01000138457119
+   },
+   {
+    "queued_bits": 192000000,
+    "t": 33.3100013845712
+   },
+   {
+    "queued_bits": 200000000,
+    "t": 33.51000138457119
+   },
+   {
+    "queued_bits": 208000000,
+    "t": 34.01000138457119
+   },
+   {
+    "queued_bits": 200000000,
+    "t": 34.1100013845712
+   },
+   {
+    "queued_bits": 208000000,
+    "t": 34.51000138457119
+   },
+   {
+    "queued_bits": 200000000,
+    "t": 34.910001384571196
+   },
+   {
+    "queued_bits": 208000000,
+    "t": 35.01000138457119
+   },
+   {
+    "queued_bits": 216000000,
+    "t": 35.51000138457119
+   },
+   {
+    "queued_bits": 208000000,
+    "t": 35.71000138457119
+   },
+   {
+    "queued_bits": 216000000,
+    "t": 36.01000138457119
+   },
+   {
+    "queued_bits": 224000000,
+    "t": 36.51000138457119
+   },
+   {
+    "queued_bits": 216000000,
+    "t": 36.51000138457119
+   },
+   {
+    "queued_bits": 224000000,
+    "t": 37.01000138457119
+   },
+   {
+    "queued_bits": 216000000,
+    "t": 37.31000138457119
+   },
+   {
+    "queued_bits": 224000000,
+    "t": 37.51000138457119
+   },
+   {
+    "queued_bits": 232000000,
+    "t": 38.01000138457119
+   },
+   {
+    "queued_bits": 224000000,
+    "t": 38.110001384571184
+   },
+   {
+    "queued_bits": 216000000,
+    "t": 38.91000138457118
+   },
+   {
+    "queued_bits": 208000000,
+    "t": 39.71000138457118
+   }
+  ],
+  "window_mean_queued_bits": [
+   {
+    "mean_queued_bits": 42000000.0,
+    "window_s": [
+     5.0,
+     10.0
+    ]
+   },
+   {
+    "mean_queued_bits": 72470588.23529412,
+    "window_s": [
+     10.0,
+     15.0
+    ]
+   },
+   {
+    "mean_queued_bits": 103000000.0,
+    "window_s": [
+     15.0,
+     20.0
+    ]
+   },
+   {
+    "mean_queued_bits": 133000000.0,
+    "window_s": [
+     20.0,
+     25.0
+    ]
+   },
+   {
+    "mean_queued_bits": 162000000.0,
+    "window_s": [
+     25.0,
+     30.0
+    ]
+   }
+  ]
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "fit_window_s": [
+   5.0,
+   34.0
+  ],
+  "lambda_pkts_per_s": 2.0,
+  "offered_bps": 16000000.0,
+  "packet_bits": 8000000,
+  "service_rate_bps": 10000000.0,
+  "theory_slope_bps": 6000000.0
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

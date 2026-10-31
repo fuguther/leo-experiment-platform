@@ -1,0 +1,174 @@
+{
+ "assertion_count": 8,
+ "assertions": [
+  {
+   "detail": {
+    "decisions": [
+     {
+      "cache_entries": {},
+      "candidates": [
+       "E"
+      ],
+      "chosen": "E",
+      "kind": "forward",
+      "obs_mode": "frozen",
+      "observation_source": "frozen_snapshot_before_compute",
+      "observation_t_observed": 5.010001384571189,
+      "pid": 1,
+      "sat": 0,
+      "t": 7.010001384571189,
+      "t_decision_start": 5.010001384571189
+     },
+     {
+      "cache_entries": {},
+      "candidates": [
+       "deliver"
+      ],
+      "chosen": "deliver",
+      "kind": "deliver",
+      "obs_mode": "frozen",
+      "observation_source": "frozen_snapshot_before_compute",
+      "observation_t_observed": 7.81333702552317,
+      "pid": 1,
+      "sat": 1,
+      "t": 9.81333702552317,
+      "t_decision_start": 7.81333702552317
+     }
+    ]
+   },
+   "label": "frozen: the target forwards (static geometry)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 2.0,
+    "expected": 2.0
+   },
+   "label": "frozen: compute interval is exactly the delay",
+   "pass": true
+  },
+  {
+   "detail": {
+    "decisions": [
+     {
+      "cache_entries": {},
+      "candidates": [
+       "E"
+      ],
+      "chosen": "E",
+      "kind": "forward",
+      "obs_mode": "refresh",
+      "observation_source": "commit_time_state",
+      "observation_t_observed": 7.010001384571189,
+      "pid": 1,
+      "sat": 0,
+      "t": 7.010001384571189,
+      "t_decision_start": 5.010001384571189
+     },
+     {
+      "cache_entries": {},
+      "candidates": [
+       "deliver"
+      ],
+      "chosen": "deliver",
+      "kind": "deliver",
+      "obs_mode": "refresh",
+      "observation_source": "commit_time_state",
+      "observation_t_observed": 9.81333702552317,
+      "pid": 1,
+      "sat": 1,
+      "t": 9.81333702552317,
+      "t_decision_start": 7.81333702552317
+     }
+    ]
+   },
+   "label": "refresh: the target forwards (static geometry)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 2.0,
+    "expected": 2.0
+   },
+   "label": "refresh: compute interval is exactly the delay",
+   "pass": true
+  },
+  {
+   "detail": {
+    "frozen": "E",
+    "refresh": "E"
+   },
+   "label": "both modes commit the same action",
+   "pass": true
+  },
+  {
+   "detail": {
+    "source": "frozen_snapshot_before_compute",
+    "t_decision_start": 5.010001384571189,
+    "t_observed": 5.010001384571189
+   },
+   "label": "frozen's observation instant is the computation start",
+   "pass": true
+  },
+  {
+   "detail": {
+    "commit": 7.010001384571189,
+    "source": "commit_time_state",
+    "t_observed": 7.010001384571189
+   },
+   "label": "refresh's observation instant is the commit instant",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 2.0,
+    "expected": 2.0
+   },
+   "label": "both observation instants are separated by the delay",
+   "pass": true
+  }
+ ],
+ "case": "F2-frozen-vs-refresh-observation",
+ "error": null,
+ "events": {
+  "frozen_target_decision": {
+   "cache_entries": {},
+   "candidates": [
+    "E"
+   ],
+   "chosen": "E",
+   "kind": "forward",
+   "obs_mode": "frozen",
+   "observation_source": "frozen_snapshot_before_compute",
+   "observation_t_observed": 5.010001384571189,
+   "pid": 1,
+   "sat": 0,
+   "t": 7.010001384571189,
+   "t_decision_start": 5.010001384571189
+  },
+  "refresh_target_decision": {
+   "cache_entries": {},
+   "candidates": [
+    "E"
+   ],
+   "chosen": "E",
+   "kind": "forward",
+   "obs_mode": "refresh",
+   "observation_source": "commit_time_state",
+   "observation_t_observed": 7.010001384571189,
+   "pid": 1,
+   "sat": 0,
+   "t": 7.010001384571189,
+   "t_decision_start": 5.010001384571189
+  }
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "compute_delay_s": 2.0,
+  "expected_commit_s": 7.010001384571189,
+  "expected_observation_start_s": 5.010001384571189,
+  "target_emit_s": 5.0
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

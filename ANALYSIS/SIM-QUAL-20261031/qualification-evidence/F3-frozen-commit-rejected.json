@@ -1,0 +1,157 @@
+{
+ "assertion_count": 8,
+ "assertions": [
+  {
+   "detail": {
+    "rejected": [
+     {
+      "action": "E",
+      "at": 7.010001384571189,
+      "reason": "action_no_longer_legal"
+     }
+    ]
+   },
+   "label": "exactly one rejected commit is recorded",
+   "pass": true
+  },
+  {
+   "detail": {
+    "action": "E",
+    "reason": "action_no_longer_legal"
+   },
+   "label": "the rejected action is the one inferred while the link was up",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 5.010001384571189,
+    "expected": 5.010001384571189
+   },
+   "label": "the refusal is attributed to the computation start",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 7.010001384571189,
+    "expected": 7.010001384571189
+   },
+   "label": "the refusal lands at the commit instant",
+   "pass": true
+  },
+  {
+   "detail": {
+    "decisions": []
+   },
+   "label": "a rejected action is NOT a commit (no decision row)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "expected_at": 7.010001384571189,
+    "holds": [
+     7.010001384571189,
+     9.09999999999999,
+     11.199999999999983
+    ]
+   },
+   "label": "the packet is parked (hold milestone at commit)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "fate": "IN_SYSTEM_AT_STOP"
+   },
+   "label": "the packet is not silently re-solved into a delivery",
+   "pass": true
+  },
+  {
+   "detail": {
+    "decisions": [],
+    "rejected_marks": []
+   },
+   "label": "refresh has no rejected-action concept: it re-solves instead",
+   "pass": true
+  }
+ ],
+ "case": "F3-frozen-commit-rejected",
+ "error": null,
+ "events": {
+  "decisions_pid1": [],
+  "fates": {
+   "1": "IN_SYSTEM_AT_STOP",
+   "99": "DELIVERED"
+  },
+  "timeline_marks": [
+   {
+    "action": "E",
+    "at": 7.010001384571189,
+    "inferred_at": 5.010001384571189,
+    "milestone": "commit_rejected",
+    "pid": 1,
+    "reason": "action_no_longer_legal",
+    "status": null,
+    "t_observed": 5.010001384571189
+   },
+   {
+    "action": null,
+    "at": 7.010001384571189,
+    "inferred_at": null,
+    "milestone": "hold",
+    "pid": 1,
+    "reason": null,
+    "status": null,
+    "t_observed": null
+   },
+   {
+    "action": null,
+    "at": 9.09999999999999,
+    "inferred_at": 7.099999999999991,
+    "milestone": "frozen_inferred_hold",
+    "pid": 1,
+    "reason": "observation_inferred_hold",
+    "status": "ok",
+    "t_observed": 7.099999999999991
+   },
+   {
+    "action": null,
+    "at": 9.09999999999999,
+    "inferred_at": null,
+    "milestone": "hold",
+    "pid": 1,
+    "reason": null,
+    "status": null,
+    "t_observed": null
+   },
+   {
+    "action": null,
+    "at": 11.199999999999983,
+    "inferred_at": 9.199999999999983,
+    "milestone": "frozen_inferred_hold",
+    "pid": 1,
+    "reason": "observation_inferred_hold",
+    "status": "ok",
+    "t_observed": 9.199999999999983
+   },
+   {
+    "action": null,
+    "at": 11.199999999999983,
+    "inferred_at": null,
+    "milestone": "hold",
+    "pid": 1,
+    "reason": null,
+    "status": null,
+    "t_observed": null
+   }
+  ]
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "compute_delay_s": 2.0,
+  "expected_commit_s": 7.010001384571189,
+  "flip_at_s": 6.0,
+  "observation_while_link_up": true,
+  "target_emit_s": 5.0
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

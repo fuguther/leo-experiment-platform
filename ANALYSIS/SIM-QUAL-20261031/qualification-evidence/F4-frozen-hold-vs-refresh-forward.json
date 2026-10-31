@@ -1,0 +1,195 @@
+{
+ "assertion_count": 7,
+ "assertions": [
+  {
+   "detail": {
+    "expected_start": 5.010001384571189,
+    "holds": [
+     {
+      "inferred_at": 5.010001384571189,
+      "status": "ok"
+     }
+    ]
+   },
+   "label": "the frozen observation inferred a hold at t0",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 7.010001384571189,
+    "expected": 7.010001384571189
+   },
+   "label": "the hold is committed at the commit instant, not before",
+   "pass": true
+  },
+  {
+   "detail": {
+    "decisions": []
+   },
+   "label": "frozen does not commit a forward at the early commit instant",
+   "pass": true
+  },
+  {
+   "detail": {
+    "commit": 7.010001384571189,
+    "forward": {
+     "cache_entries": {},
+     "candidates": [
+      "E"
+     ],
+     "chosen": "E",
+     "kind": "forward",
+     "obs_mode": "frozen",
+     "observation_source": "frozen_snapshot_before_compute",
+     "observation_t_observed": 7.099999999999991,
+     "pid": 1,
+     "sat": 0,
+     "t": 9.09999999999999,
+     "t_decision_start": 7.099999999999991
+    }
+   },
+   "label": "frozen retries later and forwards only from a genuinely fresh observation",
+   "pass": true
+  },
+  {
+   "detail": {
+    "expected_commit": 7.010001384571189,
+    "forward": {
+     "cache_entries": {},
+     "candidates": [
+      "E"
+     ],
+     "chosen": "E",
+     "kind": "forward",
+     "obs_mode": "refresh",
+     "observation_source": "commit_time_state",
+     "observation_t_observed": 7.010001384571189,
+     "pid": 1,
+     "sat": 0,
+     "t": 7.010001384571189,
+     "t_decision_start": 5.010001384571189
+    }
+   },
+   "label": "refresh DOES forward at the same commit instant using the newly available state",
+   "pass": true
+  },
+  {
+   "detail": {
+    "commit": 7.010001384571189,
+    "flip": 6.0,
+    "t_decision_start": 5.010001384571189
+   },
+   "label": "the refresh activity span contains the geometry flip (its information did not exist at start)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "frozen_commits_at_flip": 0,
+    "refresh_forwards": 1
+   },
+   "label": "frozen and refresh disagree exactly at the frozen commit",
+   "pass": true
+  }
+ ],
+ "case": "F4-frozen-hold-vs-refresh-forward",
+ "error": null,
+ "events": {
+  "fates": {
+   "1": "DELIVERED",
+   "99": "DELIVERED"
+  },
+  "frozen_decisions_pid1": [
+   {
+    "cache_entries": {},
+    "candidates": [
+     "E"
+    ],
+    "chosen": "E",
+    "kind": "forward",
+    "obs_mode": "frozen",
+    "observation_source": "frozen_snapshot_before_compute",
+    "observation_t_observed": 7.099999999999991,
+    "pid": 1,
+    "sat": 0,
+    "t": 9.09999999999999,
+    "t_decision_start": 7.099999999999991
+   },
+   {
+    "cache_entries": {},
+    "candidates": [
+     "deliver"
+    ],
+    "chosen": "deliver",
+    "kind": "deliver",
+    "obs_mode": "frozen",
+    "observation_source": "frozen_snapshot_before_compute",
+    "observation_t_observed": 9.903335640951973,
+    "pid": 1,
+    "sat": 1,
+    "t": 11.903335640951973,
+    "t_decision_start": 9.903335640951973
+   }
+  ],
+  "refresh_decisions_pid1": [
+   {
+    "cache_entries": {},
+    "candidates": [
+     "E"
+    ],
+    "chosen": "E",
+    "kind": "forward",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 7.010001384571189,
+    "pid": 1,
+    "sat": 0,
+    "t": 7.010001384571189,
+    "t_decision_start": 5.010001384571189
+   },
+   {
+    "cache_entries": {},
+    "candidates": [
+     "deliver"
+    ],
+    "chosen": "deliver",
+    "kind": "deliver",
+    "obs_mode": "refresh",
+    "observation_source": "commit_time_state",
+    "observation_t_observed": 9.81333702552317,
+    "pid": 1,
+    "sat": 1,
+    "t": 9.81333702552317,
+    "t_decision_start": 7.81333702552317
+   }
+  ],
+  "timeline_marks": [
+   {
+    "at": 7.010001384571189,
+    "inferred_at": 5.010001384571189,
+    "milestone": "frozen_inferred_hold",
+    "pid": 1,
+    "status": "ok",
+    "t_observed": 5.010001384571189
+   },
+   {
+    "at": 7.010001384571189,
+    "inferred_at": null,
+    "milestone": "hold",
+    "pid": 1,
+    "status": null,
+    "t_observed": null
+   }
+  ]
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "compute_delay_s": 2.0,
+  "expected_commit_s": 7.010001384571189,
+  "expected_observation_start_s": 5.010001384571189,
+  "flip_at_s": 6.0,
+  "observation_while_link_down": true,
+  "target_emit_s": 5.0
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

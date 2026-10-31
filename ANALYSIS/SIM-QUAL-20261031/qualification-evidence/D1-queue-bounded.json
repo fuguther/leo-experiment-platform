@@ -1,0 +1,707 @@
+{
+ "assertion_count": 10,
+ "assertions": [
+  {
+   "detail": {
+    "bound_bits": 16000000,
+    "lambda_": 0.5,
+    "max_queued_bits": 8000000,
+    "rho": 0.4
+   },
+   "label": "low: the queue is bounded (<= 2 packets at lambda=0.5, rho=0.4)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "lambda_": 0.5,
+    "trailing_queued_bits": 0
+   },
+   "label": "low: the queue drains back to empty",
+   "pass": true
+  },
+  {
+   "detail": {
+    "fitted_slope_bps": 0.0,
+    "lambda_": 0.5,
+    "theory_slope_bps": -6000000.0
+   },
+   "label": "low: reconstructed slope shows no sustained growth",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.0,
+    "expected": 0.0
+   },
+   "label": "low: event-rebuilt queue area matches native isl_data",
+   "pass": true
+  },
+  {
+   "detail": {
+    "non_delivered": []
+   },
+   "label": "low: every emitted packet is eventually delivered",
+   "pass": true
+  },
+  {
+   "detail": {
+    "bound_bits": 16000000,
+    "lambda_": 1.2,
+    "max_queued_bits": 8000000,
+    "rho": 0.96
+   },
+   "label": "near_capacity: the queue is bounded (<= 2 packets at lambda=1.2, rho=0.96)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "lambda_": 1.2,
+    "trailing_queued_bits": 0
+   },
+   "label": "near_capacity: the queue drains back to empty",
+   "pass": true
+  },
+  {
+   "detail": {
+    "fitted_slope_bps": 0.0,
+    "lambda_": 1.2,
+    "theory_slope_bps": -400000.0
+   },
+   "label": "near_capacity: reconstructed slope shows no sustained growth",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.0,
+    "expected": 0.0
+   },
+   "label": "near_capacity: event-rebuilt queue area matches native isl_data",
+   "pass": true
+  },
+  {
+   "detail": {
+    "non_delivered": []
+   },
+   "label": "near_capacity: every emitted packet is eventually delivered",
+   "pass": true
+  }
+ ],
+ "case": "D1-queue-bounded",
+ "error": null,
+ "events": {
+  "fates_low": {
+   "1": "DELIVERED",
+   "10": "DELIVERED",
+   "11": "DELIVERED",
+   "12": "DELIVERED",
+   "13": "DELIVERED",
+   "14": "DELIVERED",
+   "15": "DELIVERED",
+   "16": "DELIVERED",
+   "17": "DELIVERED",
+   "18": "DELIVERED",
+   "19": "DELIVERED",
+   "2": "DELIVERED",
+   "3": "DELIVERED",
+   "4": "DELIVERED",
+   "5": "DELIVERED",
+   "6": "DELIVERED",
+   "7": "DELIVERED",
+   "8": "DELIVERED",
+   "9": "DELIVERED"
+  },
+  "fates_near_capacity": {
+   "1": "DELIVERED",
+   "10": "DELIVERED",
+   "11": "DELIVERED",
+   "12": "DELIVERED",
+   "13": "DELIVERED",
+   "14": "DELIVERED",
+   "15": "DELIVERED",
+   "16": "DELIVERED",
+   "17": "DELIVERED",
+   "18": "DELIVERED",
+   "19": "DELIVERED",
+   "2": "DELIVERED",
+   "20": "DELIVERED",
+   "21": "DELIVERED",
+   "22": "DELIVERED",
+   "23": "DELIVERED",
+   "24": "DELIVERED",
+   "25": "DELIVERED",
+   "26": "DELIVERED",
+   "27": "DELIVERED",
+   "28": "DELIVERED",
+   "29": "DELIVERED",
+   "3": "DELIVERED",
+   "30": "DELIVERED",
+   "31": "DELIVERED",
+   "32": "DELIVERED",
+   "33": "DELIVERED",
+   "34": "DELIVERED",
+   "35": "DELIVERED",
+   "36": "DELIVERED",
+   "37": "DELIVERED",
+   "38": "DELIVERED",
+   "39": "DELIVERED",
+   "4": "DELIVERED",
+   "40": "DELIVERED",
+   "41": "DELIVERED",
+   "42": "DELIVERED",
+   "43": "DELIVERED",
+   "44": "DELIVERED",
+   "45": "DELIVERED",
+   "5": "DELIVERED",
+   "6": "DELIVERED",
+   "7": "DELIVERED",
+   "8": "DELIVERED",
+   "9": "DELIVERED"
+  },
+  "queue_series_low": [
+   {
+    "queued_bits": 0,
+    "t": 0.0
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 2.010001384571189
+   },
+   {
+    "queued_bits": 0,
+    "t": 2.010001384571189
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 4.010001384571189
+   },
+   {
+    "queued_bits": 0,
+    "t": 4.010001384571189
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 6.010001384571189
+   },
+   {
+    "queued_bits": 0,
+    "t": 6.010001384571189
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 8.010001384571188
+   },
+   {
+    "queued_bits": 0,
+    "t": 8.010001384571188
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 10.010001384571188
+   },
+   {
+    "queued_bits": 0,
+    "t": 10.010001384571188
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 12.010001384571188
+   },
+   {
+    "queued_bits": 0,
+    "t": 12.010001384571188
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 14.010001384571188
+   },
+   {
+    "queued_bits": 0,
+    "t": 14.010001384571188
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 16.010001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 16.010001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 18.010001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 18.010001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 20.010001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 20.010001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 22.010001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 22.010001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 24.010001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 24.010001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 26.010001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 26.010001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 28.010001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 28.010001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 30.010001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 30.010001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 32.01000138457119
+   },
+   {
+    "queued_bits": 0,
+    "t": 32.01000138457119
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 34.01000138457119
+   },
+   {
+    "queued_bits": 0,
+    "t": 34.01000138457119
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 36.01000138457119
+   },
+   {
+    "queued_bits": 0,
+    "t": 36.01000138457119
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 38.01000138457119
+   },
+   {
+    "queued_bits": 0,
+    "t": 38.01000138457119
+   }
+  ],
+  "queue_series_near_capacity": [
+   {
+    "queued_bits": 0,
+    "t": 0.0
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 0.8433347179045223
+   },
+   {
+    "queued_bits": 0,
+    "t": 0.8433347179045223
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 1.6766680512378556
+   },
+   {
+    "queued_bits": 0,
+    "t": 1.6766680512378556
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 2.510001384571189
+   },
+   {
+    "queued_bits": 0,
+    "t": 2.510001384571189
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 3.3433347179045225
+   },
+   {
+    "queued_bits": 0,
+    "t": 3.3433347179045225
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 4.176668051237856
+   },
+   {
+    "queued_bits": 0,
+    "t": 4.176668051237856
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 5.010001384571189
+   },
+   {
+    "queued_bits": 0,
+    "t": 5.010001384571189
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 5.843334717904523
+   },
+   {
+    "queued_bits": 0,
+    "t": 5.843334717904523
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 6.676668051237856
+   },
+   {
+    "queued_bits": 0,
+    "t": 6.676668051237856
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 7.510001384571189
+   },
+   {
+    "queued_bits": 0,
+    "t": 7.510001384571189
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 8.343334717904522
+   },
+   {
+    "queued_bits": 0,
+    "t": 8.343334717904522
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 9.176668051237856
+   },
+   {
+    "queued_bits": 0,
+    "t": 9.176668051237856
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 10.010001384571188
+   },
+   {
+    "queued_bits": 0,
+    "t": 10.010001384571188
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 10.843334717904522
+   },
+   {
+    "queued_bits": 0,
+    "t": 10.843334717904522
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 11.676668051237856
+   },
+   {
+    "queued_bits": 0,
+    "t": 11.676668051237856
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 12.510001384571188
+   },
+   {
+    "queued_bits": 0,
+    "t": 12.510001384571188
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 13.343334717904522
+   },
+   {
+    "queued_bits": 0,
+    "t": 13.343334717904522
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 14.176668051237856
+   },
+   {
+    "queued_bits": 0,
+    "t": 14.176668051237856
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 15.010001384571188
+   },
+   {
+    "queued_bits": 0,
+    "t": 15.010001384571188
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 15.843334717904522
+   },
+   {
+    "queued_bits": 0,
+    "t": 15.843334717904522
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 16.676668051237854
+   },
+   {
+    "queued_bits": 0,
+    "t": 16.676668051237854
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 17.510001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 17.510001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 18.343334717904522
+   },
+   {
+    "queued_bits": 0,
+    "t": 18.343334717904522
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 19.176668051237854
+   },
+   {
+    "queued_bits": 0,
+    "t": 19.176668051237854
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 20.010001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 20.010001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 20.843334717904522
+   },
+   {
+    "queued_bits": 0,
+    "t": 20.843334717904522
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 21.676668051237854
+   },
+   {
+    "queued_bits": 0,
+    "t": 21.676668051237854
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 22.510001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 22.510001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 23.343334717904522
+   },
+   {
+    "queued_bits": 0,
+    "t": 23.343334717904522
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 24.176668051237854
+   },
+   {
+    "queued_bits": 0,
+    "t": 24.176668051237854
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 25.010001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 25.010001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 25.843334717904522
+   },
+   {
+    "queued_bits": 0,
+    "t": 25.843334717904522
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 26.676668051237854
+   },
+   {
+    "queued_bits": 0,
+    "t": 26.676668051237854
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 27.510001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 27.510001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 28.343334717904522
+   },
+   {
+    "queued_bits": 0,
+    "t": 28.343334717904522
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 29.176668051237854
+   },
+   {
+    "queued_bits": 0,
+    "t": 29.176668051237854
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 30.010001384571186
+   },
+   {
+    "queued_bits": 0,
+    "t": 30.010001384571186
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 30.843334717904522
+   },
+   {
+    "queued_bits": 0,
+    "t": 30.843334717904522
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 31.676668051237854
+   },
+   {
+    "queued_bits": 0,
+    "t": 31.676668051237854
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 32.51000138457119
+   },
+   {
+    "queued_bits": 0,
+    "t": 32.51000138457119
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 33.343334717904526
+   },
+   {
+    "queued_bits": 0,
+    "t": 33.343334717904526
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 34.17666805123786
+   },
+   {
+    "queued_bits": 0,
+    "t": 34.17666805123786
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 35.01000138457119
+   },
+   {
+    "queued_bits": 0,
+    "t": 35.01000138457119
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 35.843334717904526
+   },
+   {
+    "queued_bits": 0,
+    "t": 35.843334717904526
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 36.67666805123786
+   },
+   {
+    "queued_bits": 0,
+    "t": 36.67666805123786
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 37.51000138457119
+   },
+   {
+    "queued_bits": 0,
+    "t": 37.51000138457119
+   }
+  ]
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "loads": [
+   {
+    "lambda_pkts_per_s": 0.5,
+    "name": "low",
+    "offered_mbps": 4.0,
+    "utilization": 0.4
+   },
+   {
+    "lambda_pkts_per_s": 1.2,
+    "name": "near_capacity",
+    "offered_mbps": 9.6,
+    "utilization": 0.96
+   }
+  ],
+  "packet_bits": 8000000,
+  "service_rate_bps": 10000000.0,
+  "service_rate_pkts_per_s": 1.25
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

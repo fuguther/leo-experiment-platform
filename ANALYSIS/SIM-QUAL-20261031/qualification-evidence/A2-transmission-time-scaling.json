@@ -1,0 +1,210 @@
+{
+ "assertion_count": 9,
+ "assertions": [
+  {
+   "detail": {
+    "actual": 0.8,
+    "expected": 0.8
+   },
+   "label": "T_tx = S/R at S=8000000, R=10.0 Mbps",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.810001384571189,
+    "expected": 0.810001384571189
+   },
+   "label": "second packet serialized after the first at S=8000000, R=10.0 Mbps",
+   "pass": true
+  },
+  {
+   "detail": {
+    "bits": 8000000,
+    "served": [
+     8000000,
+     8000000
+    ]
+   },
+   "label": "all queued bits served (served_bits == S) at S=8000000, R=10.0 Mbps",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.25,
+    "expected": 0.25
+   },
+   "label": "T_tx = S/R at S=2000000, R=8.0 Mbps",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.2540013845711889,
+    "expected": 0.2540013845711889
+   },
+   "label": "second packet serialized after the first at S=2000000, R=8.0 Mbps",
+   "pass": true
+  },
+  {
+   "detail": {
+    "bits": 2000000,
+    "served": [
+     2000000,
+     2000000
+    ]
+   },
+   "label": "all queued bits served (served_bits == S) at S=2000000, R=8.0 Mbps",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.2,
+    "expected": 0.2
+   },
+   "label": "T_tx = S/R at S=4000000, R=20.0 Mbps",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.2060013845711889,
+    "expected": 0.2060013845711889
+   },
+   "label": "second packet serialized after the first at S=4000000, R=20.0 Mbps",
+   "pass": true
+  },
+  {
+   "detail": {
+    "bits": 4000000,
+    "served": [
+     4000000,
+     4000000
+    ]
+   },
+   "label": "all queued bits served (served_bits == S) at S=4000000, R=20.0 Mbps",
+   "pass": true
+  }
+ ],
+ "case": "A2-transmission-time-scaling",
+ "error": null,
+ "events": {
+  "measured_points": [
+   {
+    "T_tx_s": 0.8,
+    "expected_T_tx_s": 0.8,
+    "isl_rate_mbps": 10.0,
+    "packet_bits": 8000000
+   },
+   {
+    "T_tx_s": 0.25,
+    "expected_T_tx_s": 0.25,
+    "isl_rate_mbps": 8.0,
+    "packet_bits": 2000000
+   },
+   {
+    "T_tx_s": 0.2,
+    "expected_T_tx_s": 0.2,
+    "isl_rate_mbps": 20.0,
+    "packet_bits": 4000000
+   }
+  ],
+  "windows_2000000_8.0": [
+   {
+    "bits": 2000000,
+    "capacity_bits": 2000000.0,
+    "end": 0.2540013845711889,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 1,
+    "rate_bps": 8000000.0,
+    "served_bits": 2000000,
+    "stage": "isl",
+    "start": 0.004001384571188912
+   },
+   {
+    "bits": 2000000,
+    "capacity_bits": 2000000.0,
+    "end": 0.5040013845711889,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 2,
+    "rate_bps": 8000000.0,
+    "served_bits": 2000000,
+    "stage": "isl",
+    "start": 0.2540013845711889
+   }
+  ],
+  "windows_4000000_20.0": [
+   {
+    "bits": 4000000,
+    "capacity_bits": 4000000.0,
+    "end": 0.2060013845711889,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 1,
+    "rate_bps": 20000000.0,
+    "served_bits": 4000000,
+    "stage": "isl",
+    "start": 0.006001384571188912
+   },
+   {
+    "bits": 4000000,
+    "capacity_bits": 4000000.000000001,
+    "end": 0.40600138457118895,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 2,
+    "rate_bps": 20000000.0,
+    "served_bits": 4000000,
+    "stage": "isl",
+    "start": 0.2060013845711889
+   }
+  ],
+  "windows_8000000_10.0": [
+   {
+    "bits": 8000000,
+    "capacity_bits": 8000000.0,
+    "end": 0.810001384571189,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 1,
+    "rate_bps": 10000000.0,
+    "served_bits": 8000000,
+    "stage": "isl",
+    "start": 0.010001384571188912
+   },
+   {
+    "bits": 8000000,
+    "capacity_bits": 8000000.000000002,
+    "end": 1.6100013845711891,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 2,
+    "rate_bps": 10000000.0,
+    "served_bits": 8000000,
+    "stage": "isl",
+    "start": 0.810001384571189
+   }
+  ]
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "points": [
+   {
+    "expected_T_tx_s": 0.8,
+    "isl_rate_mbps": 10.0,
+    "packet_bits": 8000000
+   },
+   {
+    "expected_T_tx_s": 0.25,
+    "isl_rate_mbps": 8.0,
+    "packet_bits": 2000000
+   },
+   {
+    "expected_T_tx_s": 0.2,
+    "isl_rate_mbps": 20.0,
+    "packet_bits": 4000000
+   }
+  ]
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

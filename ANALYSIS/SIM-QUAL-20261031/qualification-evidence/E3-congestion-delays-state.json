@@ -1,0 +1,260 @@
+{
+ "assertion_count": 6,
+ "assertions": [
+  {
+   "detail": {
+    "congested_t_m": 3.0,
+    "expected": 3.0,
+    "idle_t_m": 3.0
+   },
+   "label": "both runs generate the same advertisement at t=3",
+   "pass": true
+  },
+  {
+   "detail": {
+    "data_window": [
+     [
+      2.2050013845711893,
+      5.205001384571189
+     ]
+    ],
+    "t_m": 3.0
+   },
+   "label": "congestion puts a data packet in service across t_m",
+   "pass": true
+  },
+  {
+   "detail": {
+    "data_end": 5.205001384571189,
+    "first_control_start": 5.205001384571189
+   },
+   "label": "the advertisement waits for the data packet (non-preemptive) and starts when it completes",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 5.2163370255231705,
+    "expected": 5.2163370255231705
+   },
+   "label": "congested received_at == data_end + T_tx_ctrl + T_prop",
+   "pass": true
+  },
+  {
+   "detail": {
+    "congested_generated_at": 3.0,
+    "idle_generated_at": 3.0
+   },
+   "label": "the idle and congested runs deliver the SAME advertisement, so the arrival difference is pure link congestion",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 2.205001384571189,
+    "expected": 2.2050013845711893
+   },
+   "label": "congestion increases received_at by exactly the residual data service time",
+   "pass": true
+  }
+ ],
+ "case": "E3-congestion-delays-state",
+ "error": null,
+ "events": {
+  "caches_congested": {
+   "1": {
+    "aoi": 2.9000000000000004,
+    "generated_at": 3.0,
+    "received_at": 5.2163370255231705,
+    "serve_cells": [
+     "G1:90:190"
+    ],
+    "valid": true,
+    "visible_cells": [
+     "G1:90:190"
+    ]
+   }
+  },
+  "caches_idle": {
+   "1": {
+    "aoi": 2.9000000000000004,
+    "generated_at": 3.0,
+    "received_at": 3.0113356409519816,
+    "serve_cells": [
+     "G1:90:190"
+    ],
+    "valid": true,
+    "visible_cells": [
+     "G1:90:190"
+    ]
+   }
+  },
+  "congested_arrived": [
+   {
+    "at": 5.2163370255231705,
+    "audit": "control_plane",
+    "decision_id": null,
+    "downlink_resources": {},
+    "hops": 1,
+    "milestone": "ctrl_advert_arrived",
+    "origin": 1,
+    "payload_fields": [
+     "access_slots_cap",
+     "access_slots_used",
+     "generated_at",
+     "isl_propagation_s",
+     "isl_queue_bits",
+     "origin",
+     "position",
+     "serve_cells",
+     "visible_cells"
+    ],
+    "pid": null,
+    "remaining_hops": 2,
+    "sat": 0,
+    "seq": 4,
+    "serve_cells": [
+     "G1:90:190"
+    ]
+   }
+  ],
+  "congested_control_windows": [
+   {
+    "finish": 0.008,
+    "origin": 1,
+    "seq": 2,
+    "start": 0.0
+   },
+   {
+    "finish": 5.213001384571189,
+    "origin": 1,
+    "seq": 4,
+    "start": 5.205001384571189
+   }
+  ],
+  "congested_data_windows": [
+   {
+    "bits": 3000000,
+    "capacity_bits": 3000000.0,
+    "end": 5.205001384571189,
+    "link_id": "isl:1:0",
+    "outcome": "ok",
+    "pid": 7,
+    "rate_bps": 1000000.0,
+    "served_bits": 3000000,
+    "stage": "isl",
+    "start": 2.2050013845711893
+   }
+  ],
+  "congested_generated": [
+   {
+    "advertisement_protocol_version": 1,
+    "at": 3.0,
+    "audit": "control_plane",
+    "base_packet_bits": 8000,
+    "children": [
+     "W"
+    ],
+    "decision_id": null,
+    "downlink_resources": {
+     "G1:90:190": {
+      "available": true,
+      "propagation_s": 0.0020013845711889123,
+      "queue_bits": 0.0,
+      "queue_scope": "satellite_shared_drr",
+      "queue_semantics": "all_waiting_bits_plus_active_residual_work_proxy",
+      "rate_bps": 1000000000.0
+     }
+    },
+    "hops": 0,
+    "milestone": "ctrl_advert_generated",
+    "origin": 1,
+    "packet_bits": 8000,
+    "pid": null,
+    "resource_telemetry_bits": 0,
+    "seq": 4,
+    "serve_cells": [
+     "G1:90:190"
+    ],
+    "ttl_s": 30.0,
+    "vis_k": 2,
+    "wire_cost": null
+   }
+  ],
+  "idle_arrived": [
+   {
+    "at": 3.0113356409519816,
+    "audit": "control_plane",
+    "decision_id": null,
+    "downlink_resources": {},
+    "hops": 1,
+    "milestone": "ctrl_advert_arrived",
+    "origin": 1,
+    "payload_fields": [
+     "access_slots_cap",
+     "access_slots_used",
+     "generated_at",
+     "isl_propagation_s",
+     "isl_queue_bits",
+     "origin",
+     "position",
+     "serve_cells",
+     "visible_cells"
+    ],
+    "pid": null,
+    "remaining_hops": 2,
+    "sat": 0,
+    "seq": 4,
+    "serve_cells": [
+     "G1:90:190"
+    ]
+   }
+  ],
+  "idle_generated": [
+   {
+    "advertisement_protocol_version": 1,
+    "at": 3.0,
+    "audit": "control_plane",
+    "base_packet_bits": 8000,
+    "children": [
+     "W"
+    ],
+    "decision_id": null,
+    "downlink_resources": {
+     "G1:90:190": {
+      "available": true,
+      "propagation_s": 0.0020013845711889123,
+      "queue_bits": 0.0,
+      "queue_scope": "satellite_shared_drr",
+      "queue_semantics": "all_waiting_bits_plus_active_residual_work_proxy",
+      "rate_bps": 1000000000.0
+     }
+    },
+    "hops": 0,
+    "milestone": "ctrl_advert_generated",
+    "origin": 1,
+    "packet_bits": 8000,
+    "pid": null,
+    "resource_telemetry_bits": 0,
+    "seq": 4,
+    "serve_cells": [
+     "G1:90:190"
+    ],
+    "ttl_s": 30.0,
+    "vis_k": 2,
+    "wire_cost": null
+   }
+  ]
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "advertise_interval_s": 3.0,
+  "congested_advert_seq": 4,
+  "control_packet_bits": 8000,
+  "data_packet_bits": 3000000,
+  "data_service_s": 3.0,
+  "idle_advert_seq": 4,
+  "isl_rate_mbps": 1.0,
+  "t_m_expected_s": 3.0
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

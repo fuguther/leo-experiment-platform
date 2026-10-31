@@ -1,0 +1,1010 @@
+{
+ "assertion_count": 6,
+ "assertions": [
+  {
+   "detail": {
+    "actual": [
+     0.008
+    ],
+    "expected": 0.008,
+    "served_control_packets": 30
+   },
+   "label": "interval=1.0: every control packet has a real S/R transmission time",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": [
+     0.008
+    ],
+    "expected": 0.008,
+    "served_control_packets": 120
+   },
+   "label": "interval=0.25: every control packet has a real S/R transmission time",
+   "pass": true
+  },
+  {
+   "detail": {
+    "interval_0_25": 120,
+    "interval_1_0": 30
+   },
+   "label": "4x higher broadcast rate serves more control packets",
+   "pass": true
+  },
+  {
+   "detail": {
+    "interval_0_25": 0.9599999999999094,
+    "interval_1_0": 0.239999999999978
+   },
+   "label": "4x higher broadcast rate adds real control service time",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 3.999999999999989,
+    "expected": ">= 3.5x"
+   },
+   "label": "control service work scales ~with the broadcast rate",
+   "pass": true
+  },
+  {
+   "detail": {
+    "expected": ">= 3.5x",
+    "interval_0_25": 1920000,
+    "interval_1_0": 480000
+   },
+   "label": "the control ledger charges the same scaling in bits",
+   "pass": true
+  }
+ ],
+ "case": "C2-control-rate-bandwidth",
+ "error": null,
+ "events": {
+  "control_windows_interval_0.25": [
+   {
+    "finish": 0.008,
+    "origin": 0,
+    "seq": 1,
+    "start": 0.0
+   },
+   {
+    "finish": 0.258,
+    "origin": 0,
+    "seq": 3,
+    "start": 0.25
+   },
+   {
+    "finish": 0.508,
+    "origin": 0,
+    "seq": 5,
+    "start": 0.5
+   },
+   {
+    "finish": 0.758,
+    "origin": 0,
+    "seq": 7,
+    "start": 0.75
+   },
+   {
+    "finish": 1.008,
+    "origin": 0,
+    "seq": 9,
+    "start": 1.0
+   },
+   {
+    "finish": 1.258,
+    "origin": 0,
+    "seq": 11,
+    "start": 1.25
+   },
+   {
+    "finish": 1.508,
+    "origin": 0,
+    "seq": 13,
+    "start": 1.5
+   },
+   {
+    "finish": 1.758,
+    "origin": 0,
+    "seq": 15,
+    "start": 1.75
+   },
+   {
+    "finish": 2.008,
+    "origin": 0,
+    "seq": 17,
+    "start": 2.0
+   },
+   {
+    "finish": 2.258,
+    "origin": 0,
+    "seq": 19,
+    "start": 2.25
+   },
+   {
+    "finish": 2.508,
+    "origin": 0,
+    "seq": 21,
+    "start": 2.5
+   },
+   {
+    "finish": 2.758,
+    "origin": 0,
+    "seq": 23,
+    "start": 2.75
+   },
+   {
+    "finish": 3.008,
+    "origin": 0,
+    "seq": 25,
+    "start": 3.0
+   },
+   {
+    "finish": 3.258,
+    "origin": 0,
+    "seq": 27,
+    "start": 3.25
+   },
+   {
+    "finish": 3.508,
+    "origin": 0,
+    "seq": 29,
+    "start": 3.5
+   },
+   {
+    "finish": 3.758,
+    "origin": 0,
+    "seq": 31,
+    "start": 3.75
+   },
+   {
+    "finish": 4.008,
+    "origin": 0,
+    "seq": 33,
+    "start": 4.0
+   },
+   {
+    "finish": 12.018001384571189,
+    "origin": 0,
+    "seq": 35,
+    "start": 12.01000138457119
+   },
+   {
+    "finish": 12.026001384571188,
+    "origin": 0,
+    "seq": 37,
+    "start": 12.018001384571189
+   },
+   {
+    "finish": 12.034001384571187,
+    "origin": 0,
+    "seq": 39,
+    "start": 12.026001384571188
+   },
+   {
+    "finish": 12.042001384571186,
+    "origin": 0,
+    "seq": 41,
+    "start": 12.034001384571187
+   },
+   {
+    "finish": 12.050001384571186,
+    "origin": 0,
+    "seq": 43,
+    "start": 12.042001384571186
+   },
+   {
+    "finish": 12.058001384571185,
+    "origin": 0,
+    "seq": 45,
+    "start": 12.050001384571186
+   },
+   {
+    "finish": 12.066001384571184,
+    "origin": 0,
+    "seq": 47,
+    "start": 12.058001384571185
+   },
+   {
+    "finish": 12.074001384571183,
+    "origin": 0,
+    "seq": 49,
+    "start": 12.066001384571184
+   },
+   {
+    "finish": 12.082001384571182,
+    "origin": 0,
+    "seq": 51,
+    "start": 12.074001384571183
+   },
+   {
+    "finish": 12.090001384571181,
+    "origin": 0,
+    "seq": 53,
+    "start": 12.082001384571182
+   },
+   {
+    "finish": 12.09800138457118,
+    "origin": 0,
+    "seq": 55,
+    "start": 12.090001384571181
+   },
+   {
+    "finish": 12.10600138457118,
+    "origin": 0,
+    "seq": 57,
+    "start": 12.09800138457118
+   },
+   {
+    "finish": 12.114001384571178,
+    "origin": 0,
+    "seq": 59,
+    "start": 12.10600138457118
+   },
+   {
+    "finish": 12.122001384571178,
+    "origin": 0,
+    "seq": 61,
+    "start": 12.114001384571178
+   },
+   {
+    "finish": 12.130001384571177,
+    "origin": 0,
+    "seq": 63,
+    "start": 12.122001384571178
+   },
+   {
+    "finish": 12.138001384571176,
+    "origin": 0,
+    "seq": 65,
+    "start": 12.130001384571177
+   },
+   {
+    "finish": 12.146001384571175,
+    "origin": 0,
+    "seq": 67,
+    "start": 12.138001384571176
+   },
+   {
+    "finish": 12.154001384571174,
+    "origin": 0,
+    "seq": 69,
+    "start": 12.146001384571175
+   },
+   {
+    "finish": 12.162001384571173,
+    "origin": 0,
+    "seq": 71,
+    "start": 12.154001384571174
+   },
+   {
+    "finish": 12.170001384571172,
+    "origin": 0,
+    "seq": 73,
+    "start": 12.162001384571173
+   },
+   {
+    "finish": 12.178001384571171,
+    "origin": 0,
+    "seq": 75,
+    "start": 12.170001384571172
+   },
+   {
+    "finish": 12.18600138457117,
+    "origin": 0,
+    "seq": 77,
+    "start": 12.178001384571171
+   },
+   {
+    "finish": 12.19400138457117,
+    "origin": 0,
+    "seq": 79,
+    "start": 12.18600138457117
+   },
+   {
+    "finish": 12.202001384571169,
+    "origin": 0,
+    "seq": 81,
+    "start": 12.19400138457117
+   },
+   {
+    "finish": 12.210001384571168,
+    "origin": 0,
+    "seq": 83,
+    "start": 12.202001384571169
+   },
+   {
+    "finish": 12.218001384571167,
+    "origin": 0,
+    "seq": 85,
+    "start": 12.210001384571168
+   },
+   {
+    "finish": 12.226001384571166,
+    "origin": 0,
+    "seq": 87,
+    "start": 12.218001384571167
+   },
+   {
+    "finish": 12.234001384571165,
+    "origin": 0,
+    "seq": 89,
+    "start": 12.226001384571166
+   },
+   {
+    "finish": 12.242001384571164,
+    "origin": 0,
+    "seq": 91,
+    "start": 12.234001384571165
+   },
+   {
+    "finish": 12.250001384571163,
+    "origin": 0,
+    "seq": 93,
+    "start": 12.242001384571164
+   },
+   {
+    "finish": 12.258001384571163,
+    "origin": 0,
+    "seq": 95,
+    "start": 12.250001384571163
+   },
+   {
+    "finish": 12.266001384571162,
+    "origin": 0,
+    "seq": 97,
+    "start": 12.258001384571163
+   },
+   {
+    "finish": 12.27400138457116,
+    "origin": 0,
+    "seq": 99,
+    "start": 12.266001384571162
+   },
+   {
+    "finish": 20.28200138457116,
+    "origin": 0,
+    "seq": 101,
+    "start": 20.27400138457116
+   },
+   {
+    "finish": 20.29000138457116,
+    "origin": 0,
+    "seq": 103,
+    "start": 20.28200138457116
+   },
+   {
+    "finish": 20.298001384571158,
+    "origin": 0,
+    "seq": 105,
+    "start": 20.29000138457116
+   },
+   {
+    "finish": 20.306001384571157,
+    "origin": 0,
+    "seq": 107,
+    "start": 20.298001384571158
+   },
+   {
+    "finish": 20.314001384571156,
+    "origin": 0,
+    "seq": 109,
+    "start": 20.306001384571157
+   },
+   {
+    "finish": 20.322001384571156,
+    "origin": 0,
+    "seq": 111,
+    "start": 20.314001384571156
+   },
+   {
+    "finish": 20.330001384571155,
+    "origin": 0,
+    "seq": 113,
+    "start": 20.322001384571156
+   },
+   {
+    "finish": 20.338001384571154,
+    "origin": 0,
+    "seq": 115,
+    "start": 20.330001384571155
+   },
+   {
+    "finish": 20.346001384571153,
+    "origin": 0,
+    "seq": 117,
+    "start": 20.338001384571154
+   },
+   {
+    "finish": 20.354001384571152,
+    "origin": 0,
+    "seq": 119,
+    "start": 20.346001384571153
+   },
+   {
+    "finish": 20.36200138457115,
+    "origin": 0,
+    "seq": 121,
+    "start": 20.354001384571152
+   },
+   {
+    "finish": 20.37000138457115,
+    "origin": 0,
+    "seq": 123,
+    "start": 20.36200138457115
+   },
+   {
+    "finish": 20.37800138457115,
+    "origin": 0,
+    "seq": 125,
+    "start": 20.37000138457115
+   },
+   {
+    "finish": 20.38600138457115,
+    "origin": 0,
+    "seq": 127,
+    "start": 20.37800138457115
+   },
+   {
+    "finish": 20.394001384571148,
+    "origin": 0,
+    "seq": 129,
+    "start": 20.38600138457115
+   },
+   {
+    "finish": 20.402001384571147,
+    "origin": 0,
+    "seq": 131,
+    "start": 20.394001384571148
+   },
+   {
+    "finish": 20.410001384571146,
+    "origin": 0,
+    "seq": 133,
+    "start": 20.402001384571147
+   },
+   {
+    "finish": 20.418001384571145,
+    "origin": 0,
+    "seq": 135,
+    "start": 20.410001384571146
+   },
+   {
+    "finish": 20.426001384571144,
+    "origin": 0,
+    "seq": 137,
+    "start": 20.418001384571145
+   },
+   {
+    "finish": 20.434001384571143,
+    "origin": 0,
+    "seq": 139,
+    "start": 20.426001384571144
+   },
+   {
+    "finish": 20.442001384571142,
+    "origin": 0,
+    "seq": 141,
+    "start": 20.434001384571143
+   },
+   {
+    "finish": 20.45000138457114,
+    "origin": 0,
+    "seq": 143,
+    "start": 20.442001384571142
+   },
+   {
+    "finish": 20.45800138457114,
+    "origin": 0,
+    "seq": 145,
+    "start": 20.45000138457114
+   },
+   {
+    "finish": 20.46600138457114,
+    "origin": 0,
+    "seq": 147,
+    "start": 20.45800138457114
+   },
+   {
+    "finish": 20.47400138457114,
+    "origin": 0,
+    "seq": 149,
+    "start": 20.46600138457114
+   },
+   {
+    "finish": 20.482001384571138,
+    "origin": 0,
+    "seq": 151,
+    "start": 20.47400138457114
+   },
+   {
+    "finish": 20.490001384571137,
+    "origin": 0,
+    "seq": 153,
+    "start": 20.482001384571138
+   },
+   {
+    "finish": 20.498001384571136,
+    "origin": 0,
+    "seq": 155,
+    "start": 20.490001384571137
+   },
+   {
+    "finish": 20.506001384571135,
+    "origin": 0,
+    "seq": 157,
+    "start": 20.498001384571136
+   },
+   {
+    "finish": 20.514001384571134,
+    "origin": 0,
+    "seq": 159,
+    "start": 20.506001384571135
+   },
+   {
+    "finish": 20.522001384571134,
+    "origin": 0,
+    "seq": 161,
+    "start": 20.514001384571134
+   },
+   {
+    "finish": 20.530001384571133,
+    "origin": 0,
+    "seq": 163,
+    "start": 20.522001384571134
+   },
+   {
+    "finish": 20.538001384571132,
+    "origin": 0,
+    "seq": 165,
+    "start": 20.530001384571133
+   },
+   {
+    "finish": 20.758,
+    "origin": 0,
+    "seq": 167,
+    "start": 20.75
+   },
+   {
+    "finish": 21.008,
+    "origin": 0,
+    "seq": 169,
+    "start": 21.0
+   },
+   {
+    "finish": 21.258,
+    "origin": 0,
+    "seq": 171,
+    "start": 21.25
+   },
+   {
+    "finish": 21.508,
+    "origin": 0,
+    "seq": 173,
+    "start": 21.5
+   },
+   {
+    "finish": 21.758,
+    "origin": 0,
+    "seq": 175,
+    "start": 21.75
+   },
+   {
+    "finish": 22.008,
+    "origin": 0,
+    "seq": 177,
+    "start": 22.0
+   },
+   {
+    "finish": 22.258,
+    "origin": 0,
+    "seq": 179,
+    "start": 22.25
+   },
+   {
+    "finish": 22.508,
+    "origin": 0,
+    "seq": 181,
+    "start": 22.5
+   },
+   {
+    "finish": 22.758,
+    "origin": 0,
+    "seq": 183,
+    "start": 22.75
+   },
+   {
+    "finish": 23.008,
+    "origin": 0,
+    "seq": 185,
+    "start": 23.0
+   },
+   {
+    "finish": 23.258,
+    "origin": 0,
+    "seq": 187,
+    "start": 23.25
+   },
+   {
+    "finish": 23.508,
+    "origin": 0,
+    "seq": 189,
+    "start": 23.5
+   },
+   {
+    "finish": 23.758,
+    "origin": 0,
+    "seq": 191,
+    "start": 23.75
+   },
+   {
+    "finish": 24.008,
+    "origin": 0,
+    "seq": 193,
+    "start": 24.0
+   },
+   {
+    "finish": 24.258,
+    "origin": 0,
+    "seq": 195,
+    "start": 24.25
+   },
+   {
+    "finish": 24.508,
+    "origin": 0,
+    "seq": 197,
+    "start": 24.5
+   },
+   {
+    "finish": 24.758,
+    "origin": 0,
+    "seq": 199,
+    "start": 24.75
+   },
+   {
+    "finish": 25.008,
+    "origin": 0,
+    "seq": 201,
+    "start": 25.0
+   },
+   {
+    "finish": 25.258,
+    "origin": 0,
+    "seq": 203,
+    "start": 25.25
+   },
+   {
+    "finish": 25.508,
+    "origin": 0,
+    "seq": 205,
+    "start": 25.5
+   },
+   {
+    "finish": 25.758,
+    "origin": 0,
+    "seq": 207,
+    "start": 25.75
+   },
+   {
+    "finish": 26.008,
+    "origin": 0,
+    "seq": 209,
+    "start": 26.0
+   },
+   {
+    "finish": 26.258,
+    "origin": 0,
+    "seq": 211,
+    "start": 26.25
+   },
+   {
+    "finish": 26.508,
+    "origin": 0,
+    "seq": 213,
+    "start": 26.5
+   },
+   {
+    "finish": 26.758,
+    "origin": 0,
+    "seq": 215,
+    "start": 26.75
+   },
+   {
+    "finish": 27.008,
+    "origin": 0,
+    "seq": 217,
+    "start": 27.0
+   },
+   {
+    "finish": 27.258,
+    "origin": 0,
+    "seq": 219,
+    "start": 27.25
+   },
+   {
+    "finish": 27.508,
+    "origin": 0,
+    "seq": 221,
+    "start": 27.5
+   },
+   {
+    "finish": 27.758,
+    "origin": 0,
+    "seq": 223,
+    "start": 27.75
+   },
+   {
+    "finish": 28.008,
+    "origin": 0,
+    "seq": 225,
+    "start": 28.0
+   },
+   {
+    "finish": 28.258,
+    "origin": 0,
+    "seq": 227,
+    "start": 28.25
+   },
+   {
+    "finish": 28.508,
+    "origin": 0,
+    "seq": 229,
+    "start": 28.5
+   },
+   {
+    "finish": 28.758,
+    "origin": 0,
+    "seq": 231,
+    "start": 28.75
+   },
+   {
+    "finish": 29.008,
+    "origin": 0,
+    "seq": 233,
+    "start": 29.0
+   },
+   {
+    "finish": 29.258,
+    "origin": 0,
+    "seq": 235,
+    "start": 29.25
+   },
+   {
+    "finish": 29.508,
+    "origin": 0,
+    "seq": 237,
+    "start": 29.5
+   },
+   {
+    "finish": 29.758,
+    "origin": 0,
+    "seq": 239,
+    "start": 29.75
+   }
+  ],
+  "control_windows_interval_1.0": [
+   {
+    "finish": 0.008,
+    "origin": 0,
+    "seq": 1,
+    "start": 0.0
+   },
+   {
+    "finish": 1.008,
+    "origin": 0,
+    "seq": 3,
+    "start": 1.0
+   },
+   {
+    "finish": 2.008,
+    "origin": 0,
+    "seq": 5,
+    "start": 2.0
+   },
+   {
+    "finish": 3.008,
+    "origin": 0,
+    "seq": 7,
+    "start": 3.0
+   },
+   {
+    "finish": 4.008,
+    "origin": 0,
+    "seq": 9,
+    "start": 4.0
+   },
+   {
+    "finish": 12.018001384571189,
+    "origin": 0,
+    "seq": 11,
+    "start": 12.01000138457119
+   },
+   {
+    "finish": 12.026001384571188,
+    "origin": 0,
+    "seq": 13,
+    "start": 12.018001384571189
+   },
+   {
+    "finish": 12.034001384571187,
+    "origin": 0,
+    "seq": 15,
+    "start": 12.026001384571188
+   },
+   {
+    "finish": 12.042001384571186,
+    "origin": 0,
+    "seq": 17,
+    "start": 12.034001384571187
+   },
+   {
+    "finish": 12.050001384571186,
+    "origin": 0,
+    "seq": 19,
+    "start": 12.042001384571186
+   },
+   {
+    "finish": 12.058001384571185,
+    "origin": 0,
+    "seq": 21,
+    "start": 12.050001384571186
+   },
+   {
+    "finish": 12.066001384571184,
+    "origin": 0,
+    "seq": 23,
+    "start": 12.058001384571185
+   },
+   {
+    "finish": 12.074001384571183,
+    "origin": 0,
+    "seq": 25,
+    "start": 12.066001384571184
+   },
+   {
+    "finish": 20.082001384571182,
+    "origin": 0,
+    "seq": 27,
+    "start": 20.074001384571183
+   },
+   {
+    "finish": 20.09000138457118,
+    "origin": 0,
+    "seq": 29,
+    "start": 20.082001384571182
+   },
+   {
+    "finish": 20.09800138457118,
+    "origin": 0,
+    "seq": 31,
+    "start": 20.09000138457118
+   },
+   {
+    "finish": 20.10600138457118,
+    "origin": 0,
+    "seq": 33,
+    "start": 20.09800138457118
+   },
+   {
+    "finish": 20.11400138457118,
+    "origin": 0,
+    "seq": 35,
+    "start": 20.10600138457118
+   },
+   {
+    "finish": 20.122001384571178,
+    "origin": 0,
+    "seq": 37,
+    "start": 20.11400138457118
+   },
+   {
+    "finish": 20.130001384571177,
+    "origin": 0,
+    "seq": 39,
+    "start": 20.122001384571178
+   },
+   {
+    "finish": 20.138001384571176,
+    "origin": 0,
+    "seq": 41,
+    "start": 20.130001384571177
+   },
+   {
+    "finish": 21.008,
+    "origin": 0,
+    "seq": 43,
+    "start": 21.0
+   },
+   {
+    "finish": 22.008,
+    "origin": 0,
+    "seq": 45,
+    "start": 22.0
+   },
+   {
+    "finish": 23.008,
+    "origin": 0,
+    "seq": 47,
+    "start": 23.0
+   },
+   {
+    "finish": 24.008,
+    "origin": 0,
+    "seq": 49,
+    "start": 24.0
+   },
+   {
+    "finish": 25.008,
+    "origin": 0,
+    "seq": 51,
+    "start": 25.0
+   },
+   {
+    "finish": 26.008,
+    "origin": 0,
+    "seq": 53,
+    "start": 26.0
+   },
+   {
+    "finish": 27.008,
+    "origin": 0,
+    "seq": 55,
+    "start": 27.0
+   },
+   {
+    "finish": 28.008,
+    "origin": 0,
+    "seq": 57,
+    "start": 28.0
+   },
+   {
+    "finish": 29.008,
+    "origin": 0,
+    "seq": 59,
+    "start": 29.0
+   }
+  ],
+  "summary": {
+   "0.25": {
+    "delivered_bits": 1920000,
+    "served": 120,
+    "total_service_s": 0.9599999999999094
+   },
+   "1.0": {
+    "delivered_bits": 480000,
+    "served": 30,
+    "total_service_s": 0.239999999999978
+   }
+  }
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "control_intervals_s": [
+   1.0,
+   0.25
+  ],
+  "control_packet_bits": 8000,
+  "expected_ctrl_service_s": 0.008,
+  "isl_rate_mbps": 1.0,
+  "packet_bits": 8000000,
+  "rows": [
+   {
+    "bits": 8000,
+    "emit_time_s": 0.0,
+    "pid": 99
+   },
+   {
+    "bits": 8000000,
+    "emit_time_s": 4.0,
+    "pid": 1
+   },
+   {
+    "bits": 8000000,
+    "emit_time_s": 4.0,
+    "pid": 2
+   }
+  ]
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}

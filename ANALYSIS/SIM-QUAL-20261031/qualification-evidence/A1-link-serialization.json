@@ -1,0 +1,401 @@
+{
+ "assertion_count": 14,
+ "assertions": [
+  {
+   "detail": {
+    "actual": {
+     "1": "DELIVERED",
+     "2": "DELIVERED"
+    },
+    "expected": {
+     "1": "DELIVERED",
+     "2": "DELIVERED"
+    }
+   },
+   "label": "both packets delivered",
+   "pass": true
+  },
+  {
+   "detail": {
+    "service_log": [
+     [
+      "data",
+      1
+     ],
+     [
+      "data",
+      2
+     ]
+    ],
+    "windows": [
+     1,
+     2
+    ]
+   },
+   "label": "both packets really used the single ISL egress",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.8,
+    "expected": 0.8
+   },
+   "label": "packet 1 occupies exactly [t0, t0 + S/R]",
+   "pass": true
+  },
+  {
+   "detail": {
+    "packet1_end": 0.810001384571189,
+    "packet2_start": 0.810001384571189
+   },
+   "label": "packet 2 does not start before packet 1 completes",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 0.810001384571189,
+    "expected": 0.810001384571189
+   },
+   "label": "packet 2 starts at the completion instant of packet 1",
+   "pass": true
+  },
+  {
+   "detail": {
+    "first": [
+     0.010001384571188912,
+     0.810001384571189
+    ],
+    "second": [
+     0.810001384571189,
+     1.6100013845711891
+    ]
+   },
+   "label": "the two windows are disjoint (no simultaneous service)",
+   "pass": true
+  },
+  {
+   "detail": {
+    "packet2_enqueue": 0.01800138457118891,
+    "packet2_service_start": 0.810001384571189
+   },
+   "label": "packet 2 was already queued while packet 1 transmitted",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": [
+     0.010001384571188912,
+     8000000
+    ],
+    "expected": [
+     0.010001384571188912,
+     8000000
+    ]
+   },
+   "label": "rebuilt queue shows packet 1 as the only occupant first",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": [
+     0.010001384571188912,
+     0
+    ],
+    "expected": [
+     0.010001384571188912,
+     0
+    ]
+   },
+   "label": "rebuilt queue drains when packet 1 starts service",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": [
+     0.01800138457118891,
+     8000000
+    ],
+    "expected": [
+     0.01800138457118891,
+     8000000
+    ]
+   },
+   "label": "rebuilt queue holds packet 2 until packet 1 completes",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": [
+     0.810001384571189,
+     0
+    ],
+    "expected": [
+     0.810001384571189,
+     0
+    ]
+   },
+   "label": "rebuilt queue is empty at packet 2 service start",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": 6336000.0,
+    "expected": 6336000.0
+   },
+   "label": "event-rebuilt queue area equals the native isl_data area",
+   "pass": true
+  },
+  {
+   "detail": {
+    "queue": "isl_data:isl:0:1:gen0",
+    "rows": 5
+   },
+   "label": "the opt-in queue ledger really records the isl_data queue",
+   "pass": true
+  },
+  {
+   "detail": {
+    "actual": [
+     [
+      0.010001384571188912,
+      8000000
+     ],
+     [
+      0.010001384571188912,
+      0
+     ],
+     [
+      0.01800138457118891,
+      8000000
+     ],
+     [
+      0.810001384571189,
+      0
+     ]
+    ],
+    "expected": [
+     [
+      0.010001384571188912,
+      8000000
+     ],
+     [
+      0.010001384571188912,
+      0
+     ],
+     [
+      0.01800138457118891,
+      8000000
+     ],
+     [
+      0.810001384571189,
+      0
+     ]
+    ]
+   },
+   "label": "queue ledger levels equal the event-rebuilt levels (two independent output streams agree)",
+   "pass": true
+  }
+ ],
+ "case": "A1-link-serialization",
+ "error": null,
+ "events": {
+  "deliveries": {
+   "1": {
+    "delivered_at": 0.8233384100943594,
+    "path": [
+     0,
+     1
+    ]
+   },
+   "2": {
+    "delivered_at": 1.6233384100943595,
+    "path": [
+     0,
+     1
+    ]
+   }
+  },
+  "isl_service_windows": [
+   {
+    "bits": 8000000,
+    "capacity_bits": 8000000.0,
+    "end": 0.810001384571189,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 1,
+    "rate_bps": 10000000.0,
+    "served_bits": 8000000,
+    "stage": "isl",
+    "start": 0.010001384571188912
+   },
+   {
+    "bits": 8000000,
+    "capacity_bits": 8000000.000000002,
+    "end": 1.6100013845711891,
+    "link_id": "isl:0:1",
+    "outcome": "ok",
+    "pid": 2,
+    "rate_bps": 10000000.0,
+    "served_bits": 8000000,
+    "stage": "isl",
+    "start": 0.810001384571189
+   }
+  ],
+  "packet_events": [
+   {
+    "at": 0.0,
+    "bits": 8000000,
+    "kind": "packet_emitted",
+    "pid": 1
+   },
+   {
+    "at": 0.0,
+    "bits": 8000000,
+    "kind": "packet_emitted",
+    "pid": 2
+   },
+   {
+    "at": 0.010001384571188912,
+    "kind": "queue_enter",
+    "link_id": "isl:0:1",
+    "pid": 1,
+    "queue": "isl",
+    "queue_id": 3
+   },
+   {
+    "at": 0.010001384571188912,
+    "bits": 8000000,
+    "kind": "service_start",
+    "link_id": "isl:0:1",
+    "pid": 1,
+    "queue_id": 3,
+    "rate_bps": 10000000.0,
+    "stage": "isl"
+   },
+   {
+    "at": 0.01800138457118891,
+    "kind": "queue_enter",
+    "link_id": "isl:0:1",
+    "pid": 2,
+    "queue": "isl",
+    "queue_id": 4
+   },
+   {
+    "at": 0.810001384571189,
+    "delay_s": 0.0033356409519815205,
+    "kind": "propagation_start",
+    "link_id": "isl:0:1",
+    "pid": 1,
+    "prop_id": 2,
+    "stage": "isl"
+   },
+   {
+    "at": 0.810001384571189,
+    "bits": 8000000,
+    "kind": "service_start",
+    "link_id": "isl:0:1",
+    "pid": 2,
+    "queue_id": 4,
+    "rate_bps": 10000000.0,
+    "stage": "isl"
+   },
+   {
+    "at": 0.8233384100943594,
+    "kind": "delivered",
+    "pid": 1
+   },
+   {
+    "at": 1.6100013845711891,
+    "delay_s": 0.0033356409519815205,
+    "kind": "propagation_start",
+    "link_id": "isl:0:1",
+    "pid": 2,
+    "prop_id": 4,
+    "stage": "isl"
+   },
+   {
+    "at": 1.6233384100943595,
+    "kind": "delivered",
+    "pid": 2
+   }
+  ],
+  "queue_ledger_isl_data_series": [
+   {
+    "event": "add",
+    "queued_bits": 8000000,
+    "t": 0.010001384571188912
+   },
+   {
+    "event": "remove",
+    "queued_bits": 0,
+    "t": 0.010001384571188912
+   },
+   {
+    "event": "add",
+    "queued_bits": 8000000,
+    "t": 0.01800138457118891
+   },
+   {
+    "event": "remove",
+    "queued_bits": 0,
+    "t": 0.810001384571189
+   },
+   {
+    "event": "close",
+    "queued_bits": 0,
+    "t": 10.0
+   }
+  ],
+  "rebuilt_queue_series": [
+   {
+    "queued_bits": 0,
+    "t": 0.0
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 0.010001384571188912
+   },
+   {
+    "queued_bits": 0,
+    "t": 0.010001384571188912
+   },
+   {
+    "queued_bits": 8000000,
+    "t": 0.01800138457118891
+   },
+   {
+    "queued_bits": 0,
+    "t": 0.810001384571189
+   }
+  ],
+  "service_log_isl": [
+   [
+    "data",
+    1
+   ],
+   [
+    "data",
+    2
+   ]
+  ]
+ },
+ "failed_assertions": [],
+ "parameters": {
+  "expected_T_tx_s": 0.8,
+  "isl_rate_mbps": 10.0,
+  "packet_bits": 8000000,
+  "queues_ledgered": true,
+  "rows": [
+   {
+    "emit_time_s": 0.0,
+    "pid": 1
+   },
+   {
+    "emit_time_s": 0.0,
+    "pid": 2
+   }
+  ]
+ },
+ "schema": "leo-sim-qualification-case/v1",
+ "status": "PASS"
+}
