@@ -79,7 +79,7 @@ C 多 seed（s7/8/9；ewma 暂时 s7/8）：
 
 ## 4. 强同步 sweep（C regime，adv=1.0/0.1/0.02 s，vis_k=1，ctrl 2000 bit）
 
-（`round2-results/sync.json/md`；几何策略 1.0/0.1 已完成、0.02 收尾中；同 3 level 同 control 配置。）
+（`round2-results/sync.json/md`；3 policies × 3 levels，同 control 配置，vis_k=1。）
 
 | policy | adv s | AoI p50 ms | flip | R mean ms | switch | W p50 ms | E2E mean | E2E p95 | isl_data area | ctrl Mbit |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -89,9 +89,9 @@ C 多 seed（s7/8/9；ewma 暂时 s7/8）：
 | ewma | 1.0 | 505.8 | 0.2646 | 1.67 | 0.158 | 28.2 | **396.1** | 526.6 | 32.4 M | 24.4 |
 | ewma | 0.1 | 56.1 | 0.2276 | 1.28 | 0.208 | 26.4 | **420.2** | 603.3 | 33.6 M | 232.2 |
 | ewma | **0.02** | **16.4** | **0.2283** | 1.29 | 0.250 | 19.2 | **415.7** | 619.3 | 34.0 M | 1,162.0 |
-| geom | 1.0 | 506.0 | 0 | 0 | 0.222 | n/a | 687.2 | 1188.8 | — | 24.4 |
-| geom | 0.1 | ~56 | 0 | 0 | 0.222 | n/a | ~687 | — | — | 232.2 |
-| geom | 0.02 | （收尾中） | | | | | | | | |
+| geom | 1.0 | 506.0 | 0 | 0 | 0.222 | n/a | 687.2 | 1188.8 | 830.7 M | 24.4 |
+| geom | 0.1 | 56.5 | 0 | 0 | 0.224 | n/a | 675.2 | 1173.8 | 807.3 M | 232.2 |
+| geom | 0.02 | 16.3 | 0 | 0 | 0.222 | n/a | 676.1 | 1177.3 | 809.2 M | 1,162.0 |
 
 **FACT（本轮最重要的反证）**：
 1. AoI p50 从 510 ms 压到 **16.6 ms（−96.7%）** 后，greedy 的 flip 只从 27.9% 降到 26.1%
@@ -102,7 +102,9 @@ C 多 seed（s7/8/9；ewma 暂时 s7/8）：
    更频繁的观测带来更多候选抖动，而不是更好的性能。
 4. 控制开销：20 ms 广告需要 1,162 Mbit（vs 1.0 s 的 24.4 Mbit，**47×**），但每链路仍只占
    ~0.16% 容量；开销不是 E2E 变差的原因（数据面利用率远高于它）。
-5. 因此"高频同步 + 简单策略"既没有消除 action flip，也没有买到性能：**shrink 方向**。
+5. 几何策略是干净的负对照：AoI 506→16.3 ms 时 flip 恒 0，E2E 仅 687.2→676.1 ms（±11 ms 噪声），
+   证明同步级别本身没有改变 data plane 的物理条件；上述 greedy/ewma 差异来自状态影响决策。
+6. 因此"高频同步 + 简单策略"既没有消除 action flip，也没有买到性能：**shrink 方向**。
 
 ## 5. 方向性持续偏差 z=|δ|/ε（post-fix）
 
@@ -129,12 +131,26 @@ z 分箱的 E2E 与 backlog（C greedy）：
 ⇒ 在本 regime，stale misrouting 产生的方向性偏差**没有被队列累积放大**。
 **FACT**：geometry（0 flip）才是 corridor 逼近容量的一侧（τ_relax 420 ms、queue area 830 M）。
 
-## 6. same-continuation causal regret（n=12，运行中）
+## 6. same-continuation causal regret（n=12 冻结）
 
-预注册样本：`fork-samples/c2-greedy-s7.json`（large Γ 4 / small margin 3 / large proxy R 3 /
-sustained 1 / random control 1）；配置 `fork-configs/m2-c2-greedy-s7.json`；release R5。
-每个 fork = 2 次 t=0 全量重放（baseline vs forced-fresh），配对证据是**决策日志前缀指纹**
-（不是 full state hash；见 COUNTERFACTUAL-AUDIT）。结果表在 `fork-results.md` 冻结。
+样本：`fork-samples/c2-greedy-s7.json`（large Γ 4 / small margin 3 / large proxy R 3 /
+sustained 1 / random control 1）；配置 `fork-configs/m2-c2-greedy-s7.json`；release R5；
+证据 `fk-c-*`；结果 `round2-results/fork-results.{json,md}`。
+
+- 12/12 fork 的 `branch_states_identical = true`（决策日志前缀指纹；**不是** full state hash）。
+- **tagged packet 因果差（fresh − stale）符号混合、幅度可达数百 ms**：
+  −486.9, −472.6, −177.0, −117.8, −43.3, −10.5, 0, 0, 0, +0.2, +101.9, +306.6 ms
+  （6 个 fresh 更快 / 3 个 stale 更快 / 3 个无变化）。
+- **cohort（全网受影响包）均值 ≈0**：12 个 fork 的 cohort mean 中位 0.0 ms，
+  5 个 fresh 更好 / 5 个更差；单点改动在网络上被重新分配。
+- **proxy regret 不能替代 causal regret**：proxy 中位 9.5 ms，而 tagged causal 差可达
+  −487 / +307 ms（例：decision 4537 proxy 47.0 ms vs tagged −486.9 ms）；2447 proxy 2.45 ms
+  而 tagged 0。
+- 与历史 C5 一致（−51.8/+89.7/+234.6，1/3 为负）：**“用新鲜状态”不是单向解药**。
+
+**FACT**：单点决策的因果后果可以很大（百 ms 级），但其符号取决于具体状态/后续路径，
+在 population 上相互抵消；因此不能用 proxy regret 推断“fresh 更好”，
+也不能用单点 fork 的幅度推断系统性能损失。
 
 ## 7. 结论（2026-11-01 冻结，post-fix）
 

@@ -2,17 +2,27 @@
 
 范围：仅 `worktrees/.t1-scene-calibration` / `codex/20261018-scene-calibration`；工作区级入口仍是 `topic/STATUS.md`。
 
-## 当前分支状态（`qual/sim-qual-20261031`，2026-10-31 深夜；本 worktree）
+## 当前分支状态（`qual/sim-qual-20261031`，2026-11-01 凌晨；本 worktree）
 
-- 本分支从 `a90c1f9`（night 线 HEAD）分出，任务 = 仿真资格考试 A–F + 四策略 stale-state 敏感性。
-- 报告入口 `ANALYSIS/SIM-QUAL-20261031/`：`QUALIFICATION-20261031.md`（A–F，15 测试/144 断言全绿）、
-  `PROTOCOL-20261031.md`（冻结矩阵）、`POLICY-SPEC.md`（四策略定义）、`RESULTS-20261031.md`（12 cell）、
-  `CONCLUSION-20261031.md`（Strict/Defeasible/Unknown）、`sq_policy_analyze.py`（复算）。
-- code commit `76427851e32fc735da3fd45f4faa1ad54e49b308`；release `76427851…-9c5df15a…`；
-  12 个 diagnostic run 全部 `DIAGNOSTIC_COMPLETE`、回传 `verified`，索引见 `ANALYSIS/DEPLOYMENT-INDEX.jsonl` 的 `sq-*` 行。
-- 结论摘要：A–F 资格考试全过（无仿真器缺陷）；四策略 flip 0/27.8/18.2/28.5%（high）；
-  AoI 487→56 ms 不改变 E2E、也不消除 flip；策略类别（是否看队列）才是网络性能主因。
-  详见 `CONCLUSION-20261031.md`；单 seed、合成 trace，不得外推。
+- 本轮两条线的入口都在 `ANALYSIS/SIM-QUAL-20261031/`：
+  - **Round-1（pre-fix）**：`QUALIFICATION-20261031.md`（A–F 资格，15 tests/144 断言全绿）、
+    `PROTOCOL-20261031.md`、`RESULTS-20261031.md`、`CONCLUSION-20261031.md`。
+    注意：pre-fix 网络数字已被 control dead-letter 修复推翻（见下），只作历史。
+  - **Round-2（post-fix）**：`calibration/{CALIB-20261031.md,CONTROL-FIX-COMPARISON.md}`、
+    `PROTOCOL-ROUND2-20261031.md`、`RESULTS-ROUND2-20261031.md`、`CONCLUSION-ROUND2-20261031.md`、
+    `persistence/`、`round2-results/`、`fork-samples/`、`fork-configs/`（在 EXPERIMENTS/contracts/）。
+- 关键发布与运行：
+  - control 修复 `fb90c01`（release `fb90c01…-96da8e3f…`）：死信 eliminated（expired 0，
+    isl_ctrl area −99.99%），delivered ads/AoI 不变；**data plane 改变**（+2 hops、+35–43 ms），
+    pre/post 不可混。pre-fix release `76427851…` 保留。
+  - Round-2 矩阵 release `038fb16…-b8eb375…`（B/C/D/sync）、`4e7a7b5…-aac7223…`（A）、
+    fork release `de632b3…-76a4127…`。
+  - 证据根 `三端文件与同步治理/evidence/t1/`：`sq4-*`（矩阵）、`sq3-*`（校准/A）、
+    `sq2-*`（校准/pre-post 对照）、`fk-c-*`（same-continuation forks）。
+- 结论（详见 `CONCLUSION-ROUND2-20261031.md`）：**SHRINK** —— stale state 是动作层现象
+  （flip 26–28%、Γ 单调），但在实测 A/B/C/D、多 seed、20 ms 同步下没有性能层转化；
+  AoI 510→16.6 ms 后 flip 只降 1.8–3.7 pp、E2E 反而变差；网络性能由策略类别决定。
+- 尚未关闭：完整 fork 汇总（n=12 冻结中）、根 STATUS/现态 Issue 的更新、pre-fix 历史的同 release 重跑。
 
 ## 历史分支状态（`night/time-exp-20261031`，2026-10-31）
 
