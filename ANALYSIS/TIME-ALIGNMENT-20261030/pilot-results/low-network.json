@@ -1,0 +1,186 @@
+{
+ "arms": {
+  "now": {
+   "access_admission_rate": 1.0,
+   "access_wait_s": {
+    "max": 0.013453659124839312,
+    "mean": 0.0028178183001270484,
+    "min": 0.002092988092755377,
+    "n": 427,
+    "p50": 0.0025934398064784148,
+    "p90": 0.003380813979616093,
+    "p99": 0.004342328225726
+   },
+   "admitted_packets": 427,
+   "delivered_bits": 427000000.0,
+   "delivered_packets": 427,
+   "delivery_ratio": 1.0,
+   "e2e_s": {
+    "max": 0.481541068271067,
+    "mean": 0.29115292751182853,
+    "min": 0.05872306293983165,
+    "n": 427,
+    "p50": 0.28886726539166574,
+    "p90": 0.42734191380793796,
+    "p95": 0.4277001832009528,
+    "p99": 0.4355676441283354
+   },
+   "events_processed": 419205,
+   "fate_counts": {
+    "ACCESS_QUEUE_OVERFLOW": 0,
+    "ACCESS_REJECTED": 0,
+    "DATA_DEADLINE_EXPIRED": 0,
+    "DELIVERED": 427,
+    "GEOMETRY_LOSS_IN_FLIGHT": 0,
+    "HOLDING_QUEUE_OVERFLOW": 0,
+    "IN_SYSTEM_AT_STOP": 0,
+    "ISL_QUEUE_OVERFLOW": 0,
+    "NO_ROUTE": 0,
+    "RANDOM_OUTAGE_IN_FLIGHT": 0
+   },
+   "goodput_mbps_window10": 42.7,
+   "holding_wait_s": {
+    "max": 0.07362767200344411,
+    "mean": 0.0004441801407013952,
+    "min": 0.0,
+    "n": 427,
+    "p50": 0.0,
+    "p90": 0.0,
+    "p99": 0.0
+   },
+   "in_system_bits_at_stop": 0,
+   "mean_delivered_e2e_s": 0.29115292751182853,
+   "natural_end": true,
+   "offered_bits": 427000000.0,
+   "offered_packets": 427,
+   "prop_s": {
+    "max": 0.19017484079388502,
+    "mean": 0.11142949350292664,
+    "min": 0.028619062939835516,
+    "n": 427,
+    "p50": 0.10856321911144651,
+    "p90": 0.16721893569462587,
+    "p99": 0.16770406274846827
+   },
+   "queue_area_bits_s": {
+    "downlink": 0.0,
+    "holding": 189658.92007949488,
+    "isl_ctrl": 848278533.8350053,
+    "isl_data": 809741.4017263667,
+    "uplink": 41807.99999999874
+   },
+   "queue_wait_s": {
+    "max": 0.0853566717742753,
+    "mean": 0.002438441034674148,
+    "min": 0.0,
+    "n": 427,
+    "p50": 0.0,
+    "p90": 0.008514607034268096,
+    "p99": 0.017101376029310167
+   },
+   "stop_time_s": 20.0,
+   "terminal_loss_bits": 0,
+   "tx_s": {
+    "max": 0.2900999999999936,
+    "mean": 0.1772662763466002,
+    "min": 0.030099999999999127,
+    "n": 427,
+    "p50": 0.18009999999999593,
+    "p90": 0.2600999999999942,
+    "p99": 0.2600999999999942
+   }
+  },
+  "stale": {
+   "access_admission_rate": 1.0,
+   "access_wait_s": {
+    "max": 0.013453659124839312,
+    "mean": 0.0028178183001270484,
+    "min": 0.002092988092755377,
+    "n": 427,
+    "p50": 0.0025934398064784148,
+    "p90": 0.003380813979616093,
+    "p99": 0.004342328225726
+   },
+   "admitted_packets": 427,
+   "delivered_bits": 427000000.0,
+   "delivered_packets": 427,
+   "delivery_ratio": 1.0,
+   "e2e_s": {
+    "max": 0.5141308348876485,
+    "mean": 0.2909757267377122,
+    "min": 0.05872306293983165,
+    "n": 427,
+    "p50": 0.28886726539166574,
+    "p90": 0.42733574847659384,
+    "p95": 0.4277001832009528,
+    "p99": 0.4390742873451856
+   },
+   "events_processed": 419134,
+   "fate_counts": {
+    "ACCESS_QUEUE_OVERFLOW": 0,
+    "ACCESS_REJECTED": 0,
+    "DATA_DEADLINE_EXPIRED": 0,
+    "DELIVERED": 427,
+    "GEOMETRY_LOSS_IN_FLIGHT": 0,
+    "HOLDING_QUEUE_OVERFLOW": 0,
+    "IN_SYSTEM_AT_STOP": 0,
+    "ISL_QUEUE_OVERFLOW": 0,
+    "NO_ROUTE": 0,
+    "RANDOM_OUTAGE_IN_FLIGHT": 0
+   },
+   "goodput_mbps_window10": 42.7,
+   "holding_wait_s": {
+    "max": 0.07362767200344411,
+    "mean": 0.0004441801407013952,
+    "min": 0.0,
+    "n": 427,
+    "p50": 0.0,
+    "p90": 0.0,
+    "p99": 0.0
+   },
+   "in_system_bits_at_stop": 0,
+   "mean_delivered_e2e_s": 0.2909757267377122,
+   "natural_end": true,
+   "offered_bits": 427000000.0,
+   "offered_packets": 427,
+   "prop_s": {
+    "max": 0.20399883488767934,
+    "mean": 0.11135961185809368,
+    "min": 0.028619062939835516,
+    "n": 427,
+    "p50": 0.10856377590936361,
+    "p90": 0.16721491380796394,
+    "p99": 0.17258898235136755
+   },
+   "queue_area_bits_s": {
+    "downlink": 0.0,
+    "holding": 189658.92007949488,
+    "isl_ctrl": 848278423.2661669,
+    "isl_data": 803920.1335223573,
+    "uplink": 41807.99999999874
+   },
+   "queue_wait_s": {
+    "max": 0.0853566717742753,
+    "mean": 0.002424808088060543,
+    "min": 0.0,
+    "n": 427,
+    "p50": 0.0,
+    "p90": 0.008514607034268096,
+    "p99": 0.017101376029310167
+   },
+   "stop_time_s": 20.0,
+   "terminal_loss_bits": 0,
+   "tx_s": {
+    "max": 0.31009999999999316,
+    "mean": 0.17717259953161194,
+    "min": 0.030099999999999127,
+    "n": 427,
+    "p50": 0.18009999999999593,
+    "p90": 0.2600999999999942,
+    "p99": 0.2600999999999942
+   }
+  }
+ },
+ "cell": "/Users/lge/Desktop/topic/三端文件与同步治理/evidence/t1/ta-pilot-arms-low-20261031-01/low-040",
+ "schema": "ta-pilot-network/v1"
+}

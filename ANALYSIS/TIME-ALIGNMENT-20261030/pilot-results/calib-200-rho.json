@@ -1,0 +1,116 @@
+{
+ "arms": {
+  "now": {
+   "fate_counts": {
+    "ACCESS_QUEUE_OVERFLOW": 0,
+    "ACCESS_REJECTED": 0,
+    "DATA_DEADLINE_EXPIRED": 0,
+    "DELIVERED": 1946,
+    "GEOMETRY_LOSS_IN_FLIGHT": 0,
+    "HOLDING_QUEUE_OVERFLOW": 0,
+    "IN_SYSTEM_AT_STOP": 87,
+    "ISL_QUEUE_OVERFLOW": 0,
+    "NO_ROUTE": 14,
+    "RANDOM_OUTAGE_IN_FLIGHT": 0
+   },
+   "links": 316,
+   "links_with_traffic": 316,
+   "max_rho": 0.9433348725343035,
+   "queue_area_bits_s": {
+    "downlink": 129.69039499743928,
+    "holding": 786378702.9122343,
+    "isl_ctrl": 848372417.5367771,
+    "isl_data": 51078111.769890875,
+    "uplink": 51077.9999999933
+   },
+   "rho_ge": {
+    "0.2": 102,
+    "0.5": 26,
+    "0.7": 6,
+    "0.9": 2
+   },
+   "top10": [
+    {
+     "available_s": 10.0,
+     "link": "isl:128:127",
+     "rate_bps": 100000000.0,
+     "rho": 0.9433348725343035,
+     "served_bits": 943334872.5343034
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:127:126",
+     "rate_bps": 100000000.0,
+     "rho": 0.9416072661366639,
+     "served_bits": 941607266.1366639
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:65:85",
+     "rate_bps": 100000000.0,
+     "rho": 0.7580281114973336,
+     "served_bits": 758028111.4973336
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:85:105",
+     "rate_bps": 100000000.0,
+     "rho": 0.7567247729098165,
+     "served_bits": 756724772.9098165
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:45:65",
+     "rate_bps": 100000000.0,
+     "rho": 0.7523314580657815,
+     "served_bits": 752331458.0657815
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:5:25",
+     "rate_bps": 100000000.0,
+     "rho": 0.7024396787023838,
+     "served_bits": 702439678.7023838
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:44:43",
+     "rate_bps": 100000000.0,
+     "rho": 0.6811428481256558,
+     "served_bits": 681142848.1256559
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:43:42",
+     "rate_bps": 100000000.0,
+     "rho": 0.6799367709789915,
+     "served_bits": 679936770.9789915
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:42:41",
+     "rate_bps": 100000000.0,
+     "rho": 0.679,
+     "served_bits": 679000000.0
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:41:40",
+     "rate_bps": 100000000.0,
+     "rho": 0.679,
+     "served_bits": 679000000.0
+    }
+   ],
+   "window_s": [
+    4.0,
+    14.0
+   ]
+  }
+ },
+ "cell": "/Users/lge/Desktop/topic/三端文件与同步治理/evidence/t1/ta-pilot-calib-20261031-03/cal-200",
+ "schema": "ta-pilot-rho/v1",
+ "window_s": [
+  4.0,
+  14.0
+ ]
+}

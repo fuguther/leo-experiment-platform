@@ -1,0 +1,174 @@
+{
+ "arms": {
+  "candidate": {
+   "candidate_slots": 48640,
+   "complete_coverage": 0.9992529711375212,
+   "decisions_with_two_complete_candidates": 14714,
+   "eta_dispersion_s": {
+    "max": 0.05833860924887446,
+    "mean": 0.009334457982104933,
+    "min": 0.0,
+    "n": 23150,
+    "p50": 0.004255257386938993,
+    "p90": 0.017276063976396472,
+    "p99": 0.03447043702834485
+   },
+   "fallback_decisions": 123,
+   "fallback_slot_rate": 0.002528782894736842,
+   "multi_candidate_rows": 14725,
+   "nonzero_resource_work_slot_rate": 0.319921875,
+   "query_comparisons": 14725,
+   "query_equals_eta_rate": 0.9991171477079797,
+   "rows": 24928,
+   "rows_with_time_alignment": 23715,
+   "score_margin_s": {
+    "max": 0.11640102362233007,
+    "mean": 0.016005145717524753,
+    "min": 0.0,
+    "n": 14714,
+    "p10": 0.0015113322594372952,
+    "p50": 0.011617147450336304,
+    "p90": 0.03395957936517427
+   },
+   "score_term_presence": {
+    "compute_service_s": 48517,
+    "compute_wait_s": 48517,
+    "local_egress_wait_s": 48517,
+    "peer_process_s": 48517,
+    "prop_s": 48517,
+    "query_service_s": 48517,
+    "query_wait_s": 48517,
+    "remaining_prop_s": 48517,
+    "resource_packet_tx_s": 47409,
+    "resource_work_s": 48517,
+    "terminal_prop_s": 1108,
+    "terminal_tx_s": 1108,
+    "tx_s": 48517
+   },
+   "state_age_s": {
+    "max": 1.0125990670977147,
+    "mean": 0.506429476253755,
+    "min": 0.0035375310104583946,
+    "n": 47409,
+    "p50": 0.4935403305203252,
+    "p90": 0.9112556947052859,
+    "p99": 0.9965607088184889
+   },
+   "zero_resource_work_slot_rate": 0.6775493421052632
+  },
+  "now": {
+   "candidate_slots": 48614,
+   "complete_coverage": 0.9992527681543374,
+   "decisions_with_two_complete_candidates": 14710,
+   "eta_dispersion_s": {
+    "max": 0.05833860924887446,
+    "mean": 0.009331463523774241,
+    "min": 0.0,
+    "n": 23132,
+    "p50": 0.004255257252335554,
+    "p90": 0.017276063976396472,
+    "p99": 0.03443480272184729
+   },
+   "fallback_decisions": 123,
+   "fallback_slot_rate": 0.0025301353519562265,
+   "multi_candidate_rows": 14721,
+   "nonzero_resource_work_slot_rate": 0.31999012630106555,
+   "query_comparisons": 14721,
+   "query_equals_eta_rate": 0.0,
+   "rows": 24910,
+   "rows_with_time_alignment": 23697,
+   "score_margin_s": {
+    "max": 0.11640102362233007,
+    "mean": 0.01600317803522867,
+    "min": 0.0,
+    "n": 14710,
+    "p10": 0.0015134968044763497,
+    "p50": 0.011617147450336304,
+    "p90": 0.03395957936517427
+   },
+   "score_term_presence": {
+    "compute_service_s": 48491,
+    "compute_wait_s": 48491,
+    "local_egress_wait_s": 48491,
+    "peer_process_s": 48491,
+    "prop_s": 48491,
+    "query_service_s": 48491,
+    "query_wait_s": 48491,
+    "remaining_prop_s": 48491,
+    "resource_packet_tx_s": 47383,
+    "resource_work_s": 48491,
+    "terminal_prop_s": 1108,
+    "terminal_tx_s": 1108,
+    "tx_s": 48491
+   },
+   "state_age_s": {
+    "max": 1.0125990670977147,
+    "mean": 0.5062135138667736,
+    "min": 0.0035375310104583946,
+    "n": 47383,
+    "p50": 0.4932397855727473,
+    "p90": 0.9112556947052859,
+    "p99": 0.9965607088184889
+   },
+   "zero_resource_work_slot_rate": 0.6774797383469783
+  },
+  "stale": {
+   "candidate_slots": 47134,
+   "complete_coverage": 0.9997249535859176,
+   "decisions_with_two_complete_candidates": 14539,
+   "eta_dispersion_s": {
+    "max": 0.05833860924887446,
+    "mean": 0.009006659122049399,
+    "min": 0.0,
+    "n": 22117,
+    "p50": 0.004254554409264699,
+    "p90": 0.017276063976396472,
+    "p99": 0.033894589685781185
+   },
+   "fallback_decisions": 116,
+   "fallback_slot_rate": 0.0024610684431620486,
+   "multi_candidate_rows": 14543,
+   "nonzero_resource_work_slot_rate": 0.3158866211227564,
+   "query_comparisons": 14543,
+   "query_equals_eta_rate": 0.0,
+   "rows": 23881,
+   "rows_with_time_alignment": 22668,
+   "score_margin_s": {
+    "max": 0.11640102362233014,
+    "mean": 0.01593251855460947,
+    "min": 0.0,
+    "n": 14539,
+    "p10": 0.001473065648310637,
+    "p50": 0.011492926220930379,
+    "p90": 0.0337022559055824
+   },
+   "score_term_presence": {
+    "compute_service_s": 47018,
+    "compute_wait_s": 47018,
+    "local_egress_wait_s": 47018,
+    "peer_process_s": 47018,
+    "prop_s": 47018,
+    "query_service_s": 47018,
+    "query_wait_s": 47018,
+    "remaining_prop_s": 47018,
+    "resource_packet_tx_s": 45911,
+    "resource_work_s": 47018,
+    "terminal_prop_s": 1107,
+    "terminal_tx_s": 1107,
+    "tx_s": 47018
+   },
+   "state_age_s": {
+    "max": 1.0110016099074084,
+    "mean": 0.5073024175098971,
+    "min": 0.0035375310104583946,
+    "n": 45911,
+    "p50": 0.49476083239334656,
+    "p90": 0.9111929723572691,
+    "p99": 0.996470892891951
+   },
+   "zero_resource_work_slot_rate": 0.6816523104340816
+  }
+ },
+ "cell": "/Users/lge/Desktop/topic/三端文件与同步治理/evidence/t1/ta-pilot-arms-high-20261031-01/high-120-burst16",
+ "schema": "ta-pilot-decisions/v1"
+}

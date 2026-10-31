@@ -1,0 +1,62 @@
+{
+ "arms": {
+  "now": {
+   "decision_label_coverage": 0.6632228632765329,
+   "decisions_in_probe": 7453,
+   "decisions_with_two_valid_candidates": 4943,
+   "error_ms": {
+    "bias_mean_ms": -2.4497433085081237,
+    "mae_ms": 2.818009035667908,
+    "max_abs_ms": 19.998815405143127,
+    "median_abs_ms": 0.0,
+    "n": 15316,
+    "p90_abs_ms": 9.99899999999986,
+    "p99_abs_ms": 9.999185477630448,
+    "within_10ms": 0.9954296160877514
+   },
+   "identity_sources": {
+    "live_audit_not_used_by_predictor (resource_id+generation)": 418,
+    "used_state": 15316
+   },
+   "missing_reasons": {
+    "no_prediction": 49
+   },
+   "multi_candidate_decisions": 5002,
+   "multi_candidate_label_coverage": 0.9882047181127549,
+   "probe_rows": 15734,
+   "row_coverage": 0.9734333290962247,
+   "truth_nonzero_rate": 0.45534082005745624,
+   "valid_truth_rows": 15316
+  },
+  "stale": {
+   "decision_label_coverage": 0.6634447576855954,
+   "decisions_in_probe": 7449,
+   "decisions_with_two_valid_candidates": 4942,
+   "error_ms": {
+    "bias_mean_ms": -2.492803843540388,
+    "mae_ms": 2.8135978696546156,
+    "max_abs_ms": 19.998815405143127,
+    "median_abs_ms": 0.0,
+    "n": 15309,
+    "p90_abs_ms": 9.99899999999986,
+    "p99_abs_ms": 9.999185467711271,
+    "within_10ms": 0.9967339473512313
+   },
+   "identity_sources": {
+    "live_audit_not_used_by_predictor (resource_id+generation)": 418,
+    "used_state": 15309
+   },
+   "missing_reasons": {
+    "no_prediction": 49
+   },
+   "multi_candidate_decisions": 5001,
+   "multi_candidate_label_coverage": 0.9882023595280944,
+   "probe_rows": 15727,
+   "row_coverage": 0.9734215044191518,
+   "truth_nonzero_rate": 0.45515709713240576,
+   "valid_truth_rows": 15309
+  }
+ },
+ "cell": "/Users/lge/Desktop/topic/三端文件与同步治理/evidence/t1/ta-pilot-arms-low-20261031-01/low-040",
+ "schema": "ta-pilot-probe/v1"
+}

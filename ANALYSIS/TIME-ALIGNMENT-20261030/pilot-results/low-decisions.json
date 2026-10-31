@@ -1,0 +1,118 @@
+{
+ "arms": {
+  "now": {
+   "candidate_slots": 15734,
+   "complete_coverage": 0.9997979797979798,
+   "decisions_with_two_complete_candidates": 4949,
+   "eta_dispersion_s": {
+    "max": 0.03599596230020108,
+    "mean": 0.008171474953181716,
+    "min": 0.0,
+    "n": 7253,
+    "p50": 0.00425326233714074,
+    "p90": 0.017276063976396472,
+    "p99": 0.03109342604275156
+   },
+   "fallback_decisions": 49,
+   "fallback_slot_rate": 0.0031142748188636073,
+   "multi_candidate_rows": 4950,
+   "nonzero_resource_work_slot_rate": 0.23967204779458498,
+   "query_comparisons": 4950,
+   "query_equals_eta_rate": 0.0,
+   "rows": 7868,
+   "rows_with_time_alignment": 7453,
+   "score_margin_s": {
+    "max": 0.11640102362233003,
+    "mean": 0.015736534522510743,
+    "min": 0.0,
+    "n": 4949,
+    "p10": 0.0014308849267818113,
+    "p50": 0.01292381650227821,
+    "p90": 0.03102322792002507
+   },
+   "score_term_presence": {
+    "compute_service_s": 15685,
+    "compute_wait_s": 15685,
+    "local_egress_wait_s": 15685,
+    "peer_process_s": 15685,
+    "prop_s": 15685,
+    "query_service_s": 15685,
+    "query_wait_s": 15685,
+    "remaining_prop_s": 15685,
+    "resource_packet_tx_s": 15316,
+    "resource_work_s": 15685,
+    "terminal_prop_s": 369,
+    "terminal_tx_s": 369,
+    "tx_s": 15685
+   },
+   "state_age_s": {
+    "max": 1.0073125528911193,
+    "mean": 0.5134664902780947,
+    "min": 0.003777191181407069,
+    "n": 15316,
+    "p50": 0.5206921108373779,
+    "p90": 0.9127838389268632,
+    "p99": 0.9960135465910724
+   },
+   "zero_resource_work_slot_rate": 0.7572136773865514
+  },
+  "stale": {
+   "candidate_slots": 15727,
+   "complete_coverage": 0.9997979389775712,
+   "decisions_with_two_complete_candidates": 4948,
+   "eta_dispersion_s": {
+    "max": 0.03599596230020108,
+    "mean": 0.008166327922900531,
+    "min": 0.0,
+    "n": 7249,
+    "p50": 0.004253258998994092,
+    "p90": 0.017276063976396472,
+    "p99": 0.03109342604275156
+   },
+   "fallback_decisions": 49,
+   "fallback_slot_rate": 0.00311566096521905,
+   "multi_candidate_rows": 4949,
+   "nonzero_resource_work_slot_rate": 0.22935079799071661,
+   "query_comparisons": 4949,
+   "query_equals_eta_rate": 0.0,
+   "rows": 7864,
+   "rows_with_time_alignment": 7449,
+   "score_margin_s": {
+    "max": 0.11640102362233003,
+    "mean": 0.015682309469116612,
+    "min": 0.0,
+    "n": 4948,
+    "p10": 0.0014014408569310993,
+    "p50": 0.01292381650227821,
+    "p90": 0.031023135364010794
+   },
+   "score_term_presence": {
+    "compute_service_s": 15678,
+    "compute_wait_s": 15678,
+    "local_egress_wait_s": 15678,
+    "peer_process_s": 15678,
+    "prop_s": 15678,
+    "query_service_s": 15678,
+    "query_wait_s": 15678,
+    "remaining_prop_s": 15678,
+    "resource_packet_tx_s": 15309,
+    "resource_work_s": 15678,
+    "terminal_prop_s": 369,
+    "terminal_tx_s": 369,
+    "tx_s": 15678
+   },
+   "state_age_s": {
+    "max": 1.0073125528911193,
+    "mean": 0.5143668443099165,
+    "min": 0.003777191181407069,
+    "n": 15309,
+    "p50": 0.5220156817186679,
+    "p90": 0.9129241255825491,
+    "p99": 0.9960135465910724
+   },
+   "zero_resource_work_slot_rate": 0.7675335410440643
+  }
+ },
+ "cell": "/Users/lge/Desktop/topic/三端文件与同步治理/evidence/t1/ta-pilot-arms-low-20261031-01/low-040",
+ "schema": "ta-pilot-decisions/v1"
+}

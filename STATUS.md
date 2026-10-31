@@ -2,6 +2,15 @@
 
 范围：仅 `worktrees/.t1-scene-calibration` / `codex/20261018-scene-calibration`；工作区级入口仍是 `topic/STATUS.md`。
 
+## 当前分支状态（`night/time-exp-20261031`，2026-10-31）
+
+- 时间语义 / 状态年龄线的最新入口在 `ANALYSIS/TIME-ALIGNMENT-20261030/`：
+  `PILOT-20261031.md`（设计与起跑前就绪证据）、`PILOT-20261031-RESULTS.md`（第一批机制结果）、
+  `ta_pilot_analyze.py`（复算脚本）、`pilot-results/*.json`（机器可读摘要）。
+- 本轮 code commit `fd1cb141048efd806f9b7dd242e315aa0e557e23`；release
+  `fd1cb141…-06cd728e…`；运行回执与索引见 `ANALYSIS/DEPLOYMENT-INDEX.jsonl` 的 `ta-pilot-*` 行。
+- 以下历史状态块保留原日期与身份，不代表当前分支的状态。
+
 ## 2026-10-19 深夜轮（接手执行：探针 + 人口轨迹）
 
 **已交付**

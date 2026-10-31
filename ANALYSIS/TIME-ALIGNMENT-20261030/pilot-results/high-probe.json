@@ -1,0 +1,90 @@
+{
+ "arms": {
+  "candidate": {
+   "decision_label_coverage": 0.6200716845878136,
+   "decisions_in_probe": 23715,
+   "decisions_with_two_valid_candidates": 14705,
+   "error_ms": {
+    "bias_mean_ms": -2.0154616598496005,
+    "mae_ms": 3.08793439893224,
+    "max_abs_ms": 39.721291504176435,
+    "median_abs_ms": 0.02652682864982926,
+    "n": 47409,
+    "p90_abs_ms": 9.99899999999986,
+    "p99_abs_ms": 12.885299849037395,
+    "within_10ms": 0.9762492353772491
+   },
+   "identity_sources": {
+    "live_audit_not_used_by_predictor (resource_id+generation)": 1231,
+    "used_state": 47409
+   },
+   "missing_reasons": {
+    "no_prediction": 123
+   },
+   "multi_candidate_decisions": 14937,
+   "multi_candidate_label_coverage": 0.9844680993506059,
+   "probe_rows": 48640,
+   "row_coverage": 0.9746916118421053,
+   "truth_nonzero_rate": 0.4785589234111667,
+   "valid_truth_rows": 47409
+  },
+  "now": {
+   "decision_label_coverage": 0.6203738869899144,
+   "decisions_in_probe": 23697,
+   "decisions_with_two_valid_candidates": 14701,
+   "error_ms": {
+    "bias_mean_ms": -2.020340465785237,
+    "mae_ms": 3.087356489559851,
+    "max_abs_ms": 39.721291504176435,
+    "median_abs_ms": 0.027642236363905105,
+    "n": 47383,
+    "p90_abs_ms": 9.99899999999986,
+    "p99_abs_ms": 12.87222764209475,
+    "within_10ms": 0.9764683536289387
+   },
+   "identity_sources": {
+    "live_audit_not_used_by_predictor (resource_id+generation)": 1231,
+    "used_state": 47383
+   },
+   "missing_reasons": {
+    "no_prediction": 123
+   },
+   "multi_candidate_decisions": 14933,
+   "multi_candidate_label_coverage": 0.9844639389272082,
+   "probe_rows": 48614,
+   "row_coverage": 0.9746780762743242,
+   "truth_nonzero_rate": 0.47848384441677394,
+   "valid_truth_rows": 47383
+  },
+  "stale": {
+   "decision_label_coverage": 0.6409475913181577,
+   "decisions_in_probe": 22668,
+   "decisions_with_two_valid_candidates": 14529,
+   "error_ms": {
+    "bias_mean_ms": -2.142545542670942,
+    "mae_ms": 2.9880758107155247,
+    "max_abs_ms": 39.721291504176435,
+    "median_abs_ms": 0.0,
+    "n": 45911,
+    "p90_abs_ms": 9.99899999999986,
+    "p99_abs_ms": 10.980465974695688,
+    "within_10ms": 0.9862560170765176
+   },
+   "identity_sources": {
+    "live_audit_not_used_by_predictor (resource_id+generation)": 1223,
+    "used_state": 45911
+   },
+   "missing_reasons": {
+    "no_prediction": 116
+   },
+   "multi_candidate_decisions": 14756,
+   "multi_candidate_label_coverage": 0.9846164272160477,
+   "probe_rows": 47134,
+   "row_coverage": 0.9740527008104553,
+   "truth_nonzero_rate": 0.47724946091350656,
+   "valid_truth_rows": 45911
+  }
+ },
+ "cell": "/Users/lge/Desktop/topic/三端文件与同步治理/evidence/t1/ta-pilot-arms-high-20261031-01/high-120-burst16",
+ "schema": "ta-pilot-probe/v1"
+}

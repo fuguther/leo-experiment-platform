@@ -1,0 +1,328 @@
+{
+ "arms": {
+  "candidate": {
+   "fate_counts": {
+    "ACCESS_QUEUE_OVERFLOW": 0,
+    "ACCESS_REJECTED": 0,
+    "DATA_DEADLINE_EXPIRED": 0,
+    "DELIVERED": 1253,
+    "GEOMETRY_LOSS_IN_FLIGHT": 0,
+    "HOLDING_QUEUE_OVERFLOW": 0,
+    "IN_SYSTEM_AT_STOP": 2,
+    "ISL_QUEUE_OVERFLOW": 0,
+    "NO_ROUTE": 0,
+    "RANDOM_OUTAGE_IN_FLIGHT": 0
+   },
+   "links": 228,
+   "links_with_traffic": 228,
+   "max_rho": 0.7437541987444398,
+   "queue_area_bits_s": {
+    "downlink": 156.24243260070614,
+    "holding": 17690180.522490177,
+    "isl_ctrl": 848318110.1034182,
+    "isl_data": 8948314.993238263,
+    "uplink": 40546.99999999745
+   },
+   "rho_ge": {
+    "0.2": 33,
+    "0.5": 12,
+    "0.7": 2,
+    "0.9": 0
+   },
+   "top10": [
+    {
+     "available_s": 10.0,
+     "link": "isl:128:127",
+     "rate_bps": 100000000.0,
+     "rho": 0.7437541987444398,
+     "served_bits": 743754198.7444398
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:127:126",
+     "rate_bps": 100000000.0,
+     "rho": 0.7420265923468004,
+     "served_bits": 742026592.3468003
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:45:65",
+     "rate_bps": 100000000.0,
+     "rho": 0.5394426261939445,
+     "served_bits": 539442626.1939445
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:65:85",
+     "rate_bps": 100000000.0,
+     "rho": 0.5381392820236762,
+     "served_bits": 538139282.0236763
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:44:43",
+     "rate_bps": 100000000.0,
+     "rho": 0.537,
+     "served_bits": 537000000.0
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:85:105",
+     "rate_bps": 100000000.0,
+     "rho": 0.5368359479872133,
+     "served_bits": 536835947.9872134
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:126:6",
+     "rate_bps": 100000000.0,
+     "rho": 0.536,
+     "served_bits": 536000000.0
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:43:42",
+     "rate_bps": 100000000.0,
+     "rho": 0.536,
+     "served_bits": 536000000.0
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:42:41",
+     "rate_bps": 100000000.0,
+     "rho": 0.5345041082714289,
+     "served_bits": 534504108.27142894
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:41:40",
+     "rate_bps": 100000000.0,
+     "rho": 0.5327765018737894,
+     "served_bits": 532776501.8737894
+    }
+   ],
+   "window_s": [
+    4.0,
+    14.0
+   ]
+  },
+  "now": {
+   "fate_counts": {
+    "ACCESS_QUEUE_OVERFLOW": 0,
+    "ACCESS_REJECTED": 0,
+    "DATA_DEADLINE_EXPIRED": 0,
+    "DELIVERED": 1253,
+    "GEOMETRY_LOSS_IN_FLIGHT": 0,
+    "HOLDING_QUEUE_OVERFLOW": 0,
+    "IN_SYSTEM_AT_STOP": 2,
+    "ISL_QUEUE_OVERFLOW": 0,
+    "NO_ROUTE": 0,
+    "RANDOM_OUTAGE_IN_FLIGHT": 0
+   },
+   "links": 228,
+   "links_with_traffic": 228,
+   "max_rho": 0.7437541987444398,
+   "queue_area_bits_s": {
+    "downlink": 156.24243260070614,
+    "holding": 17690180.522490177,
+    "isl_ctrl": 848318110.1034182,
+    "isl_data": 8970717.46405604,
+    "uplink": 40546.99999999745
+   },
+   "rho_ge": {
+    "0.2": 33,
+    "0.5": 12,
+    "0.7": 2,
+    "0.9": 0
+   },
+   "top10": [
+    {
+     "available_s": 10.0,
+     "link": "isl:128:127",
+     "rate_bps": 100000000.0,
+     "rho": 0.7437541987444398,
+     "served_bits": 743754198.7444398
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:127:126",
+     "rate_bps": 100000000.0,
+     "rho": 0.7420265923468004,
+     "served_bits": 742026592.3468003
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:45:65",
+     "rate_bps": 100000000.0,
+     "rho": 0.5394426261939445,
+     "served_bits": 539442626.1939445
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:44:43",
+     "rate_bps": 100000000.0,
+     "rho": 0.539,
+     "served_bits": 539000000.0
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:65:85",
+     "rate_bps": 100000000.0,
+     "rho": 0.5381392820236762,
+     "served_bits": 538139282.0236763
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:43:42",
+     "rate_bps": 100000000.0,
+     "rho": 0.538,
+     "served_bits": 538000000.0
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:85:105",
+     "rate_bps": 100000000.0,
+     "rho": 0.5368359479872133,
+     "served_bits": 536835947.9872134
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:42:41",
+     "rate_bps": 100000000.0,
+     "rho": 0.5365041082714289,
+     "served_bits": 536504108.27142894
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:126:6",
+     "rate_bps": 100000000.0,
+     "rho": 0.536,
+     "served_bits": 536000000.0
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:41:40",
+     "rate_bps": 100000000.0,
+     "rho": 0.5347765018737894,
+     "served_bits": 534776501.8737894
+    }
+   ],
+   "window_s": [
+    4.0,
+    14.0
+   ]
+  },
+  "stale": {
+   "fate_counts": {
+    "ACCESS_QUEUE_OVERFLOW": 0,
+    "ACCESS_REJECTED": 0,
+    "DATA_DEADLINE_EXPIRED": 0,
+    "DELIVERED": 1254,
+    "GEOMETRY_LOSS_IN_FLIGHT": 0,
+    "HOLDING_QUEUE_OVERFLOW": 0,
+    "IN_SYSTEM_AT_STOP": 1,
+    "ISL_QUEUE_OVERFLOW": 0,
+    "NO_ROUTE": 0,
+    "RANDOM_OUTAGE_IN_FLIGHT": 0
+   },
+   "links": 236,
+   "links_with_traffic": 236,
+   "max_rho": 0.7437541987444398,
+   "queue_area_bits_s": {
+    "downlink": 85.47926635316117,
+    "holding": 8901374.587075442,
+    "isl_ctrl": 848318590.6303176,
+    "isl_data": 8251692.864875987,
+    "uplink": 40546.99999999745
+   },
+   "rho_ge": {
+    "0.2": 32,
+    "0.5": 12,
+    "0.7": 2,
+    "0.9": 0
+   },
+   "top10": [
+    {
+     "available_s": 10.0,
+     "link": "isl:128:127",
+     "rate_bps": 100000000.0,
+     "rho": 0.7437541987444398,
+     "served_bits": 743754198.7444398
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:127:126",
+     "rate_bps": 100000000.0,
+     "rho": 0.7420265923468004,
+     "served_bits": 742026592.3468003
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:44:43",
+     "rate_bps": 100000000.0,
+     "rho": 0.6179595371347505,
+     "served_bits": 617959537.1347505
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:43:42",
+     "rate_bps": 100000000.0,
+     "rho": 0.616231930737111,
+     "served_bits": 616231930.737111
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:42:41",
+     "rate_bps": 100000000.0,
+     "rho": 0.615504108271429,
+     "served_bits": 615504108.271429
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:41:40",
+     "rate_bps": 100000000.0,
+     "rho": 0.6137765018737894,
+     "served_bits": 613776501.8737894
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:45:65",
+     "rate_bps": 100000000.0,
+     "rho": 0.5458814477520946,
+     "served_bits": 545881447.7520946
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:65:85",
+     "rate_bps": 100000000.0,
+     "rho": 0.5446727634714702,
+     "served_bits": 544672763.4714702
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:85:105",
+     "rate_bps": 100000000.0,
+     "rho": 0.5435711344195562,
+     "served_bits": 543571134.4195561
+    },
+    {
+     "available_s": 10.0,
+     "link": "isl:126:6",
+     "rate_bps": 100000000.0,
+     "rho": 0.536,
+     "served_bits": 536000000.0
+    }
+   ],
+   "window_s": [
+    4.0,
+    14.0
+   ]
+  }
+ },
+ "cell": "/Users/lge/Desktop/topic/三端文件与同步治理/evidence/t1/ta-pilot-arms-high-20261031-01/high-120-burst16",
+ "schema": "ta-pilot-rho/v1",
+ "window_s": [
+  4.0,
+  14.0
+ ]
+}
