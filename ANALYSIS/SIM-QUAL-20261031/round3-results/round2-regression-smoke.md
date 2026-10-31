@@ -50,6 +50,13 @@ Schema `sq-round3/v1`. 16 cells.
 | m2|sync|c2|queue_greedy|h1000 | 1 | 0.2777 [0.2777..0.2777] | 0.2777 [0.2777..0.2777] | 2.03 [2.03..2.03] | 510.0 [510.0..510.0] | 909.1 [909.1..909.1] | 0.308 [0.308..0.308] | 3.19 [3.19..3.19] | 408.1 [408.1..408.1] | 964.7 [964.7..964.7] | 0.98876 [0.98876..0.98876] |
 | m2|sync|c2|queue_greedy|h20 | 1 | 0.2602 [0.2602..0.2602] | 0.2602 [0.2602..0.2602] | 1.90 [1.90..1.90] | 16.6 [16.6..16.6] | 25.1 [25.1..25.1] | 0.426 [0.426..0.426] | 2.32 [2.32..2.32] | 424.8 [424.8..424.8] | 886.7 [886.7..886.7] | 0.98437 [0.98437..0.98437] |
 
+## Matrix identity cross-checks
+
+- seed replicates sharing one trace (must be empty): none
+- seeds mapping to several distinct traces (must be empty): none
+- cells sharing one config sha256: 0
+- cell-id seed vs `scenario.seed`: the replicate seed lives in `trace_program.seed` in this contract; per-cell values are in `meta.seed_note`.
+
 ## Consistency cross-checks
 
 - geometry `chosen != recorded policy top` (must be 0): 0 in every cell

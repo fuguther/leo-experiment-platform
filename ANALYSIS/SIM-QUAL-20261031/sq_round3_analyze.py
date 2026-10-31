@@ -144,10 +144,24 @@ POLICY_ALIASES = {
 ROUND3_RE = re.compile(
     r"^(?P<prefix>m3|r3|sq5)-(?P<regime>[a-z0-9]+)-(?P<policy>[a-z_]+)"
     r"-(?P<sync>h\d+)-(?P<seed>s\d+)$")
+# Round-3 appendix: m3-x-<variant>-<regime>-h<sync_ms>-s<seed>, where variant
+# encodes a policy-parameter sweep (temp<ms> for queue_softmin,
+# sticky<ms> for queue_greedy_sticky).  The policy itself comes from the config.
+ROUND3_APPENDIX_RE = re.compile(
+    r"^(?P<prefix>m3|r3|sq5)-x-(?P<variant>[a-z_]+[0-9]+)-"
+    r"(?P<regime>[a-z0-9]+)-(?P<sync>h\d+)-(?P<seed>s\d+)$")
 # Round-2 regression: m2-<regime>-<policy>-s<seed>, optional sync<ms> token
 ROUND2_RE = re.compile(
     r"^(?P<prefix>m2|f2)-(?:(?P<sync>sync\d+)-)?(?P<regime>[a-z0-9]+)"
     r"-(?P<policy>[a-z_]+)-(?P<seed>s\d+)$")
+
+#: fallback label of an appendix sweep variant when the config is unreadable
+_APPENDIX_VARIANT_POLICY = {
+    "temp2500": QUEUE_SOFTMIN, "temp10000": QUEUE_SOFTMIN,
+    "temp40000": QUEUE_SOFTMIN,
+    "sticky20": QUEUE_GREEDY_STICKY, "sticky100": QUEUE_GREEDY_STICKY,
+    "sticky500": QUEUE_GREEDY_STICKY,
+}
 
 # ------------------------------------------------------------------- bins
 GAMMA_BINS = (("lt_0.5", None, 0.5), ("0.5_1", 0.5, 1.0),
@@ -334,6 +348,22 @@ def _sync_ms_from_token(token):
 
 def parse_cell_id(name: str):
     """Parse a Round-3 or Round-2 cell id; never guess from the run id."""
+    match = ROUND3_APPENDIX_RE.match(name)
+    if match:
+        groups = match.groupdict()
+        variant = groups["variant"]
+        return {
+            "family": groups["prefix"],
+            "regime": groups["regime"],
+            "policy_raw": None,
+            "policy": _APPENDIX_VARIANT_POLICY.get(variant),
+            "variant": variant,
+            "appendix": True,
+            "sync_ms": _sync_ms_from_token(groups.get("sync")),
+            "explicit_sync": True,
+            "seed": int(groups["seed"][1:]),
+            "parsed": True,
+        }
     for family, regex in (("m3", ROUND3_RE), ("m2", ROUND2_RE)):
         match = regex.match(name)
         if not match:
@@ -346,6 +376,8 @@ def parse_cell_id(name: str):
             "regime": groups["regime"],
             "policy_raw": raw,
             "policy": policy,
+            "variant": None,
+            "appendix": False,
             "sync_ms": _sync_ms_from_token(groups.get("sync")),
             "explicit_sync": groups.get("sync") is not None,
             "seed": int(groups["seed"][1:]),
@@ -388,13 +420,18 @@ def cell_meta(cell: Path, config: dict, manifest: dict):
     """
     parsed = parse_cell_id(cell.name) or {
         "family": None, "regime": None, "policy_raw": None, "policy": None,
-        "sync_ms": None, "explicit_sync": False, "seed": None,
-        "parsed": False}
+        "variant": None, "appendix": False, "sync_ms": None,
+        "explicit_sync": False, "seed": None, "parsed": False}
     # A run series is part of the experiment identity: Round-2 produced the
-    # "default" cells (no sync token) and the separate ``sync<ms>`` sweep.
-    # Round-3 ids always carry h<ms>, so every Round-3 cell is one series.
-    series = ("default" if parsed["family"] == "m2"
-              and not parsed["explicit_sync"] else "sync")
+    # "default" cells (no sync token) and a separate ``sync<ms>`` sweep;
+    # Round-3 appendix cells sweeps one policy parameter.  Round-3 main cells
+    # always carry h<ms> and form the single "sync" series.
+    if parsed["appendix"]:
+        series = "appendix:%s" % parsed["variant"]
+    elif parsed["family"] == "m2" and not parsed["explicit_sync"]:
+        series = "default"
+    else:
+        series = "sync"
     warnings = []
     resolved = config.get("resolved_config") or {}
     ta = resolved.get("time_alignment") or {}
@@ -415,10 +452,16 @@ def cell_meta(cell: Path, config: dict, manifest: dict):
                         % (parsed["sync_ms"], audit_sync_ms))
     if parsed["seed"] is None:
         parsed["seed"] = audit_seed
-    elif audit_seed is not None and parsed["seed"] != audit_seed:
-        warnings.append("seed id %r != config scenario.seed %r"
-                        % (parsed["seed"], audit_seed))
-    policy = parsed["policy"] or audit_policy
+    seed_note = None
+    if (parsed["seed"] is not None and audit_seed is not None
+            and parsed["seed"] != audit_seed):
+        # Not a defect by itself: the contract varies trace_program.seed per
+        # replicate and keeps scenario.seed fixed.  Real duplication is caught
+        # by the trace-sharing cross-check on the assembled matrix.
+        seed_note = ("cell-id seed %r != config scenario.seed %r (the replicate "
+                     "seed lives in trace_program.seed in this contract)"
+                     % (parsed["seed"], audit_seed))
+    policy = audit_policy or parsed["policy"]
     if policy is None:
         warnings.append("cell id not parsed and config carries no state_policy")
     policy_params = {
@@ -453,11 +496,15 @@ def cell_meta(cell: Path, config: dict, manifest: dict):
         "regime": parsed["regime"],
         "policy_raw": parsed["policy_raw"],
         "policy": policy,
+        "variant": parsed.get("variant"),
+        "appendix": parsed.get("appendix", False),
         "policy_known": policy in CANONICAL_POLICIES,
         "sync_ms": parsed["sync_ms"],
         "series": series,
         "explicit_sync": parsed["explicit_sync"],
         "seed": parsed["seed"],
+        "config_seed": audit_seed,
+        "seed_note": seed_note,
         "id_parsed": parsed["parsed"],
         "policy_params": policy_params,
         "trace_source_sha256": manifest.get("source_trace_sha256"),
@@ -1229,7 +1276,8 @@ def analyze_cell(cell_dir, params):
         "cell_dir": str(cell),
         "meta": {key: meta.get(key) for key in
                  ("cell_id", "family", "series", "regime", "policy",
-                  "policy_raw", "policy_known", "id_parsed", "sync_ms", "seed",
+                  "policy_raw", "policy_known", "id_parsed", "variant",
+                  "appendix", "sync_ms", "seed", "config_seed", "seed_note",
                   "trace_source_sha256", "trace_jsonl_sha256", "trace_rows",
                   "trace_key", "config_sha256", "policy_params")},
         "source": {"decisions": decision_counters,
@@ -1748,6 +1796,17 @@ def render_markdown(report):
     bad_identity = [block["cell_id"] for block in blocks
                     if (block["decisions"]["cross_checks"]
                         ["audit_identity_violations"])]
+    identity = report.get("identity_checks") or {}
+    lines += ["", "## Matrix identity cross-checks", "",
+              "- seed replicates sharing one trace (must be empty): %s"
+              % (identity.get("seed_replicates_sharing_one_trace") or "none"),
+              "- seeds mapping to several distinct traces (must be empty): %s"
+              % (identity.get("same_seed_with_multiple_traces") or "none"),
+              "- cells sharing one config sha256: %s"
+              % (len(identity.get("cells_sharing_config_identity") or {})),
+              "- cell-id seed vs `scenario.seed`: the replicate seed lives in "
+              "`trace_program.seed` in this contract; per-cell values are in "
+              "`meta.seed_note`."]
     lines += ["", "## Consistency cross-checks", "",
               "- geometry `chosen != recorded policy top` (must be 0): %s"
               % (bad_geometry or "0 in every cell"),
@@ -1882,6 +1941,15 @@ def _assemble(blocks, delivered, params, warnings):
             "sync|seed): %s" % json.dumps(duplicates)]
     gaps = collect_gaps(blocks, aggregates)
     gaps["duplicate_cell_slots"] = duplicates
+    identity_checks = cross_cell_checks(blocks)
+    if identity_checks["seed_replicates_sharing_one_trace"]:
+        warnings = warnings + ["seed replicates share one trace: %s"
+                               % json.dumps(identity_checks[
+                                   "seed_replicates_sharing_one_trace"])]
+    if identity_checks["same_seed_with_multiple_traces"]:
+        warnings = warnings + ["one seed has multiple traces: %s"
+                               % json.dumps(identity_checks[
+                                   "same_seed_with_multiple_traces"])]
     return {
         "schema": SCHEMA,
         "generator": "ANALYSIS/SIM-QUAL-20261031/sq_round3_analyze.py",
@@ -1895,6 +1963,7 @@ def _assemble(blocks, delivered, params, warnings):
         "freshness_stability": freshness_stability(sync_rows),
         "response_sensitivity": response_sensitivity(aggregates),
         "gaps": gaps,
+        "identity_checks": identity_checks,
         "gamma_primary_group": _primary_group(blocks),
         "warnings": warnings,
     }
@@ -1928,6 +1997,57 @@ def build_cell(cell_dir, params):
         "cell": block,
         "gaps": collect_gaps([block], {}),
         "warnings": list(block.get("warnings") or []),
+    }
+
+
+def cross_cell_checks(blocks):
+    """Cross-cell identity checks that per-cell analysis cannot see.
+
+    Within one (family, series, regime, policy, sync) slot the seed replicates
+    must have DISTINCT traces and one seed must have exactly ONE trace.
+    Cells that share a config sha256 are flagged separately: in this contract
+    the config identity includes the content-addressed trace programme.
+    """
+    slots = defaultdict(list)
+    for block in blocks:
+        meta = block["meta"]
+        slots["|".join(str(token) for token in (
+            _family_token(meta), meta.get("series"), meta.get("regime"),
+            meta.get("policy"), meta.get("sync_ms")))].append(block)
+    shared_trace, split_trace = [], []
+    for key in sorted(slots):
+        members = slots[key]
+        by_trace = defaultdict(list)
+        by_seed = defaultdict(list)
+        for block in members:
+            trace = block["meta"].get("trace_key")
+            seed = block["meta"].get("seed")
+            by_trace[trace].append(seed)
+            by_seed[seed].append(trace)
+        for trace, seeds in sorted(by_trace.items(), key=lambda kv: str(kv[0])):
+            distinct = sorted({seed for seed in seeds if seed is not None})
+            if len(distinct) > 1:
+                shared_trace.append({"group": key, "trace": trace,
+                                     "seeds_sharing_it": distinct})
+        for seed, traces in sorted(by_seed.items(), key=lambda kv: str(kv[0])):
+            distinct = sorted({trace for trace in traces if trace})
+            if len(distinct) > 1:
+                split_trace.append({"group": key, "seed": seed,
+                                    "distinct_traces": distinct})
+    config_groups = defaultdict(list)
+    for block in blocks:
+        sha = block["meta"].get("config_sha256")
+        if sha:
+            config_groups[sha].append(block["cell_id"])
+    shared_config = {sha: sorted(cells) for sha, cells in config_groups.items()
+                     if len(cells) > 1}
+    return {
+        "seed_replicates_sharing_one_trace": shared_trace,
+        "same_seed_with_multiple_traces": split_trace,
+        "cells_sharing_config_identity": shared_config,
+        "note": ("empty lists mean seed replicates are independent (distinct "
+                 "traces) and one seed maps to exactly one trace; shared config "
+                 "identity is only a defect when the cells are meant to differ"),
     }
 
 

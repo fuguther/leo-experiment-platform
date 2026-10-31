@@ -1,0 +1,5455 @@
+{
+ "aggregates": {
+  "m3|sync|c2|geometry|h1000": {
+   "cells": [
+    "m3-c2-geometry-h1000-s7",
+    "m3-c2-geometry-h1000-s8",
+    "m3-c2-geometry-h1000-s9"
+   ],
+   "family": "m3",
+   "policy": "geometry",
+   "regime": "c2",
+   "scalars": {
+    "aoi_p50_ms": {
+     "max": 507.1386075893205,
+     "mean": 505.17554866366544,
+     "median": 506.01734407624474,
+     "min": 502.3706943254309,
+     "n": 3
+    },
+    "aoi_p90_ms": {
+     "max": 908.9142664737508,
+     "mean": 904.287707368308,
+     "median": 902.5721514992657,
+     "min": 901.3767041319074,
+     "n": 3
+    },
+    "aoi_p95_ms": {
+     "max": 956.8225891430782,
+     "mean": 955.5649198231878,
+     "median": 954.9698420594783,
+     "min": 954.9023282670071,
+     "n": 3
+    },
+    "aoi_p99_ms": {
+     "max": 996.5958451987777,
+     "mean": 996.3390319334027,
+     "median": 996.4605640735575,
+     "min": 995.9606865278729,
+     "n": 3
+    },
+    "crosscheck_audit_identity_violations": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 3
+    },
+    "crosscheck_geometry_mismatch": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 3
+    },
+    "ctrl_expired": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 3
+    },
+    "ctrl_offered_mbits": {
+     "max": 24.376896,
+     "mean": 24.376896,
+     "median": 24.376896,
+     "min": 24.376896,
+     "n": 3
+    },
+    "ctrl_share": {
+     "max": 0.011602683999913549,
+     "mean": 0.011599863999913515,
+     "median": 0.01159929999991351,
+     "min": 0.01159760799991349,
+     "n": 3
+    },
+    "e2e_mean_ms": {
+     "max": 687.2487204037525,
+     "mean": 673.5283663665388,
+     "median": 685.3842921570176,
+     "min": 647.9520865388464,
+     "n": 3
+    },
+    "e2e_p50_ms": {
+     "max": 641.8341330796516,
+     "mean": 579.2410311984983,
+     "median": 564.2043630197034,
+     "min": 531.68459749614,
+     "n": 3
+    },
+    "e2e_p95_ms": {
+     "max": 1188.8201578416683,
+     "mean": 1150.924735163231,
+     "median": 1167.1942110306936,
+     "min": 1096.7598366173306,
+     "n": 3
+    },
+    "e2e_p99_ms": {
+     "max": 1216.8417853136243,
+     "mean": 1175.20206211219,
+     "median": 1182.9874220022186,
+     "min": 1125.7769790207276,
+     "n": 3
+    },
+    "entropy_mean_bits": {
+     "n": 0
+    },
+    "flip_rule_rate": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 3
+    },
+    "flip_truth_rate": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 3
+    },
+    "gamma_median": {
+     "max": 0.052065204720517816,
+     "mean": 0.047103731353651736,
+     "median": 0.04601171757077865,
+     "min": 0.043234271769658744,
+     "n": 3
+    },
+    "hops_mean": {
+     "max": 17.434760705289673,
+     "mean": 17.334520599179907,
+     "median": 17.31704934049829,
+     "min": 17.25175175175175,
+     "n": 3
+    },
+    "hops_p95": {
+     "max": 22.0,
+     "mean": 22.0,
+     "median": 22.0,
+     "min": 22.0,
+     "n": 3
+    },
+    "isl_data_area": {
+     "max": 830691491.7679769,
+     "mean": 787830825.2200298,
+     "median": 798283280.0523542,
+     "min": 734517703.8397583,
+     "n": 3
+    },
+    "margin_truth_p50_ms": {
+     "max": 13.05247025583224,
+     "mean": 13.027454930886327,
+     "median": 13.026717961114084,
+     "min": 13.003176575712656,
+     "n": 3
+    },
+    "margin_used_p50_ms": {
+     "max": 13.05247025583224,
+     "mean": 13.027454930886327,
+     "median": 13.026717961114084,
+     "min": 13.003176575712656,
+     "n": 3
+    },
+    "n_decisions_multicandidate": {
+     "max": 23497.0,
+     "mean": 23155.333333333332,
+     "median": 23000.0,
+     "min": 22969.0,
+     "n": 3
+    },
+    "n_evaluable": {
+     "max": 23420.0,
+     "mean": 23078.333333333332,
+     "median": 22927.0,
+     "min": 22888.0,
+     "n": 3
+    },
+    "near_tie_1ms_frac": {
+     "max": 0.09498427123383432,
+     "mean": 0.0941841174944034,
+     "median": 0.09457728437233134,
+     "min": 0.09299079687704453,
+     "n": 3
+    },
+    "near_tie_2ms_frac": {
+     "max": 0.19047411349064422,
+     "mean": 0.19032417015561756,
+     "median": 0.19036176162181057,
+     "min": 0.19013663535439795,
+     "n": 3
+    },
+    "near_tie_5ms_frac": {
+     "max": 0.34897523484201537,
+     "mean": 0.34776244583014737,
+     "median": 0.3483229380206743,
+     "min": 0.34598916462775253,
+     "n": 3
+    },
+    "pdr": {
+     "max": 1.0,
+     "mean": 1.0,
+     "median": 1.0,
+     "min": 1.0,
+     "n": 3
+    },
+    "regret_frac_gt0": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 3
+    },
+    "regret_frac_gt1ms": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 3
+    },
+    "regret_mean_ms": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 3
+    },
+    "regret_p50_ms": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 3
+    },
+    "regret_p90_ms": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 3
+    },
+    "regret_p99_ms": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 3
+    },
+    "run_length_mean_decisions": {
+     "max": 4.4117193523515805,
+     "mean": 4.383296273635904,
+     "median": 4.371210676835081,
+     "min": 4.366958791721052,
+     "n": 3
+    },
+    "sticky_keep_rate": {
+     "n": 0
+    },
+    "sticky_override_rate": {
+     "n": 0
+    },
+    "switch_rate": {
+     "max": 0.22292034255712873,
+     "mean": 0.22201914269892808,
+     "median": 0.22266672528245482,
+     "min": 0.22047036025720074,
+     "n": 3
+    },
+    "throughput_mbps": {
+     "max": 102.35,
+     "mean": 100.5,
+     "median": 99.9,
+     "min": 99.25,
+     "n": 3
+    },
+    "util_busy_max": {
+     "max": 0.5404999999999885,
+     "mean": 0.5366666666666553,
+     "median": 0.5394999999999885,
+     "min": 0.5299999999999888,
+     "n": 3
+    },
+    "util_busy_p95": {
+     "max": 0.518999999999989,
+     "mean": 0.515999999999989,
+     "median": 0.517499999999989,
+     "min": 0.5114999999999892,
+     "n": 3
+    }
+   },
+   "seeds": [
+    7,
+    8,
+    9
+   ],
+   "sync_ms": 1000
+  },
+  "m3|sync|c2|queue_greedy_ewma|h1000": {
+   "cells": [
+    "m3-c2-queue_greedy_ewma-h1000-s7"
+   ],
+   "family": "m3",
+   "policy": "queue_greedy_ewma",
+   "regime": "c2",
+   "scalars": {
+    "aoi_p50_ms": {
+     "max": 505.8052826792334,
+     "mean": 505.8052826792334,
+     "median": 505.8052826792334,
+     "min": 505.8052826792334,
+     "n": 1
+    },
+    "aoi_p90_ms": {
+     "max": 907.6576987536669,
+     "mean": 907.6576987536669,
+     "median": 907.6576987536669,
+     "min": 907.6576987536669,
+     "n": 1
+    },
+    "aoi_p95_ms": {
+     "max": 956.0488393985,
+     "mean": 956.0488393985,
+     "median": 956.0488393985,
+     "min": 956.0488393985,
+     "n": 1
+    },
+    "aoi_p99_ms": {
+     "max": 996.0722622020928,
+     "mean": 996.0722622020928,
+     "median": 996.0722622020928,
+     "min": 996.0722622020928,
+     "n": 1
+    },
+    "crosscheck_audit_identity_violations": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 1
+    },
+    "crosscheck_geometry_mismatch": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 1
+    },
+    "ctrl_expired": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 1
+    },
+    "ctrl_offered_mbits": {
+     "max": 24.376896,
+     "mean": 24.376896,
+     "median": 24.376896,
+     "min": 24.376896,
+     "n": 1
+    },
+    "ctrl_share": {
+     "max": 0.011607759999913609,
+     "mean": 0.011607759999913609,
+     "median": 0.011607759999913609,
+     "min": 0.011607759999913609,
+     "n": 1
+    },
+    "e2e_mean_ms": {
+     "max": 396.1392382308753,
+     "mean": 396.1392382308753,
+     "median": 396.1392382308753,
+     "min": 396.1392382308753,
+     "n": 1
+    },
+    "e2e_p50_ms": {
+     "max": 437.37898994740476,
+     "mean": 437.37898994740476,
+     "median": 437.37898994740476,
+     "min": 437.37898994740476,
+     "n": 1
+    },
+    "e2e_p95_ms": {
+     "max": 526.5834496778705,
+     "mean": 526.5834496778705,
+     "median": 526.5834496778705,
+     "min": 526.5834496778705,
+     "n": 1
+    },
+    "e2e_p99_ms": {
+     "max": 680.2177000875354,
+     "mean": 680.2177000875354,
+     "median": 680.2177000875354,
+     "min": 680.2177000875354,
+     "n": 1
+    },
+    "entropy_mean_bits": {
+     "n": 0
+    },
+    "flip_rule_rate": {
+     "max": 0.2635038808807223,
+     "mean": 0.2635038808807223,
+     "median": 0.2635038808807223,
+     "min": 0.2635038808807223,
+     "n": 1
+    },
+    "flip_truth_rate": {
+     "max": 0.2635038808807223,
+     "mean": 0.2635038808807223,
+     "median": 0.2635038808807223,
+     "min": 0.2635038808807223,
+     "n": 1
+    },
+    "gamma_median": {
+     "max": 0.0962265843907287,
+     "mean": 0.0962265843907287,
+     "median": 0.0962265843907287,
+     "min": 0.0962265843907287,
+     "n": 1
+    },
+    "hops_mean": {
+     "max": 23.03921568627451,
+     "mean": 23.03921568627451,
+     "median": 23.03921568627451,
+     "min": 23.03921568627451,
+     "n": 1
+    },
+    "hops_p95": {
+     "max": 30.0,
+     "mean": 30.0,
+     "median": 30.0,
+     "min": 30.0,
+     "n": 1
+    },
+    "isl_data_area": {
+     "max": 32439278.992816698,
+     "mean": 32439278.992816698,
+     "median": 32439278.992816698,
+     "min": 32439278.992816698,
+     "n": 1
+    },
+    "margin_truth_p50_ms": {
+     "max": 9.530000876240564,
+     "mean": 9.530000876240564,
+     "median": 9.530000876240564,
+     "min": 9.530000876240564,
+     "n": 1
+    },
+    "margin_used_p50_ms": {
+     "max": 10.676326323467544,
+     "mean": 10.676326323467544,
+     "median": 10.676326323467544,
+     "min": 10.676326323467544,
+     "n": 1
+    },
+    "n_decisions_multicandidate": {
+     "max": 25384.0,
+     "mean": 25384.0,
+     "median": 25384.0,
+     "min": 25384.0,
+     "n": 1
+    },
+    "n_evaluable": {
+     "max": 25252.0,
+     "mean": 25252.0,
+     "median": 25252.0,
+     "min": 25252.0,
+     "n": 1
+    },
+    "near_tie_1ms_frac": {
+     "max": 0.07215270077617615,
+     "mean": 0.07215270077617615,
+     "median": 0.07215270077617615,
+     "min": 0.07215270077617615,
+     "n": 1
+    },
+    "near_tie_2ms_frac": {
+     "max": 0.16782829082844924,
+     "mean": 0.16782829082844924,
+     "median": 0.16782829082844924,
+     "min": 0.16782829082844924,
+     "n": 1
+    },
+    "near_tie_5ms_frac": {
+     "max": 0.35862505940123557,
+     "mean": 0.35862505940123557,
+     "median": 0.35862505940123557,
+     "min": 0.35862505940123557,
+     "n": 1
+    },
+    "pdr": {
+     "max": 0.9965803615046409,
+     "mean": 0.9965803615046409,
+     "median": 0.9965803615046409,
+     "min": 0.9965803615046409,
+     "n": 1
+    },
+    "regret_frac_gt0": {
+     "max": 0.2635038808807223,
+     "mean": 0.2635038808807223,
+     "median": 0.2635038808807223,
+     "min": 0.2635038808807223,
+     "n": 1
+    },
+    "regret_frac_gt1ms": {
+     "max": 0.2438618723269444,
+     "mean": 0.2438618723269444,
+     "median": 0.2438618723269444,
+     "min": 0.2438618723269444,
+     "n": 1
+    },
+    "regret_mean_ms": {
+     "max": 1.669107217565575,
+     "mean": 1.669107217565575,
+     "median": 1.669107217565575,
+     "min": 1.669107217565575,
+     "n": 1
+    },
+    "regret_p50_ms": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 1
+    },
+    "regret_p90_ms": {
+     "max": 6.578121567273387,
+     "mean": 6.578121567273387,
+     "median": 6.578121567273387,
+     "min": 6.578121567273387,
+     "n": 1
+    },
+    "regret_p99_ms": {
+     "max": 14.805075720494171,
+     "mean": 14.805075720494171,
+     "median": 14.805075720494171,
+     "min": 14.805075720494171,
+     "n": 1
+    },
+    "run_length_mean_decisions": {
+     "max": 6.073112073112073,
+     "mean": 6.073112073112073,
+     "median": 6.073112073112073,
+     "min": 6.073112073112073,
+     "n": 1
+    },
+    "sticky_keep_rate": {
+     "n": 0
+    },
+    "sticky_override_rate": {
+     "n": 0
+    },
+    "switch_rate": {
+     "max": 0.15792415169660678,
+     "mean": 0.15792415169660678,
+     "median": 0.15792415169660678,
+     "min": 0.15792415169660678,
+     "n": 1
+    },
+    "throughput_mbps": {
+     "max": 102.0,
+     "mean": 102.0,
+     "median": 102.0,
+     "min": 102.0,
+     "n": 1
+    },
+    "util_busy_max": {
+     "max": 0.47199999999999004,
+     "mean": 0.47199999999999004,
+     "median": 0.47199999999999004,
+     "min": 0.47199999999999004,
+     "n": 1
+    },
+    "util_busy_p95": {
+     "max": 0.35599999999999243,
+     "mean": 0.35599999999999243,
+     "median": 0.35599999999999243,
+     "min": 0.35599999999999243,
+     "n": 1
+    }
+   },
+   "seeds": [
+    7
+   ],
+   "sync_ms": 1000
+  },
+  "m3|sync|c2|queue_greedy_hysteresis|h1000": {
+   "cells": [
+    "m3-c2-queue_greedy_hysteresis-h1000-s9"
+   ],
+   "family": "m3",
+   "policy": "queue_greedy_hysteresis",
+   "regime": "c2",
+   "scalars": {
+    "aoi_p50_ms": {
+     "max": 497.1571888601529,
+     "mean": 497.1571888601529,
+     "median": 497.1571888601529,
+     "min": 497.1571888601529,
+     "n": 1
+    },
+    "aoi_p90_ms": {
+     "max": 904.5965303210481,
+     "mean": 904.5965303210481,
+     "median": 904.5965303210481,
+     "min": 904.5965303210481,
+     "n": 1
+    },
+    "aoi_p95_ms": {
+     "max": 957.2293069001896,
+     "mean": 957.2293069001896,
+     "median": 957.2293069001896,
+     "min": 957.2293069001896,
+     "n": 1
+    },
+    "aoi_p99_ms": {
+     "max": 996.9520162365875,
+     "mean": 996.9520162365875,
+     "median": 996.9520162365875,
+     "min": 996.9520162365875,
+     "n": 1
+    },
+    "crosscheck_audit_identity_violations": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 1
+    },
+    "crosscheck_geometry_mismatch": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 1
+    },
+    "ctrl_expired": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 1
+    },
+    "ctrl_offered_mbits": {
+     "max": 24.376896,
+     "mean": 24.376896,
+     "median": 24.376896,
+     "min": 24.376896,
+     "n": 1
+    },
+    "ctrl_share": {
+     "max": 0.011607759999913609,
+     "mean": 0.011607759999913609,
+     "median": 0.011607759999913609,
+     "min": 0.011607759999913609,
+     "n": 1
+    },
+    "e2e_mean_ms": {
+     "max": 425.9156072418272,
+     "mean": 425.9156072418272,
+     "median": 425.9156072418272,
+     "min": 425.9156072418272,
+     "n": 1
+    },
+    "e2e_p50_ms": {
+     "max": 458.2795190682169,
+     "mean": 458.2795190682169,
+     "median": 458.2795190682169,
+     "min": 458.2795190682169,
+     "n": 1
+    },
+    "e2e_p95_ms": {
+     "max": 656.4152562643644,
+     "mean": 656.4152562643644,
+     "median": 656.4152562643644,
+     "min": 656.4152562643644,
+     "n": 1
+    },
+    "e2e_p99_ms": {
+     "max": 713.3118786878576,
+     "mean": 713.3118786878576,
+     "median": 713.3118786878576,
+     "min": 713.3118786878576,
+     "n": 1
+    },
+    "entropy_mean_bits": {
+     "n": 0
+    },
+    "flip_rule_rate": {
+     "max": 0.1787875096438868,
+     "mean": 0.1787875096438868,
+     "median": 0.1787875096438868,
+     "min": 0.1787875096438868,
+     "n": 1
+    },
+    "flip_truth_rate": {
+     "max": 0.2841596621594185,
+     "mean": 0.2841596621594185,
+     "median": 0.2841596621594185,
+     "min": 0.2841596621594185,
+     "n": 1
+    },
+    "gamma_median": {
+     "max": 0.1333305453986247,
+     "mean": 0.1333305453986247,
+     "median": 0.1333305453986247,
+     "min": 0.1333305453986247,
+     "n": 1
+    },
+    "hops_mean": {
+     "max": 24.370786516853933,
+     "mean": 24.370786516853933,
+     "median": 24.370786516853933,
+     "min": 24.370786516853933,
+     "n": 1
+    },
+    "hops_p95": {
+     "max": 38.0,
+     "mean": 38.0,
+     "median": 38.0,
+     "min": 38.0,
+     "n": 1
+    },
+    "isl_data_area": {
+     "max": 44610935.529907666,
+     "mean": 44610935.529907666,
+     "median": 44610935.529907666,
+     "min": 44610935.529907666,
+     "n": 1
+    },
+    "margin_truth_p50_ms": {
+     "max": 10.352268714490325,
+     "mean": 10.352268714490325,
+     "median": 10.352268714490325,
+     "min": 10.352268714490325,
+     "n": 1
+    },
+    "margin_used_p50_ms": {
+     "max": 10.807718813595095,
+     "mean": 10.807718813595095,
+     "median": 10.807718813595095,
+     "min": 10.807718813595095,
+     "n": 1
+    },
+    "n_decisions_multicandidate": {
+     "max": 24855.0,
+     "mean": 24855.0,
+     "median": 24855.0,
+     "min": 24855.0,
+     "n": 1
+    },
+    "n_evaluable": {
+     "max": 24627.0,
+     "mean": 24627.0,
+     "median": 24627.0,
+     "min": 24627.0,
+     "n": 1
+    },
+    "near_tie_1ms_frac": {
+     "max": 0.07983107970926219,
+     "mean": 0.07983107970926219,
+     "median": 0.07983107970926219,
+     "min": 0.07983107970926219,
+     "n": 1
+    },
+    "near_tie_2ms_frac": {
+     "max": 0.1294514151134933,
+     "mean": 0.1294514151134933,
+     "median": 0.1294514151134933,
+     "min": 0.1294514151134933,
+     "n": 1
+    },
+    "near_tie_5ms_frac": {
+     "max": 0.31688796848986883,
+     "mean": 0.31688796848986883,
+     "median": 0.31688796848986883,
+     "min": 0.31688796848986883,
+     "n": 1
+    },
+    "pdr": {
+     "max": 0.9863979848866499,
+     "mean": 0.9863979848866499,
+     "median": 0.9863979848866499,
+     "min": 0.9863979848866499,
+     "n": 1
+    },
+    "regret_frac_gt0": {
+     "max": 0.2841596621594185,
+     "mean": 0.2841596621594185,
+     "median": 0.2841596621594185,
+     "min": 0.2841596621594185,
+     "n": 1
+    },
+    "regret_frac_gt1ms": {
+     "max": 0.26592764039468875,
+     "mean": 0.26592764039468875,
+     "median": 0.26592764039468875,
+     "min": 0.26592764039468875,
+     "n": 1
+    },
+    "regret_mean_ms": {
+     "max": 2.0335036813921072,
+     "mean": 2.0335036813921072,
+     "median": 2.0335036813921072,
+     "min": 2.0335036813921072,
+     "n": 1
+    },
+    "regret_p50_ms": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 1
+    },
+    "regret_p90_ms": {
+     "max": 7.955239815864309,
+     "mean": 7.955239815864309,
+     "median": 7.955239815864309,
+     "min": 7.955239815864309,
+     "n": 1
+    },
+    "regret_p99_ms": {
+     "max": 19.31917162563218,
+     "mean": 19.31917162563218,
+     "median": 19.31917162563218,
+     "min": 19.31917162563218,
+     "n": 1
+    },
+    "run_length_mean_decisions": {
+     "max": 8.230949197860962,
+     "mean": 8.230949197860962,
+     "median": 8.230949197860962,
+     "min": 8.230949197860962,
+     "n": 1
+    },
+    "sticky_keep_rate": {
+     "n": 0
+    },
+    "sticky_override_rate": {
+     "n": 0
+    },
+    "switch_rate": {
+     "max": 0.11469842049267534,
+     "mean": 0.11469842049267534,
+     "median": 0.11469842049267534,
+     "min": 0.11469842049267534,
+     "n": 1
+    },
+    "throughput_mbps": {
+     "max": 97.9,
+     "mean": 97.9,
+     "median": 97.9,
+     "min": 97.9,
+     "n": 1
+    },
+    "util_busy_max": {
+     "max": 0.47349999999999,
+     "mean": 0.47349999999999,
+     "median": 0.47349999999999,
+     "min": 0.47349999999999,
+     "n": 1
+    },
+    "util_busy_p95": {
+     "max": 0.3904999999999917,
+     "mean": 0.3904999999999917,
+     "median": 0.3904999999999917,
+     "min": 0.3904999999999917,
+     "n": 1
+    }
+   },
+   "seeds": [
+    9
+   ],
+   "sync_ms": 1000
+  },
+  "m3|sync|c2|queue_greedy|h1000": {
+   "cells": [
+    "m3-c2-queue_greedy-h1000-s7"
+   ],
+   "family": "m3",
+   "policy": "queue_greedy",
+   "regime": "c2",
+   "scalars": {
+    "aoi_p50_ms": {
+     "max": 510.0057480359128,
+     "mean": 510.0057480359128,
+     "median": 510.0057480359128,
+     "min": 510.0057480359128,
+     "n": 1
+    },
+    "aoi_p90_ms": {
+     "max": 909.1205829057092,
+     "mean": 909.1205829057092,
+     "median": 909.1205829057092,
+     "min": 909.1205829057092,
+     "n": 1
+    },
+    "aoi_p95_ms": {
+     "max": 957.2265786559981,
+     "mean": 957.2265786559981,
+     "median": 957.2265786559981,
+     "min": 957.2265786559981,
+     "n": 1
+    },
+    "aoi_p99_ms": {
+     "max": 996.5579590470454,
+     "mean": 996.5579590470454,
+     "median": 996.5579590470454,
+     "min": 996.5579590470454,
+     "n": 1
+    },
+    "crosscheck_audit_identity_violations": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 1
+    },
+    "crosscheck_geometry_mismatch": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 1
+    },
+    "ctrl_expired": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 1
+    },
+    "ctrl_offered_mbits": {
+     "max": 24.376896,
+     "mean": 24.376896,
+     "median": 24.376896,
+     "min": 24.376896,
+     "n": 1
+    },
+    "ctrl_share": {
+     "max": 0.011607759999913609,
+     "mean": 0.011607759999913609,
+     "median": 0.011607759999913609,
+     "min": 0.011607759999913609,
+     "n": 1
+    },
+    "e2e_mean_ms": {
+     "max": 408.0592771665568,
+     "mean": 408.0592771665568,
+     "median": 408.0592771665568,
+     "min": 408.0592771665568,
+     "n": 1
+    },
+    "e2e_p50_ms": {
+     "max": 430.6585135480665,
+     "mean": 430.6585135480665,
+     "median": 430.6585135480665,
+     "min": 430.6585135480665,
+     "n": 1
+    },
+    "e2e_p95_ms": {
+     "max": 664.4030225857982,
+     "mean": 664.4030225857982,
+     "median": 664.4030225857982,
+     "min": 664.4030225857982,
+     "n": 1
+    },
+    "e2e_p99_ms": {
+     "max": 964.6851712012792,
+     "mean": 964.6851712012792,
+     "median": 964.6851712012792,
+     "min": 964.6851712012792,
+     "n": 1
+    },
+    "entropy_mean_bits": {
+     "n": 0
+    },
+    "flip_rule_rate": {
+     "max": 0.27767066692897896,
+     "mean": 0.27767066692897896,
+     "median": 0.27767066692897896,
+     "min": 0.27767066692897896,
+     "n": 1
+    },
+    "flip_truth_rate": {
+     "max": 0.27767066692897896,
+     "mean": 0.27767066692897896,
+     "median": 0.27767066692897896,
+     "min": 0.27767066692897896,
+     "n": 1
+    },
+    "gamma_median": {
+     "max": 0.12750505818536895,
+     "mean": 0.12750505818536895,
+     "median": 0.12750505818536895,
+     "min": 0.12750505818536895,
+     "n": 1
+    },
+    "hops_mean": {
+     "max": 23.65118577075099,
+     "mean": 23.65118577075099,
+     "median": 23.65118577075099,
+     "min": 23.65118577075099,
+     "n": 1
+    },
+    "hops_p95": {
+     "max": 39.0,
+     "mean": 39.0,
+     "median": 39.0,
+     "min": 39.0,
+     "n": 1
+    },
+    "isl_data_area": {
+     "max": 35862703.7485628,
+     "mean": 35862703.7485628,
+     "median": 35862703.7485628,
+     "min": 35862703.7485628,
+     "n": 1
+    },
+    "margin_truth_p50_ms": {
+     "max": 9.538033721678051,
+     "mean": 9.538033721678051,
+     "median": 9.538033721678051,
+     "min": 9.538033721678051,
+     "n": 1
+    },
+    "margin_used_p50_ms": {
+     "max": 10.559125142140857,
+     "mean": 10.559125142140857,
+     "median": 10.559125142140857,
+     "min": 10.559125142140857,
+     "n": 1
+    },
+    "n_decisions_multicandidate": {
+     "max": 25757.0,
+     "mean": 25757.0,
+     "median": 25757.0,
+     "min": 25757.0,
+     "n": 1
+    },
+    "n_evaluable": {
+     "max": 25415.0,
+     "mean": 25415.0,
+     "median": 25415.0,
+     "min": 25415.0,
+     "n": 1
+    },
+    "near_tie_1ms_frac": {
+     "max": 0.06618138894353728,
+     "mean": 0.06618138894353728,
+     "median": 0.06618138894353728,
+     "min": 0.06618138894353728,
+     "n": 1
+    },
+    "near_tie_2ms_frac": {
+     "max": 0.12945111154829825,
+     "mean": 0.12945111154829825,
+     "median": 0.12945111154829825,
+     "min": 0.12945111154829825,
+     "n": 1
+    },
+    "near_tie_5ms_frac": {
+     "max": 0.3135156403698603,
+     "mean": 0.3135156403698603,
+     "median": 0.3135156403698603,
+     "min": 0.3135156403698603,
+     "n": 1
+    },
+    "pdr": {
+     "max": 0.9887640449438202,
+     "mean": 0.9887640449438202,
+     "median": 0.9887640449438202,
+     "min": 0.9887640449438202,
+     "n": 1
+    },
+    "regret_frac_gt0": {
+     "max": 0.27767066692897896,
+     "mean": 0.27767066692897896,
+     "median": 0.27767066692897896,
+     "min": 0.27767066692897896,
+     "n": 1
+    },
+    "regret_frac_gt1ms": {
+     "max": 0.2673617942160142,
+     "mean": 0.2673617942160142,
+     "median": 0.2673617942160142,
+     "min": 0.2673617942160142,
+     "n": 1
+    },
+    "regret_mean_ms": {
+     "max": 2.02575747599341,
+     "mean": 2.02575747599341,
+     "median": 2.02575747599341,
+     "min": 2.02575747599341,
+     "n": 1
+    },
+    "regret_p50_ms": {
+     "max": 0.0,
+     "mean": 0.0,
+     "median": 0.0,
+     "min": 0.0,
+     "n": 1
+    },
+    "regret_p90_ms": {
+     "max": 8.013711627766234,
+     "mean": 8.013711627766234,
+     "median": 8.013711627766234,
+     "min": 8.013711627766234,
+     "n": 1
+    },
+    "regret_p99_ms": {
+     "max": 17.259039631953215,
+     "mean": 17.259039631953215,
+     "median": 17.259039631953215,
+     "min": 17.259039631953215,
+     "n": 1
+    },
+    "run_length_mean_decisions": {
+     "max": 3.194846008799497,
+     "mean": 3.194846008799497,
+     "median": 3.194846008799497,
+     "min": 3.194846008799497,
+     "n": 1
+    },
+    "sticky_keep_rate": {
+     "n": 0
+    },
+    "sticky_override_rate": {
+     "n": 0
+    },
+    "switch_rate": {
+     "max": 0.3075275640517173,
+     "mean": 0.3075275640517173,
+     "median": 0.3075275640517173,
+     "min": 0.3075275640517173,
+     "n": 1
+    },
+    "throughput_mbps": {
+     "max": 101.2,
+     "mean": 101.2,
+     "median": 101.2,
+     "min": 101.2,
+     "n": 1
+    },
+    "util_busy_max": {
+     "max": 0.47199999999999004,
+     "mean": 0.47199999999999004,
+     "median": 0.47199999999999004,
+     "min": 0.47199999999999004,
+     "n": 1
+    },
+    "util_busy_p95": {
+     "max": 0.32999999999999297,
+     "mean": 0.32999999999999297,
+     "median": 0.32999999999999297,
+     "min": 0.32999999999999297,
+     "n": 1
+    }
+   },
+   "seeds": [
+    7
+   ],
+   "sync_ms": 1000
+  }
+ },
+ "cells": {
+  "m3-c2-geometry-h1000-s7": {
+   "cell_dir": "/Users/lge/Desktop/topic/\u4e09\u7aef\u6587\u4ef6\u4e0e\u540c\u6b65\u6cbb\u7406/evidence/t1/sq5-m3-c2-geometry-h1000-s7-20261031-01/m3-c2-geometry-h1000-s7",
+   "cell_id": "m3-c2-geometry-h1000-s7",
+   "decisions": {
+    "aoi_decomposition_ms": {
+     "advertisement_delivery": {
+      "definition": "probe state_received_at_s - state_measured_at_s (advertisement age at receipt)",
+      "mean": 7.1141193880765385,
+      "n": 72753,
+      "p50": 7.306903976395773,
+      "p90": 7.306903976395773,
+      "p95": 10.941011869329387,
+      "p99": 15.80778316957776
+     },
+     "gen_to_recv": {
+      "mean": 6.520437770734401,
+      "n": 23420,
+      "p50": 7.006843607864077,
+      "p90": 10.547158303428894,
+      "p95": 12.670984107819194,
+      "p99": 15.80778316957776
+     },
+     "recv_to_decision": {
+      "mean": 499.9939896364729,
+      "n": 23420,
+      "p50": 499.31057098360475,
+      "p90": 902.0808004881777,
+      "p95": 950.2242739525677,
+      "p99": 989.9731082429302
+     }
+    },
+    "aoi_ms": {
+     "mean": 506.51442740720734,
+     "n": 23420,
+     "p50": 506.01734407624474,
+     "p90": 908.9142664737508,
+     "p95": 956.8225891430782,
+     "p99": 996.5958451987777
+    },
+    "counters": {
+     "candidate_count_1": 11951,
+     "candidate_count_2": 7637,
+     "candidate_count_3": 15860,
+     "evaluable": 23420,
+     "forward": 35448,
+     "forward_multicandidate": 23497,
+     "kind_deliver": 2047,
+     "kind_forward": 35448,
+     "rows": 37495
+    },
+    "coverage": {
+     "candidate_count_histogram": {
+      "1": 11951,
+      "2": 7637,
+      "3": 15860
+     },
+     "evaluable_fraction_of_multicandidate": 0.9967229859130953,
+     "n_decision_rows_total": 37495,
+     "n_evaluable_with_truth": 23420,
+     "n_forward_multicandidate": 23497,
+     "n_forward_total": 35448
+    },
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 1.0,
+     "chosen_not_used_argmin": 0,
+     "geometry_policy_top_mismatch": 0,
+     "note": "chosen_not_used_argmin is expected > 0 only for hysteresis/sticky/softmin (their rule may hold or sample a non-argmin); geometry_policy_top_mismatch and audit_identity_violations must be 0"
+    },
+    "entropy_bits": {
+     "mean": null,
+     "n": 0,
+     "reason": "no selection.probabilities/selection.entropy in the state_policy audit for this policy"
+    },
+    "excluded_reasons": {
+     "chosen_or_pair_without_truth": 75,
+     "lt_two_fully_known_candidates": 2
+    },
+    "flip": {
+     "denominator": "kind=='forward' AND >=2 legal candidates AND >=2 candidates with a usable truth row AND the chosen candidate itself has a usable truth row; every flip/regret/W/Gamma statistic is computed on it",
+     "rule": {
+      "flips": 0,
+      "n": 23420,
+      "rate": 0.0
+     },
+     "semantics": "truth_substituted_rerank_not_resimulated_counterfactual",
+     "truth_argmin": {
+      "flips": 0,
+      "n": 23420,
+      "rate": 0.0
+     }
+    },
+    "flip_vs_margin_bins": [
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 1822,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 1822,
+       "rate": 0.0
+      },
+      "high": 0.0002,
+      "label": "lt_0.2ms",
+      "low": null,
+      "n": 1822
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 393,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 393,
+       "rate": 0.0
+      },
+      "high": 0.001,
+      "label": "0.2_1ms",
+      "low": 0.0002,
+      "n": 393
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 2238,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 2238,
+       "rate": 0.0
+      },
+      "high": 0.002,
+      "label": "1_2ms",
+      "low": 0.001,
+      "n": 2238
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 3720,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 3720,
+       "rate": 0.0
+      },
+      "high": 0.005,
+      "label": "2_5ms",
+      "low": 0.002,
+      "n": 3720
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 843,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 843,
+       "rate": 0.0
+      },
+      "high": 0.01,
+      "label": "5_10ms",
+      "low": 0.005,
+      "n": 843
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 13762,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 13762,
+       "rate": 0.0
+      },
+      "high": 0.05,
+      "label": "10_50ms",
+      "low": 0.01,
+      "n": 13762
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 642,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 642,
+       "rate": 0.0
+      },
+      "high": null,
+      "label": "ge_50ms",
+      "low": 0.05,
+      "n": 642
+     }
+    ],
+    "flip_vs_tau_bins": [
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 991,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 991,
+       "rate": 0.0
+      },
+      "high": 0.05,
+      "label": "lt_50ms",
+      "low": null,
+      "n": 991
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 1134,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 1134,
+       "rate": 0.0
+      },
+      "high": 0.1,
+      "label": "50_100ms",
+      "low": 0.05,
+      "n": 1134
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 3661,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 3661,
+       "rate": 0.0
+      },
+      "high": 0.25,
+      "label": "100_250ms",
+      "low": 0.1,
+      "n": 3661
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 5800,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 5800,
+       "rate": 0.0
+      },
+      "high": 0.5,
+      "label": "250_500ms",
+      "low": 0.25,
+      "n": 5800
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 11686,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 11686,
+       "rate": 0.0
+      },
+      "high": 1.0,
+      "label": "500ms_1s",
+      "low": 0.5,
+      "n": 11686
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 148,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 148,
+       "rate": 0.0
+      },
+      "high": null,
+      "label": "ge_1s",
+      "low": 1.0,
+      "n": 148
+     }
+    ],
+    "gamma": {
+     "bins": [
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 15770,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 15770,
+        "rate": 0.0
+       },
+       "high": 0.5,
+       "label": "lt_0.5",
+       "low": null,
+       "n": 15770
+      },
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 1089,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 1089,
+        "rate": 0.0
+       },
+       "high": 1.0,
+       "label": "0.5_1",
+       "low": 0.5,
+       "n": 1089
+      },
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 1012,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 1012,
+        "rate": 0.0
+       },
+       "high": 2.0,
+       "label": "1_2",
+       "low": 1.0,
+       "n": 1012
+      },
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 1372,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 1372,
+        "rate": 0.0
+       },
+       "high": 5.0,
+       "label": "2_5",
+       "low": 2.0,
+       "n": 1372
+      },
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 1637,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 1637,
+        "rate": 0.0
+       },
+       "high": null,
+       "label": "gt_5",
+       "low": 5.0,
+       "n": 1637
+      }
+     ],
+     "definition": "|d(Q_a/rate_a)/dt - d(Q_b/rate_b)/dt| * tau / m_used over the used-state top-1/top-2 pair; slope from a local linear fit over +-0.25 s of the probe truth series at the decision target instant",
+     "median": 0.043234271769658744,
+     "n": 20880
+    },
+    "gamma_note": "each Gamma bin's flip rate is over the records in that bin; the n column is the bin size",
+    "legacy_fallback_records": 0,
+    "margin_ms": {
+     "note": "used = J_used 1st/2nd gap; truth = J_truth 1st/2nd gap",
+     "truth": {
+      "mean": 15.79859202994749,
+      "n": 23420,
+      "p50": 13.003176575712656,
+      "p90": 31.027414794904757,
+      "p95": 34.02697786745429,
+      "p99": 72.75063976395631
+     },
+     "used": {
+      "mean": 15.79859202994749,
+      "n": 23420,
+      "p50": 13.003176575712656,
+      "p90": 31.027414794904757,
+      "p95": 34.02697786745429,
+      "p99": 72.75063976395631
+     }
+    },
+    "n_evaluable": 23420,
+    "near_tie_frac": {
+     "eps_0.2ms": 0.07779675491033305,
+     "eps_0.5ms": 0.07873612297181896,
+     "eps_1ms": 0.09457728437233134,
+     "eps_2ms": 0.19013663535439795,
+     "eps_5ms": 0.34897523484201537
+    },
+    "probe": {
+     "decisions_in_probe": 35448,
+     "identity_sources": {
+      "live_audit_not_used_by_predictor (resource_id+generation)": 2052,
+      "used_state": 72753
+     },
+     "rows": 74805,
+     "truth_resources": 262,
+     "truth_rows": 72753
+    },
+    "regret_ms": {
+     "frac_gt_0": 0.0,
+     "frac_gt_1ms": 0.0,
+     "mean": 0.0,
+     "n": 23420,
+     "p50": 0.0,
+     "p90": 0.0,
+     "p99": 0.0
+    },
+    "run_length": {
+     "max": 1073,
+     "mean": 4.366958791721052,
+     "p50": 1.0,
+     "p90": 5.0,
+     "runs": 5363
+    },
+    "scalars": {
+     "aoi_p50_ms": 506.01734407624474,
+     "aoi_p90_ms": 908.9142664737508,
+     "aoi_p95_ms": 956.8225891430782,
+     "aoi_p99_ms": 996.5958451987777,
+     "crosscheck_audit_identity_violations": 0,
+     "crosscheck_geometry_mismatch": 0,
+     "ctrl_expired": 0,
+     "ctrl_offered_mbits": 24.376896,
+     "ctrl_share": 0.01159929999991351,
+     "e2e_mean_ms": 687.2487204037525,
+     "e2e_p50_ms": 564.2043630197034,
+     "e2e_p95_ms": 1188.8201578416683,
+     "e2e_p99_ms": 1216.8417853136243,
+     "entropy_mean_bits": null,
+     "flip_rule_rate": 0.0,
+     "flip_truth_rate": 0.0,
+     "gamma_median": 0.043234271769658744,
+     "hops_mean": 17.31704934049829,
+     "hops_p95": 22.0,
+     "isl_data_area": 830691491.7679769,
+     "margin_truth_p50_ms": 13.003176575712656,
+     "margin_used_p50_ms": 13.003176575712656,
+     "n_decisions_multicandidate": 23497,
+     "n_evaluable": 23420,
+     "near_tie_1ms_frac": 0.09457728437233134,
+     "near_tie_2ms_frac": 0.19013663535439795,
+     "near_tie_5ms_frac": 0.34897523484201537,
+     "pdr": 1.0,
+     "regret_frac_gt0": 0.0,
+     "regret_frac_gt1ms": 0.0,
+     "regret_mean_ms": 0.0,
+     "regret_p50_ms": 0.0,
+     "regret_p90_ms": 0.0,
+     "regret_p99_ms": 0.0,
+     "run_length_mean_decisions": 4.366958791721052,
+     "sticky_keep_rate": null,
+     "sticky_override_rate": null,
+     "switch_rate": 0.22292034255712873,
+     "throughput_mbps": 102.35,
+     "util_busy_max": 0.5394999999999885,
+     "util_busy_p95": 0.517499999999989
+    },
+    "sticky": {
+     "keep_rate": null,
+     "n_override_audit": 0,
+     "n_with_audit": 0,
+     "override_rate": null,
+     "reason": "no sticky_keep/override fields in the audit"
+    },
+    "switch": {
+     "pairs": 23237,
+     "rate": 0.22292034255712873,
+     "streams": 183,
+     "switches": 5180
+    },
+    "wrong_duration_W_ms": {
+     "definition": "consecutive-wrong-decision duration: per (sat,dst) stream and per flip decision at t0, W = t1 - t0 with t1 the next later NON-flip decision of that stream; censored at the horizon. NOT packet queueing time",
+     "rule": {
+      "censored_frac": null,
+      "mean_ms": null,
+      "median_ms": null,
+      "n_censored": 0,
+      "n_flips": 0,
+      "n_uncensored": 0,
+      "p90_ms": null
+     },
+     "truth_argmin": {
+      "censored_frac": null,
+      "mean_ms": null,
+      "median_ms": null,
+      "n_censored": 0,
+      "n_flips": 0,
+      "n_uncensored": 0,
+      "p90_ms": null
+     }
+    }
+   },
+   "meta": {
+    "appendix": false,
+    "cell_id": "m3-c2-geometry-h1000-s7",
+    "config_seed": 7,
+    "config_sha256": "15a1b642a24b925ca2d7045410c0c13a7a5a97b698c7c42695ed5a5f3e3b2419",
+    "family": "m3",
+    "id_parsed": true,
+    "policy": "geometry",
+    "policy_known": true,
+    "policy_params": {
+     "advertise_interval_s": 1.0,
+     "control_plane": {
+      "advertise_interval_s": 1.0,
+      "packet_bits": 2000,
+      "priority": "nonpreemptive_priority",
+      "ttl_s": 10.0,
+      "vis_k": 1
+     },
+     "ewma_alpha": 0.25,
+     "hysteresis_eta_s": 0.0,
+     "predictor": "hold_last",
+     "softmin_temperature_s": 0.01,
+     "state_policy": "geometry",
+     "state_source": "advertised",
+     "sticky_hold_s": 0.1
+    },
+    "policy_raw": "geometry",
+    "regime": "c2",
+    "seed": 7,
+    "seed_note": null,
+    "series": "sync",
+    "sync_ms": 1000,
+    "trace_jsonl_sha256": "4113b3e2aa11c0c9e4943339f098ec0dbe2c6283e8a859446e99aec4a4e8ed94",
+    "trace_key": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+    "trace_rows": 2047,
+    "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+    "variant": null
+   },
+   "network": {
+    "control": {
+     "bits": {
+      "delivered": 23198600,
+      "in_system": 1161376,
+      "offered": 24376896,
+      "terminal_loss": 16920
+     },
+     "counters": {
+      "arrived": 7275,
+      "duplicate": 0,
+      "entered_queue": 7639,
+      "expired": 0,
+      "geometry_lost": 0,
+      "in_system": 364,
+      "lost": 0,
+      "overflow": 5,
+      "registered": 7644,
+      "snapshots_created": 2940,
+      "transmission_completed": 7275,
+      "transmission_started": 7639
+     },
+     "ctrl_isl_s": 0.2319859999982702,
+     "fate_counts": {
+      "CONTROL_EXPIRED": 0,
+      "DELIVERED": 7275,
+      "DUPLICATE": 0,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "IN_SYSTEM_AT_STOP": 364,
+      "QUEUE_OVERFLOW": 5,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "instances": 7644,
+     "offered_mbits": 24.376896,
+     "queue_area_bits_s": 6044.4542475385215,
+     "service_share": 0.01159929999991351,
+     "service_share_method": "occupied.ctrl_isl_s / stop_time_s (the ledger's authoritative control ISL occupancy).  link_service_windows carry no kind=='ctrl' marker, so the window-sum variant is not available"
+    },
+    "delivery": {
+     "delivered_bits": 2047000000,
+     "delivered_packets": 2047,
+     "fate_counts": {
+      "ACCESS_QUEUE_OVERFLOW": 0,
+      "ACCESS_REJECTED": 0,
+      "DATA_DEADLINE_EXPIRED": 0,
+      "DELIVERED": 2047,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "HOLDING_QUEUE_OVERFLOW": 0,
+      "IN_SYSTEM_AT_STOP": 0,
+      "ISL_QUEUE_OVERFLOW": 0,
+      "NO_ROUTE": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "offered_bits": 2047000000,
+     "offered_packets": 2047,
+     "pdr": 1.0,
+     "pdr_by_horizon": 1.0,
+     "terminal_loss_bits": 0
+    },
+    "e2e_ms": {
+     "mean": 687.2487204037525,
+     "n": 2047,
+     "p50": 564.2043630197034,
+     "p90": 1159.1528656306043,
+     "p95": 1188.8201578416683,
+     "p99": 1216.8417853136243
+    },
+    "error": null,
+    "hops": {
+     "max": 29,
+     "mean": 17.31704934049829,
+     "n": 2047,
+     "p50": 18.0,
+     "p95": 22.0,
+     "path_stretch": null,
+     "path_stretch_reason": "no shortest-path baseline in evidence"
+    },
+    "link_util": {
+     "bits_fraction_max": 0.5395,
+     "busy_fraction_max": 0.5394999999999885,
+     "busy_fraction_p95": 0.517499999999989,
+     "definition": "per ISL link: sum(window.end-window.start for stage=='isl') / stop_time from link_service_windows; max/p95 over links that served data.  Static topology in these cells, so no availability correction",
+     "duration_s": 20.0,
+     "isl_links_with_windows": 168
+    },
+    "natural_end": true,
+    "queue_area_bits_s": {
+     "downlink": 0.0,
+     "holding": 364316.78307190735,
+     "isl_ctrl": 6044.4542475385215,
+     "isl_data": 830691491.7679769,
+     "uplink": 51077.9999999933
+    },
+    "stop_time_s": 20.0,
+    "throughput_mbps": 102.35
+   },
+   "source": {
+    "config_sha256": "15a1b642a24b925ca2d7045410c0c13a7a5a97b698c7c42695ed5a5f3e3b2419",
+    "decisions": {
+     "rows": 37495
+    },
+    "trace_manifest": {
+     "jsonl_sha256": "4113b3e2aa11c0c9e4943339f098ec0dbe2c6283e8a859446e99aec4a4e8ed94",
+     "native_population": null,
+     "rows": 2047,
+     "source_rows": 2047,
+     "source_rows_digest": null,
+     "source_trace_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c"
+    }
+   },
+   "warnings": []
+  },
+  "m3-c2-geometry-h1000-s8": {
+   "cell_dir": "/Users/lge/Desktop/topic/\u4e09\u7aef\u6587\u4ef6\u4e0e\u540c\u6b65\u6cbb\u7406/evidence/t1/sq5-m3-c2-geometry-h1000-s8-20261031-01/m3-c2-geometry-h1000-s8",
+   "cell_id": "m3-c2-geometry-h1000-s8",
+   "decisions": {
+    "aoi_decomposition_ms": {
+     "advertisement_delivery": {
+      "definition": "probe state_received_at_s - state_measured_at_s (advertisement age at receipt)",
+      "mean": 7.018351790500349,
+      "n": 70940,
+      "p50": 7.306903976395773,
+      "p90": 7.306903976395773,
+      "p95": 9.62838243693831,
+      "p99": 15.173908283063753
+     },
+     "gen_to_recv": {
+      "mean": 6.204834384335896,
+      "n": 22888,
+      "p50": 6.988328538023225,
+      "p90": 7.886413709531581,
+      "p95": 10.36266857120971,
+      "p99": 12.941951623405501
+     },
+     "recv_to_decision": {
+      "mean": 501.45101774390054,
+      "n": 22888,
+      "p50": 501.87497734430764,
+      "p90": 895.8997363715993,
+      "p95": 948.8656842783598,
+      "p99": 989.9684686508427
+     }
+    },
+    "aoi_ms": {
+     "mean": 507.6558521282365,
+     "n": 22888,
+     "p50": 507.1386075893205,
+     "p90": 902.5721514992657,
+     "p95": 954.9023282670071,
+     "p99": 995.9606865278729
+    },
+    "counters": {
+     "candidate_count_1": 11500,
+     "candidate_count_2": 7463,
+     "candidate_count_3": 15506,
+     "evaluable": 22888,
+     "forward": 34469,
+     "forward_multicandidate": 22969,
+     "kind_deliver": 1998,
+     "kind_forward": 34469,
+     "rows": 36467
+    },
+    "coverage": {
+     "candidate_count_histogram": {
+      "1": 11500,
+      "2": 7463,
+      "3": 15506
+     },
+     "evaluable_fraction_of_multicandidate": 0.996473507771344,
+     "n_decision_rows_total": 36467,
+     "n_evaluable_with_truth": 22888,
+     "n_forward_multicandidate": 22969,
+     "n_forward_total": 34469
+    },
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 1.0,
+     "chosen_not_used_argmin": 0,
+     "geometry_policy_top_mismatch": 0,
+     "note": "chosen_not_used_argmin is expected > 0 only for hysteresis/sticky/softmin (their rule may hold or sample a non-argmin); geometry_policy_top_mismatch and audit_identity_violations must be 0"
+    },
+    "entropy_bits": {
+     "mean": null,
+     "n": 0,
+     "reason": "no selection.probabilities/selection.entropy in the state_policy audit for this policy"
+    },
+    "excluded_reasons": {
+     "chosen_or_pair_without_truth": 78,
+     "lt_two_fully_known_candidates": 3
+    },
+    "flip": {
+     "denominator": "kind=='forward' AND >=2 legal candidates AND >=2 candidates with a usable truth row AND the chosen candidate itself has a usable truth row; every flip/regret/W/Gamma statistic is computed on it",
+     "rule": {
+      "flips": 0,
+      "n": 22888,
+      "rate": 0.0
+     },
+     "semantics": "truth_substituted_rerank_not_resimulated_counterfactual",
+     "truth_argmin": {
+      "flips": 0,
+      "n": 22888,
+      "rate": 0.0
+     }
+    },
+    "flip_vs_margin_bins": [
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 1777,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 1777,
+       "rate": 0.0
+      },
+      "high": 0.0002,
+      "label": "lt_0.2ms",
+      "low": null,
+      "n": 1777
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 397,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 397,
+       "rate": 0.0
+      },
+      "high": 0.001,
+      "label": "0.2_1ms",
+      "low": 0.0002,
+      "n": 397
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 2183,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 2183,
+       "rate": 0.0
+      },
+      "high": 0.002,
+      "label": "1_2ms",
+      "low": 0.001,
+      "n": 2183
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 3562,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 3562,
+       "rate": 0.0
+      },
+      "high": 0.005,
+      "label": "2_5ms",
+      "low": 0.002,
+      "n": 3562
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 796,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 796,
+       "rate": 0.0
+      },
+      "high": 0.01,
+      "label": "5_10ms",
+      "low": 0.005,
+      "n": 796
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 13542,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 13542,
+       "rate": 0.0
+      },
+      "high": 0.05,
+      "label": "10_50ms",
+      "low": 0.01,
+      "n": 13542
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 631,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 631,
+       "rate": 0.0
+      },
+      "high": null,
+      "label": "ge_50ms",
+      "low": 0.05,
+      "n": 631
+     }
+    ],
+    "flip_vs_tau_bins": [
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 944,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 944,
+       "rate": 0.0
+      },
+      "high": 0.05,
+      "label": "lt_50ms",
+      "low": null,
+      "n": 944
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 1115,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 1115,
+       "rate": 0.0
+      },
+      "high": 0.1,
+      "label": "50_100ms",
+      "low": 0.05,
+      "n": 1115
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 3381,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 3381,
+       "rate": 0.0
+      },
+      "high": 0.25,
+      "label": "100_250ms",
+      "low": 0.1,
+      "n": 3381
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 5830,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 5830,
+       "rate": 0.0
+      },
+      "high": 0.5,
+      "label": "250_500ms",
+      "low": 0.25,
+      "n": 5830
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 11483,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 11483,
+       "rate": 0.0
+      },
+      "high": 1.0,
+      "label": "500ms_1s",
+      "low": 0.5,
+      "n": 11483
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 135,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 135,
+       "rate": 0.0
+      },
+      "high": null,
+      "label": "ge_1s",
+      "low": 1.0,
+      "n": 135
+     }
+    ],
+    "gamma": {
+     "bins": [
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 14987,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 14987,
+        "rate": 0.0
+       },
+       "high": 0.5,
+       "label": "lt_0.5",
+       "low": null,
+       "n": 14987
+      },
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 1260,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 1260,
+        "rate": 0.0
+       },
+       "high": 1.0,
+       "label": "0.5_1",
+       "low": 0.5,
+       "n": 1260
+      },
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 1078,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 1078,
+        "rate": 0.0
+       },
+       "high": 2.0,
+       "label": "1_2",
+       "low": 1.0,
+       "n": 1078
+      },
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 1267,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 1267,
+        "rate": 0.0
+       },
+       "high": 5.0,
+       "label": "2_5",
+       "low": 2.0,
+       "n": 1267
+      },
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 1872,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 1872,
+        "rate": 0.0
+       },
+       "high": null,
+       "label": "gt_5",
+       "low": 5.0,
+       "n": 1872
+      }
+     ],
+     "definition": "|d(Q_a/rate_a)/dt - d(Q_b/rate_b)/dt| * tau / m_used over the used-state top-1/top-2 pair; slope from a local linear fit over +-0.25 s of the probe truth series at the decision target instant",
+     "median": 0.052065204720517816,
+     "n": 20464
+    },
+    "gamma_note": "each Gamma bin's flip rate is over the records in that bin; the n column is the bin size",
+    "legacy_fallback_records": 0,
+    "margin_ms": {
+     "note": "used = J_used 1st/2nd gap; truth = J_truth 1st/2nd gap",
+     "truth": {
+      "mean": 15.84554424372063,
+      "n": 22888,
+      "p50": 13.05247025583224,
+      "p90": 31.028954995102982,
+      "p95": 34.0287004640637,
+      "p99": 72.75063976395633
+     },
+     "used": {
+      "mean": 15.84554424372063,
+      "n": 22888,
+      "p50": 13.05247025583224,
+      "p90": 31.028954995102982,
+      "p95": 34.0287004640637,
+      "p99": 72.75063976395633
+     }
+    },
+    "n_evaluable": 22888,
+    "near_tie_frac": {
+     "eps_0.2ms": 0.07763893743446347,
+     "eps_0.5ms": 0.07838168472562042,
+     "eps_1ms": 0.09498427123383432,
+     "eps_2ms": 0.19036176162181057,
+     "eps_5ms": 0.34598916462775253
+    },
+    "probe": {
+     "decisions_in_probe": 34469,
+     "identity_sources": {
+      "live_audit_not_used_by_predictor (resource_id+generation)": 2004,
+      "used_state": 70940
+     },
+     "rows": 72944,
+     "truth_resources": 262,
+     "truth_rows": 70940
+    },
+    "regret_ms": {
+     "frac_gt_0": 0.0,
+     "frac_gt_1ms": 0.0,
+     "mean": 0.0,
+     "n": 22888,
+     "p50": 0.0,
+     "p90": 0.0,
+     "p99": 0.0
+    },
+    "run_length": {
+     "max": 1060,
+     "mean": 4.4117193523515805,
+     "p50": 1.0,
+     "p90": 5.0,
+     "runs": 5188
+    },
+    "scalars": {
+     "aoi_p50_ms": 507.1386075893205,
+     "aoi_p90_ms": 902.5721514992657,
+     "aoi_p95_ms": 954.9023282670071,
+     "aoi_p99_ms": 995.9606865278729,
+     "crosscheck_audit_identity_violations": 0,
+     "crosscheck_geometry_mismatch": 0,
+     "ctrl_expired": 0,
+     "ctrl_offered_mbits": 24.376896,
+     "ctrl_share": 0.011602683999913549,
+     "e2e_mean_ms": 647.9520865388464,
+     "e2e_p50_ms": 531.68459749614,
+     "e2e_p95_ms": 1096.7598366173306,
+     "e2e_p99_ms": 1125.7769790207276,
+     "entropy_mean_bits": null,
+     "flip_rule_rate": 0.0,
+     "flip_truth_rate": 0.0,
+     "gamma_median": 0.052065204720517816,
+     "hops_mean": 17.25175175175175,
+     "hops_p95": 22.0,
+     "isl_data_area": 734517703.8397583,
+     "margin_truth_p50_ms": 13.05247025583224,
+     "margin_used_p50_ms": 13.05247025583224,
+     "n_decisions_multicandidate": 22969,
+     "n_evaluable": 22888,
+     "near_tie_1ms_frac": 0.09498427123383432,
+     "near_tie_2ms_frac": 0.19036176162181057,
+     "near_tie_5ms_frac": 0.34598916462775253,
+     "pdr": 1.0,
+     "regret_frac_gt0": 0.0,
+     "regret_frac_gt1ms": 0.0,
+     "regret_mean_ms": 0.0,
+     "regret_p50_ms": 0.0,
+     "regret_p90_ms": 0.0,
+     "regret_p99_ms": 0.0,
+     "run_length_mean_decisions": 4.4117193523515805,
+     "sticky_keep_rate": null,
+     "sticky_override_rate": null,
+     "switch_rate": 0.22047036025720074,
+     "throughput_mbps": 99.9,
+     "util_busy_max": 0.5299999999999888,
+     "util_busy_p95": 0.5114999999999892
+    },
+    "sticky": {
+     "keep_rate": null,
+     "n_override_audit": 0,
+     "n_with_audit": 0,
+     "override_rate": null,
+     "reason": "no sticky_keep/override fields in the audit"
+    },
+    "switch": {
+     "pairs": 22706,
+     "rate": 0.22047036025720074,
+     "streams": 182,
+     "switches": 5006
+    },
+    "wrong_duration_W_ms": {
+     "definition": "consecutive-wrong-decision duration: per (sat,dst) stream and per flip decision at t0, W = t1 - t0 with t1 the next later NON-flip decision of that stream; censored at the horizon. NOT packet queueing time",
+     "rule": {
+      "censored_frac": null,
+      "mean_ms": null,
+      "median_ms": null,
+      "n_censored": 0,
+      "n_flips": 0,
+      "n_uncensored": 0,
+      "p90_ms": null
+     },
+     "truth_argmin": {
+      "censored_frac": null,
+      "mean_ms": null,
+      "median_ms": null,
+      "n_censored": 0,
+      "n_flips": 0,
+      "n_uncensored": 0,
+      "p90_ms": null
+     }
+    }
+   },
+   "meta": {
+    "appendix": false,
+    "cell_id": "m3-c2-geometry-h1000-s8",
+    "config_seed": 7,
+    "config_sha256": "85e9bf28b224cc7a69cb00fcc8952a540799d743d7613d5122d8f12c26b8b89b",
+    "family": "m3",
+    "id_parsed": true,
+    "policy": "geometry",
+    "policy_known": true,
+    "policy_params": {
+     "advertise_interval_s": 1.0,
+     "control_plane": {
+      "advertise_interval_s": 1.0,
+      "packet_bits": 2000,
+      "priority": "nonpreemptive_priority",
+      "ttl_s": 10.0,
+      "vis_k": 1
+     },
+     "ewma_alpha": 0.25,
+     "hysteresis_eta_s": 0.0,
+     "predictor": "hold_last",
+     "softmin_temperature_s": 0.01,
+     "state_policy": "geometry",
+     "state_source": "advertised",
+     "sticky_hold_s": 0.1
+    },
+    "policy_raw": "geometry",
+    "regime": "c2",
+    "seed": 8,
+    "seed_note": "cell-id seed 8 != config scenario.seed 7 (the replicate seed lives in trace_program.seed in this contract)",
+    "series": "sync",
+    "sync_ms": 1000,
+    "trace_jsonl_sha256": "a522e46ceca663ee5438d85e4cb15540a5026b76184ff83be117581eed257774",
+    "trace_key": "6ac591e28374f08d7facb87571c112fa0dfae3c251b3590a4ef909e88e771441",
+    "trace_rows": 1998,
+    "trace_source_sha256": "6ac591e28374f08d7facb87571c112fa0dfae3c251b3590a4ef909e88e771441",
+    "variant": null
+   },
+   "network": {
+    "control": {
+     "bits": {
+      "delivered": 23205368,
+      "in_system": 1161376,
+      "offered": 24376896,
+      "terminal_loss": 10152
+     },
+     "counters": {
+      "arrived": 7277,
+      "duplicate": 0,
+      "entered_queue": 7641,
+      "expired": 0,
+      "geometry_lost": 0,
+      "in_system": 364,
+      "lost": 0,
+      "overflow": 3,
+      "registered": 7644,
+      "snapshots_created": 2940,
+      "transmission_completed": 7277,
+      "transmission_started": 7641
+     },
+     "ctrl_isl_s": 0.23205367999827098,
+     "fate_counts": {
+      "CONTROL_EXPIRED": 0,
+      "DELIVERED": 7277,
+      "DUPLICATE": 0,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "IN_SYSTEM_AT_STOP": 364,
+      "QUEUE_OVERFLOW": 3,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "instances": 7644,
+     "offered_mbits": 24.376896,
+     "queue_area_bits_s": 5395.520946226509,
+     "service_share": 0.011602683999913549,
+     "service_share_method": "occupied.ctrl_isl_s / stop_time_s (the ledger's authoritative control ISL occupancy).  link_service_windows carry no kind=='ctrl' marker, so the window-sum variant is not available"
+    },
+    "delivery": {
+     "delivered_bits": 1998000000,
+     "delivered_packets": 1998,
+     "fate_counts": {
+      "ACCESS_QUEUE_OVERFLOW": 0,
+      "ACCESS_REJECTED": 0,
+      "DATA_DEADLINE_EXPIRED": 0,
+      "DELIVERED": 1998,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "HOLDING_QUEUE_OVERFLOW": 0,
+      "IN_SYSTEM_AT_STOP": 0,
+      "ISL_QUEUE_OVERFLOW": 0,
+      "NO_ROUTE": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "offered_bits": 1998000000,
+     "offered_packets": 1998,
+     "pdr": 1.0,
+     "pdr_by_horizon": 1.0,
+     "terminal_loss_bits": 0
+    },
+    "e2e_ms": {
+     "mean": 647.9520865388464,
+     "n": 1998,
+     "p50": 531.68459749614,
+     "p90": 1077.9111697949713,
+     "p95": 1096.7598366173306,
+     "p99": 1125.7769790207276
+    },
+    "error": null,
+    "hops": {
+     "max": 30,
+     "mean": 17.25175175175175,
+     "n": 1998,
+     "p50": 18.0,
+     "p95": 22.0,
+     "path_stretch": null,
+     "path_stretch_reason": "no shortest-path baseline in evidence"
+    },
+    "link_util": {
+     "bits_fraction_max": 0.53,
+     "busy_fraction_max": 0.5299999999999888,
+     "busy_fraction_p95": 0.5114999999999892,
+     "definition": "per ISL link: sum(window.end-window.start for stage=='isl') / stop_time from link_service_windows; max/p95 over links that served data.  Static topology in these cells, so no availability correction",
+     "duration_s": 20.0,
+     "isl_links_with_windows": 168
+    },
+    "natural_end": true,
+    "queue_area_bits_s": {
+     "downlink": 0.0,
+     "holding": 448574.06368317234,
+     "isl_ctrl": 5395.520946226509,
+     "isl_data": 734517703.8397583,
+     "uplink": 31566.999999999018
+    },
+    "stop_time_s": 20.0,
+    "throughput_mbps": 99.9
+   },
+   "source": {
+    "config_sha256": "85e9bf28b224cc7a69cb00fcc8952a540799d743d7613d5122d8f12c26b8b89b",
+    "decisions": {
+     "rows": 36467
+    },
+    "trace_manifest": {
+     "jsonl_sha256": "a522e46ceca663ee5438d85e4cb15540a5026b76184ff83be117581eed257774",
+     "native_population": null,
+     "rows": 1998,
+     "source_rows": 1998,
+     "source_rows_digest": null,
+     "source_trace_sha256": "6ac591e28374f08d7facb87571c112fa0dfae3c251b3590a4ef909e88e771441"
+    }
+   },
+   "warnings": []
+  },
+  "m3-c2-geometry-h1000-s9": {
+   "cell_dir": "/Users/lge/Desktop/topic/\u4e09\u7aef\u6587\u4ef6\u4e0e\u540c\u6b65\u6cbb\u7406/evidence/t1/sq5-m3-c2-geometry-h1000-s9-20261031-01/m3-c2-geometry-h1000-s9",
+   "cell_id": "m3-c2-geometry-h1000-s9",
+   "decisions": {
+    "aoi_decomposition_ms": {
+     "advertisement_delivery": {
+      "definition": "probe state_received_at_s - state_measured_at_s (advertisement age at receipt)",
+      "mean": 7.147287424907412,
+      "n": 71128,
+      "p50": 7.306903976395773,
+      "p90": 7.306903976395773,
+      "p95": 11.706229061916318,
+      "p99": 15.617943424702574
+     },
+     "gen_to_recv": {
+      "mean": 6.622102666613789,
+      "n": 22927,
+      "p50": 7.04388756265395,
+      "p90": 10.94665441191367,
+      "p95": 12.467076540414013,
+      "p99": 15.397835852418496
+     },
+     "recv_to_decision": {
+      "mean": 496.1221336405709,
+      "n": 22927,
+      "p50": 495.4349068638049,
+      "p90": 894.6690475157784,
+      "p95": 948.38156673379,
+      "p99": 989.5529095888254
+     }
+    },
+    "aoi_ms": {
+     "mean": 502.7442363071847,
+     "n": 22927,
+     "p50": 502.3706943254309,
+     "p90": 901.3767041319074,
+     "p95": 954.9698420594783,
+     "p99": 996.4605640735575
+    },
+    "counters": {
+     "candidate_count_1": 11608,
+     "candidate_count_2": 7489,
+     "candidate_count_3": 15511,
+     "evaluable": 22927,
+     "forward": 34608,
+     "forward_multicandidate": 23000,
+     "kind_deliver": 1985,
+     "kind_forward": 34608,
+     "rows": 36593
+    },
+    "coverage": {
+     "candidate_count_histogram": {
+      "1": 11608,
+      "2": 7489,
+      "3": 15511
+     },
+     "evaluable_fraction_of_multicandidate": 0.9968260869565218,
+     "n_decision_rows_total": 36593,
+     "n_evaluable_with_truth": 22927,
+     "n_forward_multicandidate": 23000,
+     "n_forward_total": 34608
+    },
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 1.0,
+     "chosen_not_used_argmin": 0,
+     "geometry_policy_top_mismatch": 0,
+     "note": "chosen_not_used_argmin is expected > 0 only for hysteresis/sticky/softmin (their rule may hold or sample a non-argmin); geometry_policy_top_mismatch and audit_identity_violations must be 0"
+    },
+    "entropy_bits": {
+     "mean": null,
+     "n": 0,
+     "reason": "no selection.probabilities/selection.entropy in the state_policy audit for this policy"
+    },
+    "excluded_reasons": {
+     "chosen_or_pair_without_truth": 70,
+     "lt_two_fully_known_candidates": 3
+    },
+    "flip": {
+     "denominator": "kind=='forward' AND >=2 legal candidates AND >=2 candidates with a usable truth row AND the chosen candidate itself has a usable truth row; every flip/regret/W/Gamma statistic is computed on it",
+     "rule": {
+      "flips": 0,
+      "n": 22927,
+      "rate": 0.0
+     },
+     "semantics": "truth_substituted_rerank_not_resimulated_counterfactual",
+     "truth_argmin": {
+      "flips": 0,
+      "n": 22927,
+      "rate": 0.0
+     }
+    },
+    "flip_vs_margin_bins": [
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 1789,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 1789,
+       "rate": 0.0
+      },
+      "high": 0.0002,
+      "label": "lt_0.2ms",
+      "low": null,
+      "n": 1789
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 343,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 343,
+       "rate": 0.0
+      },
+      "high": 0.001,
+      "label": "0.2_1ms",
+      "low": 0.0002,
+      "n": 343
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 2235,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 2235,
+       "rate": 0.0
+      },
+      "high": 0.002,
+      "label": "1_2ms",
+      "low": 0.001,
+      "n": 2235
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 3619,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 3619,
+       "rate": 0.0
+      },
+      "high": 0.005,
+      "label": "2_5ms",
+      "low": 0.002,
+      "n": 3619
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 823,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 823,
+       "rate": 0.0
+      },
+      "high": 0.01,
+      "label": "5_10ms",
+      "low": 0.005,
+      "n": 823
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 13483,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 13483,
+       "rate": 0.0
+      },
+      "high": 0.05,
+      "label": "10_50ms",
+      "low": 0.01,
+      "n": 13483
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 635,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 635,
+       "rate": 0.0
+      },
+      "high": null,
+      "label": "ge_50ms",
+      "low": 0.05,
+      "n": 635
+     }
+    ],
+    "flip_vs_tau_bins": [
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 948,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 948,
+       "rate": 0.0
+      },
+      "high": 0.05,
+      "label": "lt_50ms",
+      "low": null,
+      "n": 948
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 1109,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 1109,
+       "rate": 0.0
+      },
+      "high": 0.1,
+      "label": "50_100ms",
+      "low": 0.05,
+      "n": 1109
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 3496,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 3496,
+       "rate": 0.0
+      },
+      "high": 0.25,
+      "label": "100_250ms",
+      "low": 0.1,
+      "n": 3496
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 5876,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 5876,
+       "rate": 0.0
+      },
+      "high": 0.5,
+      "label": "250_500ms",
+      "low": 0.25,
+      "n": 5876
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 11364,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 11364,
+       "rate": 0.0
+      },
+      "high": 1.0,
+      "label": "500ms_1s",
+      "low": 0.5,
+      "n": 11364
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 134,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 134,
+       "rate": 0.0
+      },
+      "high": null,
+      "label": "ge_1s",
+      "low": 1.0,
+      "n": 134
+     }
+    ],
+    "gamma": {
+     "bins": [
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 15348,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 15348,
+        "rate": 0.0
+       },
+       "high": 0.5,
+       "label": "lt_0.5",
+       "low": null,
+       "n": 15348
+      },
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 1258,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 1258,
+        "rate": 0.0
+       },
+       "high": 1.0,
+       "label": "0.5_1",
+       "low": 0.5,
+       "n": 1258
+      },
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 962,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 962,
+        "rate": 0.0
+       },
+       "high": 2.0,
+       "label": "1_2",
+       "low": 1.0,
+       "n": 962
+      },
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 1188,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 1188,
+        "rate": 0.0
+       },
+       "high": 5.0,
+       "label": "2_5",
+       "low": 2.0,
+       "n": 1188
+      },
+      {
+       "flip_rule": {
+        "flips": 0,
+        "n": 1692,
+        "rate": 0.0
+       },
+       "flip_truth": {
+        "flips": 0,
+        "n": 1692,
+        "rate": 0.0
+       },
+       "high": null,
+       "label": "gt_5",
+       "low": 5.0,
+       "n": 1692
+      }
+     ],
+     "definition": "|d(Q_a/rate_a)/dt - d(Q_b/rate_b)/dt| * tau / m_used over the used-state top-1/top-2 pair; slope from a local linear fit over +-0.25 s of the probe truth series at the decision target instant",
+     "median": 0.04601171757077865,
+     "n": 20448
+    },
+    "gamma_note": "each Gamma bin's flip rate is over the records in that bin; the n column is the bin size",
+    "legacy_fallback_records": 0,
+    "margin_ms": {
+     "note": "used = J_used 1st/2nd gap; truth = J_truth 1st/2nd gap",
+     "truth": {
+      "mean": 15.851414758504154,
+      "n": 22927,
+      "p50": 13.026717961114084,
+      "p90": 31.029001216239088,
+      "p95": 34.02689367328986,
+      "p99": 72.7506397639563
+     },
+     "used": {
+      "mean": 15.851414758504154,
+      "n": 22927,
+      "p50": 13.026717961114084,
+      "p90": 31.029001216239088,
+      "p95": 34.02689367328986,
+      "p99": 72.7506397639563
+     }
+    },
+    "n_evaluable": 22927,
+    "near_tie_frac": {
+     "eps_0.2ms": 0.07803026998735116,
+     "eps_0.5ms": 0.07859728704147947,
+     "eps_1ms": 0.09299079687704453,
+     "eps_2ms": 0.19047411349064422,
+     "eps_5ms": 0.3483229380206743
+    },
+    "probe": {
+     "decisions_in_probe": 34608,
+     "identity_sources": {
+      "live_audit_not_used_by_predictor (resource_id+generation)": 1991,
+      "used_state": 71128
+     },
+     "rows": 73119,
+     "truth_resources": 262,
+     "truth_rows": 71128
+    },
+    "regret_ms": {
+     "frac_gt_0": 0.0,
+     "frac_gt_1ms": 0.0,
+     "mean": 0.0,
+     "n": 22927,
+     "p50": 0.0,
+     "p90": 0.0,
+     "p99": 0.0
+    },
+    "run_length": {
+     "max": 1081,
+     "mean": 4.371210676835081,
+     "p50": 1.0,
+     "p90": 5.0,
+     "runs": 5245
+    },
+    "scalars": {
+     "aoi_p50_ms": 502.3706943254309,
+     "aoi_p90_ms": 901.3767041319074,
+     "aoi_p95_ms": 954.9698420594783,
+     "aoi_p99_ms": 996.4605640735575,
+     "crosscheck_audit_identity_violations": 0,
+     "crosscheck_geometry_mismatch": 0,
+     "ctrl_expired": 0,
+     "ctrl_offered_mbits": 24.376896,
+     "ctrl_share": 0.01159760799991349,
+     "e2e_mean_ms": 685.3842921570176,
+     "e2e_p50_ms": 641.8341330796516,
+     "e2e_p95_ms": 1167.1942110306936,
+     "e2e_p99_ms": 1182.9874220022186,
+     "entropy_mean_bits": null,
+     "flip_rule_rate": 0.0,
+     "flip_truth_rate": 0.0,
+     "gamma_median": 0.04601171757077865,
+     "hops_mean": 17.434760705289673,
+     "hops_p95": 22.0,
+     "isl_data_area": 798283280.0523542,
+     "margin_truth_p50_ms": 13.026717961114084,
+     "margin_used_p50_ms": 13.026717961114084,
+     "n_decisions_multicandidate": 23000,
+     "n_evaluable": 22927,
+     "near_tie_1ms_frac": 0.09299079687704453,
+     "near_tie_2ms_frac": 0.19047411349064422,
+     "near_tie_5ms_frac": 0.3483229380206743,
+     "pdr": 1.0,
+     "regret_frac_gt0": 0.0,
+     "regret_frac_gt1ms": 0.0,
+     "regret_mean_ms": 0.0,
+     "regret_p50_ms": 0.0,
+     "regret_p90_ms": 0.0,
+     "regret_p99_ms": 0.0,
+     "run_length_mean_decisions": 4.371210676835081,
+     "sticky_keep_rate": null,
+     "sticky_override_rate": null,
+     "switch_rate": 0.22266672528245482,
+     "throughput_mbps": 99.25,
+     "util_busy_max": 0.5404999999999885,
+     "util_busy_p95": 0.518999999999989
+    },
+    "sticky": {
+     "keep_rate": null,
+     "n_override_audit": 0,
+     "n_with_audit": 0,
+     "override_rate": null,
+     "reason": "no sticky_keep/override fields in the audit"
+    },
+    "switch": {
+     "pairs": 22747,
+     "rate": 0.22266672528245482,
+     "streams": 180,
+     "switches": 5065
+    },
+    "wrong_duration_W_ms": {
+     "definition": "consecutive-wrong-decision duration: per (sat,dst) stream and per flip decision at t0, W = t1 - t0 with t1 the next later NON-flip decision of that stream; censored at the horizon. NOT packet queueing time",
+     "rule": {
+      "censored_frac": null,
+      "mean_ms": null,
+      "median_ms": null,
+      "n_censored": 0,
+      "n_flips": 0,
+      "n_uncensored": 0,
+      "p90_ms": null
+     },
+     "truth_argmin": {
+      "censored_frac": null,
+      "mean_ms": null,
+      "median_ms": null,
+      "n_censored": 0,
+      "n_flips": 0,
+      "n_uncensored": 0,
+      "p90_ms": null
+     }
+    }
+   },
+   "meta": {
+    "appendix": false,
+    "cell_id": "m3-c2-geometry-h1000-s9",
+    "config_seed": 7,
+    "config_sha256": "6abadf4c0f7711cd89bdde73f9af49c3d1205c514187b2a9ef71872d20be0744",
+    "family": "m3",
+    "id_parsed": true,
+    "policy": "geometry",
+    "policy_known": true,
+    "policy_params": {
+     "advertise_interval_s": 1.0,
+     "control_plane": {
+      "advertise_interval_s": 1.0,
+      "packet_bits": 2000,
+      "priority": "nonpreemptive_priority",
+      "ttl_s": 10.0,
+      "vis_k": 1
+     },
+     "ewma_alpha": 0.25,
+     "hysteresis_eta_s": 0.0,
+     "predictor": "hold_last",
+     "softmin_temperature_s": 0.01,
+     "state_policy": "geometry",
+     "state_source": "advertised",
+     "sticky_hold_s": 0.1
+    },
+    "policy_raw": "geometry",
+    "regime": "c2",
+    "seed": 9,
+    "seed_note": "cell-id seed 9 != config scenario.seed 7 (the replicate seed lives in trace_program.seed in this contract)",
+    "series": "sync",
+    "sync_ms": 1000,
+    "trace_jsonl_sha256": "acbdcb78d197efac6d0d031cc66cd85a41806a1aff2b880f9de73d39583e7266",
+    "trace_key": "555ef133a60ebf877c631c513a871bfc34c2aeddbf29908e7db9029640beeb16",
+    "trace_rows": 1985,
+    "trace_source_sha256": "555ef133a60ebf877c631c513a871bfc34c2aeddbf29908e7db9029640beeb16",
+    "variant": null
+   },
+   "network": {
+    "control": {
+     "bits": {
+      "delivered": 23195216,
+      "in_system": 1161376,
+      "offered": 24376896,
+      "terminal_loss": 20304
+     },
+     "counters": {
+      "arrived": 7274,
+      "duplicate": 0,
+      "entered_queue": 7638,
+      "expired": 0,
+      "geometry_lost": 0,
+      "in_system": 364,
+      "lost": 0,
+      "overflow": 6,
+      "registered": 7644,
+      "snapshots_created": 2940,
+      "transmission_completed": 7274,
+      "transmission_started": 7638
+     },
+     "ctrl_isl_s": 0.2319521599982698,
+     "fate_counts": {
+      "CONTROL_EXPIRED": 0,
+      "DELIVERED": 7274,
+      "DUPLICATE": 0,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "IN_SYSTEM_AT_STOP": 364,
+      "QUEUE_OVERFLOW": 6,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "instances": 7644,
+     "offered_mbits": 24.376896,
+     "queue_area_bits_s": 5860.159423060648,
+     "service_share": 0.01159760799991349,
+     "service_share_method": "occupied.ctrl_isl_s / stop_time_s (the ledger's authoritative control ISL occupancy).  link_service_windows carry no kind=='ctrl' marker, so the window-sum variant is not available"
+    },
+    "delivery": {
+     "delivered_bits": 1985000000,
+     "delivered_packets": 1985,
+     "fate_counts": {
+      "ACCESS_QUEUE_OVERFLOW": 0,
+      "ACCESS_REJECTED": 0,
+      "DATA_DEADLINE_EXPIRED": 0,
+      "DELIVERED": 1985,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "HOLDING_QUEUE_OVERFLOW": 0,
+      "IN_SYSTEM_AT_STOP": 0,
+      "ISL_QUEUE_OVERFLOW": 0,
+      "NO_ROUTE": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "offered_bits": 1985000000,
+     "offered_packets": 1985,
+     "pdr": 1.0,
+     "pdr_by_horizon": 1.0,
+     "terminal_loss_bits": 0
+    },
+    "e2e_ms": {
+     "mean": 685.3842921570176,
+     "n": 1985,
+     "p50": 641.8341330796516,
+     "p90": 1143.9999726674816,
+     "p95": 1167.1942110306936,
+     "p99": 1182.9874220022186
+    },
+    "error": null,
+    "hops": {
+     "max": 30,
+     "mean": 17.434760705289673,
+     "n": 1985,
+     "p50": 18.0,
+     "p95": 22.0,
+     "path_stretch": null,
+     "path_stretch_reason": "no shortest-path baseline in evidence"
+    },
+    "link_util": {
+     "bits_fraction_max": 0.5405,
+     "busy_fraction_max": 0.5404999999999885,
+     "busy_fraction_p95": 0.518999999999989,
+     "definition": "per ISL link: sum(window.end-window.start for stage=='isl') / stop_time from link_service_windows; max/p95 over links that served data.  Static topology in these cells, so no availability correction",
+     "duration_s": 20.0,
+     "isl_links_with_windows": 168
+    },
+    "natural_end": true,
+    "queue_area_bits_s": {
+     "downlink": 0.0,
+     "holding": 453760.10911645007,
+     "isl_ctrl": 5860.159423060648,
+     "isl_data": 798283280.0523542,
+     "uplink": 44102.999999997126
+    },
+    "stop_time_s": 20.0,
+    "throughput_mbps": 99.25
+   },
+   "source": {
+    "config_sha256": "6abadf4c0f7711cd89bdde73f9af49c3d1205c514187b2a9ef71872d20be0744",
+    "decisions": {
+     "rows": 36593
+    },
+    "trace_manifest": {
+     "jsonl_sha256": "acbdcb78d197efac6d0d031cc66cd85a41806a1aff2b880f9de73d39583e7266",
+     "native_population": null,
+     "rows": 1985,
+     "source_rows": 1985,
+     "source_rows_digest": null,
+     "source_trace_sha256": "555ef133a60ebf877c631c513a871bfc34c2aeddbf29908e7db9029640beeb16"
+    }
+   },
+   "warnings": []
+  },
+  "m3-c2-queue_greedy-h1000-s7": {
+   "cell_dir": "/Users/lge/Desktop/topic/\u4e09\u7aef\u6587\u4ef6\u4e0e\u540c\u6b65\u6cbb\u7406/evidence/t1/sq5-m3-c2-queue_greedy-h1000-s7-20261031-01/m3-c2-queue_greedy-h1000-s7",
+   "cell_id": "m3-c2-queue_greedy-h1000-s7",
+   "decisions": {
+    "aoi_decomposition_ms": {
+     "advertisement_delivery": {
+      "definition": "probe state_received_at_s - state_measured_at_s (advertisement age at receipt)",
+      "mean": 7.394219317190468,
+      "n": 90692,
+      "p50": 7.306903976395773,
+      "p90": 9.23581367563564,
+      "p95": 12.42179115776132,
+      "p99": 16.126067739035577
+     },
+     "gen_to_recv": {
+      "mean": 6.431577735277391,
+      "n": 25415,
+      "p50": 7.04388756265395,
+      "p90": 9.23581367563564,
+      "p95": 11.489514128152578,
+      "p99": 14.753183640117129
+     },
+     "recv_to_decision": {
+      "mean": 504.0543384053554,
+      "n": 25415,
+      "p50": 503.7424900371104,
+      "p90": 902.7442431281631,
+      "p95": 951.01987401228,
+      "p99": 989.9945641671675
+     }
+    },
+    "aoi_ms": {
+     "mean": 510.48591614063287,
+     "n": 25415,
+     "p50": 510.0057480359128,
+     "p90": 909.1205829057092,
+     "p95": 957.2265786559981,
+     "p99": 996.5579590470454
+    },
+    "counters": {
+     "candidate_count_1": 23015,
+     "candidate_count_2": 7246,
+     "candidate_count_3": 18511,
+     "evaluable": 25415,
+     "forward": 48772,
+     "forward_multicandidate": 25757,
+     "kind_deliver": 2024,
+     "kind_forward": 48772,
+     "rows": 50796
+    },
+    "coverage": {
+     "candidate_count_histogram": {
+      "1": 23015,
+      "2": 7246,
+      "3": 18511
+     },
+     "evaluable_fraction_of_multicandidate": 0.9867220561400785,
+     "n_decision_rows_total": 50796,
+     "n_evaluable_with_truth": 25415,
+     "n_forward_multicandidate": 25757,
+     "n_forward_total": 48772
+    },
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 1.0,
+     "chosen_not_used_argmin": 0,
+     "geometry_policy_top_mismatch": 0,
+     "note": "chosen_not_used_argmin is expected > 0 only for hysteresis/sticky/softmin (their rule may hold or sample a non-argmin); geometry_policy_top_mismatch and audit_identity_violations must be 0"
+    },
+    "entropy_bits": {
+     "mean": null,
+     "n": 0,
+     "reason": "no selection.probabilities/selection.entropy in the state_policy audit for this policy"
+    },
+    "excluded_reasons": {
+     "chosen_or_pair_without_truth": 59,
+     "lt_two_fully_known_candidates": 283
+    },
+    "flip": {
+     "denominator": "kind=='forward' AND >=2 legal candidates AND >=2 candidates with a usable truth row AND the chosen candidate itself has a usable truth row; every flip/regret/W/Gamma statistic is computed on it",
+     "rule": {
+      "flips": 7057,
+      "n": 25415,
+      "rate": 0.27767066692897896
+     },
+     "semantics": "truth_substituted_rerank_not_resimulated_counterfactual",
+     "truth_argmin": {
+      "flips": 7057,
+      "n": 25415,
+      "rate": 0.27767066692897896
+     }
+    },
+    "flip_vs_margin_bins": [
+     {
+      "flip_rule": {
+       "flips": 298,
+       "n": 874,
+       "rate": 0.34096109839816935
+      },
+      "flip_truth": {
+       "flips": 298,
+       "n": 874,
+       "rate": 0.34096109839816935
+      },
+      "high": 0.0002,
+      "label": "lt_0.2ms",
+      "low": null,
+      "n": 874
+     },
+     {
+      "flip_rule": {
+       "flips": 566,
+       "n": 808,
+       "rate": 0.7004950495049505
+      },
+      "flip_truth": {
+       "flips": 566,
+       "n": 808,
+       "rate": 0.7004950495049505
+      },
+      "high": 0.001,
+      "label": "0.2_1ms",
+      "low": 0.0002,
+      "n": 808
+     },
+     {
+      "flip_rule": {
+       "flips": 972,
+       "n": 1608,
+       "rate": 0.6044776119402985
+      },
+      "flip_truth": {
+       "flips": 972,
+       "n": 1608,
+       "rate": 0.6044776119402985
+      },
+      "high": 0.002,
+      "label": "1_2ms",
+      "low": 0.001,
+      "n": 1608
+     },
+     {
+      "flip_rule": {
+       "flips": 3015,
+       "n": 4678,
+       "rate": 0.6445061992304404
+      },
+      "flip_truth": {
+       "flips": 3015,
+       "n": 4678,
+       "rate": 0.6445061992304404
+      },
+      "high": 0.005,
+      "label": "2_5ms",
+      "low": 0.002,
+      "n": 4678
+     },
+     {
+      "flip_rule": {
+       "flips": 1779,
+       "n": 4376,
+       "rate": 0.40653564899451555
+      },
+      "flip_truth": {
+       "flips": 1779,
+       "n": 4376,
+       "rate": 0.40653564899451555
+      },
+      "high": 0.01,
+      "label": "5_10ms",
+      "low": 0.005,
+      "n": 4376
+     },
+     {
+      "flip_rule": {
+       "flips": 427,
+       "n": 12224,
+       "rate": 0.03493128272251309
+      },
+      "flip_truth": {
+       "flips": 427,
+       "n": 12224,
+       "rate": 0.03493128272251309
+      },
+      "high": 0.05,
+      "label": "10_50ms",
+      "low": 0.01,
+      "n": 12224
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 847,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 847,
+       "rate": 0.0
+      },
+      "high": null,
+      "label": "ge_50ms",
+      "low": 0.05,
+      "n": 847
+     }
+    ],
+    "flip_vs_tau_bins": [
+     {
+      "flip_rule": {
+       "flips": 303,
+       "n": 1081,
+       "rate": 0.2802960222016651
+      },
+      "flip_truth": {
+       "flips": 303,
+       "n": 1081,
+       "rate": 0.2802960222016651
+      },
+      "high": 0.05,
+      "label": "lt_50ms",
+      "low": null,
+      "n": 1081
+     },
+     {
+      "flip_rule": {
+       "flips": 334,
+       "n": 1207,
+       "rate": 0.2767191383595692
+      },
+      "flip_truth": {
+       "flips": 334,
+       "n": 1207,
+       "rate": 0.2767191383595692
+      },
+      "high": 0.1,
+      "label": "50_100ms",
+      "low": 0.05,
+      "n": 1207
+     },
+     {
+      "flip_rule": {
+       "flips": 1043,
+       "n": 3783,
+       "rate": 0.27570711075865717
+      },
+      "flip_truth": {
+       "flips": 1043,
+       "n": 3783,
+       "rate": 0.27570711075865717
+      },
+      "high": 0.25,
+      "label": "100_250ms",
+      "low": 0.1,
+      "n": 3783
+     },
+     {
+      "flip_rule": {
+       "flips": 1742,
+       "n": 6367,
+       "rate": 0.27359824092979423
+      },
+      "flip_truth": {
+       "flips": 1742,
+       "n": 6367,
+       "rate": 0.27359824092979423
+      },
+      "high": 0.5,
+      "label": "250_500ms",
+      "low": 0.25,
+      "n": 6367
+     },
+     {
+      "flip_rule": {
+       "flips": 3601,
+       "n": 12810,
+       "rate": 0.28110850897736145
+      },
+      "flip_truth": {
+       "flips": 3601,
+       "n": 12810,
+       "rate": 0.28110850897736145
+      },
+      "high": 1.0,
+      "label": "500ms_1s",
+      "low": 0.5,
+      "n": 12810
+     },
+     {
+      "flip_rule": {
+       "flips": 34,
+       "n": 167,
+       "rate": 0.20359281437125748
+      },
+      "flip_truth": {
+       "flips": 34,
+       "n": 167,
+       "rate": 0.20359281437125748
+      },
+      "high": null,
+      "label": "ge_1s",
+      "low": 1.0,
+      "n": 167
+     }
+    ],
+    "gamma": {
+     "bins": [
+      {
+       "flip_rule": {
+        "flips": 2758,
+        "n": 17434,
+        "rate": 0.15819662728002754
+       },
+       "flip_truth": {
+        "flips": 2758,
+        "n": 17434,
+        "rate": 0.15819662728002754
+       },
+       "high": 0.5,
+       "label": "lt_0.5",
+       "low": null,
+       "n": 17434
+      },
+      {
+       "flip_rule": {
+        "flips": 1053,
+        "n": 2272,
+        "rate": 0.46346830985915494
+       },
+       "flip_truth": {
+        "flips": 1053,
+        "n": 2272,
+        "rate": 0.46346830985915494
+       },
+       "high": 1.0,
+       "label": "0.5_1",
+       "low": 0.5,
+       "n": 2272
+      },
+      {
+       "flip_rule": {
+        "flips": 1042,
+        "n": 1741,
+        "rate": 0.5985066053991959
+       },
+       "flip_truth": {
+        "flips": 1042,
+        "n": 1741,
+        "rate": 0.5985066053991959
+       },
+       "high": 2.0,
+       "label": "1_2",
+       "low": 1.0,
+       "n": 1741
+      },
+      {
+       "flip_rule": {
+        "flips": 910,
+        "n": 1388,
+        "rate": 0.6556195965417867
+       },
+       "flip_truth": {
+        "flips": 910,
+        "n": 1388,
+        "rate": 0.6556195965417867
+       },
+       "high": 5.0,
+       "label": "2_5",
+       "low": 2.0,
+       "n": 1388
+      },
+      {
+       "flip_rule": {
+        "flips": 949,
+        "n": 1249,
+        "rate": 0.7598078462770216
+       },
+       "flip_truth": {
+        "flips": 949,
+        "n": 1249,
+        "rate": 0.7598078462770216
+       },
+       "high": null,
+       "label": "gt_5",
+       "low": 5.0,
+       "n": 1249
+      }
+     ],
+     "definition": "|d(Q_a/rate_a)/dt - d(Q_b/rate_b)/dt| * tau / m_used over the used-state top-1/top-2 pair; slope from a local linear fit over +-0.25 s of the probe truth series at the decision target instant",
+     "median": 0.12750505818536895,
+     "n": 24084
+    },
+    "gamma_note": "each Gamma bin's flip rate is over the records in that bin; the n column is the bin size",
+    "legacy_fallback_records": 0,
+    "margin_ms": {
+     "note": "used = J_used 1st/2nd gap; truth = J_truth 1st/2nd gap",
+     "truth": {
+      "mean": 14.080207340300557,
+      "n": 25415,
+      "p50": 9.538033721678051,
+      "p90": 27.96439470584397,
+      "p95": 34.02794051477605,
+      "p99": 72.75063976395627
+     },
+     "used": {
+      "mean": 15.431691057810362,
+      "n": 25415,
+      "p50": 10.559125142140857,
+      "p90": 31.395004033323527,
+      "p95": 36.39454559440537,
+      "p99": 72.75063976395654
+     }
+    },
+    "n_evaluable": 25415,
+    "near_tie_frac": {
+     "eps_0.2ms": 0.034389140271493215,
+     "eps_0.5ms": 0.044698012984458,
+     "eps_1ms": 0.06618138894353728,
+     "eps_2ms": 0.12945111154829825,
+     "eps_5ms": 0.3135156403698603
+    },
+    "probe": {
+     "decisions_in_probe": 48772,
+     "identity_sources": {
+      "live_audit_not_used_by_predictor (resource_id+generation)": 2348,
+      "used_state": 90692
+     },
+     "rows": 93040,
+     "truth_resources": 366,
+     "truth_rows": 90692
+    },
+    "regret_ms": {
+     "frac_gt_0": 0.27767066692897896,
+     "frac_gt_1ms": 0.2673617942160142,
+     "mean": 2.02575747599341,
+     "n": 25415,
+     "p50": 0.0,
+     "p90": 8.013711627766234,
+     "p99": 17.259039631953215
+    },
+    "run_length": {
+     "max": 366,
+     "mean": 3.194846008799497,
+     "p50": 1.0,
+     "p90": 5.0,
+     "runs": 7955
+    },
+    "scalars": {
+     "aoi_p50_ms": 510.0057480359128,
+     "aoi_p90_ms": 909.1205829057092,
+     "aoi_p95_ms": 957.2265786559981,
+     "aoi_p99_ms": 996.5579590470454,
+     "crosscheck_audit_identity_violations": 0,
+     "crosscheck_geometry_mismatch": 0,
+     "ctrl_expired": 0,
+     "ctrl_offered_mbits": 24.376896,
+     "ctrl_share": 0.011607759999913609,
+     "e2e_mean_ms": 408.0592771665568,
+     "e2e_p50_ms": 430.6585135480665,
+     "e2e_p95_ms": 664.4030225857982,
+     "e2e_p99_ms": 964.6851712012792,
+     "entropy_mean_bits": null,
+     "flip_rule_rate": 0.27767066692897896,
+     "flip_truth_rate": 0.27767066692897896,
+     "gamma_median": 0.12750505818536895,
+     "hops_mean": 23.65118577075099,
+     "hops_p95": 39.0,
+     "isl_data_area": 35862703.7485628,
+     "margin_truth_p50_ms": 9.538033721678051,
+     "margin_used_p50_ms": 10.559125142140857,
+     "n_decisions_multicandidate": 25757,
+     "n_evaluable": 25415,
+     "near_tie_1ms_frac": 0.06618138894353728,
+     "near_tie_2ms_frac": 0.12945111154829825,
+     "near_tie_5ms_frac": 0.3135156403698603,
+     "pdr": 0.9887640449438202,
+     "regret_frac_gt0": 0.27767066692897896,
+     "regret_frac_gt1ms": 0.2673617942160142,
+     "regret_mean_ms": 2.02575747599341,
+     "regret_p50_ms": 0.0,
+     "regret_p90_ms": 8.013711627766234,
+     "regret_p99_ms": 17.259039631953215,
+     "run_length_mean_decisions": 3.194846008799497,
+     "sticky_keep_rate": null,
+     "sticky_override_rate": null,
+     "switch_rate": 0.3075275640517173,
+     "throughput_mbps": 101.2,
+     "util_busy_max": 0.47199999999999004,
+     "util_busy_p95": 0.32999999999999297
+    },
+    "sticky": {
+     "keep_rate": null,
+     "n_override_audit": 0,
+     "n_with_audit": 0,
+     "override_rate": null,
+     "reason": "no sticky_keep/override fields in the audit"
+    },
+    "switch": {
+     "pairs": 25214,
+     "rate": 0.3075275640517173,
+     "streams": 201,
+     "switches": 7754
+    },
+    "wrong_duration_W_ms": {
+     "definition": "consecutive-wrong-decision duration: per (sat,dst) stream and per flip decision at t0, W = t1 - t0 with t1 the next later NON-flip decision of that stream; censored at the horizon. NOT packet queueing time",
+     "rule": {
+      "censored_frac": 0.10230976335553352,
+      "mean_ms": 597.7880676288986,
+      "median_ms": 121.12486063102956,
+      "n_censored": 722,
+      "n_flips": 7057,
+      "n_uncensored": 6335,
+      "p90_ms": 1705.8720172865662
+     },
+     "truth_argmin": {
+      "censored_frac": 0.10230976335553352,
+      "mean_ms": 597.7880676288986,
+      "median_ms": 121.12486063102956,
+      "n_censored": 722,
+      "n_flips": 7057,
+      "n_uncensored": 6335,
+      "p90_ms": 1705.8720172865662
+     }
+    }
+   },
+   "meta": {
+    "appendix": false,
+    "cell_id": "m3-c2-queue_greedy-h1000-s7",
+    "config_seed": 7,
+    "config_sha256": "428b1a504bbc59a84b290aa010d394faf6d200749fa17f43f850239c8e4b18fb",
+    "family": "m3",
+    "id_parsed": true,
+    "policy": "queue_greedy",
+    "policy_known": true,
+    "policy_params": {
+     "advertise_interval_s": 1.0,
+     "control_plane": {
+      "advertise_interval_s": 1.0,
+      "packet_bits": 2000,
+      "priority": "nonpreemptive_priority",
+      "ttl_s": 10.0,
+      "vis_k": 1
+     },
+     "ewma_alpha": 0.25,
+     "hysteresis_eta_s": 0.0,
+     "predictor": "hold_last",
+     "softmin_temperature_s": 0.01,
+     "state_policy": "queue_greedy",
+     "state_source": "advertised",
+     "sticky_hold_s": 0.1
+    },
+    "policy_raw": "queue_greedy",
+    "regime": "c2",
+    "seed": 7,
+    "seed_note": null,
+    "series": "sync",
+    "sync_ms": 1000,
+    "trace_jsonl_sha256": "4113b3e2aa11c0c9e4943339f098ec0dbe2c6283e8a859446e99aec4a4e8ed94",
+    "trace_key": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+    "trace_rows": 2047,
+    "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+    "variant": null
+   },
+   "network": {
+    "control": {
+     "bits": {
+      "delivered": 23215520,
+      "in_system": 1161376,
+      "offered": 24376896,
+      "terminal_loss": 0
+     },
+     "counters": {
+      "arrived": 7280,
+      "duplicate": 0,
+      "entered_queue": 7644,
+      "expired": 0,
+      "geometry_lost": 0,
+      "in_system": 364,
+      "lost": 0,
+      "overflow": 0,
+      "registered": 7644,
+      "snapshots_created": 2940,
+      "transmission_completed": 7280,
+      "transmission_started": 7644
+     },
+     "ctrl_isl_s": 0.23215519999827217,
+     "fate_counts": {
+      "CONTROL_EXPIRED": 0,
+      "DELIVERED": 7280,
+      "DUPLICATE": 0,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "IN_SYSTEM_AT_STOP": 364,
+      "QUEUE_OVERFLOW": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "instances": 7644,
+     "offered_mbits": 24.376896,
+     "queue_area_bits_s": 7546.932238238615,
+     "service_share": 0.011607759999913609,
+     "service_share_method": "occupied.ctrl_isl_s / stop_time_s (the ledger's authoritative control ISL occupancy).  link_service_windows carry no kind=='ctrl' marker, so the window-sum variant is not available"
+    },
+    "delivery": {
+     "delivered_bits": 2024000000,
+     "delivered_packets": 2024,
+     "fate_counts": {
+      "ACCESS_QUEUE_OVERFLOW": 0,
+      "ACCESS_REJECTED": 0,
+      "DATA_DEADLINE_EXPIRED": 0,
+      "DELIVERED": 2024,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "HOLDING_QUEUE_OVERFLOW": 0,
+      "IN_SYSTEM_AT_STOP": 19,
+      "ISL_QUEUE_OVERFLOW": 0,
+      "NO_ROUTE": 4,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "offered_bits": 2047000000,
+     "offered_packets": 2047,
+     "pdr": 0.9887640449438202,
+     "pdr_by_horizon": 0.9887640449438202,
+     "terminal_loss_bits": 4000000
+    },
+    "e2e_ms": {
+     "mean": 408.0592771665568,
+     "n": 2024,
+     "p50": 430.6585135480665,
+     "p90": 592.7344365629548,
+     "p95": 664.4030225857982,
+     "p99": 964.6851712012792
+    },
+    "error": null,
+    "hops": {
+     "max": 63,
+     "mean": 23.65118577075099,
+     "n": 2024,
+     "p50": 25.0,
+     "p95": 39.0,
+     "path_stretch": null,
+     "path_stretch_reason": "no shortest-path baseline in evidence"
+    },
+    "link_util": {
+     "bits_fraction_max": 0.472,
+     "busy_fraction_max": 0.47199999999999004,
+     "busy_fraction_p95": 0.32999999999999297,
+     "definition": "per ISL link: sum(window.end-window.start for stage=='isl') / stop_time from link_service_windows; max/p95 over links that served data.  Static topology in these cells, so no availability correction",
+     "duration_s": 20.0,
+     "isl_links_with_windows": 283
+    },
+    "natural_end": true,
+    "queue_area_bits_s": {
+     "downlink": 130.08117909940609,
+     "holding": 185804090.90394083,
+     "isl_ctrl": 7546.932238238615,
+     "isl_data": 35862703.7485628,
+     "uplink": 51077.9999999933
+    },
+    "stop_time_s": 20.0,
+    "throughput_mbps": 101.2
+   },
+   "source": {
+    "config_sha256": "428b1a504bbc59a84b290aa010d394faf6d200749fa17f43f850239c8e4b18fb",
+    "decisions": {
+     "rows": 50796
+    },
+    "trace_manifest": {
+     "jsonl_sha256": "4113b3e2aa11c0c9e4943339f098ec0dbe2c6283e8a859446e99aec4a4e8ed94",
+     "native_population": null,
+     "rows": 2047,
+     "source_rows": 2047,
+     "source_rows_digest": null,
+     "source_trace_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c"
+    }
+   },
+   "warnings": []
+  },
+  "m3-c2-queue_greedy_ewma-h1000-s7": {
+   "cell_dir": "/Users/lge/Desktop/topic/\u4e09\u7aef\u6587\u4ef6\u4e0e\u540c\u6b65\u6cbb\u7406/evidence/t1/sq5-m3-c2-queue_greedy_ewma-h1000-s7-20261031-01/m3-c2-queue_greedy_ewma-h1000-s7",
+   "cell_id": "m3-c2-queue_greedy_ewma-h1000-s7",
+   "decisions": {
+    "aoi_decomposition_ms": {
+     "advertisement_delivery": {
+      "definition": "probe state_received_at_s - state_measured_at_s (advertisement age at receipt)",
+      "mean": 7.234893656316863,
+      "n": 88728,
+      "p50": 7.306903976395773,
+      "p90": 7.308903976396053,
+      "p95": 12.03065598715547,
+      "p99": 16.12040698551276
+     },
+     "gen_to_recv": {
+      "mean": 6.233360198029309,
+      "n": 25252,
+      "p50": 6.969818239121572,
+      "p90": 8.088089354140848,
+      "p95": 12.03065598715547,
+      "p99": 15.80778316957776
+     },
+     "recv_to_decision": {
+      "mean": 501.48279429817364,
+      "n": 25252,
+      "p50": 499.2508960305937,
+      "p90": 901.6915123658836,
+      "p95": 950.0964604440228,
+      "p99": 989.9773141380566
+     }
+    },
+    "aoi_ms": {
+     "mean": 507.716154496203,
+     "n": 25252,
+     "p50": 505.8052826792334,
+     "p90": 907.6576987536669,
+     "p95": 956.0488393985,
+     "p99": 996.0722622020928
+    },
+    "counters": {
+     "candidate_count_1": 21858,
+     "candidate_count_2": 7163,
+     "candidate_count_3": 18221,
+     "evaluable": 25252,
+     "forward": 47242,
+     "forward_multicandidate": 25384,
+     "kind_deliver": 2040,
+     "kind_forward": 47242,
+     "rows": 49282
+    },
+    "coverage": {
+     "candidate_count_histogram": {
+      "1": 21858,
+      "2": 7163,
+      "3": 18221
+     },
+     "evaluable_fraction_of_multicandidate": 0.9947998739363378,
+     "n_decision_rows_total": 49282,
+     "n_evaluable_with_truth": 25252,
+     "n_forward_multicandidate": 25384,
+     "n_forward_total": 47242
+    },
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 1.0,
+     "chosen_not_used_argmin": 0,
+     "geometry_policy_top_mismatch": 0,
+     "note": "chosen_not_used_argmin is expected > 0 only for hysteresis/sticky/softmin (their rule may hold or sample a non-argmin); geometry_policy_top_mismatch and audit_identity_violations must be 0"
+    },
+    "entropy_bits": {
+     "mean": null,
+     "n": 0,
+     "reason": "no selection.probabilities/selection.entropy in the state_policy audit for this policy"
+    },
+    "excluded_reasons": {
+     "chosen_or_pair_without_truth": 65,
+     "lt_two_fully_known_candidates": 67
+    },
+    "flip": {
+     "denominator": "kind=='forward' AND >=2 legal candidates AND >=2 candidates with a usable truth row AND the chosen candidate itself has a usable truth row; every flip/regret/W/Gamma statistic is computed on it",
+     "rule": {
+      "flips": 6654,
+      "n": 25252,
+      "rate": 0.2635038808807223
+     },
+     "semantics": "truth_substituted_rerank_not_resimulated_counterfactual",
+     "truth_argmin": {
+      "flips": 6654,
+      "n": 25252,
+      "rate": 0.2635038808807223
+     }
+    },
+    "flip_vs_margin_bins": [
+     {
+      "flip_rule": {
+       "flips": 339,
+       "n": 535,
+       "rate": 0.6336448598130842
+      },
+      "flip_truth": {
+       "flips": 339,
+       "n": 535,
+       "rate": 0.6336448598130842
+      },
+      "high": 0.0002,
+      "label": "lt_0.2ms",
+      "low": null,
+      "n": 535
+     },
+     {
+      "flip_rule": {
+       "flips": 970,
+       "n": 1287,
+       "rate": 0.7536907536907537
+      },
+      "flip_truth": {
+       "flips": 970,
+       "n": 1287,
+       "rate": 0.7536907536907537
+      },
+      "high": 0.001,
+      "label": "0.2_1ms",
+      "low": 0.0002,
+      "n": 1287
+     },
+     {
+      "flip_rule": {
+       "flips": 1603,
+       "n": 2416,
+       "rate": 0.6634933774834437
+      },
+      "flip_truth": {
+       "flips": 1603,
+       "n": 2416,
+       "rate": 0.6634933774834437
+      },
+      "high": 0.002,
+      "label": "1_2ms",
+      "low": 0.001,
+      "n": 2416
+     },
+     {
+      "flip_rule": {
+       "flips": 2990,
+       "n": 4818,
+       "rate": 0.6205894562058946
+      },
+      "flip_truth": {
+       "flips": 2990,
+       "n": 4818,
+       "rate": 0.6205894562058946
+      },
+      "high": 0.005,
+      "label": "2_5ms",
+      "low": 0.002,
+      "n": 4818
+     },
+     {
+      "flip_rule": {
+       "flips": 553,
+       "n": 3008,
+       "rate": 0.18384308510638298
+      },
+      "flip_truth": {
+       "flips": 553,
+       "n": 3008,
+       "rate": 0.18384308510638298
+      },
+      "high": 0.01,
+      "label": "5_10ms",
+      "low": 0.005,
+      "n": 3008
+     },
+     {
+      "flip_rule": {
+       "flips": 199,
+       "n": 12312,
+       "rate": 0.01616309291747888
+      },
+      "flip_truth": {
+       "flips": 199,
+       "n": 12312,
+       "rate": 0.01616309291747888
+      },
+      "high": 0.05,
+      "label": "10_50ms",
+      "low": 0.01,
+      "n": 12312
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 876,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 876,
+       "rate": 0.0
+      },
+      "high": null,
+      "label": "ge_50ms",
+      "low": 0.05,
+      "n": 876
+     }
+    ],
+    "flip_vs_tau_bins": [
+     {
+      "flip_rule": {
+       "flips": 280,
+       "n": 1090,
+       "rate": 0.25688073394495414
+      },
+      "flip_truth": {
+       "flips": 280,
+       "n": 1090,
+       "rate": 0.25688073394495414
+      },
+      "high": 0.05,
+      "label": "lt_50ms",
+      "low": null,
+      "n": 1090
+     },
+     {
+      "flip_rule": {
+       "flips": 321,
+       "n": 1236,
+       "rate": 0.25970873786407767
+      },
+      "flip_truth": {
+       "flips": 321,
+       "n": 1236,
+       "rate": 0.25970873786407767
+      },
+      "high": 0.1,
+      "label": "50_100ms",
+      "low": 0.05,
+      "n": 1236
+     },
+     {
+      "flip_rule": {
+       "flips": 1014,
+       "n": 3828,
+       "rate": 0.26489028213166144
+      },
+      "flip_truth": {
+       "flips": 1014,
+       "n": 3828,
+       "rate": 0.26489028213166144
+      },
+      "high": 0.25,
+      "label": "100_250ms",
+      "low": 0.1,
+      "n": 3828
+     },
+     {
+      "flip_rule": {
+       "flips": 1619,
+       "n": 6326,
+       "rate": 0.2559279165349352
+      },
+      "flip_truth": {
+       "flips": 1619,
+       "n": 6326,
+       "rate": 0.2559279165349352
+      },
+      "high": 0.5,
+      "label": "250_500ms",
+      "low": 0.25,
+      "n": 6326
+     },
+     {
+      "flip_rule": {
+       "flips": 3386,
+       "n": 12619,
+       "rate": 0.26832554085109755
+      },
+      "flip_truth": {
+       "flips": 3386,
+       "n": 12619,
+       "rate": 0.26832554085109755
+      },
+      "high": 1.0,
+      "label": "500ms_1s",
+      "low": 0.5,
+      "n": 12619
+     },
+     {
+      "flip_rule": {
+       "flips": 34,
+       "n": 153,
+       "rate": 0.2222222222222222
+      },
+      "flip_truth": {
+       "flips": 34,
+       "n": 153,
+       "rate": 0.2222222222222222
+      },
+      "high": null,
+      "label": "ge_1s",
+      "low": 1.0,
+      "n": 153
+     }
+    ],
+    "gamma": {
+     "bins": [
+      {
+       "flip_rule": {
+        "flips": 2672,
+        "n": 18089,
+        "rate": 0.14771408038034164
+       },
+       "flip_truth": {
+        "flips": 2672,
+        "n": 18089,
+        "rate": 0.14771408038034164
+       },
+       "high": 0.5,
+       "label": "lt_0.5",
+       "low": null,
+       "n": 18089
+      },
+      {
+       "flip_rule": {
+        "flips": 862,
+        "n": 2022,
+        "rate": 0.42631058358061324
+       },
+       "flip_truth": {
+        "flips": 862,
+        "n": 2022,
+        "rate": 0.42631058358061324
+       },
+       "high": 1.0,
+       "label": "0.5_1",
+       "low": 0.5,
+       "n": 2022
+      },
+      {
+       "flip_rule": {
+        "flips": 843,
+        "n": 1488,
+        "rate": 0.5665322580645161
+       },
+       "flip_truth": {
+        "flips": 843,
+        "n": 1488,
+        "rate": 0.5665322580645161
+       },
+       "high": 2.0,
+       "label": "1_2",
+       "low": 1.0,
+       "n": 1488
+      },
+      {
+       "flip_rule": {
+        "flips": 889,
+        "n": 1282,
+        "rate": 0.6934477379095164
+       },
+       "flip_truth": {
+        "flips": 889,
+        "n": 1282,
+        "rate": 0.6934477379095164
+       },
+       "high": 5.0,
+       "label": "2_5",
+       "low": 2.0,
+       "n": 1282
+      },
+      {
+       "flip_rule": {
+        "flips": 1125,
+        "n": 1449,
+        "rate": 0.7763975155279503
+       },
+       "flip_truth": {
+        "flips": 1125,
+        "n": 1449,
+        "rate": 0.7763975155279503
+       },
+       "high": null,
+       "label": "gt_5",
+       "low": 5.0,
+       "n": 1449
+      }
+     ],
+     "definition": "|d(Q_a/rate_a)/dt - d(Q_b/rate_b)/dt| * tau / m_used over the used-state top-1/top-2 pair; slope from a local linear fit over +-0.25 s of the probe truth series at the decision target instant",
+     "median": 0.0962265843907287,
+     "n": 24330
+    },
+    "gamma_note": "each Gamma bin's flip rate is over the records in that bin; the n column is the bin size",
+    "legacy_fallback_records": 0,
+    "margin_ms": {
+     "note": "used = J_used 1st/2nd gap; truth = J_truth 1st/2nd gap",
+     "truth": {
+      "mean": 13.903786181274254,
+      "n": 25252,
+      "p50": 9.530000876240564,
+      "p90": 27.95409952178135,
+      "p95": 34.01641000332227,
+      "p99": 72.75063976395619
+     },
+     "used": {
+      "mean": 15.098312449665364,
+      "n": 25252,
+      "p50": 10.676326323467544,
+      "p90": 31.030243606734945,
+      "p95": 34.76008558967129,
+      "p99": 72.75063976395633
+     }
+    },
+    "n_evaluable": 25252,
+    "near_tie_frac": {
+     "eps_0.2ms": 0.0211864406779661,
+     "eps_0.5ms": 0.043164897829874864,
+     "eps_1ms": 0.07215270077617615,
+     "eps_2ms": 0.16782829082844924,
+     "eps_5ms": 0.35862505940123557
+    },
+    "probe": {
+     "decisions_in_probe": 47242,
+     "identity_sources": {
+      "live_audit_not_used_by_predictor (resource_id+generation)": 2119,
+      "used_state": 88728
+     },
+     "rows": 90847,
+     "truth_resources": 351,
+     "truth_rows": 88728
+    },
+    "regret_ms": {
+     "frac_gt_0": 0.2635038808807223,
+     "frac_gt_1ms": 0.2438618723269444,
+     "mean": 1.669107217565575,
+     "n": 25252,
+     "p50": 0.0,
+     "p90": 6.578121567273387,
+     "p99": 14.805075720494171
+    },
+    "run_length": {
+     "max": 704,
+     "mean": 6.073112073112073,
+     "p50": 1.0,
+     "p90": 9.0,
+     "runs": 4158
+    },
+    "scalars": {
+     "aoi_p50_ms": 505.8052826792334,
+     "aoi_p90_ms": 907.6576987536669,
+     "aoi_p95_ms": 956.0488393985,
+     "aoi_p99_ms": 996.0722622020928,
+     "crosscheck_audit_identity_violations": 0,
+     "crosscheck_geometry_mismatch": 0,
+     "ctrl_expired": 0,
+     "ctrl_offered_mbits": 24.376896,
+     "ctrl_share": 0.011607759999913609,
+     "e2e_mean_ms": 396.1392382308753,
+     "e2e_p50_ms": 437.37898994740476,
+     "e2e_p95_ms": 526.5834496778705,
+     "e2e_p99_ms": 680.2177000875354,
+     "entropy_mean_bits": null,
+     "flip_rule_rate": 0.2635038808807223,
+     "flip_truth_rate": 0.2635038808807223,
+     "gamma_median": 0.0962265843907287,
+     "hops_mean": 23.03921568627451,
+     "hops_p95": 30.0,
+     "isl_data_area": 32439278.992816698,
+     "margin_truth_p50_ms": 9.530000876240564,
+     "margin_used_p50_ms": 10.676326323467544,
+     "n_decisions_multicandidate": 25384,
+     "n_evaluable": 25252,
+     "near_tie_1ms_frac": 0.07215270077617615,
+     "near_tie_2ms_frac": 0.16782829082844924,
+     "near_tie_5ms_frac": 0.35862505940123557,
+     "pdr": 0.9965803615046409,
+     "regret_frac_gt0": 0.2635038808807223,
+     "regret_frac_gt1ms": 0.2438618723269444,
+     "regret_mean_ms": 1.669107217565575,
+     "regret_p50_ms": 0.0,
+     "regret_p90_ms": 6.578121567273387,
+     "regret_p99_ms": 14.805075720494171,
+     "run_length_mean_decisions": 6.073112073112073,
+     "sticky_keep_rate": null,
+     "sticky_override_rate": null,
+     "switch_rate": 0.15792415169660678,
+     "throughput_mbps": 102.0,
+     "util_busy_max": 0.47199999999999004,
+     "util_busy_p95": 0.35599999999999243
+    },
+    "sticky": {
+     "keep_rate": null,
+     "n_override_audit": 0,
+     "n_with_audit": 0,
+     "override_rate": null,
+     "reason": "no sticky_keep/override fields in the audit"
+    },
+    "switch": {
+     "pairs": 25050,
+     "rate": 0.15792415169660678,
+     "streams": 202,
+     "switches": 3956
+    },
+    "wrong_duration_W_ms": {
+     "definition": "consecutive-wrong-decision duration: per (sat,dst) stream and per flip decision at t0, W = t1 - t0 with t1 the next later NON-flip decision of that stream; censored at the horizon. NOT packet queueing time",
+     "rule": {
+      "censored_frac": 0.2902013826269913,
+      "mean_ms": 1066.2078446755,
+      "median_ms": 170.54866774123667,
+      "n_censored": 1931,
+      "n_flips": 6654,
+      "n_uncensored": 4723,
+      "p90_ms": 3681.0058795946147
+     },
+     "truth_argmin": {
+      "censored_frac": 0.2902013826269913,
+      "mean_ms": 1066.2078446755,
+      "median_ms": 170.54866774123667,
+      "n_censored": 1931,
+      "n_flips": 6654,
+      "n_uncensored": 4723,
+      "p90_ms": 3681.0058795946147
+     }
+    }
+   },
+   "meta": {
+    "appendix": false,
+    "cell_id": "m3-c2-queue_greedy_ewma-h1000-s7",
+    "config_seed": 7,
+    "config_sha256": "fd25d8edb7dd36fc5485cd455a851ef6cd62de4bb77e4b847e54b28c6969a25b",
+    "family": "m3",
+    "id_parsed": true,
+    "policy": "queue_greedy_ewma",
+    "policy_known": true,
+    "policy_params": {
+     "advertise_interval_s": 1.0,
+     "control_plane": {
+      "advertise_interval_s": 1.0,
+      "packet_bits": 2000,
+      "priority": "nonpreemptive_priority",
+      "ttl_s": 10.0,
+      "vis_k": 1
+     },
+     "ewma_alpha": 0.25,
+     "hysteresis_eta_s": 0.0,
+     "predictor": "hold_last",
+     "softmin_temperature_s": 0.01,
+     "state_policy": "queue_greedy_ewma",
+     "state_source": "advertised",
+     "sticky_hold_s": 0.1
+    },
+    "policy_raw": "queue_greedy_ewma",
+    "regime": "c2",
+    "seed": 7,
+    "seed_note": null,
+    "series": "sync",
+    "sync_ms": 1000,
+    "trace_jsonl_sha256": "4113b3e2aa11c0c9e4943339f098ec0dbe2c6283e8a859446e99aec4a4e8ed94",
+    "trace_key": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+    "trace_rows": 2047,
+    "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+    "variant": null
+   },
+   "network": {
+    "control": {
+     "bits": {
+      "delivered": 23215520,
+      "in_system": 1161376,
+      "offered": 24376896,
+      "terminal_loss": 0
+     },
+     "counters": {
+      "arrived": 7280,
+      "duplicate": 0,
+      "entered_queue": 7644,
+      "expired": 0,
+      "geometry_lost": 0,
+      "in_system": 364,
+      "lost": 0,
+      "overflow": 0,
+      "registered": 7644,
+      "snapshots_created": 2940,
+      "transmission_completed": 7280,
+      "transmission_started": 7644
+     },
+     "ctrl_isl_s": 0.23215519999827217,
+     "fate_counts": {
+      "CONTROL_EXPIRED": 0,
+      "DELIVERED": 7280,
+      "DUPLICATE": 0,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "IN_SYSTEM_AT_STOP": 364,
+      "QUEUE_OVERFLOW": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "instances": 7644,
+     "offered_mbits": 24.376896,
+     "queue_area_bits_s": 7673.306281453903,
+     "service_share": 0.011607759999913609,
+     "service_share_method": "occupied.ctrl_isl_s / stop_time_s (the ledger's authoritative control ISL occupancy).  link_service_windows carry no kind=='ctrl' marker, so the window-sum variant is not available"
+    },
+    "delivery": {
+     "delivered_bits": 2040000000,
+     "delivered_packets": 2040,
+     "fate_counts": {
+      "ACCESS_QUEUE_OVERFLOW": 0,
+      "ACCESS_REJECTED": 0,
+      "DATA_DEADLINE_EXPIRED": 0,
+      "DELIVERED": 2040,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "HOLDING_QUEUE_OVERFLOW": 0,
+      "IN_SYSTEM_AT_STOP": 7,
+      "ISL_QUEUE_OVERFLOW": 0,
+      "NO_ROUTE": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "offered_bits": 2047000000,
+     "offered_packets": 2047,
+     "pdr": 0.9965803615046409,
+     "pdr_by_horizon": 0.9965803615046409,
+     "terminal_loss_bits": 0
+    },
+    "e2e_ms": {
+     "mean": 396.1392382308753,
+     "n": 2040,
+     "p50": 437.37898994740476,
+     "p90": 508.75937898537416,
+     "p95": 526.5834496778705,
+     "p99": 680.2177000875354
+    },
+    "error": null,
+    "hops": {
+     "max": 44,
+     "mean": 23.03921568627451,
+     "n": 2040,
+     "p50": 26.0,
+     "p95": 30.0,
+     "path_stretch": null,
+     "path_stretch_reason": "no shortest-path baseline in evidence"
+    },
+    "link_util": {
+     "bits_fraction_max": 0.472,
+     "busy_fraction_max": 0.47199999999999004,
+     "busy_fraction_p95": 0.35599999999999243,
+     "definition": "per ISL link: sum(window.end-window.start for stage=='isl') / stop_time from link_service_windows; max/p95 over links that served data.  Static topology in these cells, so no availability correction",
+     "duration_s": 20.0,
+     "isl_links_with_windows": 271
+    },
+    "natural_end": true,
+    "queue_area_bits_s": {
+     "downlink": 26.348507512707897,
+     "holding": 49845584.91971885,
+     "isl_ctrl": 7673.306281453903,
+     "isl_data": 32439278.992816698,
+     "uplink": 51077.9999999933
+    },
+    "stop_time_s": 20.0,
+    "throughput_mbps": 102.0
+   },
+   "source": {
+    "config_sha256": "fd25d8edb7dd36fc5485cd455a851ef6cd62de4bb77e4b847e54b28c6969a25b",
+    "decisions": {
+     "rows": 49282
+    },
+    "trace_manifest": {
+     "jsonl_sha256": "4113b3e2aa11c0c9e4943339f098ec0dbe2c6283e8a859446e99aec4a4e8ed94",
+     "native_population": null,
+     "rows": 2047,
+     "source_rows": 2047,
+     "source_rows_digest": null,
+     "source_trace_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c"
+    }
+   },
+   "warnings": []
+  },
+  "m3-c2-queue_greedy_hysteresis-h1000-s9": {
+   "cell_dir": "/Users/lge/Desktop/topic/\u4e09\u7aef\u6587\u4ef6\u4e0e\u540c\u6b65\u6cbb\u7406/evidence/t1/sq5-m3-c2-queue_greedy_hysteresis-h1000-s9-20261031-01/m3-c2-queue_greedy_hysteresis-h1000-s9",
+   "cell_id": "m3-c2-queue_greedy_hysteresis-h1000-s9",
+   "decisions": {
+    "aoi_decomposition_ms": {
+     "advertisement_delivery": {
+      "definition": "probe state_received_at_s - state_measured_at_s (advertisement age at receipt)",
+      "mean": 7.353251533987822,
+      "n": 89821,
+      "p50": 7.306903976395773,
+      "p90": 8.828751850449734,
+      "p95": 12.343525488478058,
+      "p99": 16.278818847672127
+     },
+     "gen_to_recv": {
+      "mean": 6.39964222690039,
+      "n": 24627,
+      "p50": 7.04388756265395,
+      "p90": 9.10027530722246,
+      "p95": 12.07935376324265,
+      "p99": 15.751609929611554
+     },
+     "recv_to_decision": {
+      "mean": 493.0767477387366,
+      "n": 24627,
+      "p50": 491.10640805252183,
+      "p90": 898.1916390626399,
+      "p95": 950.7396494407701,
+      "p99": 990.328088340803
+     }
+    },
+    "aoi_ms": {
+     "mean": 499.47638996563694,
+     "n": 24627,
+     "p50": 497.1571888601529,
+     "p90": 904.5965303210481,
+     "p95": 957.2293069001896,
+     "p99": 996.9520162365875
+    },
+    "counters": {
+     "candidate_count_1": 23789,
+     "candidate_count_2": 6391,
+     "candidate_count_3": 18464,
+     "evaluable": 24627,
+     "forward": 48644,
+     "forward_multicandidate": 24855,
+     "kind_deliver": 1958,
+     "kind_forward": 48644,
+     "rows": 50602
+    },
+    "coverage": {
+     "candidate_count_histogram": {
+      "1": 23789,
+      "2": 6391,
+      "3": 18464
+     },
+     "evaluable_fraction_of_multicandidate": 0.9908267954133977,
+     "n_decision_rows_total": 50602,
+     "n_evaluable_with_truth": 24627,
+     "n_forward_multicandidate": 24855,
+     "n_forward_total": 48644
+    },
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 0.8800503512405083,
+     "chosen_not_used_argmin": 2954,
+     "geometry_policy_top_mismatch": 0,
+     "note": "chosen_not_used_argmin is expected > 0 only for hysteresis/sticky/softmin (their rule may hold or sample a non-argmin); geometry_policy_top_mismatch and audit_identity_violations must be 0"
+    },
+    "entropy_bits": {
+     "mean": null,
+     "n": 0,
+     "reason": "no selection.probabilities/selection.entropy in the state_policy audit for this policy"
+    },
+    "excluded_reasons": {
+     "chosen_or_pair_without_truth": 61,
+     "lt_two_fully_known_candidates": 167
+    },
+    "flip": {
+     "denominator": "kind=='forward' AND >=2 legal candidates AND >=2 candidates with a usable truth row AND the chosen candidate itself has a usable truth row; every flip/regret/W/Gamma statistic is computed on it",
+     "rule": {
+      "flips": 4403,
+      "n": 24627,
+      "rate": 0.1787875096438868
+     },
+     "semantics": "truth_substituted_rerank_not_resimulated_counterfactual",
+     "truth_argmin": {
+      "flips": 6998,
+      "n": 24627,
+      "rate": 0.2841596621594185
+     }
+    },
+    "flip_vs_margin_bins": [
+     {
+      "flip_rule": {
+       "flips": 158,
+       "n": 726,
+       "rate": 0.21763085399449036
+      },
+      "flip_truth": {
+       "flips": 371,
+       "n": 726,
+       "rate": 0.5110192837465565
+      },
+      "high": 0.0002,
+      "label": "lt_0.2ms",
+      "low": null,
+      "n": 726
+     },
+     {
+      "flip_rule": {
+       "flips": 643,
+       "n": 1240,
+       "rate": 0.5185483870967742
+      },
+      "flip_truth": {
+       "flips": 931,
+       "n": 1240,
+       "rate": 0.7508064516129033
+      },
+      "high": 0.001,
+      "label": "0.2_1ms",
+      "low": 0.0002,
+      "n": 1240
+     },
+     {
+      "flip_rule": {
+       "flips": 406,
+       "n": 1222,
+       "rate": 0.3322422258592471
+      },
+      "flip_truth": {
+       "flips": 737,
+       "n": 1222,
+       "rate": 0.6031096563011457
+      },
+      "high": 0.002,
+      "label": "1_2ms",
+      "low": 0.001,
+      "n": 1222
+     },
+     {
+      "flip_rule": {
+       "flips": 2011,
+       "n": 4616,
+       "rate": 0.4356585788561525
+      },
+      "flip_truth": {
+       "flips": 3088,
+       "n": 4616,
+       "rate": 0.6689774696707106
+      },
+      "high": 0.005,
+      "label": "2_5ms",
+      "low": 0.002,
+      "n": 4616
+     },
+     {
+      "flip_rule": {
+       "flips": 712,
+       "n": 3622,
+       "rate": 0.1965764770844837
+      },
+      "flip_truth": {
+       "flips": 1257,
+       "n": 3622,
+       "rate": 0.3470458310325787
+      },
+      "high": 0.01,
+      "label": "5_10ms",
+      "low": 0.005,
+      "n": 3622
+     },
+     {
+      "flip_rule": {
+       "flips": 473,
+       "n": 12804,
+       "rate": 0.036941580756013746
+      },
+      "flip_truth": {
+       "flips": 614,
+       "n": 12804,
+       "rate": 0.04795376444860981
+      },
+      "high": 0.05,
+      "label": "10_50ms",
+      "low": 0.01,
+      "n": 12804
+     },
+     {
+      "flip_rule": {
+       "flips": 0,
+       "n": 397,
+       "rate": 0.0
+      },
+      "flip_truth": {
+       "flips": 0,
+       "n": 397,
+       "rate": 0.0
+      },
+      "high": null,
+      "label": "ge_50ms",
+      "low": 0.05,
+      "n": 397
+     }
+    ],
+    "flip_vs_tau_bins": [
+     {
+      "flip_rule": {
+       "flips": 186,
+       "n": 1070,
+       "rate": 0.17383177570093458
+      },
+      "flip_truth": {
+       "flips": 289,
+       "n": 1070,
+       "rate": 0.27009345794392525
+      },
+      "high": 0.05,
+      "label": "lt_50ms",
+      "low": null,
+      "n": 1070
+     },
+     {
+      "flip_rule": {
+       "flips": 242,
+       "n": 1262,
+       "rate": 0.19175911251980982
+      },
+      "flip_truth": {
+       "flips": 379,
+       "n": 1262,
+       "rate": 0.30031695721077656
+      },
+      "high": 0.1,
+      "label": "50_100ms",
+      "low": 0.05,
+      "n": 1262
+     },
+     {
+      "flip_rule": {
+       "flips": 686,
+       "n": 3823,
+       "rate": 0.17944023018571803
+      },
+      "flip_truth": {
+       "flips": 1090,
+       "n": 3823,
+       "rate": 0.2851164007324091
+      },
+      "high": 0.25,
+      "label": "100_250ms",
+      "low": 0.1,
+      "n": 3823
+     },
+     {
+      "flip_rule": {
+       "flips": 1134,
+       "n": 6226,
+       "rate": 0.18213941535496306
+      },
+      "flip_truth": {
+       "flips": 1781,
+       "n": 6226,
+       "rate": 0.2860584645036942
+      },
+      "high": 0.5,
+      "label": "250_500ms",
+      "low": 0.25,
+      "n": 6226
+     },
+     {
+      "flip_rule": {
+       "flips": 2132,
+       "n": 12082,
+       "rate": 0.17646085085250787
+      },
+      "flip_truth": {
+       "flips": 3426,
+       "n": 12082,
+       "rate": 0.28356232411852345
+      },
+      "high": 1.0,
+      "label": "500ms_1s",
+      "low": 0.5,
+      "n": 12082
+     },
+     {
+      "flip_rule": {
+       "flips": 23,
+       "n": 164,
+       "rate": 0.1402439024390244
+      },
+      "flip_truth": {
+       "flips": 33,
+       "n": 164,
+       "rate": 0.20121951219512196
+      },
+      "high": null,
+      "label": "ge_1s",
+      "low": 1.0,
+      "n": 164
+     }
+    ],
+    "gamma": {
+     "bins": [
+      {
+       "flip_rule": {
+        "flips": 1590,
+        "n": 16412,
+        "rate": 0.09688033146478187
+       },
+       "flip_truth": {
+        "flips": 2934,
+        "n": 16412,
+        "rate": 0.17877163051425787
+       },
+       "high": 0.5,
+       "label": "lt_0.5",
+       "low": null,
+       "n": 16412
+      },
+      {
+       "flip_rule": {
+        "flips": 625,
+        "n": 2244,
+        "rate": 0.2785204991087344
+       },
+       "flip_truth": {
+        "flips": 921,
+        "n": 2244,
+        "rate": 0.410427807486631
+       },
+       "high": 1.0,
+       "label": "0.5_1",
+       "low": 0.5,
+       "n": 2244
+      },
+      {
+       "flip_rule": {
+        "flips": 636,
+        "n": 1756,
+        "rate": 0.3621867881548975
+       },
+       "flip_truth": {
+        "flips": 878,
+        "n": 1756,
+        "rate": 0.5
+       },
+       "high": 2.0,
+       "label": "1_2",
+       "low": 1.0,
+       "n": 1756
+      },
+      {
+       "flip_rule": {
+        "flips": 700,
+        "n": 1624,
+        "rate": 0.43103448275862066
+       },
+       "flip_truth": {
+        "flips": 949,
+        "n": 1624,
+        "rate": 0.5843596059113301
+       },
+       "high": 5.0,
+       "label": "2_5",
+       "low": 2.0,
+       "n": 1624
+      },
+      {
+       "flip_rule": {
+        "flips": 687,
+        "n": 1508,
+        "rate": 0.45557029177718833
+       },
+       "flip_truth": {
+        "flips": 1045,
+        "n": 1508,
+        "rate": 0.6929708222811671
+       },
+       "high": null,
+       "label": "gt_5",
+       "low": 5.0,
+       "n": 1508
+      }
+     ],
+     "definition": "|d(Q_a/rate_a)/dt - d(Q_b/rate_b)/dt| * tau / m_used over the used-state top-1/top-2 pair; slope from a local linear fit over +-0.25 s of the probe truth series at the decision target instant",
+     "median": 0.1333305453986247,
+     "n": 23544
+    },
+    "gamma_note": "each Gamma bin's flip rate is over the records in that bin; the n column is the bin size",
+    "legacy_fallback_records": 0,
+    "margin_ms": {
+     "note": "used = J_used 1st/2nd gap; truth = J_truth 1st/2nd gap",
+     "truth": {
+      "mean": 13.101326855928402,
+      "n": 24627,
+      "p50": 10.352268714490325,
+      "p90": 24.012426592289685,
+      "p95": 30.93348337454952,
+      "p99": 62.7516397639573
+     },
+     "used": {
+      "mean": 14.168921298961036,
+      "n": 24627,
+      "p50": 10.807718813595095,
+      "p90": 30.506251649070546,
+      "p95": 34.02103418841358,
+      "p99": 72.75063976395616
+     }
+    },
+    "n_evaluable": 24627,
+    "near_tie_frac": {
+     "eps_0.2ms": 0.029479839200877087,
+     "eps_0.5ms": 0.0557518171113006,
+     "eps_1ms": 0.07983107970926219,
+     "eps_2ms": 0.1294514151134933,
+     "eps_5ms": 0.31688796848986883
+    },
+    "probe": {
+     "decisions_in_probe": 48644,
+     "identity_sources": {
+      "live_audit_not_used_by_predictor (resource_id+generation)": 2142,
+      "used_state": 89821
+     },
+     "rows": 91963,
+     "truth_resources": 314,
+     "truth_rows": 89821
+    },
+    "regret_ms": {
+     "frac_gt_0": 0.2841596621594185,
+     "frac_gt_1ms": 0.26592764039468875,
+     "mean": 2.0335036813921072,
+     "n": 24627,
+     "p50": 0.0,
+     "p90": 7.955239815864309,
+     "p99": 19.31917162563218
+    },
+    "run_length": {
+     "max": 922,
+     "mean": 8.230949197860962,
+     "p50": 2.0,
+     "p90": 13.0,
+     "runs": 2992
+    },
+    "scalars": {
+     "aoi_p50_ms": 497.1571888601529,
+     "aoi_p90_ms": 904.5965303210481,
+     "aoi_p95_ms": 957.2293069001896,
+     "aoi_p99_ms": 996.9520162365875,
+     "crosscheck_audit_identity_violations": 0,
+     "crosscheck_geometry_mismatch": 0,
+     "ctrl_expired": 0,
+     "ctrl_offered_mbits": 24.376896,
+     "ctrl_share": 0.011607759999913609,
+     "e2e_mean_ms": 425.9156072418272,
+     "e2e_p50_ms": 458.2795190682169,
+     "e2e_p95_ms": 656.4152562643644,
+     "e2e_p99_ms": 713.3118786878576,
+     "entropy_mean_bits": null,
+     "flip_rule_rate": 0.1787875096438868,
+     "flip_truth_rate": 0.2841596621594185,
+     "gamma_median": 0.1333305453986247,
+     "hops_mean": 24.370786516853933,
+     "hops_p95": 38.0,
+     "isl_data_area": 44610935.529907666,
+     "margin_truth_p50_ms": 10.352268714490325,
+     "margin_used_p50_ms": 10.807718813595095,
+     "n_decisions_multicandidate": 24855,
+     "n_evaluable": 24627,
+     "near_tie_1ms_frac": 0.07983107970926219,
+     "near_tie_2ms_frac": 0.1294514151134933,
+     "near_tie_5ms_frac": 0.31688796848986883,
+     "pdr": 0.9863979848866499,
+     "regret_frac_gt0": 0.2841596621594185,
+     "regret_frac_gt1ms": 0.26592764039468875,
+     "regret_mean_ms": 2.0335036813921072,
+     "regret_p50_ms": 0.0,
+     "regret_p90_ms": 7.955239815864309,
+     "regret_p99_ms": 19.31917162563218,
+     "run_length_mean_decisions": 8.230949197860962,
+     "sticky_keep_rate": null,
+     "sticky_override_rate": null,
+     "switch_rate": 0.11469842049267534,
+     "throughput_mbps": 97.9,
+     "util_busy_max": 0.47349999999999,
+     "util_busy_p95": 0.3904999999999917
+    },
+    "sticky": {
+     "keep_rate": null,
+     "n_override_audit": 0,
+     "n_with_audit": 0,
+     "override_rate": null,
+     "reason": "no sticky_keep/override fields in the audit"
+    },
+    "switch": {
+     "pairs": 24438,
+     "rate": 0.11469842049267534,
+     "streams": 189,
+     "switches": 2803
+    },
+    "wrong_duration_W_ms": {
+     "definition": "consecutive-wrong-decision duration: per (sat,dst) stream and per flip decision at t0, W = t1 - t0 with t1 the next later NON-flip decision of that stream; censored at the horizon. NOT packet queueing time",
+     "rule": {
+      "censored_frac": 0.08335225982284805,
+      "mean_ms": 660.9302062266486,
+      "median_ms": 94.62304169500868,
+      "n_censored": 367,
+      "n_flips": 4403,
+      "n_uncensored": 4036,
+      "p90_ms": 1493.8705266703582
+     },
+     "truth_argmin": {
+      "censored_frac": 0.1066018862532152,
+      "mean_ms": 802.4503132684262,
+      "median_ms": 172.95686950745105,
+      "n_censored": 746,
+      "n_flips": 6998,
+      "n_uncensored": 6252,
+      "p90_ms": 2820.1405277329422
+     }
+    }
+   },
+   "meta": {
+    "appendix": false,
+    "cell_id": "m3-c2-queue_greedy_hysteresis-h1000-s9",
+    "config_seed": 7,
+    "config_sha256": "d217da94721718c6be1569911d95604d107439130b0e41741fc4fd0d804d8e95",
+    "family": "m3",
+    "id_parsed": true,
+    "policy": "queue_greedy_hysteresis",
+    "policy_known": true,
+    "policy_params": {
+     "advertise_interval_s": 1.0,
+     "control_plane": {
+      "advertise_interval_s": 1.0,
+      "packet_bits": 2000,
+      "priority": "nonpreemptive_priority",
+      "ttl_s": 10.0,
+      "vis_k": 1
+     },
+     "ewma_alpha": 0.25,
+     "hysteresis_eta_s": 0.005,
+     "predictor": "hold_last",
+     "softmin_temperature_s": 0.01,
+     "state_policy": "queue_greedy_hysteresis",
+     "state_source": "advertised",
+     "sticky_hold_s": 0.1
+    },
+    "policy_raw": "queue_greedy_hysteresis",
+    "regime": "c2",
+    "seed": 9,
+    "seed_note": "cell-id seed 9 != config scenario.seed 7 (the replicate seed lives in trace_program.seed in this contract)",
+    "series": "sync",
+    "sync_ms": 1000,
+    "trace_jsonl_sha256": "acbdcb78d197efac6d0d031cc66cd85a41806a1aff2b880f9de73d39583e7266",
+    "trace_key": "555ef133a60ebf877c631c513a871bfc34c2aeddbf29908e7db9029640beeb16",
+    "trace_rows": 1985,
+    "trace_source_sha256": "555ef133a60ebf877c631c513a871bfc34c2aeddbf29908e7db9029640beeb16",
+    "variant": null
+   },
+   "network": {
+    "control": {
+     "bits": {
+      "delivered": 23215520,
+      "in_system": 1161376,
+      "offered": 24376896,
+      "terminal_loss": 0
+     },
+     "counters": {
+      "arrived": 7280,
+      "duplicate": 0,
+      "entered_queue": 7644,
+      "expired": 0,
+      "geometry_lost": 0,
+      "in_system": 364,
+      "lost": 0,
+      "overflow": 0,
+      "registered": 7644,
+      "snapshots_created": 2940,
+      "transmission_completed": 7280,
+      "transmission_started": 7644
+     },
+     "ctrl_isl_s": 0.23215519999827217,
+     "fate_counts": {
+      "CONTROL_EXPIRED": 0,
+      "DELIVERED": 7280,
+      "DUPLICATE": 0,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "IN_SYSTEM_AT_STOP": 364,
+      "QUEUE_OVERFLOW": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "instances": 7644,
+     "offered_mbits": 24.376896,
+     "queue_area_bits_s": 7864.559200134644,
+     "service_share": 0.011607759999913609,
+     "service_share_method": "occupied.ctrl_isl_s / stop_time_s (the ledger's authoritative control ISL occupancy).  link_service_windows carry no kind=='ctrl' marker, so the window-sum variant is not available"
+    },
+    "delivery": {
+     "delivered_bits": 1958000000,
+     "delivered_packets": 1958,
+     "fate_counts": {
+      "ACCESS_QUEUE_OVERFLOW": 0,
+      "ACCESS_REJECTED": 0,
+      "DATA_DEADLINE_EXPIRED": 0,
+      "DELIVERED": 1958,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "HOLDING_QUEUE_OVERFLOW": 0,
+      "IN_SYSTEM_AT_STOP": 25,
+      "ISL_QUEUE_OVERFLOW": 0,
+      "NO_ROUTE": 2,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "offered_bits": 1985000000,
+     "offered_packets": 1985,
+     "pdr": 0.9863979848866499,
+     "pdr_by_horizon": 0.9863979848866499,
+     "terminal_loss_bits": 2000000
+    },
+    "e2e_ms": {
+     "mean": 425.9156072418272,
+     "n": 1958,
+     "p50": 458.2795190682169,
+     "p90": 624.6386106856044,
+     "p95": 656.4152562643644,
+     "p99": 713.3118786878576
+    },
+    "error": null,
+    "hops": {
+     "max": 58,
+     "mean": 24.370786516853933,
+     "n": 1958,
+     "p50": 26.0,
+     "p95": 38.0,
+     "path_stretch": null,
+     "path_stretch_reason": "no shortest-path baseline in evidence"
+    },
+    "link_util": {
+     "bits_fraction_max": 0.4735,
+     "busy_fraction_max": 0.47349999999999,
+     "busy_fraction_p95": 0.3904999999999917,
+     "definition": "per ISL link: sum(window.end-window.start for stage=='isl') / stop_time from link_service_windows; max/p95 over links that served data.  Static topology in these cells, so no availability correction",
+     "duration_s": 20.0,
+     "isl_links_with_windows": 241
+    },
+    "natural_end": true,
+    "queue_area_bits_s": {
+     "downlink": 0.0,
+     "holding": 266370499.52620062,
+     "isl_ctrl": 7864.559200134644,
+     "isl_data": 44610935.529907666,
+     "uplink": 44102.999999997126
+    },
+    "stop_time_s": 20.0,
+    "throughput_mbps": 97.9
+   },
+   "source": {
+    "config_sha256": "d217da94721718c6be1569911d95604d107439130b0e41741fc4fd0d804d8e95",
+    "decisions": {
+     "rows": 50602
+    },
+    "trace_manifest": {
+     "jsonl_sha256": "acbdcb78d197efac6d0d031cc66cd85a41806a1aff2b880f9de73d39583e7266",
+     "native_population": null,
+     "rows": 1985,
+     "source_rows": 1985,
+     "source_rows_digest": null,
+     "source_trace_sha256": "555ef133a60ebf877c631c513a871bfc34c2aeddbf29908e7db9029640beeb16"
+    }
+   },
+   "warnings": []
+  }
+ },
+ "definitions": {
+  "W_s": "consecutive-wrong-decision duration: per (sat,dst) stream and per flip decision at t0, W = t1 - t0 with t1 the next later NON-flip decision of that stream; censored at the horizon. NOT packet queueing time",
+  "a_fresh_rule": "policy re-applied with truth-substituted J: geometry -> recorded used-state top among legal candidates; greedy/_ewma/_legacy -> argmin J_truth; hysteresis -> recorded last_direction if J_truth[last] <= min + recorded eta; sticky -> recorded sticky_keep direction when the hold fired, else argmin; softmin -> recorded uniform re-sampled through the truth-cost softmax",
+  "a_fresh_truth": "plain argmin J_truth (cross-policy comparator)",
+  "action_entropy_bits": "mean Shannon entropy of ta_audit.state_policy.selection.probabilities (or selection.entropy); n/a for policies whose audit exposes no probabilities (all but queue_softmin today)",
+  "ctrl_share": "occupied.ctrl_isl_s / stop_time_s (the ledger's authoritative control ISL occupancy).  link_service_windows carry no kind=='ctrl' marker, so the window-sum variant is not available",
+  "evaluable_subset": "kind=='forward' AND >=2 legal candidates AND >=2 candidates with a usable truth row AND the chosen candidate itself has a usable truth row; every flip/regret/W/Gamma statistic is computed on it",
+  "flip_not_claiming": "flip is a truth-substituted re-ranking of the SAME decision row; it is NOT a re-simulated counterfactual and must not be reported as the causal consequence of replaying branch A instead of branch B",
+  "flip_semantics": "truth_substituted_rerank_not_resimulated_counterfactual",
+  "gamma": "|d(Q_a/rate_a)/dt - d(Q_b/rate_b)/dt| * tau / m_used over the used-state top-1/top-2 pair; slope from a local linear fit over +-0.25 s of the probe truth series at the decision target instant",
+  "j_truth_geometry": "j_used_s (no state term; flip/regret are 0 by construction)",
+  "j_truth_queue_aware": "j_used_s - resource_work_used_s + truth.work_ahead_bits / service_rate_bps (probe.service_rate_bps preferred, then the score's)",
+  "near_tie_proxy": "fraction of decisions with a used-state margin below eps; this is the behavioural 'small score perturbation -> action divergence' proxy, not a mathematical sensitivity",
+  "paired_e2e": "cells sharing family+regime+sync_ms+seed also share one trace, so packet ids align; only packets DELIVERED in BOTH cells are paired, delta = policy - baseline",
+  "regret_s": "J_truth(chosen) - min_a J_truth(a); >= 0",
+  "response_sensitivity_axes": "BEHAVIOURAL PROXIES (switch rate, mean run length, flip, entropy, near-tie fraction); not a strict mathematical sensitivity of J",
+  "run_length": "number of consecutive same-chosen multi-candidate decisions inside one (sat,dst) stream",
+  "same_trace": "trace-manifest.json:source_trace_sha256 (never the csv identity)",
+  "schema": "sq-round3/v1",
+  "sticky_keep_rate": "fraction of decisions whose state_policy audit says selection.rule == 'sticky_keep' (P5); n/a when the audit has no sticky fields",
+  "switch_rate": "fraction of consecutive multi-candidate decisions inside one (sat,dst) stream whose chosen direction changed",
+  "tau_s": "t_commit - used_state[chosen].measured_at; gen_to_recv = received_at - measured_at; recv_to_decision = t_commit - received_at",
+  "tie_break": "(J, index in the recorded candidate/legal order, direction name); fallback candidates rank after every fully-known candidate",
+  "truth_filter": "target_probe rows with identity_source==\"used_state\" AND probe generation == decision used_state[direction].generation AND finite truth.work_ahead_bits AND a positive service rate",
+  "util_busy": "per ISL link: sum(window.end-window.start for stage=='isl') / stop_time from link_service_windows; max/p95 over links that served data.  Static topology in these cells, so no availability correction"
+ },
+ "freshness_stability": {
+  "note": "delta = fast sync (smaller advertisement interval) - slow sync, same family/regime/policy/seed, then mean over seeds; paired by construction, no re-simulation.",
+  "table": []
+ },
+ "gamma_primary_group": {
+  "cells": [
+   "m3-c2-geometry-h1000-s7",
+   "m3-c2-geometry-h1000-s8",
+   "m3-c2-geometry-h1000-s9",
+   "m3-c2-queue_greedy-h1000-s7",
+   "m3-c2-queue_greedy_ewma-h1000-s7",
+   "m3-c2-queue_greedy_hysteresis-h1000-s9"
+  ],
+  "group": [
+   "m3",
+   "sync",
+   "c2",
+   "1000"
+  ]
+ },
+ "gaps": {
+  "aggregate_groups": 4,
+  "cells_using_legacy_fallback": [],
+  "cells_with_id_parse_warnings": [],
+  "cells_with_unparsed_id": [],
+  "cells_without_action_entropy_audit": [
+   "m3-c2-geometry-h1000-s7",
+   "m3-c2-geometry-h1000-s8",
+   "m3-c2-geometry-h1000-s9",
+   "m3-c2-queue_greedy-h1000-s7",
+   "m3-c2-queue_greedy_ewma-h1000-s7",
+   "m3-c2-queue_greedy_hysteresis-h1000-s9"
+  ],
+  "cells_without_evaluable_decisions": [],
+  "cells_without_gamma_samples": [],
+  "cells_without_result_json": [],
+  "cells_without_sticky_audit": [
+   "m3-c2-geometry-h1000-s7",
+   "m3-c2-geometry-h1000-s8",
+   "m3-c2-geometry-h1000-s9",
+   "m3-c2-queue_greedy-h1000-s7",
+   "m3-c2-queue_greedy_ewma-h1000-s7",
+   "m3-c2-queue_greedy_hysteresis-h1000-s9"
+  ],
+  "duplicate_cell_slots": {},
+  "metrics_not_in_evidence": [
+   "action entropy: only queue_softmin audits expose selection.probabilities/entropy",
+   "sticky keep/override: only queue_greedy_sticky audits expose them",
+   "path stretch: no shortest-path baseline in the evidence (hops only)",
+   "window-summed control service time: link_service_windows carry no kind=='ctrl' marker, so occupied.ctrl_isl_s / stop_time is used",
+   "control packet delay: control.instances[3] is an absolute received_at, so advertisement age is taken from the probe (state_received_at_s - state_measured_at_s)",
+   "Gamma needs >=3 truth samples inside +-0.25 s on BOTH resources"
+  ],
+  "note": "an empty list means the metric is available for every cell; entries are cell ids"
+ },
+ "generator": "ANALYSIS/SIM-QUAL-20261031/sq_round3_analyze.py",
+ "identity_checks": {
+  "cells_sharing_config_identity": {},
+  "note": "empty lists mean seed replicates are independent (distinct traces) and one seed maps to exactly one trace; shared config identity is only a defect when the cells are meant to differ",
+  "same_seed_with_multiple_traces": [],
+  "seed_replicates_sharing_one_trace": []
+ },
+ "paired_policy": [
+  {
+   "baseline": "geometry",
+   "baseline_e2e_mean_ms": 687.2487204037525,
+   "delta_mean_ms": -277.6844035616886,
+   "delta_p50_ms": -156.27980046442235,
+   "delta_p95_ms": 215.37225044516538,
+   "family": "m3",
+   "faster": 1303,
+   "group": "m3|sync|c2|h1000|s7",
+   "paired_packets": 2024,
+   "policy": "queue_greedy",
+   "policy_e2e_mean_ms": 408.0592771665568,
+   "policy_flip_rule_rate": 0.27767066692897896,
+   "policy_regret_mean_ms": 2.02575747599341,
+   "regime": "c2",
+   "same_trace": true,
+   "seed": 7,
+   "slower": 528,
+   "sync_ms": 1000
+  },
+  {
+   "baseline": "geometry",
+   "baseline_e2e_mean_ms": 687.2487204037525,
+   "delta_mean_ms": -289.76047931388393,
+   "delta_p50_ms": -211.82881006244793,
+   "delta_p95_ms": 150.1957633021416,
+   "family": "m3",
+   "faster": 1287,
+   "group": "m3|sync|c2|h1000|s7",
+   "paired_packets": 2040,
+   "policy": "queue_greedy_ewma",
+   "policy_e2e_mean_ms": 396.1392382308753,
+   "policy_flip_rule_rate": 0.2635038808807223,
+   "policy_regret_mean_ms": 1.669107217565575,
+   "regime": "c2",
+   "same_trace": true,
+   "seed": 7,
+   "slower": 540,
+   "sync_ms": 1000
+  },
+  {
+   "baseline": "geometry",
+   "baseline_e2e_mean_ms": 685.3842921570176,
+   "delta_mean_ms": -256.92082244506685,
+   "delta_p50_ms": -229.86764332531175,
+   "delta_p95_ms": 234.38826982465065,
+   "family": "m3",
+   "faster": 1216,
+   "group": "m3|sync|c2|h1000|s9",
+   "paired_packets": 1958,
+   "policy": "queue_greedy_hysteresis",
+   "policy_e2e_mean_ms": 425.9156072418272,
+   "policy_flip_rule_rate": 0.1787875096438868,
+   "policy_regret_mean_ms": 2.0335036813921072,
+   "regime": "c2",
+   "same_trace": true,
+   "seed": 9,
+   "slower": 555,
+   "sync_ms": 1000
+  }
+ ],
+ "paired_policy_baseline_missing": 0,
+ "parameters": {
+  "baseline": "geometry",
+  "flip_semantics": "truth_substituted_rerank_not_resimulated_counterfactual",
+  "gamma_half_window_s": 0.25,
+  "hysteresis_eta_s": 0.0,
+  "near_tie_eps_s": [
+   0.0002,
+   0.0005,
+   0.001,
+   0.002,
+   0.005
+  ],
+  "softmin_temperature_s": null
+ },
+ "response_sensitivity": {
+  "note": "BEHAVIOURAL PROXIES (switch rate, mean run length, flip, entropy, near-tie fraction); not a strict mathematical sensitivity of J",
+  "rows": [
+   {
+    "e2e_mean_ms": 673.5283663665388,
+    "e2e_p99_ms": 1175.20206211219,
+    "entropy_mean_bits": null,
+    "family": "m3",
+    "flip_rule_rate": 0.0,
+    "flip_truth_rate": 0.0,
+    "group": "m3|sync|c2|geometry|h1000",
+    "n_cells": 3,
+    "n_evaluable_mean": 23078.333333333332,
+    "near_tie_1ms_frac": 0.0941841174944034,
+    "near_tie_5ms_frac": 0.34776244583014737,
+    "policy": "geometry",
+    "regime": "c2",
+    "run_length_mean_decisions": 4.383296273635904,
+    "switch_rate": 0.22201914269892808,
+    "sync_ms": 1000
+   },
+   {
+    "e2e_mean_ms": 396.1392382308753,
+    "e2e_p99_ms": 680.2177000875354,
+    "entropy_mean_bits": null,
+    "family": "m3",
+    "flip_rule_rate": 0.2635038808807223,
+    "flip_truth_rate": 0.2635038808807223,
+    "group": "m3|sync|c2|queue_greedy_ewma|h1000",
+    "n_cells": 1,
+    "n_evaluable_mean": 25252.0,
+    "near_tie_1ms_frac": 0.07215270077617615,
+    "near_tie_5ms_frac": 0.35862505940123557,
+    "policy": "queue_greedy_ewma",
+    "regime": "c2",
+    "run_length_mean_decisions": 6.073112073112073,
+    "switch_rate": 0.15792415169660678,
+    "sync_ms": 1000
+   },
+   {
+    "e2e_mean_ms": 425.9156072418272,
+    "e2e_p99_ms": 713.3118786878576,
+    "entropy_mean_bits": null,
+    "family": "m3",
+    "flip_rule_rate": 0.1787875096438868,
+    "flip_truth_rate": 0.2841596621594185,
+    "group": "m3|sync|c2|queue_greedy_hysteresis|h1000",
+    "n_cells": 1,
+    "n_evaluable_mean": 24627.0,
+    "near_tie_1ms_frac": 0.07983107970926219,
+    "near_tie_5ms_frac": 0.31688796848986883,
+    "policy": "queue_greedy_hysteresis",
+    "regime": "c2",
+    "run_length_mean_decisions": 8.230949197860962,
+    "switch_rate": 0.11469842049267534,
+    "sync_ms": 1000
+   },
+   {
+    "e2e_mean_ms": 408.0592771665568,
+    "e2e_p99_ms": 964.6851712012792,
+    "entropy_mean_bits": null,
+    "family": "m3",
+    "flip_rule_rate": 0.27767066692897896,
+    "flip_truth_rate": 0.27767066692897896,
+    "group": "m3|sync|c2|queue_greedy|h1000",
+    "n_cells": 1,
+    "n_evaluable_mean": 25415.0,
+    "near_tie_1ms_frac": 0.06618138894353728,
+    "near_tie_5ms_frac": 0.3135156403698603,
+    "policy": "queue_greedy",
+    "regime": "c2",
+    "run_length_mean_decisions": 3.194846008799497,
+    "switch_rate": 0.3075275640517173,
+    "sync_ms": 1000
+   }
+  ]
+ },
+ "schema": "sq-round3/v1",
+ "sync_delta_rows": [],
+ "warnings": []
+}

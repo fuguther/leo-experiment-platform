@@ -1,0 +1,1768 @@
+{
+ "analyzer": "ANALYSIS/SIM-QUAL-20261031/sq_round3_analyze.py",
+ "artifact_files": {
+  "full_matrix_json": "round3-results/round2-regression-smoke.json",
+  "full_matrix_md": "round3-results/round2-regression-smoke.md",
+  "this_summary": "round3-results/SMOKE-ROUND2.json"
+ },
+ "cell_id_forms": {
+  "round2": [
+   "m2-<regime>-<policy>-s<seed>",
+   "m2-sync<advert_ms>-<regime>-<policy>-s<seed>"
+  ],
+  "round3_appendix": "m3-x-<variant>-<regime>-h<sync_ms>-s<seed> where variant is temp<ms> (queue_softmin temperature) or sticky<ms> (queue_greedy_sticky hold); the policy itself is read from the resolved config",
+  "round3_main": "m3-<regime>-<policy>-h<sync_ms>-s<seed>",
+  "run_series": "family|series|regime|policy|h<sync>; series is 'sync' for the Round-3 matrix, 'default' for Round-2 default cells and 'appendix:<variant>' for parameter sweeps, so runs that share a label but not a contract never get averaged"
+ },
+ "cells": {
+  "m2-b-ewma-s7": {
+   "aoi_p50_ms": 495.976857253261,
+   "aoi_p90_ms": 899.3354530213101,
+   "aoi_p99_ms": 995.5596932707227,
+   "config_sha256": "5ee5d8aa858286c28a3ef8c6f282d328b9de587f32edf04c3d099a6f0a9eb6d1",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 15350,
+     "2": 5819,
+     "3": 14355
+    },
+    "evaluable_fraction_of_multicandidate": 0.9967780311291762,
+    "n_decision_rows_total": 37174,
+    "n_evaluable_with_truth": 20109,
+    "n_forward_multicandidate": 20174,
+    "n_forward_total": 35524
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 295.158216,
+   "ctrl_share": 0.1459064199995585,
+   "e2e_mean_ms": 365.6531667859337,
+   "e2e_p95_ms": 506.1883179361821,
+   "e2e_p99_ms": 668.4609207534162,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.26341439156596547,
+   "flip_truth_rate": 0.26341439156596547,
+   "gamma_median": 0.09846430041036956,
+   "gamma_n": 19243,
+   "hops_mean": 21.52969696969697,
+   "isl_data_area": 18673274.988005456,
+   "margin_used_p50_ms": 10.975436658063838,
+   "n_evaluable": 20109,
+   "pdr": 1.0,
+   "policy": "queue_greedy_ewma",
+   "policy_params": {
+    "advertise_interval_s": 1.0,
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "packet_bits": 8000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 3
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "queue_greedy_ewma",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 1.6074807587872963,
+   "regret_p90_ms": 6.864007100195649,
+   "run_length_mean_decisions": 6.8166101694915255,
+   "seed": 7,
+   "series": "default",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.1383016120122533,
+   "sync_ms": 1000,
+   "throughput_mbps": 82.5,
+   "trace_source_sha256": "120a066e8d0c6482be95815987bfa629df24b8087ce712eeb90d7ef47c7bff46",
+   "util_busy_max": 0.43999999999999073,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": 0.16839720596564092,
+    "mean_ms": 537.9695450476436,
+    "median_ms": 152.55191751759511,
+    "n_censored": 892,
+    "n_flips": 5297,
+    "n_uncensored": 4405,
+    "p90_ms": 1396.4545403892766
+   }
+  },
+  "m2-b-geom-s7": {
+   "aoi_p50_ms": 501.06537176860047,
+   "aoi_p90_ms": 899.1028449375644,
+   "aoi_p99_ms": 995.3133134380554,
+   "config_sha256": "97d55b6b6ec2577e67cc93b8bc2e4786482f6f87ec352b042c4f5139b07b5946",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 8650,
+     "2": 6372,
+     "3": 12802
+    },
+    "evaluable_fraction_of_multicandidate": 0.9965056847814749,
+    "n_decision_rows_total": 29474,
+    "n_evaluable_with_truth": 19107,
+    "n_forward_multicandidate": 19174,
+    "n_forward_total": 27824
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 295.092728,
+   "ctrl_share": 0.14585041599955859,
+   "e2e_mean_ms": 685.9111240367839,
+   "e2e_p95_ms": 1045.8108964676746,
+   "e2e_p99_ms": 1066.015273950173,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.0,
+   "flip_truth_rate": 0.0,
+   "gamma_median": 0.057089790201517956,
+   "gamma_n": 16895,
+   "hops_mean": 16.863030303030303,
+   "isl_data_area": 680099839.3989005,
+   "margin_used_p50_ms": 13.026898845144395,
+   "n_evaluable": 19107,
+   "pdr": 1.0,
+   "policy": "geometry",
+   "policy_params": {
+    "advertise_interval_s": 1.0,
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "packet_bits": 8000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 3
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "geometry",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 0.0,
+   "regret_p90_ms": 0.0,
+   "run_length_mean_decisions": 4.4873179896665105,
+   "seed": 7,
+   "series": "default",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.2153764861294584,
+   "sync_ms": 1000,
+   "throughput_mbps": 82.5,
+   "trace_source_sha256": "120a066e8d0c6482be95815987bfa629df24b8087ce712eeb90d7ef47c7bff46",
+   "util_busy_max": 0.5304999999999888,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": null,
+    "mean_ms": null,
+    "median_ms": null,
+    "n_censored": 0,
+    "n_flips": 0,
+    "n_uncensored": 0,
+    "p90_ms": null
+   }
+  },
+  "m2-b-greedy-s7": {
+   "aoi_p50_ms": 493.32980870766187,
+   "aoi_p90_ms": 897.7744281639186,
+   "aoi_p99_ms": 995.5339384595252,
+   "config_sha256": "c4e4839e038c6bcac1297b12dba9e5e7c4b1371506e0696d84bf5083583f4c53",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 15478,
+     "2": 5773,
+     "3": 14264
+    },
+    "evaluable_fraction_of_multicandidate": 0.9942107101861556,
+    "n_decision_rows_total": 37164,
+    "n_evaluable_with_truth": 19921,
+    "n_forward_multicandidate": 20037,
+    "n_forward_total": 35515
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 295.158216,
+   "ctrl_share": 0.1459064199995585,
+   "e2e_mean_ms": 365.3611753975569,
+   "e2e_p95_ms": 582.965418452015,
+   "e2e_p99_ms": 667.9544328431639,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.2690627980523066,
+   "flip_truth_rate": 0.2690627980523066,
+   "gamma_median": 0.10613875688245314,
+   "gamma_n": 18551,
+   "hops_mean": 21.51607034566404,
+   "isl_data_area": 18464272.260494582,
+   "margin_used_p50_ms": 11.321265798847069,
+   "n_evaluable": 19921,
+   "pdr": 0.9993939393939394,
+   "policy": "queue_greedy",
+   "policy_params": {
+    "advertise_interval_s": 1.0,
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "packet_bits": 8000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 3
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "queue_greedy",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 1.716441580410955,
+   "regret_p90_ms": 7.084827521607065,
+   "run_length_mean_decisions": 4.026071139854487,
+   "seed": 7,
+   "series": "default",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.24052751711894496,
+   "sync_ms": 1000,
+   "throughput_mbps": 82.45,
+   "trace_source_sha256": "120a066e8d0c6482be95815987bfa629df24b8087ce712eeb90d7ef47c7bff46",
+   "util_busy_max": 0.43949999999999073,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": 0.08414179104477612,
+    "mean_ms": 769.9805264870586,
+    "median_ms": 146.75217932843498,
+    "n_censored": 451,
+    "n_flips": 5360,
+    "n_uncensored": 4909,
+    "p90_ms": 2110.7797920336616
+   }
+  },
+  "m2-c2-ewma-s7": {
+   "aoi_p50_ms": 506.07755044546644,
+   "aoi_p90_ms": 907.9656288540416,
+   "aoi_p99_ms": 996.2877926589417,
+   "config_sha256": "bc4c684927d275bb7180d242b3d50e06943b724ff3ca5263a8a7d075208d9fa5",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 21805,
+     "2": 7176,
+     "3": 18202
+    },
+    "evaluable_fraction_of_multicandidate": 0.9945622192450154,
+    "n_decision_rows_total": 49224,
+    "n_evaluable_with_truth": 25240,
+    "n_forward_multicandidate": 25378,
+    "n_forward_total": 47183
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 295.158216,
+   "ctrl_share": 0.1459064199995585,
+   "e2e_mean_ms": 395.58129551826846,
+   "e2e_p95_ms": 526.148356775444,
+   "e2e_p99_ms": 680.7755580729147,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.2615689381933439,
+   "flip_truth_rate": 0.2615689381933439,
+   "gamma_median": 0.09969837610149916,
+   "gamma_n": 24311,
+   "hops_mean": 22.99902008819206,
+   "isl_data_area": 32679469.60752186,
+   "margin_used_p50_ms": 10.65927024618303,
+   "n_evaluable": 25240,
+   "pdr": 0.9970688812896922,
+   "policy": "queue_greedy_ewma",
+   "policy_params": {
+    "advertise_interval_s": 1.0,
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "packet_bits": 8000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 3
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "queue_greedy_ewma",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 1.6630750392870766,
+   "regret_p90_ms": 6.576275277718771,
+   "run_length_mean_decisions": 6.036833293470462,
+   "seed": 7,
+   "series": "default",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.15888485042137637,
+   "sync_ms": 1000,
+   "throughput_mbps": 102.05,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.47199999999999004,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": 0.0840654347167525,
+    "mean_ms": 1215.5185787238024,
+    "median_ms": 347.7513906762413,
+    "n_censored": 555,
+    "n_flips": 6602,
+    "n_uncensored": 6047,
+    "p90_ms": 3930.284163746668
+   }
+  },
+  "m2-c2-geom-s7": {
+   "aoi_p50_ms": 504.3131939066452,
+   "aoi_p90_ms": 907.7628772386968,
+   "aoi_p99_ms": 996.5181501637854,
+   "config_sha256": "160f38940dd718daf0d1a7e27118d8e93cc274dc4d58e256edf97f892c15cacc",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 11986,
+     "2": 7590,
+     "3": 15882
+    },
+    "evaluable_fraction_of_multicandidate": 0.9968047034764826,
+    "n_decision_rows_total": 37505,
+    "n_evaluable_with_truth": 23397,
+    "n_forward_multicandidate": 23472,
+    "n_forward_total": 35458
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 295.046008,
+   "ctrl_share": 0.14581767199955864,
+   "e2e_mean_ms": 687.3089261805502,
+   "e2e_p95_ms": 1192.6412817515536,
+   "e2e_p99_ms": 1210.8292074467197,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.0,
+   "flip_truth_rate": 0.0,
+   "gamma_median": 0.05502383865145799,
+   "gamma_n": 20844,
+   "hops_mean": 17.321934538348803,
+   "isl_data_area": 830641905.6676338,
+   "margin_used_p50_ms": 12.992030041931606,
+   "n_evaluable": 23397,
+   "pdr": 1.0,
+   "policy": "geometry",
+   "policy_params": {
+    "advertise_interval_s": 1.0,
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "packet_bits": 8000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 3
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "geometry",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 0.0,
+   "regret_p90_ms": 0.0,
+   "run_length_mean_decisions": 4.3781811377245505,
+   "seed": 7,
+   "series": "default",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.22232273627983112,
+   "sync_ms": 1000,
+   "throughput_mbps": 102.35,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.5384999999999885,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": null,
+    "mean_ms": null,
+    "median_ms": null,
+    "n_censored": 0,
+    "n_flips": 0,
+    "n_uncensored": 0,
+    "p90_ms": null
+   }
+  },
+  "m2-c2-greedy-s7": {
+   "aoi_p50_ms": 507.62673778465484,
+   "aoi_p90_ms": 908.9811396343262,
+   "aoi_p99_ms": 996.3200979577955,
+   "config_sha256": "db54d2473cf2d0df242a75adfa984fb655fc3214243f9788f6957b1c566f0728",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 24689,
+     "2": 7214,
+     "3": 18595
+    },
+    "evaluable_fraction_of_multicandidate": 0.9868263009027859,
+    "n_decision_rows_total": 52523,
+    "n_evaluable_with_truth": 25469,
+    "n_forward_multicandidate": 25809,
+    "n_forward_total": 50498
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 295.158216,
+   "ctrl_share": 0.1459064199995585,
+   "e2e_mean_ms": 422.30182096156545,
+   "e2e_p95_ms": 723.4376061411183,
+   "e2e_p99_ms": 963.1033590578371,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.2651066001806117,
+   "flip_truth_rate": 0.2651066001806117,
+   "gamma_median": 0.12570879831784285,
+   "gamma_n": 24171,
+   "hops_mean": 24.467160493827162,
+   "isl_data_area": 36128428.68566977,
+   "margin_used_p50_ms": 10.666830865921003,
+   "n_evaluable": 25469,
+   "pdr": 0.9892525647288715,
+   "policy": "queue_greedy",
+   "policy_params": {
+    "advertise_interval_s": 1.0,
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "packet_bits": 8000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 3
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "queue_greedy",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 1.9016756060041284,
+   "regret_p90_ms": 7.729104746068721,
+   "run_length_mean_decisions": 3.288019623031242,
+   "seed": 7,
+   "series": "default",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.29840465539764854,
+   "sync_ms": 1000,
+   "throughput_mbps": 101.25,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.47199999999999004,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": 0.06916469194312796,
+    "mean_ms": 738.6140720649485,
+    "median_ms": 139.83762221769956,
+    "n_censored": 467,
+    "n_flips": 6752,
+    "n_uncensored": 6285,
+    "p90_ms": 2077.008096534941
+   }
+  },
+  "m2-c2-hyst-s7": {
+   "aoi_p50_ms": 509.2457878960204,
+   "aoi_p90_ms": 910.6108519330825,
+   "aoi_p99_ms": 996.7773846578041,
+   "config_sha256": "55a6ed3c5a5d993d5576108a3df4a3f2ba1011f5687f891aebc0231a18a42d60",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 26978,
+     "2": 7440,
+     "3": 19511
+    },
+    "evaluable_fraction_of_multicandidate": 0.9820414826908093,
+    "n_decision_rows_total": 55953,
+    "n_evaluable_with_truth": 26467,
+    "n_forward_multicandidate": 26951,
+    "n_forward_total": 53929
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 295.158216,
+   "ctrl_share": 0.1459064199995585,
+   "e2e_mean_ms": 456.7599878924204,
+   "e2e_p95_ms": 851.4953116856602,
+   "e2e_p99_ms": 998.8651013919938,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.1874031813201345,
+   "flip_truth_rate": 0.28518532512184985,
+   "gamma_median": 0.14828870283838805,
+   "gamma_n": 25474,
+   "hops_mean": 26.135375494071145,
+   "isl_data_area": 50036185.30251172,
+   "margin_used_p50_ms": 11.031720594615713,
+   "n_evaluable": 26467,
+   "pdr": 0.9887640449438202,
+   "policy": "queue_greedy_hysteresis",
+   "policy_params": {
+    "advertise_interval_s": 1.0,
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "packet_bits": 8000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 3
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.005,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "queue_greedy_hysteresis",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 2.083152476170573,
+   "regret_p90_ms": 7.838628932713629,
+   "run_length_mean_decisions": 5.066424196018377,
+   "seed": 7,
+   "series": "default",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.19129739607126542,
+   "sync_ms": 1000,
+   "throughput_mbps": 101.2,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.47199999999999004,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": 0.028024193548387095,
+    "mean_ms": 460.35919767707344,
+    "median_ms": 80.00296801476381,
+    "n_censored": 139,
+    "n_flips": 4960,
+    "n_uncensored": 4821,
+    "p90_ms": 1280.7772427714906
+   }
+  },
+  "m2-sync0020-c2-ewma-s7": {
+   "aoi_p50_ms": 16.430191151606266,
+   "aoi_p90_ms": 24.893400127746546,
+   "aoi_p99_ms": 30.344543420078196,
+   "config_sha256": "67b1865aad118aef97ca95b048a7114bd8b9d0ad97a92b05902b9975899f1205",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 24363,
+     "2": 6068,
+     "3": 18951
+    },
+    "evaluable_fraction_of_multicandidate": 0.9946041008833286,
+    "n_decision_rows_total": 51429,
+    "n_evaluable_with_truth": 24884,
+    "n_forward_multicandidate": 25019,
+    "n_forward_total": 49382
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 1162.048576,
+   "ctrl_share": 0.5804436000018212,
+   "e2e_mean_ms": 415.67261339790014,
+   "e2e_p95_ms": 619.3375835666028,
+   "e2e_p99_ms": 729.1923718732489,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.22713390130204147,
+   "flip_truth_rate": 0.22713390130204147,
+   "gamma_median": 0.004058118115027863,
+   "gamma_n": 24110,
+   "hops_mean": 24.12408402540303,
+   "isl_data_area": 34036480.487370454,
+   "margin_used_p50_ms": 10.42412924983091,
+   "n_evaluable": 24884,
+   "pdr": 1.0,
+   "policy": "queue_greedy_ewma",
+   "policy_params": {
+    "advertise_interval_s": 0.02,
+    "control_plane": {
+     "advertise_interval_s": 0.02,
+     "packet_bits": 2000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 1
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "queue_greedy_ewma",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 1.2936624212213894,
+   "regret_p90_ms": 5.886747359991645,
+   "run_length_mean_decisions": 3.8856964397251716,
+   "seed": 7,
+   "series": "sync",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.2508513053348468,
+   "sync_ms": 20,
+   "throughput_mbps": 102.35,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.47049999999999004,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": 0.127034677990092,
+    "mean_ms": 550.1385198267008,
+    "median_ms": 96.9235185648225,
+    "n_censored": 718,
+    "n_flips": 5652,
+    "n_uncensored": 4934,
+    "p90_ms": 1870.6795644392428
+   }
+  },
+  "m2-sync0020-c2-geom-s7": {
+   "aoi_p50_ms": 16.28762874029821,
+   "aoi_p90_ms": 24.74417380862093,
+   "aoi_p99_ms": 29.51229570768632,
+   "config_sha256": "0881f03efa1d1bbd7f7ac8acf016529f35c5737b236b9b8799773998c0ad9c42",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 11904,
+     "2": 7618,
+     "3": 15854
+    },
+    "evaluable_fraction_of_multicandidate": 0.9965916837082481,
+    "n_decision_rows_total": 37423,
+    "n_evaluable_with_truth": 23392,
+    "n_forward_multicandidate": 23472,
+    "n_forward_total": 35376
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 1162.048576,
+   "ctrl_share": 0.5801627280018171,
+   "e2e_mean_ms": 676.1330686372235,
+   "e2e_p95_ms": 1177.2867899274074,
+   "e2e_p99_ms": 1200.1540025521554,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.0,
+   "flip_truth_rate": 0.0,
+   "gamma_median": 0.002122102445993925,
+   "gamma_n": 20874,
+   "hops_mean": 17.2818759159746,
+   "isl_data_area": 809179044.7056617,
+   "margin_used_p50_ms": 12.99154652678848,
+   "n_evaluable": 23392,
+   "pdr": 1.0,
+   "policy": "geometry",
+   "policy_params": {
+    "advertise_interval_s": 0.02,
+    "control_plane": {
+     "advertise_interval_s": 0.02,
+     "packet_bits": 2000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 1
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "geometry",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 0.0,
+   "regret_p90_ms": 0.0,
+   "run_length_mean_decisions": 4.365808137364688,
+   "seed": 7,
+   "series": "sync",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.22300732442912538,
+   "sync_ms": 20,
+   "throughput_mbps": 102.35,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.5394999999999885,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": null,
+    "mean_ms": null,
+    "median_ms": null,
+    "n_censored": 0,
+    "n_flips": 0,
+    "n_uncensored": 0,
+    "p90_ms": null
+   }
+  },
+  "m2-sync0020-c2-greedy-s7": {
+   "aoi_p50_ms": 16.582591230807964,
+   "aoi_p90_ms": 25.104662817220458,
+   "aoi_p99_ms": 30.28278622181091,
+   "config_sha256": "943519d9fdd7a6eaca334719a7f8d5a840f103a89811e0296885aa6cd48e5ffd",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 24411,
+     "2": 7547,
+     "3": 18708
+    },
+    "evaluable_fraction_of_multicandidate": 0.98461245477052,
+    "n_decision_rows_total": 52681,
+    "n_evaluable_with_truth": 25851,
+    "n_forward_multicandidate": 26255,
+    "n_forward_total": 50666
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 1162.048576,
+   "ctrl_share": 0.5804436000018212,
+   "e2e_mean_ms": 424.773431387503,
+   "e2e_p95_ms": 714.9503412377687,
+   "e2e_p99_ms": 886.6932689617926,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.26018335847742835,
+   "flip_truth_rate": 0.26018335847742835,
+   "gamma_median": 0.0049849281044351,
+   "gamma_n": 24759,
+   "hops_mean": 24.54937965260546,
+   "isl_data_area": 39118242.38819229,
+   "margin_used_p50_ms": 11.058281311402366,
+   "n_evaluable": 25851,
+   "pdr": 0.9843673668783586,
+   "policy": "queue_greedy",
+   "policy_params": {
+    "advertise_interval_s": 0.02,
+    "control_plane": {
+     "advertise_interval_s": 0.02,
+     "packet_bits": 2000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 1
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "queue_greedy",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 1.8978959937603335,
+   "regret_p90_ms": 7.801626272387827,
+   "run_length_mean_decisions": 2.3209732447477105,
+   "seed": 7,
+   "series": "sync",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.4258565519394365,
+   "sync_ms": 20,
+   "throughput_mbps": 100.75,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.47049999999999004,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": 0.07017543859649122,
+    "mean_ms": 283.0815807845431,
+    "median_ms": 58.35363999413801,
+    "n_censored": 472,
+    "n_flips": 6726,
+    "n_uncensored": 6254,
+    "p90_ms": 719.727657160611
+   }
+  },
+  "m2-sync0100-c2-ewma-s7": {
+   "aoi_p50_ms": 56.10805657191076,
+   "aoi_p90_ms": 96.19439888607317,
+   "aoi_p99_ms": 106.50492357432206,
+   "config_sha256": "c824766567fc30d4616e0565c57c14a9ca3fc790e6320a390ee2d676c12222c6",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 25034,
+     "2": 5850,
+     "3": 19092
+    },
+    "evaluable_fraction_of_multicandidate": 0.995669954293962,
+    "n_decision_rows_total": 52020,
+    "n_evaluable_with_truth": 24834,
+    "n_forward_multicandidate": 24942,
+    "n_forward_total": 49976
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 232.1764,
+   "ctrl_share": 0.11608819999917064,
+   "e2e_mean_ms": 420.1795795440681,
+   "e2e_p95_ms": 603.265194891156,
+   "e2e_p99_ms": 721.7304297874083,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.22622211484255456,
+   "flip_truth_rate": 0.22622211484255456,
+   "gamma_median": 0.011930994180986735,
+   "gamma_n": 24040,
+   "hops_mean": 24.391389432485322,
+   "isl_data_area": 33577445.97127652,
+   "margin_used_p50_ms": 10.358002106764248,
+   "n_evaluable": 24834,
+   "pdr": 0.9985344406448461,
+   "policy": "queue_greedy_ewma",
+   "policy_params": {
+    "advertise_interval_s": 0.1,
+    "control_plane": {
+     "advertise_interval_s": 0.1,
+     "packet_bits": 2000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 1
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "queue_greedy_ewma",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 1.2766689214182623,
+   "regret_p90_ms": 5.732232851082431,
+   "run_length_mean_decisions": 4.653175941540191,
+   "seed": 7,
+   "series": "sync",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.2084686586554076,
+   "sync_ms": 100,
+   "throughput_mbps": 102.2,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.47199999999999004,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": 0.19277322890708437,
+    "mean_ms": 338.02443541049524,
+    "median_ms": 61.62606482409139,
+    "n_censored": 1083,
+    "n_flips": 5618,
+    "n_uncensored": 4535,
+    "p90_ms": 913.6142129602929
+   }
+  },
+  "m2-sync0100-c2-geom-s7": {
+   "aoi_p50_ms": 56.50061049945876,
+   "aoi_p90_ms": 96.3242456497273,
+   "aoi_p99_ms": 106.39752010229486,
+   "config_sha256": "d70edd97259d21797cff7a81f0fb872f9365273b4cf0aaecc235db6d292c2c60",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 11893,
+     "2": 7643,
+     "3": 15842
+    },
+    "evaluable_fraction_of_multicandidate": 0.9966787311049606,
+    "n_decision_rows_total": 37425,
+    "n_evaluable_with_truth": 23407,
+    "n_forward_multicandidate": 23485,
+    "n_forward_total": 35378
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 232.1764,
+   "ctrl_share": 0.11602051999916985,
+   "e2e_mean_ms": 675.2290696505662,
+   "e2e_p95_ms": 1173.7870340557688,
+   "e2e_p99_ms": 1198.245583343228,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.0,
+   "flip_truth_rate": 0.0,
+   "gamma_median": 0.006658141916496294,
+   "gamma_n": 20871,
+   "hops_mean": 17.2828529555447,
+   "isl_data_area": 807292565.5777987,
+   "margin_used_p50_ms": 13.00613761115453,
+   "n_evaluable": 23407,
+   "pdr": 1.0,
+   "policy": "geometry",
+   "policy_params": {
+    "advertise_interval_s": 0.1,
+    "control_plane": {
+     "advertise_interval_s": 0.1,
+     "packet_bits": 2000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 1
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "geometry",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 0.0,
+   "regret_p90_ms": 0.0,
+   "run_length_mean_decisions": 4.338646895273401,
+   "seed": 7,
+   "series": "sync",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.22445640473627557,
+   "sync_ms": 100,
+   "throughput_mbps": 102.35,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.5404999999999884,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": null,
+    "mean_ms": null,
+    "median_ms": null,
+    "n_censored": 0,
+    "n_flips": 0,
+    "n_uncensored": 0,
+    "p90_ms": null
+   }
+  },
+  "m2-sync0100-c2-greedy-s7": {
+   "aoi_p50_ms": 56.90387859171597,
+   "aoi_p90_ms": 96.86081458302631,
+   "aoi_p99_ms": 106.8305076150935,
+   "config_sha256": "3df2c3a550478391a9cfd58e7c7c8034f06a6b1752627ac14d3f737718c9f139",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 25581,
+     "2": 7849,
+     "3": 19012
+    },
+    "evaluable_fraction_of_multicandidate": 0.9790402442202449,
+    "n_decision_rows_total": 54425,
+    "n_evaluable_with_truth": 26298,
+    "n_forward_multicandidate": 26861,
+    "n_forward_total": 52442
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 232.1764,
+   "ctrl_share": 0.11608819999917064,
+   "e2e_mean_ms": 439.33733193451377,
+   "e2e_p95_ms": 775.226854125247,
+   "e2e_p99_ms": 912.5034027304828,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.2667503232184957,
+   "flip_truth_rate": 0.2667503232184957,
+   "gamma_median": 0.019009043153606686,
+   "gamma_n": 25228,
+   "hops_mean": 25.208270297528998,
+   "isl_data_area": 46742707.258342266,
+   "margin_used_p50_ms": 11.259898052624582,
+   "n_evaluable": 26298,
+   "pdr": 0.9687347337567171,
+   "policy": "queue_greedy",
+   "policy_params": {
+    "advertise_interval_s": 0.1,
+    "control_plane": {
+     "advertise_interval_s": 0.1,
+     "packet_bits": 2000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 1
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "queue_greedy",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 2.1165257810567697,
+   "regret_p90_ms": 8.150253117174378,
+   "run_length_mean_decisions": 2.4016438356164382,
+   "seed": 7,
+   "series": "sync",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.41148050155297367,
+   "sync_ms": 100,
+   "throughput_mbps": 99.15,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.47099999999999004,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": 0.04818246614397719,
+    "mean_ms": 288.90964962595183,
+    "median_ms": 61.698491754712315,
+    "n_censored": 338,
+    "n_flips": 7015,
+    "n_uncensored": 6677,
+    "p90_ms": 762.7462499021256
+   }
+  },
+  "m2-sync1000-c2-ewma-s7": {
+   "aoi_p50_ms": 505.8052826792334,
+   "aoi_p90_ms": 907.6576987536669,
+   "aoi_p99_ms": 996.0722622020928,
+   "config_sha256": "92cf3591da4afbca7d38d44f24a91479476513a280fb68d97719cc930d1728b9",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 21858,
+     "2": 7163,
+     "3": 18221
+    },
+    "evaluable_fraction_of_multicandidate": 0.9947998739363378,
+    "n_decision_rows_total": 49282,
+    "n_evaluable_with_truth": 25252,
+    "n_forward_multicandidate": 25384,
+    "n_forward_total": 47242
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 24.376896,
+   "ctrl_share": 0.011607759999913609,
+   "e2e_mean_ms": 396.1392382308753,
+   "e2e_p95_ms": 526.5834496778705,
+   "e2e_p99_ms": 680.2177000875354,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.2635038808807223,
+   "flip_truth_rate": 0.2635038808807223,
+   "gamma_median": 0.0962265843907287,
+   "gamma_n": 24330,
+   "hops_mean": 23.03921568627451,
+   "isl_data_area": 32439278.992816698,
+   "margin_used_p50_ms": 10.676326323467544,
+   "n_evaluable": 25252,
+   "pdr": 0.9965803615046409,
+   "policy": "queue_greedy_ewma",
+   "policy_params": {
+    "advertise_interval_s": 1.0,
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "packet_bits": 2000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 1
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "queue_greedy_ewma",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 1.669107217565575,
+   "regret_p90_ms": 6.578121567273387,
+   "run_length_mean_decisions": 6.073112073112073,
+   "seed": 7,
+   "series": "sync",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.15792415169660678,
+   "sync_ms": 1000,
+   "throughput_mbps": 102.0,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.47199999999999004,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": 0.2902013826269913,
+    "mean_ms": 1066.2078446755,
+    "median_ms": 170.54866774123667,
+    "n_censored": 1931,
+    "n_flips": 6654,
+    "n_uncensored": 4723,
+    "p90_ms": 3681.0058795946147
+   }
+  },
+  "m2-sync1000-c2-geom-s7": {
+   "aoi_p50_ms": 506.01734407624474,
+   "aoi_p90_ms": 908.9142664737508,
+   "aoi_p99_ms": 996.5958451987777,
+   "config_sha256": "683ad33ba024e42f49a51fecd211504a3170de800b23d0b2d797542788635b74",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 11951,
+     "2": 7637,
+     "3": 15860
+    },
+    "evaluable_fraction_of_multicandidate": 0.9967229859130953,
+    "n_decision_rows_total": 37495,
+    "n_evaluable_with_truth": 23420,
+    "n_forward_multicandidate": 23497,
+    "n_forward_total": 35448
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 24.376896,
+   "ctrl_share": 0.01159929999991351,
+   "e2e_mean_ms": 687.2487204037525,
+   "e2e_p95_ms": 1188.8201578416683,
+   "e2e_p99_ms": 1216.8417853136243,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.0,
+   "flip_truth_rate": 0.0,
+   "gamma_median": 0.043234271769658744,
+   "gamma_n": 20880,
+   "hops_mean": 17.31704934049829,
+   "isl_data_area": 830691491.7679769,
+   "margin_used_p50_ms": 13.003176575712656,
+   "n_evaluable": 23420,
+   "pdr": 1.0,
+   "policy": "geometry",
+   "policy_params": {
+    "advertise_interval_s": 1.0,
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "packet_bits": 2000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 1
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "geometry",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 0.0,
+   "regret_p90_ms": 0.0,
+   "run_length_mean_decisions": 4.366958791721052,
+   "seed": 7,
+   "series": "sync",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.22292034255712873,
+   "sync_ms": 1000,
+   "throughput_mbps": 102.35,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.5394999999999885,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": null,
+    "mean_ms": null,
+    "median_ms": null,
+    "n_censored": 0,
+    "n_flips": 0,
+    "n_uncensored": 0,
+    "p90_ms": null
+   }
+  },
+  "m2-sync1000-c2-greedy-s7": {
+   "aoi_p50_ms": 510.0057480359128,
+   "aoi_p90_ms": 909.1205829057092,
+   "aoi_p99_ms": 996.5579590470454,
+   "config_sha256": "0336c998f684092ae343c807856158f598e6118f0cb4eb5b02c55d3553c16efe",
+   "coverage": {
+    "candidate_count_histogram": {
+     "1": 23015,
+     "2": 7246,
+     "3": 18511
+    },
+    "evaluable_fraction_of_multicandidate": 0.9867220561400785,
+    "n_decision_rows_total": 50796,
+    "n_evaluable_with_truth": 25415,
+    "n_forward_multicandidate": 25757,
+    "n_forward_total": 48772
+   },
+   "crosscheck_audit_identity_violations": 0,
+   "crosscheck_geometry_mismatch": 0,
+   "ctrl_offered_mbits": 24.376896,
+   "ctrl_share": 0.011607759999913609,
+   "e2e_mean_ms": 408.0592771665568,
+   "e2e_p95_ms": 664.4030225857982,
+   "e2e_p99_ms": 964.6851712012792,
+   "entropy_mean_bits": null,
+   "flip_rule_rate": 0.27767066692897896,
+   "flip_truth_rate": 0.27767066692897896,
+   "gamma_median": 0.12750505818536895,
+   "gamma_n": 24084,
+   "hops_mean": 23.65118577075099,
+   "isl_data_area": 35862703.7485628,
+   "margin_used_p50_ms": 10.559125142140857,
+   "n_evaluable": 25415,
+   "pdr": 0.9887640449438202,
+   "policy": "queue_greedy",
+   "policy_params": {
+    "advertise_interval_s": 1.0,
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "packet_bits": 2000,
+     "priority": "nonpreemptive_priority",
+     "ttl_s": 10.0,
+     "vis_k": 1
+    },
+    "ewma_alpha": 0.25,
+    "hysteresis_eta_s": 0.0,
+    "predictor": "hold_last",
+    "softmin_temperature_s": null,
+    "state_policy": "queue_greedy",
+    "state_source": "advertised",
+    "sticky_hold_s": null
+   },
+   "regret_mean_ms": 2.02575747599341,
+   "regret_p90_ms": 8.013711627766234,
+   "run_length_mean_decisions": 3.194846008799497,
+   "seed": 7,
+   "series": "sync",
+   "sticky_keep_rate": null,
+   "sticky_override_rate": null,
+   "switch_rate": 0.3075275640517173,
+   "sync_ms": 1000,
+   "throughput_mbps": 101.2,
+   "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c",
+   "util_busy_max": 0.47199999999999004,
+   "variant": null,
+   "wrong_duration_W_rule": {
+    "censored_frac": 0.10230976335553352,
+    "mean_ms": 597.7880676288986,
+    "median_ms": 121.12486063102956,
+    "n_censored": 722,
+    "n_flips": 7057,
+    "n_uncensored": 6335,
+    "p90_ms": 1705.8720172865662
+   }
+  }
+ },
+ "commands": {
+  "cell": "python3 ANALYSIS/SIM-QUAL-20261031/sq_round3_analyze.py cell <cell-dir> --json F --md F",
+  "fixture": "python3 ANALYSIS/SIM-QUAL-20261031/sq_round3_analyze.py matrix /tmp/sq3fix/cells/* --json F --md F",
+  "matrix": "python3 ANALYSIS/SIM-QUAL-20261031/sq_round3_analyze.py matrix <16 round-2 cell dirs> --jobs 4 --json ANALYSIS/SIM-QUAL-20261031/round3-results/round2-regression-smoke.json --md .../round2-regression-smoke.md"
+ },
+ "flip_semantics": "truth_substituted_rerank_not_resimulated_counterfactual",
+ "known_limitations": [
+  "flip is a truth-substituted re-ranking of the same decision row, not a re-simulated counterfactual",
+  "the evaluable subset requires the chosen candidate to carry a truth row; terminal (downlink-exit) candidates never do, so ~0.3% of multi-candidate decisions drop out",
+  "truth is sampled only at the candidate target instant; W and the near-tie proxy are decision-level quantities, not packet timings",
+  "response-sensitivity columns are behavioural proxies (switch, run length, flip, entropy, near-tie fraction), not a mathematical sensitivity",
+  "Gamma needs >=3 truth samples inside +-0.25 s on both resources; sparse probe coverage reduces n",
+  "Round-2 sync cells changed advertise_interval_s AND packet_bits/vis_k together, so that sync axis is a combined control-budget axis; policy_params exposes the full control config",
+  "paired E2E only aligns packets delivered in BOTH cells; losses show up in PDR/fate counts, not in the delta",
+  "the analyzer is read-only over the evidence and cannot see counterfactual fates"
+ ],
+ "metric_coverage": {
+  "available": [
+   "AoI p50/p90/p95/p99 + gen->recv / recv->decision decomposition",
+   "used-state and truth margins",
+   "Gamma bins with flip rates; flip vs tau and vs margin bins",
+   "flip rule-relative and truth-argmin; proxy regret distribution",
+   "switch rate, same-direction run length, W per flip decision",
+   "E2E mean/p50/p95/p99, PDR, throughput, hops, isl_data area",
+   "ISL busy-fraction max/p95 from link_service_windows",
+   "control offered/delivered bits, counters, ctrl_isl_s share",
+   "paired E2E across policies sharing source_trace_sha256",
+   "sync-axis deltas (slow vs fast advertisement interval)",
+   "config sha256, state_policy params, coverage counters",
+   "consistency cross-checks (geometry top, audit identity)"
+  ],
+  "not_available_in_round2_evidence": [
+   "action entropy: only queue_softmin audits expose probabilities",
+   "sticky keep/override: only queue_greedy_sticky audits expose them",
+   "path stretch: no shortest-path baseline (hops only)",
+   "window-summed control service time: link_service_windows carry no kind=='ctrl' marker (occupied.ctrl_isl_s / stop_time used)",
+   "control packet delay: control.instances[3] is an absolute received_at, so advertisement age comes from the probe"
+  ]
+ },
+ "purpose": "Round-2 regression + schema smoke for sq_round3_analyze.py before Round-3 (m3-*/sq5-*) evidence exists",
+ "round2_regression": {
+  "artifact": "ANALYSIS/SIM-QUAL-20261031/round2-results/regimes.json",
+  "cells_compared": [
+   "m2-c2-geom-s7",
+   "m2-c2-greedy-s7",
+   "m2-c2-ewma-s7",
+   "m2-c2-hyst-s7"
+  ],
+  "comparisons": {
+   "m2-c2-ewma-s7": {
+    "expected_differences": {
+     "W_p50_ms": {
+      "reason": "Round-2 emitted ONE sample per flip RUN; Round-3 follows the frozen definition with one sample per FLIP decision, so long flip runs dominate the per-flip median",
+      "round2": 29.250357684223793,
+      "round2_censored_samples": 54,
+      "round3": 347.7513906762413,
+      "round3_censored_frac": 0.0840654347167525
+     },
+     "flip_rate": {
+      "reason": "Round-2 divided flips by ALL multi-candidate rows; Round-3 divides by the evaluable subset (chosen itself truth-labelled) and reports both counts.",
+      "round2": 0.2626753606006718,
+      "round3": 0.2615689381933439
+     },
+     "hops_mean": {
+      "reason": "Round-2 counted len(path); Round-3 counts edges (len(path)-1), so Round-3 is exactly 1 smaller",
+      "round2": 23.99902008819206,
+      "round3": 22.99902008819206
+     },
+     "margin_used_p50_ms": {
+      "reason": "same quantity on the evaluable subset",
+      "round2": 10.682332288016184,
+      "round3": 10.65927024618303
+     },
+     "switch_rate": {
+      "reason": "streams built from the evaluable subset",
+      "round2": 0.15851326587522907,
+      "round3": 0.15888485042137637
+     }
+    },
+    "policy": "queue_greedy_ewma",
+    "same_values": {
+     "aoi_p50_ms": [
+      506.07755044546644,
+      506.07755044546644
+     ],
+     "aoi_p90_ms": [
+      907.9656288540416,
+      907.9656288540416
+     ],
+     "ctrl_offered_bits": [
+      295158216,
+      295158216
+     ],
+     "e2e_mean_ms": [
+      395.58129551826846,
+      395.58129551826846
+     ],
+     "e2e_p95_ms": [
+      526.148356775444,
+      526.148356775444
+     ],
+     "e2e_p99_ms": [
+      680.7755580729147,
+      680.7755580729147
+     ],
+     "isl_data_area": [
+      32679469.60752186,
+      32679469.60752186
+     ],
+     "regret_mean_ms": [
+      1.6630750392870766,
+      1.6630750392870766
+     ],
+     "regret_p90_ms": [
+      6.576275277718771,
+      6.576275277718771
+     ]
+    }
+   },
+   "m2-c2-geom-s7": {
+    "expected_differences": {
+     "W_p50_ms": {
+      "reason": "Round-2 emitted ONE sample per flip RUN; Round-3 follows the frozen definition with one sample per FLIP decision, so long flip runs dominate the per-flip median",
+      "round2": null,
+      "round2_censored_samples": 0,
+      "round3": null,
+      "round3_censored_frac": null
+     },
+     "flip_rate": {
+      "reason": "Round-2 divided flips by ALL multi-candidate rows; Round-3 divides by the evaluable subset (chosen itself truth-labelled) and reports both counts.",
+      "round2": 0.0,
+      "round3": 0.0
+     },
+     "hops_mean": {
+      "reason": "Round-2 counted len(path); Round-3 counts edges (len(path)-1), so Round-3 is exactly 1 smaller",
+      "round2": 18.321934538348803,
+      "round3": 17.321934538348803
+     },
+     "margin_used_p50_ms": {
+      "reason": "same quantity on the evaluable subset",
+      "round2": 12.97108279471776,
+      "round3": 12.992030041931606
+     },
+     "switch_rate": {
+      "reason": "streams built from the evaluable subset",
+      "round2": 0.22166874221668742,
+      "round3": 0.22232273627983112
+     }
+    },
+    "policy": "geometry",
+    "same_values": {
+     "aoi_p50_ms": [
+      504.3131939066452,
+      504.3131939066452
+     ],
+     "aoi_p90_ms": [
+      907.7628772386968,
+      907.7628772386968
+     ],
+     "ctrl_offered_bits": [
+      295046008,
+      295046008
+     ],
+     "e2e_mean_ms": [
+      687.3089261805502,
+      687.3089261805502
+     ],
+     "e2e_p95_ms": [
+      1192.6412817515536,
+      1192.6412817515536
+     ],
+     "e2e_p99_ms": [
+      1210.8292074467197,
+      1210.8292074467197
+     ],
+     "isl_data_area": [
+      830641905.6676338,
+      830641905.6676338
+     ],
+     "regret_mean_ms": [
+      0.0,
+      0.0
+     ],
+     "regret_p90_ms": [
+      0.0,
+      0.0
+     ]
+    }
+   },
+   "m2-c2-greedy-s7": {
+    "expected_differences": {
+     "W_p50_ms": {
+      "reason": "Round-2 emitted ONE sample per flip RUN; Round-3 follows the frozen definition with one sample per FLIP decision, so long flip runs dominate the per-flip median",
+      "round2": 20.000621869911583,
+      "round2_censored_samples": 50,
+      "round3": 139.83762221769956,
+      "round3_censored_frac": 0.06916469194312796
+     },
+     "flip_rate": {
+      "reason": "Round-2 divided flips by ALL multi-candidate rows; Round-3 divides by the evaluable subset (chosen itself truth-labelled) and reports both counts.",
+      "round2": 0.2661470369354902,
+      "round3": 0.2651066001806117
+     },
+     "hops_mean": {
+      "reason": "Round-2 counted len(path); Round-3 counts edges (len(path)-1), so Round-3 is exactly 1 smaller",
+      "round2": 25.467160493827162,
+      "round3": 24.467160493827162
+     },
+     "margin_used_p50_ms": {
+      "reason": "same quantity on the evaluable subset",
+      "round2": 10.722937810770459,
+      "round3": 10.666830865921003
+     },
+     "switch_rate": {
+      "reason": "streams built from the evaluable subset",
+      "round2": 0.29771354104963865,
+      "round3": 0.29840465539764854
+     }
+    },
+    "policy": "queue_greedy",
+    "same_values": {
+     "aoi_p50_ms": [
+      507.62673778465484,
+      507.62673778465484
+     ],
+     "aoi_p90_ms": [
+      908.9811396343262,
+      908.9811396343262
+     ],
+     "ctrl_offered_bits": [
+      295158216,
+      295158216
+     ],
+     "e2e_mean_ms": [
+      422.30182096156545,
+      422.30182096156545
+     ],
+     "e2e_p95_ms": [
+      723.4376061411183,
+      723.4376061411183
+     ],
+     "e2e_p99_ms": [
+      963.1033590578371,
+      963.1033590578371
+     ],
+     "isl_data_area": [
+      36128428.68566977,
+      36128428.68566977
+     ],
+     "regret_mean_ms": [
+      1.9016756060041284,
+      1.9016756060041284
+     ],
+     "regret_p90_ms": [
+      7.729104746068721,
+      7.729104746068721
+     ]
+    }
+   },
+   "m2-c2-hyst-s7": {
+    "expected_differences": {
+     "W_p50_ms": {
+      "reason": "Round-2 emitted ONE sample per flip RUN; Round-3 follows the frozen definition with one sample per FLIP decision, so long flip runs dominate the per-flip median",
+      "round2": 20.001110830768276,
+      "round2_censored_samples": 32,
+      "round3": 80.00296801476381,
+      "round3_censored_frac": 0.028024193548387095
+     },
+     "flip_rate": {
+      "reason": "Round-2 divided flips by ALL multi-candidate rows; Round-3 divides by the evaluable subset (chosen itself truth-labelled) and reports both counts.",
+      "round2": 0.18860458981798997,
+      "round3": 0.1874031813201345
+     },
+     "hops_mean": {
+      "reason": "Round-2 counted len(path); Round-3 counts edges (len(path)-1), so Round-3 is exactly 1 smaller",
+      "round2": 27.135375494071145,
+      "round3": 26.135375494071145
+     },
+     "margin_used_p50_ms": {
+      "reason": "same quantity on the evaluable subset",
+      "round2": 11.088518561818244,
+      "round3": 11.031720594615713
+     },
+     "switch_rate": {
+      "reason": "streams built from the evaluable subset",
+      "round2": 0.1908269420609006,
+      "round3": 0.19129739607126542
+     }
+    },
+    "policy": "queue_greedy_hysteresis",
+    "same_values": {
+     "aoi_p50_ms": [
+      509.2457878960204,
+      509.2457878960204
+     ],
+     "aoi_p90_ms": [
+      910.6108519330825,
+      910.6108519330825
+     ],
+     "ctrl_offered_bits": [
+      295158216,
+      295158216
+     ],
+     "e2e_mean_ms": [
+      456.7599878924204,
+      456.7599878924204
+     ],
+     "e2e_p95_ms": [
+      851.4953116856602,
+      851.4953116856602
+     ],
+     "e2e_p99_ms": [
+      998.8651013919938,
+      998.8651013919938
+     ],
+     "isl_data_area": [
+      50036185.30251172,
+      50036185.30251172
+     ],
+     "regret_mean_ms": [
+      2.083152476170573,
+      2.083152476170573
+     ],
+     "regret_p90_ms": [
+      7.838628932713629,
+      7.838628932713629
+     ]
+    }
+   }
+  },
+  "note": "same_values must agree exactly (same packet/decision/queue aggregates); expected_differences are definition changes with both values and the reason recorded"
+ },
+ "round3_early_validation": {
+  "cells": {
+   "m3-c2-geometry-h1000-s7": {
+    "aoi_p50_ms": 506.01734407624474,
+    "aoi_p90_ms": 908.9142664737508,
+    "config_seed": 7,
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 1.0,
+     "chosen_not_used_argmin": 0,
+     "geometry_policy_top_mismatch": 0
+    },
+    "e2e_mean_ms": 687.2487204037525,
+    "e2e_p95_ms": 1188.8201578416683,
+    "flip_rule_rate": 0.0,
+    "flip_truth_rate": 0.0,
+    "margin_used_p50_ms": 13.003176575712656,
+    "n_evaluable": 23420,
+    "n_forward_multicandidate": 23497,
+    "pdr": 1.0,
+    "policy": "geometry",
+    "regret_mean_ms": 0.0,
+    "seed": 7,
+    "seed_note": null,
+    "switch_rate": 0.22292034255712873,
+    "sync_ms": 1000,
+    "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c"
+   },
+   "m3-c2-geometry-h1000-s8": {
+    "aoi_p50_ms": 507.1386075893205,
+    "aoi_p90_ms": 902.5721514992657,
+    "config_seed": 7,
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 1.0,
+     "chosen_not_used_argmin": 0,
+     "geometry_policy_top_mismatch": 0
+    },
+    "e2e_mean_ms": 647.9520865388464,
+    "e2e_p95_ms": 1096.7598366173306,
+    "flip_rule_rate": 0.0,
+    "flip_truth_rate": 0.0,
+    "margin_used_p50_ms": 13.05247025583224,
+    "n_evaluable": 22888,
+    "n_forward_multicandidate": 22969,
+    "pdr": 1.0,
+    "policy": "geometry",
+    "regret_mean_ms": 0.0,
+    "seed": 8,
+    "seed_note": "cell-id seed 8 != config scenario.seed 7 (the replicate seed lives in trace_program.seed in this contract)",
+    "switch_rate": 0.22047036025720074,
+    "sync_ms": 1000,
+    "trace_source_sha256": "6ac591e28374f08d7facb87571c112fa0dfae3c251b3590a4ef909e88e771441"
+   },
+   "m3-c2-geometry-h1000-s9": {
+    "aoi_p50_ms": 502.3706943254309,
+    "aoi_p90_ms": 901.3767041319074,
+    "config_seed": 7,
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 1.0,
+     "chosen_not_used_argmin": 0,
+     "geometry_policy_top_mismatch": 0
+    },
+    "e2e_mean_ms": 685.3842921570176,
+    "e2e_p95_ms": 1167.1942110306936,
+    "flip_rule_rate": 0.0,
+    "flip_truth_rate": 0.0,
+    "margin_used_p50_ms": 13.026717961114084,
+    "n_evaluable": 22927,
+    "n_forward_multicandidate": 23000,
+    "pdr": 1.0,
+    "policy": "geometry",
+    "regret_mean_ms": 0.0,
+    "seed": 9,
+    "seed_note": "cell-id seed 9 != config scenario.seed 7 (the replicate seed lives in trace_program.seed in this contract)",
+    "switch_rate": 0.22266672528245482,
+    "sync_ms": 1000,
+    "trace_source_sha256": "555ef133a60ebf877c631c513a871bfc34c2aeddbf29908e7db9029640beeb16"
+   },
+   "m3-c2-queue_greedy-h1000-s7": {
+    "aoi_p50_ms": 510.0057480359128,
+    "aoi_p90_ms": 909.1205829057092,
+    "config_seed": 7,
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 1.0,
+     "chosen_not_used_argmin": 0,
+     "geometry_policy_top_mismatch": 0
+    },
+    "e2e_mean_ms": 408.0592771665568,
+    "e2e_p95_ms": 664.4030225857982,
+    "flip_rule_rate": 0.27767066692897896,
+    "flip_truth_rate": 0.27767066692897896,
+    "margin_used_p50_ms": 10.559125142140857,
+    "n_evaluable": 25415,
+    "n_forward_multicandidate": 25757,
+    "pdr": 0.9887640449438202,
+    "policy": "queue_greedy",
+    "regret_mean_ms": 2.02575747599341,
+    "seed": 7,
+    "seed_note": null,
+    "switch_rate": 0.3075275640517173,
+    "sync_ms": 1000,
+    "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c"
+   }
+  },
+  "identity_checks": {
+   "cells_sharing_config_identity": {},
+   "note": "empty lists mean seed replicates are independent (distinct traces) and one seed maps to exactly one trace; shared config identity is only a defect when the cells are meant to differ",
+   "same_seed_with_multiple_traces": [],
+   "seed_replicates_sharing_one_trace": []
+  },
+  "note": "first 4 pulled sq5-* m3 cells (geometry s7/s8/s9, queue_greedy s7), analysed with this script while Round-3 was still being produced; the Lead's pipeline owns round3-results/matrix.{json,md}",
+  "paired_vs_geometry": [
+   {
+    "baseline": "geometry",
+    "baseline_e2e_mean_ms": 687.2487204037525,
+    "delta_mean_ms": -277.6844035616886,
+    "delta_p50_ms": -156.27980046442235,
+    "delta_p95_ms": 215.37225044516538,
+    "family": "m3",
+    "faster": 1303,
+    "group": "m3|sync|c2|h1000|s7",
+    "paired_packets": 2024,
+    "policy": "queue_greedy",
+    "policy_e2e_mean_ms": 408.0592771665568,
+    "policy_flip_rule_rate": 0.27767066692897896,
+    "policy_regret_mean_ms": 2.02575747599341,
+    "regime": "c2",
+    "same_trace": true,
+    "seed": 7,
+    "slower": 528,
+    "sync_ms": 1000
+   }
+  ],
+  "warnings": []
+ },
+ "runtime": {
+  "determinism": "sequential and --jobs 4 produce byte-identical JSON and MD (jobs is an execution knob, not a report parameter)",
+  "matrix_16_cells_jobs4_wall_s": 36.91,
+  "single_cell_sequential_wall_s": 8.22
+ },
+ "schema": "sq-round3-smoke/v1",
+ "synthetic_policy_paths": {
+  "cells": {
+   "m3-c2-geometry-h1000-s7": {
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 1.0,
+     "chosen_not_used_argmin": 0,
+     "geometry_policy_top_mismatch": 0
+    },
+    "entropy_mean_bits": null,
+    "flip_rule_rate": 0.0,
+    "flip_truth_rate": 0.0,
+    "legacy_fallback_records": 0,
+    "n_evaluable": 2,
+    "policy": "geometry",
+    "regret_mean_ms": 0.0,
+    "sticky_keep_rate": null,
+    "sticky_override_rate": null
+   },
+   "m3-c2-legacy-h1000-s7": {
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 1.0,
+     "chosen_not_used_argmin": 0,
+     "geometry_policy_top_mismatch": 0
+    },
+    "entropy_mean_bits": null,
+    "flip_rule_rate": 0.5,
+    "flip_truth_rate": 0.5,
+    "legacy_fallback_records": 2,
+    "n_evaluable": 2,
+    "policy": "legacy",
+    "regret_mean_ms": 3.5000000000000004,
+    "sticky_keep_rate": null,
+    "sticky_override_rate": null
+   },
+   "m3-c2-queue_greedy_sticky-h1000-s7": {
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 0.0,
+     "chosen_not_used_argmin": 2,
+     "geometry_policy_top_mismatch": 0
+    },
+    "entropy_mean_bits": null,
+    "flip_rule_rate": 0.5,
+    "flip_truth_rate": 0.5,
+    "legacy_fallback_records": 0,
+    "n_evaluable": 2,
+    "policy": "queue_greedy_sticky",
+    "regret_mean_ms": 4.250000000000001,
+    "sticky_keep_rate": 0.5,
+    "sticky_override_rate": 1.0
+   },
+   "m3-c2-queue_softmin-h1000-s7": {
+    "cross_checks": {
+     "audit_identity_violations": 0,
+     "chosen_equals_used_argmin": 1.0,
+     "chosen_not_used_argmin": 0,
+     "geometry_policy_top_mismatch": 0
+    },
+    "entropy_mean_bits": 0.5264795487695574,
+    "flip_rule_rate": 1.0,
+    "flip_truth_rate": 0.0,
+    "legacy_fallback_records": 0,
+    "n_evaluable": 1,
+    "policy": "queue_softmin",
+    "regret_mean_ms": 0.0,
+    "sticky_keep_rate": null,
+    "sticky_override_rate": null
+   }
+  },
+  "note": "synthetic /tmp fixture (not evidence) covering code paths the Round-2 evidence cannot: softmin resampling with the recorded uniform, sticky keep/override, geometry zero-flip control, and the legacy scorer fallback when no state_policy block exists"
+ }
+}
