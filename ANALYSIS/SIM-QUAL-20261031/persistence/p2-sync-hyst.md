@@ -92,9 +92,6 @@ Burst window [8.0, 8.5]: 208 flips, z>=1 0, z>=0.5 18; 0.5 s-bin offered util ma
 | isl:34:54 | 4.22 | 10.94 | 6.719 | 63 | 9.38 | True |
 | isl:26:46 | 7.52 | 13.34 | 5.811 | 103 | 17.73 | False |
 | isl:4:3 | 5.03 | 9.44 | 4.408 | 37 | 8.39 | False |
-| isl:124:125 | 7.32 | 11.45 | 4.131 | 18 | 4.36 | False |
-| isl:25:45 | 4.21 | 8.00 | 3.784 | 98 | 25.90 | True |
-| isl:14:34 | 4.20 | 7.41 | 3.210 | 43 | 13.40 | True |
 
 |delta| threshold sensitivity (0.5 s bins, **durations quantized - not tau_error**):
 
@@ -113,17 +110,17 @@ Burst window [8.0, 8.5]: 208 flips, z>=1 0, z>=0.5 18; 0.5 s-bin offered util ma
 
 ### Error segments vs relaxation / vs bias size
 
-Split by tau_error / tau_relax:
+Split by tau_error / tau_relax - **degenerate in this cell** (no segment has ratio < 1):
 
 | group | segments | tau_error p50 (s) | tau_relax p50 (s) | ratio p50 | \|delta\| p50 (Mbps) | backlog slope p50 (Mbit/s) | backlog p50 (Mbit) | E2E mean (ms) | E2E vs link baseline (ms) | packets |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ratio >=1 | 17 | 0.466 | 0.0262 | 11.34 | 26.74 | 0.93 | 0.19 | 371.68 | 41.73 | 1025 |
-| ratio <1 | 1 | 0.030 | 0.0325 | 0.93 | 132.62 | 0.11 | 0.85 | 300.80 | -5.90 | 3 |
+| ratio >=1 | 18 | 0.380 | 0.0228 | 11.34 | 26.74 | 0.86 | 0.19 | 367.74 | 39.08 | 1028 |
+| ratio <1 | 0 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | 0 |
 
 Split by |delta| (median 27.03 Mbps):
 
 | group | segments | tau_error p50 (s) | tau_relax p50 (s) | ratio p50 | \|delta\| p50 (Mbps) | backlog slope p50 (Mbit/s) | backlog p50 (Mbit) | E2E mean (ms) | E2E vs link baseline (ms) | packets |
 |---|---|---|---|---|---|---|---|---|---|---|
-| |delta| high | 9 | 0.179 | 0.0325 | 4.46 | 51.49 | 3.06 | 0.80 | 385.71 | 54.94 | 197 |
-| |delta| low | 9 | 1.919 | 0.0206 | 93.01 | 17.12 | 0.28 | 0.12 | 349.78 | 23.22 | 831 |
+| |delta| high | 9 | 0.179 | 0.0262 | 5.61 | 51.49 | 3.06 | 0.80 | 385.71 | 54.94 | 197 |
+| |delta| low | 9 | 1.919 | 0.0210 | 88.57 | 17.12 | 0.28 | 0.12 | 349.78 | 23.22 | 831 |
 

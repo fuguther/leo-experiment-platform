@@ -1623,7 +1623,8 @@ def digest_report(report):
                 for key, value in block.items()}
 
     return {
-        "schema": "sq-persistence-cell-digest/v1",
+        "schema": "sq-persistence-cell/v1",
+        "detail_level": "digest",
         "cell": report["cell"],
         "policy": report["policy"],
         "hysteresis_eta_s": report["hysteresis_eta_s"],
@@ -1668,7 +1669,8 @@ def digest_report(report):
             "group_by_ratio": strip_groups(comparison["group_by_ratio"]),
             "group_by_delta": strip_groups(comparison["group_by_delta"]),
         },
-        "per_bin": report["per_bin"],
+        "per_bin_note": ("the 0.5 s bin table lives in the per-cell file "
+                         "(<cell>.json -> per_bin) to avoid duplicating it here"),
     }
 
 

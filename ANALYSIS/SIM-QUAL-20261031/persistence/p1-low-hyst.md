@@ -92,9 +92,6 @@ Burst window [8.0, 8.5]: 27 flips, z>=1 0, z>=0.5 0; 0.5 s-bin offered util max 
 | isl:46:45 | 4.13 | 7.00 | 2.870 | 100 | 34.84 | True |
 | isl:26:46 | 4.11 | 6.98 | 2.870 | 64 | 22.30 | True |
 | isl:4:24 | 7.19 | 9.31 | 2.121 | 59 | 27.82 | False |
-| isl:23:43 | 7.22 | 7.98 | 0.758 | 24 | 31.68 | False |
-| isl:44:43 | 4.26 | 5.00 | 0.739 | 35 | 47.38 | True |
-| isl:123:3 | 12.25 | 12.98 | 0.731 | 15 | 20.51 | False |
 
 |delta| threshold sensitivity (0.5 s bins, **durations quantized - not tau_error**):
 

@@ -238,7 +238,7 @@ def main() -> None:
     parser.add_argument("--load-b", type=float, default=160.0)
     parser.add_argument("--load-c-high", type=float, default=180.0)
     parser.add_argument("--load-c-max", type=float, default=200.0)
-    parser.add_argument("--load-d", type=float, default=160.0)
+    parser.add_argument("--load-d", type=float, default=140.0)
     parser.add_argument("--burst-mult", type=float, default=1.6)
     parser.add_argument("--burst-start", type=float, default=8.0)
     parser.add_argument("--burst-duration", type=float, default=0.5)

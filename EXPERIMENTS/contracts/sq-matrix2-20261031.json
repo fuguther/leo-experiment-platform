@@ -3227,7 +3227,7 @@
     },
     "schema": "scene-trace-program/v1",
     "seed": 7,
-    "total_mbps": 160.0
+    "total_mbps": 140.0
    }
   },
   {
@@ -3336,7 +3336,7 @@
     },
     "schema": "scene-trace-program/v1",
     "seed": 7,
-    "total_mbps": 160.0
+    "total_mbps": 140.0
    }
   },
   {
@@ -3445,7 +3445,7 @@
     },
     "schema": "scene-trace-program/v1",
     "seed": 7,
-    "total_mbps": 160.0
+    "total_mbps": 140.0
    }
   },
   {

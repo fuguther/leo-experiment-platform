@@ -92,9 +92,6 @@ Burst window [8.0, 8.5]: 177 flips, z>=1 30, z>=0.5 68; 0.5 s-bin offered util m
 | isl:56:57 | 4.18 | 8.98 | 4.793 | 88 | 18.36 | True |
 | isl:126:127 | 9.50 | 13.87 | 4.367 | 26 | 5.95 | True |
 | isl:124:125 | 7.32 | 11.45 | 4.131 | 18 | 4.36 | False |
-| isl:6:26 | 9.01 | 12.45 | 3.437 | 80 | 23.28 | False |
-| isl:14:34 | 4.20 | 7.41 | 3.210 | 44 | 13.71 | True |
-| isl:4:3 | 10.53 | 12.97 | 2.438 | 12 | 4.92 | False |
 
 |delta| threshold sensitivity (0.5 s bins, **durations quantized - not tau_error**):
 
@@ -117,13 +114,13 @@ Split by tau_error / tau_relax - **degenerate in this cell** (no segment has rat
 
 | group | segments | tau_error p50 (s) | tau_relax p50 (s) | ratio p50 | \|delta\| p50 (Mbps) | backlog slope p50 (Mbit/s) | backlog p50 (Mbit) | E2E mean (ms) | E2E vs link baseline (ms) | packets |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ratio >=1 | 13 | 0.571 | 0.0149 | 38.30 | 29.39 | 0.57 | 0.21 | 381.64 | 9.12 | 707 |
+| ratio >=1 | 13 | 0.571 | 0.0200 | 19.21 | 29.39 | 0.57 | 0.21 | 381.64 | 9.12 | 707 |
 | ratio <1 | 0 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | 0 |
 
 Split by |delta| (median 29.39 Mbps):
 
 | group | segments | tau_error p50 (s) | tau_relax p50 (s) | ratio p50 | \|delta\| p50 (Mbps) | backlog slope p50 (Mbit/s) | backlog p50 (Mbit) | E2E mean (ms) | E2E vs link baseline (ms) | packets |
 |---|---|---|---|---|---|---|---|---|---|---|
-| |delta| high | 7 | 0.766 | 0.0114 | 38.30 | 53.06 | 0.88 | 0.28 | 381.15 | 13.06 | 366 |
-| |delta| low | 6 | 0.270 | 0.0149 | 24.41 | 18.36 | 0.00 | 0.00 | 382.22 | 4.53 | 341 |
+| |delta| high | 7 | 0.766 | 0.0200 | 23.10 | 53.06 | 0.88 | 0.28 | 381.15 | 13.06 | 366 |
+| |delta| low | 6 | 0.270 | 0.0322 | 8.37 | 18.36 | 0.00 | 0.00 | 382.22 | 4.53 | 341 |
 
