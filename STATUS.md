@@ -2,7 +2,19 @@
 
 范围：仅 `worktrees/.t1-scene-calibration` / `codex/20261018-scene-calibration`；工作区级入口仍是 `topic/STATUS.md`。
 
-## 当前分支状态（`night/time-exp-20261031`，2026-10-31）
+## 当前分支状态（`qual/sim-qual-20261031`，2026-10-31 深夜；本 worktree）
+
+- 本分支从 `a90c1f9`（night 线 HEAD）分出，任务 = 仿真资格考试 A–F + 四策略 stale-state 敏感性。
+- 报告入口 `ANALYSIS/SIM-QUAL-20261031/`：`QUALIFICATION-20261031.md`（A–F，15 测试/144 断言全绿）、
+  `PROTOCOL-20261031.md`（冻结矩阵）、`POLICY-SPEC.md`（四策略定义）、`RESULTS-20261031.md`（12 cell）、
+  `CONCLUSION-20261031.md`（Strict/Defeasible/Unknown）、`sq_policy_analyze.py`（复算）。
+- code commit `76427851e32fc735da3fd45f4faa1ad54e49b308`；release `76427851…-9c5df15a…`；
+  12 个 diagnostic run 全部 `DIAGNOSTIC_COMPLETE`、回传 `verified`，索引见 `ANALYSIS/DEPLOYMENT-INDEX.jsonl` 的 `sq-*` 行。
+- 结论摘要：A–F 资格考试全过（无仿真器缺陷）；四策略 flip 0/27.8/18.2/28.5%（high）；
+  AoI 487→56 ms 不改变 E2E、也不消除 flip；策略类别（是否看队列）才是网络性能主因。
+  详见 `CONCLUSION-20261031.md`；单 seed、合成 trace，不得外推。
+
+## 历史分支状态（`night/time-exp-20261031`，2026-10-31）
 
 - 时间语义 / 状态年龄线的最新入口在 `ANALYSIS/TIME-ALIGNMENT-20261030/`：
   `PILOT-20261031.md`（设计与起跑前就绪证据）、`PILOT-20261031-RESULTS.md`（第一批机制结果）、
