@@ -1,0 +1,561 @@
+{
+ "caps": {
+  "high_z": {
+   "max_per_resource": 1,
+   "max_per_sat": 1
+  },
+  "long_persistence": {
+   "max_per_run": 1
+  },
+  "low_gamma": {
+   "max_per_run": 1
+  }
+ },
+ "cell": "m2-c2-greedy-s9",
+ "decisions": [
+  {
+   "bin": 16,
+   "bits": 1000000.0,
+   "chosen": "S",
+   "chosen_resource": "isl:5:25",
+   "decision_id": 39513,
+   "delta_bps": -82000000.0,
+   "directions": [
+    "S",
+    "E",
+    "N"
+   ],
+   "dst": "G1:91:283",
+   "eps_bps": 46646227.21864689,
+   "fresh": "E",
+   "fresh_resource": "isl:26:46",
+   "gamma": 7509.093023313013,
+   "hop_index": 3,
+   "margin_s": 9.628644540293774e-07,
+   "pid": 1648,
+   "proxy_regret_s": 0.0069106638276882765,
+   "rank_in_stratum": 1,
+   "run_first_t": 12.341119397892342,
+   "run_id": 1328,
+   "run_len": 1,
+   "sat": 6,
+   "stratum": "large_gamma",
+   "stratum_threshold": {
+    "rule": "gamma_p75",
+    "value": 2.161604357053393
+   },
+   "t": 12.341119397892342,
+   "z_basis": "valid",
+   "z_bits": 0.0214379610019189,
+   "z_delta": 1.7579128021573498
+  },
+  {
+   "bin": 0,
+   "bits": 1000000.0,
+   "chosen": "E",
+   "chosen_resource": "isl:66:65",
+   "decision_id": 178,
+   "delta_bps": 4000000.0,
+   "directions": [
+    "E",
+    "W",
+    "S"
+   ],
+   "dst": "G1:91:283",
+   "eps_bps": 96000000.00000009,
+   "fresh": "W",
+   "fresh_resource": "isl:26:25",
+   "gamma": null,
+   "hop_index": 2,
+   "margin_s": 0.0,
+   "pid": 29,
+   "proxy_regret_s": 0.00999918508725027,
+   "rank_in_stratum": 1,
+   "run_first_t": 4.16971818765881,
+   "run_id": 1043,
+   "run_len": 1,
+   "sat": 46,
+   "stratum": "small_margin",
+   "stratum_threshold": {
+    "rule": "margin_p10",
+    "value": 0.0007382096256630805
+   },
+   "t": 4.16971818765881,
+   "z_basis": "valid",
+   "z_bits": 0.010416666666666657,
+   "z_delta": 0.04166666666666663
+  },
+  {
+   "bin": 14,
+   "bits": 1000000.0,
+   "chosen": "N",
+   "chosen_resource": "isl:5:25",
+   "decision_id": 33026,
+   "delta_bps": 98000000.0,
+   "directions": [
+    "N",
+    "E",
+    "W"
+   ],
+   "dst": "G1:130:105",
+   "eps_bps": 7036598.596759856,
+   "fresh": "E",
+   "fresh_resource": "isl:24:44",
+   "gamma": 0.28453599019768644,
+   "hop_index": 4,
+   "margin_s": 0.0034968996339519165,
+   "pid": 1400,
+   "proxy_regret_s": 0.03155968976738643,
+   "rank_in_stratum": 1,
+   "run_first_t": 11.042552837817952,
+   "run_id": 724,
+   "run_len": 3,
+   "sat": 4,
+   "stratum": "large_proxy_R",
+   "stratum_threshold": {
+    "rule": "proxy_regret_p90",
+    "value": 0.012772377576849653
+   },
+   "t": 11.052644677817952,
+   "z_basis": "valid",
+   "z_bits": 0.1421141175312274,
+   "z_delta": 13.927183518060286
+  },
+  {
+   "bin": 8,
+   "bits": 1000000.0,
+   "chosen": "E",
+   "chosen_resource": "isl:14:34",
+   "decision_id": 17945,
+   "delta_bps": 56000000.0,
+   "directions": [
+    "E",
+    "N",
+    "W"
+   ],
+   "dst": "G1:91:283",
+   "eps_bps": 44281098.08058843,
+   "fresh": "N",
+   "fresh_resource": "isl:135:15",
+   "gamma": 0.20330587710440404,
+   "hop_index": 6,
+   "margin_s": 0.005046045644259117,
+   "pid": 774,
+   "proxy_regret_s": 0.004952769965741469,
+   "rank_in_stratum": 1,
+   "run_first_t": 8.102001709232482,
+   "run_id": 109,
+   "run_len": 264,
+   "sat": 134,
+   "stratum": "long_persistence",
+   "stratum_threshold": {
+    "rule": "run_len >= 2"
+   },
+   "t": 8.102001709232482,
+   "z_basis": "valid",
+   "z_bits": 0.022582999142886466,
+   "z_delta": 1.264647952001642
+  },
+  {
+   "bin": 0,
+   "bits": 1000000.0,
+   "chosen": "E",
+   "chosen_resource": "isl:14:34",
+   "decision_id": 146,
+   "delta_bps": 56000000.0,
+   "directions": [
+    "E",
+    "N",
+    "W"
+   ],
+   "dst": "G1:91:283",
+   "eps_bps": 44000000.00000121,
+   "fresh": "N",
+   "fresh_resource": "isl:135:15",
+   "gamma": 1.7697875713548696,
+   "hop_index": 6,
+   "margin_s": 0.00439070216761521,
+   "pid": 12,
+   "proxy_regret_s": 0.005608113196325315,
+   "rank_in_stratum": 2,
+   "run_first_t": 4.1556618294110965,
+   "run_id": 108,
+   "run_len": 137,
+   "sat": 134,
+   "stratum": "long_persistence",
+   "stratum_threshold": {
+    "rule": "run_len >= 2"
+   },
+   "t": 4.1556618294110965,
+   "z_basis": "valid",
+   "z_bits": 0.022727272727272103,
+   "z_delta": 1.2727272727272378
+  },
+  {
+   "bin": 9,
+   "bits": 1000000.0,
+   "chosen": "S",
+   "chosen_resource": "isl:43:42",
+   "decision_id": 20207,
+   "delta_bps": 64000000.0,
+   "directions": [
+    "S",
+    "E",
+    "N"
+   ],
+   "dst": "G1:91:283",
+   "eps_bps": 1803657.4216772765,
+   "fresh": "E",
+   "fresh_resource": "isl:64:63",
+   "gamma": 0.6327062012136303,
+   "hop_index": 26,
+   "margin_s": 0.009871838605704786,
+   "pid": 802,
+   "proxy_regret_s": 0.00331411559622289,
+   "rank_in_stratum": 1,
+   "run_first_t": 8.510032331339428,
+   "run_id": 824,
+   "run_len": 1,
+   "sat": 44,
+   "stratum": "high_z",
+   "stratum_threshold": {
+    "rule": "z_bits_p90",
+    "value": 0.1425160545312926
+   },
+   "t": 8.510032331339428,
+   "z_basis": "valid",
+   "z_bits": 0.554429010732021,
+   "z_delta": 35.483456686849344
+  },
+  {
+   "bin": 13,
+   "bits": 1000000.0,
+   "chosen": "E",
+   "chosen_resource": "isl:44:43",
+   "decision_id": 30250,
+   "delta_bps": 92000000.0,
+   "directions": [
+    "E",
+    "S",
+    "N"
+   ],
+   "dst": "G1:91:283",
+   "eps_bps": 2383312.6467505097,
+   "fresh": "S",
+   "fresh_resource": "isl:23:43",
+   "gamma": 8.232579050765624,
+   "hop_index": 5,
+   "margin_s": 0.0004413470379446005,
+   "pid": 1277,
+   "proxy_regret_s": 0.019558657074010832,
+   "rank_in_stratum": 2,
+   "run_first_t": 10.50609477570572,
+   "run_id": 419,
+   "run_len": 1,
+   "sat": 24,
+   "stratum": "high_z",
+   "stratum_threshold": {
+    "rule": "z_bits_p90",
+    "value": 0.1425160545312926
+   },
+   "t": 10.50609477570572,
+   "z_basis": "valid",
+   "z_bits": 0.4195840614379462,
+   "z_delta": 38.601733652291045
+  },
+  {
+   "bin": 5,
+   "bits": 1000000.0,
+   "chosen": "S",
+   "chosen_resource": "isl:45:44",
+   "decision_id": 11113,
+   "delta_bps": 4000000.0,
+   "directions": [
+    "S",
+    "W",
+    "E"
+   ],
+   "dst": "G1:96:183",
+   "eps_bps": 100000000.0,
+   "fresh": "W",
+   "fresh_resource": "isl:26:25",
+   "gamma": 0.0,
+   "hop_index": 2,
+   "margin_s": 0.004569666206378359,
+   "pid": 531,
+   "proxy_regret_s": 0.0051543573587755215,
+   "rank_in_stratum": 1,
+   "run_first_t": 6.218439085369481,
+   "run_id": 1047,
+   "run_len": 2,
+   "sat": 46,
+   "stratum": "low_gamma",
+   "stratum_threshold": {
+    "rule": "gamma_p25",
+    "value": 0.19347429252776777
+   },
+   "t": 6.6882797875937054,
+   "z_basis": "valid",
+   "z_bits": 0.01,
+   "z_delta": 0.04
+  },
+  {
+   "bin": 5,
+   "bits": 1000000.0,
+   "chosen": "S",
+   "chosen_resource": "isl:45:44",
+   "decision_id": 12159,
+   "delta_bps": 4000000.0,
+   "directions": [
+    "S",
+    "W",
+    "E"
+   ],
+   "dst": "G1:141:179",
+   "eps_bps": 100000000.0,
+   "fresh": "W",
+   "fresh_resource": "isl:26:25",
+   "gamma": 0.0,
+   "hop_index": 2,
+   "margin_s": 0.002579195186412822,
+   "pid": 575,
+   "proxy_regret_s": 0.007144828378741065,
+   "rank_in_stratum": 2,
+   "run_first_t": 6.954091591603077,
+   "run_id": 1038,
+   "run_len": 2,
+   "sat": 46,
+   "stratum": "low_gamma",
+   "stratum_threshold": {
+    "rule": "gamma_p25",
+    "value": 0.19347429252776777
+   },
+   "t": 6.954091591603077,
+   "z_basis": "valid",
+   "z_bits": 0.01,
+   "z_delta": 0.04
+  },
+  {
+   "bin": 6,
+   "bits": 1000000.0,
+   "chosen": "S",
+   "chosen_resource": "isl:63:43",
+   "decision_id": 12593,
+   "delta_bps": 4000000.0,
+   "directions": [
+    "S",
+    "E",
+    "W"
+   ],
+   "dst": "G1:141:179",
+   "eps_bps": 100000000.0,
+   "fresh": "W",
+   "fresh_resource": "isl:44:43",
+   "gamma": 0.0,
+   "hop_index": 10,
+   "margin_s": 0.004566037828626836,
+   "pid": 575,
+   "proxy_regret_s": 5.3472274665421204e-05,
+   "rank_in_stratum": 3,
+   "run_first_t": 7.07900181300357,
+   "run_id": 1338,
+   "run_len": 2,
+   "sat": 64,
+   "stratum": "low_gamma",
+   "stratum_threshold": {
+    "rule": "gamma_p25",
+    "value": 0.19347429252776777
+   },
+   "t": 7.07900181300357,
+   "z_basis": "valid",
+   "z_bits": 0.01,
+   "z_delta": 0.04
+  },
+  {
+   "bin": 13,
+   "bits": 1000000.0,
+   "chosen": "W",
+   "chosen_resource": "isl:126:127",
+   "decision_id": 31695,
+   "delta_bps": 10000000.0,
+   "directions": [
+    "W",
+    "N",
+    "E"
+   ],
+   "dst": "G1:125:319",
+   "eps_bps": 90000000.00000021,
+   "fresh": "N",
+   "fresh_resource": "isl:7:8",
+   "gamma": 13.276074534064273,
+   "hop_index": 15,
+   "margin_s": 0.0006340687307630211,
+   "pid": 1307,
+   "proxy_regret_s": 0.009365116651974446,
+   "rank_in_stratum": 1,
+   "run_first_t": 8.157387553706327,
+   "run_id": 1272,
+   "run_len": 21,
+   "sat": 6,
+   "stratum": "random_control",
+   "stratum_threshold": null,
+   "t": 10.787586296178592,
+   "z_basis": "valid",
+   "z_bits": 0.011111111111111086,
+   "z_delta": 0.11111111111111086
+  },
+  {
+   "bin": 2,
+   "bits": 1000000.0,
+   "chosen": "S",
+   "chosen_resource": "isl:23:43",
+   "decision_id": 4130,
+   "delta_bps": 38000000.0,
+   "directions": [
+    "S",
+    "E",
+    "W"
+   ],
+   "dst": "G1:91:283",
+   "eps_bps": 100000000.0,
+   "fresh": "E",
+   "fresh_resource": "isl:44:43",
+   "gamma": 0.40102385915816025,
+   "hop_index": 13,
+   "margin_s": 0.0022533489256149897,
+   "pid": 200,
+   "proxy_regret_s": 0.0025282851470697296,
+   "rank_in_stratum": 2,
+   "run_first_t": 5.08672650546249,
+   "run_id": 280,
+   "run_len": 3,
+   "sat": 24,
+   "stratum": "random_control",
+   "stratum_threshold": null,
+   "t": 5.119937026506237,
+   "z_basis": "valid",
+   "z_bits": 0.01,
+   "z_delta": 0.38
+  }
+ ],
+ "excluded_decision_ids": [
+  284,
+  976,
+  1474,
+  2447,
+  4537,
+  4596,
+  5280,
+  22466,
+  28716,
+  30317,
+  45045,
+  45316
+ ],
+ "n": 12,
+ "n_cap_relaxed": 0,
+ "n_requested": 12,
+ "policy": "queue_greedy",
+ "pool_sizes": {
+  "high_z": 651,
+  "large_gamma": 1472,
+  "large_proxy_R": 626,
+  "long_persistence": 5315,
+  "low_gamma": 1470,
+  "random_control": 6244,
+  "small_margin": 626
+ },
+ "provenance": {
+  "cell": "m2-c2-greedy-s9",
+  "config_sha256": "f4fcbc8363fad85fd03e95f14ca6af6800e7ecdc8cd1bee918d09238ba2f8565",
+  "eval_window_s": [
+   4.0,
+   14.0
+  ],
+  "mu_bps": 100000000.0,
+  "n_eligible": 6250,
+  "n_eval_decisions": 24301,
+  "n_flip_unattributed": 41,
+  "policy": "queue_greedy",
+  "probe_rows_skipped": 2132,
+  "probe_rows_used": 87173,
+  "skipped": {
+   "chosen_without_truth": 41,
+   "not_a_flip": 18010
+  },
+  "thresholds": {
+   "eps_floor_bps": 1000000.0,
+   "eps_floor_rule": "max(1 bps, 1% of mu) -- PROTOCOL-ROUND2 section 4",
+   "gamma_p25": 0.19347429252776777,
+   "gamma_p75": 2.161604357053393,
+   "margin_p10": 0.0007382096256630805,
+   "n_gamma": 5885,
+   "n_margin": 6250,
+   "n_proxy_regret": 6250,
+   "n_z_bits": 6191,
+   "proxy_regret_p90": 0.012772377576849653,
+   "z_basis_counts": {
+    "z_below_eps_floor": 59,
+    "z_valid": 6191
+   },
+   "z_bits_p90": 0.1425160545312926
+  },
+  "trace_rows": 1985,
+  "trace_source_sha256": "555ef133a60ebf877c631c513a871bfc34c2aeddbf29908e7db9029640beeb16"
+ },
+ "quota_filled": {
+  "high_z": 2,
+  "large_gamma": 1,
+  "large_proxy_R": 1,
+  "long_persistence": 2,
+  "low_gamma": 3,
+  "random_control": 2,
+  "small_margin": 1
+ },
+ "quota_requested": {
+  "high_z": 2,
+  "large_gamma": 1,
+  "large_proxy_R": 1,
+  "long_persistence": 2,
+  "low_gamma": 3,
+  "random_control": 2,
+  "small_margin": 1
+ },
+ "schema": "sq-fork-sample-r3/v1",
+ "seed": 20261101,
+ "selection_rules": {
+  "caps": {
+   "high_z": {
+    "max_per_resource": 1,
+    "max_per_sat": 1
+   },
+   "long_persistence": {
+    "max_per_run": 1
+   },
+   "low_gamma": {
+    "max_per_run": 1
+   }
+  },
+  "ordering": "every pool is sorted by (metric, decision_id); no wall clock",
+  "strata": {
+   "high_z": "chosen-resource eps_r on the decision's 0.5 s bin; z_bits = bits/eps_r; only eps_r >= 1% of mu (valid subset); at most 1 per resource and 1 per satellite",
+   "large_gamma": "gamma >= p75 of eligible flips (desc)",
+   "large_proxy_R": "proxy_regret_s >= p90 (desc)",
+   "long_persistence": "same-(sat,dst) stream, consecutive flips with the same chosen direction, run_len >= 2; ranked by run_len desc, at most 1 per run",
+   "low_gamma": "gamma <= p25 and gamma is defined -- the low-drift negative control; at most 1 per run",
+   "random_control": "sha256(seed:decision_id) order over all eligible flips",
+   "small_margin": "margin_s <= p10 of eligible flips (asc)"
+  },
+  "universe": "kind=forward, >=2 candidates, chosen != truth-substituted fresh, fresh inside the recorded candidate set, chosen has a truth cost, 4.0 <= t < 14.0 s (PROTOCOL section 2)"
+ },
+ "shortfall": 0,
+ "strata": {
+  "high_z": 2,
+  "large_gamma": 1,
+  "large_proxy_R": 1,
+  "long_persistence": 2,
+  "low_gamma": 3,
+  "random_control": 2,
+  "small_margin": 1
+ }
+}

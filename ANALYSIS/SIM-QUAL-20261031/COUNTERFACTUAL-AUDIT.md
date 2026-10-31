@@ -632,6 +632,145 @@ CODE/scripts/remote/run-release-remote.sh --release-id <RID> --run-id sq2-fork-s
 
 ---
 
+## 10. Round-3 expansion（2026-11-01，n=36 预注册分层批次）
+
+> 状态：**样本已冻结、尚未跑**（24 个新 fork 待 VM；12 个 s7 fork 已完成并回传）。
+> 本节是 §5.4 抽样方案的扩批执行记录；§1–§9 的审计结论与表述边界**不变**（§10.7 重申）。
+
+### 10.1 批次构成
+
+| 项 | 值 |
+|---|---|
+| 目标 | n ≥ 30（目标 36）：把 same-continuation fork 从 C5 的 n=3 / Round-2 的 n=12 扩到 36 |
+| 合并样本 | `ANALYSIS/SIM-QUAL-20261031/fork-samples/round3-expansion.json`（schema `sq-fork-sample-round3-merged/v1`，36 条） |
+| 已完成 | 12 × `m2-c2-greedy-s7`（Round-2；证据 run `fk-c-<decision_id>-20261031-01`，release `de632b3e…-76a4127e…`） |
+| 待跑 | 24（`m2-c2-greedy-s8` 12 + `m2-c2-greedy-s9` 12） |
+| 采样器 | `ANALYSIS/SIM-QUAL-20261031/make_fork_sample_r3.py`（复用 `sq_policy_analyze.py` 的 Γ/margin/proxy-regret/truth-substituted fresh、`sq_persistence_analyze.py` 的 ε_r/z、`make_fork_sample.py` 的 `_fresh`/`_gamma_and_margin`） |
+| 单 cell 样本 | `fork-samples/r3-m2-c2-greedy-s8.json`、`-s9.json`（schema `sq-fork-sample-r3/v1`，带自描述 `selection_rules`） |
+
+### 10.2 分层与配额（合并 = 36，`strata_ok=true`）
+
+| stratum | 判定（确定性） | 合并配额 | s7（已完成） | s8 | s9 |
+|---|---|---|---|---|---|
+| `large_gamma` | Γ ≥ p75，Γ 降序 | 6 | 4 | 1 | 1 |
+| `small_margin` | `margin_s` ≤ p10，升序 | 5 | 3 | 1 | 1 |
+| `large_proxy_R` | truth-substituted proxy regret ≥ p90，降序 | 5 | 3 | 1 | 1 |
+| `long_persistence` | 同 `(sat,dst)` 流内同向连续 flip，`run_len ≥ 2`；run_len 降序、**每 run ≤1** | 5 | 1（Round-2 名为 `sustained`） | 2 | 2 |
+| `high_z` | 候选资源 ε_r 的 **valid 子集**（ε ≥ max(1 bps, 1%·μ) = 1 Mbps），`z_bits = bits/ε_r ≥ p90`；**每 resource ≤1、每 sat ≤1** | 5 | 0 | 3 | 2 |
+| `random_control` | 全部 eligible 按 `sha256(seed:decision_id)` 排序取前 | 5 | 1 | 2 | 2 |
+| `low_gamma` | Γ ≤ p25（低漂移**负对照**）；每 run ≤1 | 5 | 0 | 2 | 3 |
+
+- 两个 cell 的 `quota_filled` 与请求一致、`shortfall=0`、`n_cap_relaxed=0`（没有靠放宽 cap 凑数）。
+- 12 个 s7 条目在合并文件中为 `status="completed"` 且带 `completed_verification`（`branch_states_identical`
+  / `action_changed` / `legal_at_branch_point` 全 true，`baseline_action`/`forced_action` 与样本逐一相符）；
+  **不要重跑**这 12 个 run-id。
+
+### 10.3 采样宇宙与阈值（每 cell 自描述，以下为实数）
+
+| 项 | s8 | s9 |
+|---|---|---|
+| 评估窗内决策（4.0–14.0 s） | 24,338 | 24,301 |
+| eligible flips（chosen≠fresh、fresh∈候选、chosen 有真值） | 6,245 | 6,250 |
+| `chosen_without_truth`（丢弃） | 41 | 41 |
+| Γ p25 / p75 | 0.175 / 2.332 | 0.193 / 2.162 |
+| margin p10 | 0.555 ms | 0.738 ms |
+| proxy regret p90 | 11.84 ms | 12.77 ms |
+| `z_bits` p90（valid 子集） | 0.1434（n=6,245） | 0.1425（n=6,191） |
+| ε floor 排除 | 0 | **59** flips（ε<1 Mbps，饱和链路） |
+| 随机种子 / 排除 id | `20261101` / s7 的 12 个 | 同左 |
+
+池大小（large_gamma / small_margin / large_proxy_R / long_persistence / high_z / random_control / low_gamma）：
+s8 = 1,469 / 624 / 625 / 5,293 / 632 / 6,241 / 1,470；s9 = 1,472 / 626 / 626 / 5,315 / 651 / 6,244 / 1,470。
+⇒ 七层配额均有充足候选，没有任何一层是靠"降级判定"填满的。
+
+### 10.4 新 config 与身份核对（本机只读，逐位相等）
+
+| cell | fork config | config sha256 == 证据 `arms/now/config.json` | trace sha256 == 证据 `trace-manifest.source_trace_sha256` | rows |
+|---|---|---|---|---|
+| s7（Round-2 已有） | `EXPERIMENTS/contracts/fork-configs/m2-c2-greedy-s7.json` | ✅ `db54d247…f0728` | ✅ `2b27aac1…c667c` | 2,047 |
+| s8 | `EXPERIMENTS/contracts/fork-configs/m2-c2-greedy-s8.json` | ✅ `3619bd9c…ea43f` | ✅ `6ac591e2…1441` | 1,998 |
+| s9 | `EXPERIMENTS/contracts/fork-configs/m2-c2-greedy-s9.json` | ✅ `f4fcbc83…f8565` | ✅ `555ef133…beb16` | 1,985 |
+
+- 复核方法 = §6.2 的两个 identity gate：`load_config_file(pinned)` 重算 sha256 等于证据 sha；
+  `compile_trace(pinned)` 重算 trace sha 与 rows 等于证据 `trace-manifest`。
+- **代码身份链（本机实查，2026-11-01）**：s7/s8/s9 三个 cell 的 run manifest 均记
+  `source_git_commit=038fb16e…`（release 树 `b8eb375c…`）；Round-2 的 12 个 s7 fork 用 `de632b3e…`；
+  `git diff 038fb16 de632b3 -- CODE/` **为空** ⇒ 两者物理代码相同，所以 s7 fork 的 baseline 能复现。
+  当前 HEAD `c63c071` 与 `038fb16` 的 `CODE/` 差异也**为空** ⇒ **从 HEAD + "只加新 config/样本/脚本"的提交
+  发布，物理代码与 cell run 一致，`decision_id` 可复现**。
+- **但工作树现在有并行任务未提交的 CODE 改动**（`kernel.py +140`、`state_policy.py +330`、`config.py +44`、
+  `load_calibration.py +5`、`test_state_policy.py +514`）⇒ **这些若进入 fork release，会改变物理/策略语义，
+  使 s7/s8/s9 的 `decision_id` 失效**（per-fork identity gate 会 fail loud，但会烧样本）。
+  发布前必须确认 release 的 `CODE/` 与 `038fb16` 相同，或重跑 branch 来源 cell。
+- **VM trace 缓存是硬依赖**：三个 cell 的 `/tmp/t1-trace-programs/<cell>-<digest>.csv` 在 VM 上均存在
+  （s7 116,046 B / s8 113,212 B / s9 112,524 B；行数 = rows+1），且与 Mac `/tmp` 副本 **sha256 逐位相同**
+  （`75094b25…` / `238b9d9f…` / `776d2279…`）。`demand.mode=csv` 时 `compile_trace` 缺文件会 **fail loud**
+  （`CODE/leo_sim/trace.py:1190-1194`：`csv input not found`），不会静默换 trace；若 `/tmp` 被清理，
+  先按 `trace-manifest.source_trace_sha256` 重新生成并比对，再发射。
+
+### 10.5 执行模板（`RUN_FORK_PREFIX=fk3-`）
+
+前置：**需要一次新的 publish**——release 必须包含两个新 fork config 与样本文件；当前 HEAD `c63c071`
+**尚未**包含它们（提交/推送由 Lead 执行，本审计不 commit）。Round-2 的 12 个 fork 用的是
+`de632b3e5495074a90e69a6daa60e7525315217d-76a4127eefc94e8d5074912e7307e6635cb052091d428bc05c6bc562c581c9a3`。
+
+```bash
+cd /Users/lge/Desktop/topic/.wt-qual-20261031
+# A) s8：12 个 fork（run_id = fk3-s8-<decision_id>-20261031-01）
+RUN_FORK_PREFIX=fk3-s8- ANALYSIS/SIM-QUAL-20261031/run_forks.sh <RELEASE_ID> \
+  EXPERIMENTS/contracts/fork-configs/m2-c2-greedy-s8.json \
+  ANALYSIS/SIM-QUAL-20261031/fork-samples/r3-m2-c2-greedy-s8.json
+# B) s9：12 个 fork（run_id = fk3-s9-<decision_id>-20261031-01）
+RUN_FORK_PREFIX=fk3-s9- ANALYSIS/SIM-QUAL-20261031/run_forks.sh <RELEASE_ID> \
+  EXPERIMENTS/contracts/fork-configs/m2-c2-greedy-s9.json \
+  ANALYSIS/SIM-QUAL-20261031/fork-samples/r3-m2-c2-greedy-s9.json
+# C) 回传（逐 run）
+CODE/scripts/remote/pull-release-results-remote.sh --run-id <RUN_ID> \
+  --release-id <RELEASE_ID> --evidence-root /Users/lge/Desktop/topic/三端文件与同步治理/evidence/t1
+```
+
+- `run_forks.sh` 默认 `CONCURRENCY=2`（VM 64 GiB cgroup 实测上限）、`TIMEOUT_S=5400`；Round-2 实测单 fork
+  **≈650 s**（`fk-c-976` 15:57:55→16:08:45）⇒ 24 个新 fork × 2 并发 ≈ **2.2 h**。
+- **run-id 必须带 cell 标记**（`fk3-s8-` / `fk3-s9-`）：两个 cell 的 `decision_id` 空间独立、会撞号，
+  裸 `fk3-<id>` 会触发 `run ID already exists`。
+
+### 10.6 合并样本字段与符号约定
+
+`decisions[*]` 字段：`cell`、`config`、`stratum`（+`original_stratum`）、`decision_id`、`chosen`、`fresh`、
+`forced`（=fresh）、`candidates`（记录下的 legal set）、`pid/sat/t/hop_index`、`gamma`、`margin_s`、
+`proxy_regret_s`、`z_bits/z_delta/eps_bps/z_basis`、`run_len/chosen_resource/bits`、`status`、`run_id`、
+`evidence_run_id`；s7 条目另有 `completed_verification` 与 `tagged_delta_s`。
+
+- **符号**：`delta = forced(fresh) − baseline(stale)`；**>0 ⇒ fresh 更慢（stale 在该 branch point 更好）**，
+  <0 ⇒ fresh 更快。
+- 已完成的 12 个 `tagged_delta_s` 仅作参考写入（范围 −0.487…+0.307 s；6 负 / 3 正 / 3 零）——
+  **这不是本轮结论**，只是 n=36 中已回传部分的事实记录；分析仍按 `fork_analyze.py` 的 tagged/cohort 双口径。
+- 每个新 fork 必须过 `round3-expansion.json.verification_gate` 的 7 条（§6.2 的 5 项 + config/trace sha 两项）
+  才可进入结果表；未过者记为 refusal 并保留原因。
+
+### 10.7 表述边界（不变，对 n=36 逐条适用）
+
+- 仍只是 **decision-log prefix 见证**：`branch_states_identical=true` ≠ 完整 SimPy state 相同；
+  §7.3 的禁句表（"完整 state 相同 / fork 了仿真 / CRN 由 harness 保证 / 统计显著 / 可外推"）**逐条适用**。
+- n=36 **不是概率样本**：7 层是按度量做的确定性配额（不是均匀抽样），24 个新 fork 只来自 2 个新 seed、
+  同一 trace 程序族、同一策略（`queue_greedy`）。允许的表述上限：
+  "**在这 36 个 branch point 上**，把 stale 动作换成该点的 fresh 动作后的后续差分布（分层 + 随机对照）"。
+  不得写成 population 平均 regret、不得给 p 值/置信区间、不得外推到真实 Starlink 或 formal 结论。
+
+### 10.8 扩批的已知限制（R1–R6）
+
+| # | 限制 | 处置 |
+|---|---|---|
+| R1 | 两个新 fork config 未提交 ⇒ **现在 publish 不出来** | Lead 提交 `EXPERIMENTS/contracts/fork-configs/m2-c2-greedy-{s8,s9}.json` + `fork-samples/` 后再 publish |
+| R2 | `high_z` 只对 valid 子集有定义（s9 排除 59/6,250 个 ε<1 Mbps 的 flip） | 报告 `z_basis`；被排除的饱和链路决策不得算进 high_z 分子/分母 |
+| R3 | 36 fork 仅 3 个 cell / 3 个 seed / 1 个 trace 程序族 / 单一策略；配额非均匀 | 只做分层描述与随机对照，不做 population 推断 |
+| R4 | `long_persistence` 按 run_len 降序取最长 run ⇒ 集中在内环干线少数 sat（134/126/44/24） | 报告 sat/dst 与 run_len；视作"持续同向错误"的**极端子集**，不是平均值 |
+| R5 | driver `--arm now` 会重解析 pinned config | Round-2 的 12 个 fork 已证明 `baseline_action` 与样本 `chosen` 逐一相符；Round-3 每个 fork 仍须过 `verification_gate` |
+| R6 | VM `/tmp` trace CSV 是硬依赖（缺失 fail loud，不静默） | 发射前 ssh 只读检查；需要时按 trace sha 重新生成并比对（§10.4） |
+| R7 | **并行任务的未提交 CODE 改动**（kernel/state_policy/config/load_calibration ≈ +1,120 行）若进入 fork release，会改变物理与策略语义 ⇒ s7/s8/s9 的 `decision_id` 失效 | 发布前核对 `git diff <release-tree> 038fb16 -- CODE/` 为空；否则先重跑三个 branch 来源 cell 再 fork |
+
+---
+
 ## 附录 A — 本机只读复算记录
 
 ```text

@@ -1,0 +1,45 @@
+{
+ "schema": "round3-temperature-freeze/v1",
+ "frozen_before_round3_runs": true,
+ "source": "Round-2 post-fix C regime decisions (sq4-m2-c2-*)",
+ "margin_used_p50_ms_by_cell": {
+  "m2-c2-greedy-s7": {
+   "margin_used_p50_ms": 10.722937810770459,
+   "margin_used_p90_ms": 31.38991462523924,
+   "flip_rate": 0.2661470369354902
+  },
+  "m2-c2-greedy-s8": {
+   "margin_used_p50_ms": 10.955852247437829,
+   "margin_used_p90_ms": 31.029036550378517,
+   "flip_rate": 0.2581086519114688
+  },
+  "m2-c2-greedy-s9": {
+   "margin_used_p50_ms": 10.733141913130156,
+   "margin_used_p90_ms": 31.014713373893805,
+   "flip_rate": 0.2593746207677683
+  },
+  "m2-c2-ewma-s7": {
+   "margin_used_p50_ms": 10.682332288016184,
+   "margin_used_p90_ms": 31.030708281566206,
+   "flip_rate": 0.2626753606006718
+  },
+  "m2-c2-ewma-s8": {
+   "margin_used_p50_ms": 10.637839085294857,
+   "margin_used_p90_ms": 31.013545864968545,
+   "flip_rate": 0.2650432765975069
+  },
+  "m2-c2-ewma-s9": {
+   "margin_used_p50_ms": 10.925537072489174,
+   "margin_used_p90_ms": 33.93964752640838,
+   "flip_rate": 0.26571853280302116
+  }
+ },
+ "margin_used_p50_mean_ms": 10.776273402856441,
+ "grid": {
+  "low_s": 0.0025,
+  "medium_s": 0.01,
+  "high_s": 0.04
+ },
+ "main_T_s": 0.01,
+ "rationale": "T grid = {0.25,1,4} x mean margin p50 (10.8 ms), rounded to 2.5/10/40 ms; main=10 ms; frozen before any Round-3 run."
+}
