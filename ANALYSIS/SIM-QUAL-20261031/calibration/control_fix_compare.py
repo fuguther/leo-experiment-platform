@@ -14,8 +14,9 @@ Reads only verified pull-back evidence; writes only the JSON it is given.
 
 Usage:
   python3 control_fix_compare.py --evidence-root <root> \
-      --pair pf-high-greedy:sq2-:sq-p1- --pair pf-sync-greedy:sq2-:sq-p2- \
-      --date 20261031 --aoi-start 7.0 --out calibration/control_fix_compare.json
+      --pair "pf-high-greedy:sq2-pf-high-greedy-20261031-01:sq-p1-high-greedy-20261031-01" \
+      --pair "pf-sync-greedy:sq2-pf-sync-greedy-20261031-01:sq-p2-sync-greedy-20261031-01" \
+      --aoi-start 7.0 --out calibration/control_fix_compare.json
 """
 from __future__ import annotations
 
@@ -51,8 +52,8 @@ def find_cell_dir(run_dir: Path):
     return None
 
 
-def load_run(evidence_root: Path, prefix: str, cell: str, date: str) -> dict:
-    run_id = f"{prefix}{cell}-{date}-01"
+def load_run(evidence_root: Path, run_id: str, label: str = "") -> dict:
+    cell = label or run_id
     run_dir = evidence_root / run_id
     if not run_dir.is_dir():
         return {"cell": cell, "run_id": run_id, "found": False}
@@ -201,6 +202,87 @@ def data_plane(run: dict) -> dict:
     }
 
 
+def wire_unit_bits(run: dict) -> dict:
+    """Most common per-instance control wire size, taken from the run itself.
+
+    ``control.instances`` stores ``[fate, total_bits, generated_at, record]`` per
+    injected instance, so the wire size is measured, not assumed.  A run whose
+    instances are not all one size reports the coverage of the modal value so a
+    multi-size population cannot be summarised silently as one number.
+    """
+    instances = ((run["result"].get("control") or {}).get("instances") or {})
+    sizes = []
+    for value in instances.values():
+        if isinstance(value, (list, tuple)) and len(value) >= 2 \
+                and isinstance(value[1], (int, float)):
+            sizes.append(int(value[1]))
+    if not sizes:
+        return {"available": False}
+    counts = {}
+    for size in sizes:
+        counts[size] = counts.get(size, 0) + 1
+    modal, hits = max(counts.items(), key=lambda item: item[1])
+    return {"available": True, "modal_bits": modal,
+            "modal_hits": hits, "instances": len(sizes),
+            "modal_coverage": hits / len(sizes),
+            "distinct_sizes": len(counts)}
+
+
+def advertised_backlog(cell_dir: Path, unit_bits, start: float | None) -> dict:
+    """Advertised peer-egress backlog the predictor actually consumed.
+
+    For every (decision, legal direction) the predictor used one received
+    advertisement sample; ``used_state[dir].bits`` is exactly the work-ahead it
+    saw.  A sample whose bits are an exact integer multiple of one control wire
+    size can only be accounted for by control packets queued on that resource,
+    which is the signature of the artefact this comparison is about.
+    """
+    path = cell_dir / "arms" / "now" / "decisions.jsonl.gz"
+    positives, multiples, resources = [], 0, {}
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for line in fh:
+            row = json.loads(line)
+            clock = row.get("t", row.get("t_decision_start"))
+            if start is not None and (not isinstance(clock, (int, float))
+                                      or float(clock) < start):
+                continue
+            audit = (row.get("observation_at_start") or {}).get(
+                "time_alignment") or {}
+            for direction, state in (audit.get("used_state") or {}).items():
+                bits = (state or {}).get("bits")
+                if not isinstance(bits, (int, float)) \
+                        or isinstance(bits, bool) or bits <= 0:
+                    continue
+                positives.append(float(bits))
+                if unit_bits:
+                    ratio = float(bits) / float(unit_bits)
+                    if abs(ratio - round(ratio)) < 1e-9:
+                        multiples += 1
+                        key = (state or {}).get("resource_id")
+                        resources[key] = resources.get(key, 0) + 1
+
+    def quantiles(values):
+        ordered = sorted(values)
+        if not ordered:
+            return {}
+        out = {}
+        for point in (0.5, 0.9, 1.0):
+            index = min(len(ordered) - 1,
+                        max(0, int(round(point * (len(ordered) - 1)))))
+            out["p%d" % (point * 100)] = ordered[index]
+        out["n"] = len(ordered)
+        return out
+    return {
+        "positive_backlog_samples": len(positives),
+        "backlog_bits": quantiles(positives),
+        "exact_control_multiples": multiples,
+        "exact_control_multiple_fraction": (multiples / len(positives)
+                                            if positives else None),
+        "distinct_resources_with_control_only_backlog": len(resources),
+        "top_control_only_resources": sorted(
+            resources.items(), key=lambda item: item[1], reverse=True)[:10],
+    }
+
 def first_difference(left: list, right: list, limit: int = 12) -> dict:
     """Locate the first differing rows of two event/window sequences."""
     n = min(len(left), len(right))
@@ -260,10 +342,10 @@ def block_delta(pre: dict, post: dict) -> dict:
     return out
 
 
-def compare_pair(evidence_root: Path, cell: str, post_prefix: str,
-                 pre_prefix: str, date: str, aoi_start) -> dict:
-    pre = load_run(evidence_root, pre_prefix, cell, date)
-    post = load_run(evidence_root, post_prefix, cell, date)
+def compare_pair(evidence_root: Path, cell: str, post_run_id: str,
+                 pre_run_id: str, aoi_start) -> dict:
+    pre = load_run(evidence_root, pre_run_id, cell)
+    post = load_run(evidence_root, post_run_id, cell)
     if not pre.get("found") or not post.get("found"):
         return {"cell": cell, "pre": {k: pre.get(k) for k in
                                       ("run_id", "found", "reason")},
@@ -274,6 +356,10 @@ def compare_pair(evidence_root: Path, cell: str, post_prefix: str,
     pre_data, post_data = data_plane(pre), data_plane(post)
     pre_aoi = aoi_samples(Path(pre["cell_dir"]), aoi_start)
     post_aoi = aoi_samples(Path(post["cell_dir"]), aoi_start)
+    pre_unit = wire_unit_bits(pre)
+    unit_bits = pre_unit.get("modal_bits")
+    pre_backlog = advertised_backlog(Path(pre["cell_dir"]), unit_bits, aoi_start)
+    post_backlog = advertised_backlog(Path(post["cell_dir"]), unit_bits, aoi_start)
     docs = {
         "pair": "%s / %s" % (pre["run_id"], post["run_id"]),
         "cell": cell,
@@ -316,6 +402,16 @@ def compare_pair(evidence_root: Path, cell: str, post_prefix: str,
         },
         "aoi": {"pre": pre_aoi, "post": post_aoi,
                 "window_start_s": aoi_start},
+        "advertised_backlog": {
+            "wire_unit_bits": pre_unit,
+            "pre": pre_backlog,
+            "post": post_backlog,
+            "interpretation": (
+                "used_state[*].bits is the peer-egress work-ahead the "
+                "predictor consumed; samples that are exact multiples of one "
+                "control wire size can only come from control packets queued "
+                "on that resource"),
+        },
         "data_plane": {
             "same_fates": pre_data["fates"] == post_data["fates"],
             "same_deliveries": (pre_data["deliveries"]
@@ -378,17 +474,22 @@ def main(argv=None) -> int:
     parser.add_argument("--evidence-root", type=Path, required=True)
     parser.add_argument("--date", default="20261031")
     parser.add_argument("--pair", action="append", required=True,
-                        help="cell:post_prefix:pre_prefix")
+                        help="label:POST_RUN_ID:PRE_RUN_ID "
+                             "(full run ids, so a cell whose id changed between "
+                             "rounds still pairs correctly)")
     parser.add_argument("--aoi-start", type=float, default=7.0)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
 
     pairs = []
     for spec in args.pair:
-        cell, post_prefix, pre_prefix = spec.split(":", 2) if spec.count(":") == 2 \
-            else (spec.split(":") + ["sq2-", "sq-p1-"])[:3]
-        pairs.append(compare_pair(args.evidence_root, cell, post_prefix,
-                                  pre_prefix, args.date, args.aoi_start))
+        parts = spec.split(":")
+        if len(parts) != 3:
+            raise SystemExit(
+                "--pair must be label:POST_RUN_ID:PRE_RUN_ID, got %r" % spec)
+        label, post_run_id, pre_run_id = parts
+        pairs.append(compare_pair(args.evidence_root, label, post_run_id,
+                                  pre_run_id, args.aoi_start))
     document = {"schema": "sq-control-fix-comparison/v1",
                 "evidence_root": str(args.evidence_root),
                 "aoi_window_start_s": args.aoi_start,

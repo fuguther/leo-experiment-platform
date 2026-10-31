@@ -188,6 +188,91 @@ def saturation_scan(rows: list[dict]) -> dict:
     }
 
 
+
+def linear_fit(points):
+    """Least-squares slope/intercept, reported so extrapolation is explicit."""
+    n = len(points)
+    sx = sum(p[0] for p in points)
+    sy = sum(p[1] for p in points)
+    sxx = sum(p[0] ** 2 for p in points)
+    sxy = sum(p[0] * p[1] for p in points)
+    denominator = n * sxx - sx * sx
+    slope = (n * sxy - sx * sy) / denominator
+    return (sy - slope * sx) / n, slope
+
+
+def above_range_estimate(rows: list[dict], targets=(0.95, 0.99)) -> dict:
+    """Loads implied for targets ABOVE the measured bottleneck range.
+
+    Never presented as a measurement.  Three estimates are reported because the
+    rho(load) curve is concave: the all-point fit, the top-of-range fit and the
+    last measured segment.  A concave curve means the last-segment estimate is
+    still optimistic, which is stated in the report rather than silently
+    averaged away.
+    """
+    points = [(row["load_mbps"], row["rho_max"]) for row in rows
+              if isinstance(row.get("rho_max"), (int, float))]
+    if len(points) < 3:
+        return {"available": False}
+    tail = [p for p in points if p[0] >= points[-1][0] - 25.0] or points[-2:]
+    fits = {}
+    for label, subset in (("all_measured", points), ("top_of_range", tail)):
+        intercept, slope = linear_fit(subset)
+        fits[label] = {
+            "intercept": intercept, "slope_per_mbps": slope,
+            "implied_load_mbps": {str(target): ((target - intercept) / slope)
+                                  for target in targets},
+        }
+    (x1, y1), (x2, y2) = points[-2], points[-1]
+    slope = (y2 - y1) / (x2 - x1)
+    fits["last_segment"] = {
+        "segment": [x1, x2], "slope_per_mbps": slope,
+        "implied_load_mbps": {str(target): (x2 + (target - y2) / slope)
+                              for target in targets},
+    }
+    highest = points[-1]
+    return {
+        "available": True,
+        "measured_max": {"load_mbps": highest[0], "rho_max": highest[1]},
+        "targets": list(targets),
+        "estimates": fits,
+        "monotone_concave": (points[-1][1] - points[-2][1])
+        <= (points[-2][1] - points[-3][1]) + 1e-9,
+        "warning": ("extrapolation: no measured cell reaches the target band; "
+                    "the implied load is NOT a measured point and must be "
+                    "confirmed by one run"),
+    }
+
+
+def d_baseline_suggestion(rows: list[dict]) -> dict:
+    """Baseline load for a burst (D) regime.
+
+    A burst regime must START below saturation, otherwise the pulse is not
+    identifiable: the network is already queue-limited and the transient adds
+    nothing observable.  The recommendation therefore picks the measured cell
+    whose bottleneck rho is just below the B centre (~0.80-0.85) so the
+    declared pulse lifts the instantaneous bottleneck above 1.0 and the drain
+    returns to a defined, measured baseline.
+    """
+    candidates = [row for row in rows
+                  if isinstance(row.get("rho_max"), (int, float))
+                  and 0.75 <= row["rho_max"] <= 0.86]
+    if not candidates:
+        return {"available": False}
+    best = min(candidates, key=lambda row: abs(row["rho_max"] - 0.818))
+    return {
+        "available": True,
+        "baseline_cell": best["cell"],
+        "baseline_load_mbps": best["load_mbps"],
+        "baseline_rho_max": best["rho_max"],
+        "pulse_multiplier_suggested": 1.6,
+        "implied_transient_rho_max": best["rho_max"] * 1.6,
+        "note": ("pulse {start_s 8.0, duration_s 0.5, multiplier 1.6} is the "
+                 "value already exercised in Round 1; the implied transient "
+                 "rho is linear scaling of the measured baseline, not a "
+                 "measurement"),
+    }
+
 def consistency_check(rows: list[dict]) -> list[str]:
     """Monotonicity / noise warnings a reader must see next to the fit."""
     warnings = []
@@ -224,6 +309,8 @@ def main(argv=None) -> int:
     document["sweep_table"] = rows
     document["band_suggestions"] = bands
     document["saturation_scan"] = saturation_scan(rows)
+    document["above_range_estimate"] = above_range_estimate(rows)
+    document["d_baseline"] = d_baseline_suggestion(rows)
     document["warnings"] = consistency_check(rows)
     document["statistic_labels"] = STATISTICS
     document["band_definitions"] = BANDS

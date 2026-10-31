@@ -42,7 +42,7 @@ launch() {
             --forced-action "$fresh" \
             --arm now \
             --root /tmp \
-            --out "$REMOTE_RUNS/$run_id/cf-$did.json"
+            --out "$REMOTE_RUNS/$run_id/cf-$did.json" < /dev/null
 }
 
 running=0
