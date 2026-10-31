@@ -53,6 +53,14 @@ ALLOWED_PROFILES = (
     # 1 Gbps ISL to a target utilisation.  In the 10x10 degree regional
     # population scene max_e b_e = 0.0398 and no affordable rate can.
     "CODE/leo_sim/profiles/t1_scene_trunk_v1.yaml",
+    # STATE-AGE MECHANISM PILOT (2026-10-31).  Same 140-satellite / 7-plane /
+    # 600 km / 98.6 deg Walker as the calibrated Stage C scene, but with the
+    # pilot's speed-forced link/packet/control settings (100 Mbps ISL, 64 Mbit
+    # ISL queue, 1 Mbit packets, 1 s advertisement period, history_limit 4) and
+    # the contract's declared 30/70 background+hotspot trace program.  Added
+    # here because a load-calibration contract may only select a declared base
+    # profile; the profile is a frozen input, not a knob the cell can edit.
+    "CODE/leo_sim/profiles/ta_pilot_140_adv1.yaml",
 )
 ALLOWED_ARMS = ("stale", "now", "common", "candidate")
 #: Bounded envelope for a contract's declared simulation horizon.  12 s is the
@@ -542,7 +550,11 @@ class _JsonlSink:
     @staticmethod
     def _project_decision(row):
         identity = ("t", "pid", "sat", "decision_id", "kind", "candidates",
-                    "chosen", "t_decision_start")
+                    "chosen", "t_decision_start",
+                    # (pid, hop_index) is the stable CROSS-ARM key: decision_id
+                    # is a per-run counter that denotes different decisions in
+                    # each arm; the hop ordinal travels with the packet.
+                    "hop_index")
         projected = {key: row[key] for key in identity if key in row}
         observation = row.get("observation_at_start")
         if isinstance(observation, dict):

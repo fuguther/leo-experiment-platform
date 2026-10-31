@@ -1,0 +1,132 @@
+config_version: leo-sim-config/v1
+# TA-PILOT-140-ADV1: frozen base profile for the state-age mechanism pilot.
+#
+# WHY THIS PROFILE EXISTS
+# -----------------------
+# The pilot must answer "does a 1 s state-update period that misses a queue
+# transient change the chosen next hop?" on the ALREADY-TESTED 140-satellite /
+# 7-plane / 600 km / 98.6 deg Walker (the Stage C geometry), but at a data
+# scale that makes a four-arm web result affordable:
+#   packet 1,000,000 bit (10 ms serialization at 100 Mbps), ISL 100 Mbps,
+#     ISL queue 64 Mbit (64 packets = 640 ms of drain),
+#   advertisement every 1.0 s, predictor bounded_linear with history_limit 4.
+# These are DELIBERATE mechanism-pilot numbers, not a claim that real LEO
+# traffic looks like this; the 8 KB / 64 KB / 1500 B sensitivity is a later
+# round and must not be folded into this one.
+#
+# DEMAND IS NOT DEFINED HERE.  Every load-calibration cell supplies its own
+# declared trace_program (30% background + 70% hotspot OD, optional single
+# pulse); the `demand` block below is only the base the loader needs to resolve
+# a profile that is not used as a standalone scene.  It must stay a single
+# declared mode with a real emission window so config validation is meaningful.
+#
+# GEOMETRY is identical to CODE/leo_sim/profiles/stage_c_e2_6g_adv200.yaml:
+# 140 / 7 / 600 km / 98.6 deg, min elevation 5 deg, max_isl_km 3000 km
+# (182 undirected ISLs at t=0; measured range drift over 20 s keeps every one
+# under 3000 km, so a static topology has no silent link loss).
+scenario:
+  name: ta-pilot-140-adv1
+  duration_s: 20.0
+  time_step_s: 0.1
+  num_satellites: 140
+  num_planes: 7
+  altitude_km: 600.0
+  inclination_deg: 98.6
+  min_elevation_deg: 5.0
+  geometry_epoch_s: 0.0
+  seed: 7
+endpoints:
+  grid_deg: 0.25
+  aggregation_deg: 1.0
+  sites:
+    - {name: tokyo, lat: 35.68, lon: 139.69, demand_weight: 1.0}
+    - {name: singapore, lat: 1.35, lon: 103.82, demand_weight: 1.0}
+    - {name: london, lat: 51.51, lon: -0.13, demand_weight: 1.0}
+    - {name: newyork, lat: 40.71, lon: -74.01, demand_weight: 1.0}
+    - {name: saopaulo, lat: -23.55, lon: -46.63, demand_weight: 1.0}
+    - {name: lagos, lat: 6.52, lon: 3.38, demand_weight: 1.0}
+demand:
+  mode: uniform
+  offered_mbps: 120.0
+  packet_bits: 1000000
+  emission_start_s: 4.0
+  emission_end_s: 14.0
+  research_deadline_s: null
+  deadline_s: null
+  temporal_model: constant
+access:
+  # Access is deliberately NOT the bottleneck: the mechanism under test is the
+  # ISL queue behind a stale advertisement, not the access layer.
+  unavailable_policy: queue
+  slots_per_satellite: 256
+  uplink_rate_mbps: 20000.0
+  downlink_rate_mbps: 20000.0
+  uplink_queue_bits: 4000000000
+  downlink_queue_bits: 4000000000
+  holding_queue_bits: 268435456
+  association: bbm
+  hysteresis_deg: 0.0
+  min_dwell_s: 0.0
+  acquisition_delay_s: 0.01
+  idle_release_s: 0.2
+  slot_lease_s: 10.0
+  drr_quantum_bits: 1000000
+links:
+  rate_model: constant
+  isl_rate_mbps: 100.0
+  isl_queue_bits: 64000000
+  max_isl_km: 3000.0
+  geometry_loss: true
+  # The random GE outage is OFF on purpose: this pilot isolates the state-age
+  # mechanism and must not mix in a second random outage channel.
+  ge_enabled: false
+  isl_dirs: [N, S, E, W]
+topology:
+  # Static topology, as in the Stage C scene.  The measured 20 s range drift
+  # never crosses max_isl_km, so recomputing would only churn link
+  # generations without changing the physical graph.
+  recompute_interval_s: null
+  matching: markovian
+control_plane:
+  enabled: true
+  advertisement_protocol_version: 2   # carries resource identity/generation/workload
+  advertise_interval_s: 1.0
+  ttl_s: 10.0
+  vis_k: 3
+  packet_bits: 8000
+  priority: nonpreemptive_priority
+routing:
+  policy: known_serving
+  max_hops: 64
+  learning_enabled: false
+learning:
+  algorithm: none
+execution:
+  max_events: 20000000
+  max_entities: 20000
+  max_packets: 40000
+  # The compute plane is declared instantaneous (0 servers).  The advertisement
+  # then carries work_ahead_s = 0 with method "unbounded_no_wait", so compute
+  # and query terms are KNOWN zeros rather than missing terms, and compute can
+  # never become the hidden bottleneck this pilot is trying to rule out.
+  compute_delay_s: 0.0
+  compute_servers_per_satellite: 0
+  available_capacity_interval_s: 0.5
+  node_process_delay_s: 0.0
+time_alignment:
+  enabled: true
+  arm: now
+  predictor: bounded_linear
+  history_limit: 4
+  common_rule: median_eta
+  # The candidate arm queries the instant the packet ARRIVES at the peer's
+  # directed egress and starts facing that resource's queue.  "arrival" is the
+  # explicit rule added in 171c8ef; the historical "arrival_plus_queue" would
+  # query one fixed-point step later and no longer match the target-probe
+  # truth instant.
+  candidate_target_rule: arrival
+  execution_mode: per_packet
+  state_source: advertised
+outputs:
+  out_dir: leo_sim_out/ta-pilot-140-adv1
+  plotting: false

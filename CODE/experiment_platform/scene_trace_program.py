@@ -46,6 +46,15 @@ from pathlib import Path
 SCHEMA = "scene-trace-program/v1"
 MODELS = ("s1_stationary", "s2_independent_burst", "s3_correlated_hotspot")
 
+#: The optional single global emission pulse.  A pulse is a TREATMENT, not a
+#: mean-preserving burst envelope: the offered rate is multiplied for one
+#: declared window and the long-run mean is deliberately higher.  It exists so
+#: a state-age study can declare a positive control whose state-change
+#: timescale is SHORTER than the advertised state-update period, which the
+#: two-state models cannot express (they preserve the mean and therefore
+#: cannot isolate "the update missed the transient").
+PULSE_KEYS = ("start_s", "duration_s", "multiplier")
+
 
 class TraceProgramError(RuntimeError):
     pass
@@ -170,6 +179,49 @@ def _load(program: dict) -> dict:
             if unknown:
                 raise TraceProgramError(
                     f"s3 migration group not in od_weights: {unknown}")
+    pulse = p.get("pulse")
+    if pulse is not None:
+        # Optional SINGLE global emission pulse.  Validated here, before any
+        # row is generated, so a typo cannot silently produce a trace without
+        # the declared treatment.  Absent keeps every existing program
+        # byte-identical: no key is added and no random draw changes.
+        if not isinstance(pulse, dict):
+            raise TraceProgramError("pulse must be an object")
+        unknown = set(pulse) - set(PULSE_KEYS)
+        if unknown:
+            raise TraceProgramError(f"unsupported pulse fields: {sorted(unknown)}")
+        missing = [key for key in PULSE_KEYS if key not in pulse]
+        if missing:
+            raise TraceProgramError(
+                f"pulse is missing required fields: {missing}")
+        values = {key: float(pulse[key]) for key in PULSE_KEYS}
+        for key, value in values.items():
+            if not math.isfinite(value):
+                raise TraceProgramError(f"pulse.{key} must be finite")
+        if values["duration_s"] <= 0.0:
+            raise TraceProgramError(
+                f"pulse.duration_s must be > 0, got {values['duration_s']!r}")
+        if values["multiplier"] <= 1.0:
+            raise TraceProgramError(
+                "pulse.multiplier must exceed 1, got "
+                f"{values['multiplier']!r}: a pulse that does not raise the "
+                "rate is not a treatment")
+        emission_start = float(p["emission_start_s"])
+        emission_end = float(p["emission_end_s"])
+        pulse_end = values["start_s"] + values["duration_s"]
+        if values["start_s"] < emission_start - 1e-9:
+            raise TraceProgramError(
+                f"pulse.start_s {values['start_s']} precedes the emission "
+                f"window start {emission_start}")
+        if pulse_end > emission_end + 1e-9:
+            raise TraceProgramError(
+                f"pulse window ends at {pulse_end}s, after the emission "
+                f"window end {emission_end}s")
+        p["pulse"] = {
+            "start_s": values["start_s"],
+            "duration_s": values["duration_s"],
+            "multiplier": values["multiplier"],
+        }
     return p
 
 
@@ -234,6 +286,17 @@ def generate(program: dict):
                 "implemented; refusing rather than silently ignoring it")
 
     intra = p.get("intra_cell") or {}
+    # The optional global pulse multiplies every OD's instantaneous rate in
+    # one declared window.  It is a constant majorant factor, so the thinning
+    # below is still a true non-homogeneous Poisson process and the declared
+    # multiplier is exact in expectation.
+    pulse = p.get("pulse")
+    if pulse is None:
+        pulse_start = pulse_end = pulse_multiplier = None
+    else:
+        pulse_start = float(pulse["start_s"])
+        pulse_end = pulse_start + float(pulse["duration_s"])
+        pulse_multiplier = float(pulse["multiplier"])
     rows = []
     pid = 0
     for od in ods:
@@ -258,9 +321,12 @@ def generate(program: dict):
                                                                float(p["cycle_s"]))]
             peak = a
         # thinning on a constant majorant keeps the process a true
-        # non-homogeneous Poisson with the declared instantaneous rate
+        # non-homogeneous Poisson with the declared instantaneous rate.
+        # The global pulse is one more bounded multiplier, so the majorant is
+        # the product of the largest possible factors -- never a guess.
         t = t0
-        majorant = base * peak
+        majorant = base * peak * (1.0 if pulse_multiplier is None
+                                  else pulse_multiplier)
         if majorant > 0:
             while True:
                 t += gen.expovariate(majorant)
@@ -271,6 +337,9 @@ def generate(program: dict):
                     if s <= t < e:
                         rate = base * m
                         break
+                if (pulse_multiplier is not None
+                        and pulse_start <= t < pulse_end):
+                    rate = rate * pulse_multiplier
                 if gen.random() < rate / majorant:
                     pid += 1
                     # Intra-cell position: drawn per packet, so the cell is

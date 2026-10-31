@@ -98,6 +98,13 @@ def test_probe_reads_the_kernel_own_work_ahead_definition():
         _tx_started_at = 1.0
         _service_rate_bps = 1000.0
 
+        def arrival_rate_bps(self, now):
+            # The real ISL Link exposes this accessor (kernel.py, class Link);
+            # _isl_resource_state_advertisement reads it for the advertised
+            # arrival-rate telemetry.  A stub without it raised AttributeError
+            # and left the probe truth-read path with no green test.
+            return None
+
         class _P:
             bits = 800.0
         current = _P()
@@ -148,6 +155,9 @@ def test_probe_refuses_a_replaced_generation():
         _tx_started_at = None
         _service_rate_bps = None
         current = None
+
+        def arrival_rate_bps(self, now):
+            return None
 
     class Stub:
         horizon = 10.0
@@ -216,6 +226,9 @@ def test_out_of_order_targets_are_each_read_at_their_own_instant(tmp_path):
         _tx_started_at = None
         _service_rate_bps = None
         current = None
+
+        def arrival_rate_bps(self, now):
+            return None
 
     class Stub:
         horizon = 10.0

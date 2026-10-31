@@ -399,6 +399,59 @@ def test_decision_projection_is_lossless_for_declared_fields_and_no_mutation(
     assert "advertised_history" not in saved
 
 
+def test_decision_projection_keeps_the_cross_arm_hop_key(tmp_path):
+    """(pid, hop_index) is the only stable cross-arm decision key.
+
+    decision_id is a per-run counter that denotes different decisions in each
+    arm, so an analysis that pairs arms by decision_id silently compares
+    different packets.  Dropping hop_index from the projected row would make
+    the correct key unavailable from the artifact.
+    """
+    row = _decision(8, [0.0, 0.0])
+    row["hop_index"] = 3
+    budget = lc._OutputBudget()
+    sink = lc._JsonlSink(tmp_path / "decisions.jsonl.gz", budget, "decision")
+    sink.append(row)
+    sink.close()
+    with gzip.open(tmp_path / "decisions.jsonl.gz", "rt", encoding="utf-8") as stream:
+        saved = json.loads(stream.readline())
+    assert saved["hop_index"] == 3
+    assert saved["pid"] == 8
+
+
+PILOT_PROFILE = "CODE/leo_sim/profiles/ta_pilot_140_adv1.yaml"
+
+
+def test_state_age_pilot_profile_is_declared_and_frozen():
+    """The pilot's declared design is a frozen input, not a knob a cell edits.
+
+    This pins the values that make the mechanism question meaningful: same
+    140-sat Stage C geometry, speed-forced link/packet scale, a 1 s
+    advertisement period, bounded_linear with history_limit 4, and the
+    candidate arm querying the ARRIVAL instant (the target-probe truth
+    instant) rather than the legacy arrival_plus_queue one.
+    """
+    assert PILOT_PROFILE in lc.ALLOWED_PROFILES
+    resolved = config_mod.load_config_file(str(REPO_ROOT / PILOT_PROFILE))
+    cfg = resolved["config"]
+    assert cfg["scenario"]["num_satellites"] == 140
+    assert cfg["scenario"]["num_planes"] == 7
+    assert cfg["scenario"]["altitude_km"] == 600.0
+    assert cfg["scenario"]["inclination_deg"] == 98.6
+    assert cfg["scenario"]["duration_s"] == 20.0
+    assert cfg["links"]["isl_rate_mbps"] == 100.0
+    assert cfg["links"]["isl_queue_bits"] == 64000000
+    assert cfg["links"]["ge_enabled"] is False
+    assert cfg["demand"]["packet_bits"] == 1000000
+    assert cfg["control_plane"]["advertise_interval_s"] == 1.0
+    assert cfg["control_plane"]["advertisement_protocol_version"] == 2
+    assert cfg["time_alignment"]["enabled"] is True
+    assert cfg["time_alignment"]["predictor"] == "bounded_linear"
+    assert cfg["time_alignment"]["history_limit"] == 4
+    assert cfg["time_alignment"]["candidate_target_rule"] == "arrival"
+    assert cfg["execution"]["compute_servers_per_satellite"] <= 1
+
+
 def test_sink_stats_count_zero_and_nonzero_work_and_complete_candidates(tmp_path):
     budget = lc._OutputBudget()
     sink = lc._JsonlSink(tmp_path / "decisions.jsonl.gz", budget, "decision")

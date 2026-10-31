@@ -1,0 +1,316 @@
+{
+ "base_profile": "CODE/leo_sim/profiles/ta_pilot_140_adv1.yaml",
+ "cells": [
+  {
+   "arms": [
+    "now"
+   ],
+   "diagnostics": {
+    "truth_probe": false
+   },
+   "id": "cal-040",
+   "overrides": {
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "vis_k": 3
+    },
+    "demand": {
+     "emission_end_s": 14.0,
+     "emission_start_s": 4.0,
+     "packet_bits": 1000000
+    },
+    "execution": {
+     "compute_delay_s": 0.0,
+     "compute_servers_per_satellite": 0,
+     "max_packets": 40000
+    },
+    "links": {
+     "isl_queue_bits": 64000000,
+     "isl_rate_mbps": 100.0,
+     "rate_model": "constant"
+    },
+    "scenario": {
+     "duration_s": 20.0
+    }
+   },
+   "trace_program": {
+    "cells": {
+     "lagos": [
+      6.52,
+      3.38
+     ],
+     "london": [
+      51.51,
+      -0.13
+     ],
+     "newyork": [
+      40.71,
+      -74.01
+     ],
+     "saopaulo": [
+      -23.55,
+      -46.63
+     ],
+     "singapore": [
+      1.35,
+      103.82
+     ],
+     "tokyo": [
+      35.68,
+      139.69
+     ]
+    },
+    "emission_end_s": 14.0,
+    "emission_start_s": 4.0,
+    "model": "s1_stationary",
+    "od_weights": {
+     "lagos,london": 0.010344827586206896,
+     "lagos,newyork": 0.010344827586206896,
+     "lagos,saopaulo": 0.010344827586206896,
+     "lagos,singapore": 0.010344827586206896,
+     "lagos,tokyo": 0.010344827586206896,
+     "london,lagos": 0.010344827586206896,
+     "london,newyork": 0.010344827586206896,
+     "london,saopaulo": 0.010344827586206896,
+     "london,singapore": 0.010344827586206896,
+     "london,tokyo": 0.010344827586206896,
+     "newyork,lagos": 0.010344827586206896,
+     "newyork,london": 0.010344827586206896,
+     "newyork,saopaulo": 0.010344827586206896,
+     "newyork,singapore": 0.010344827586206896,
+     "newyork,tokyo": 0.010344827586206896,
+     "saopaulo,lagos": 0.010344827586206896,
+     "saopaulo,london": 0.010344827586206896,
+     "saopaulo,newyork": 0.010344827586206896,
+     "saopaulo,singapore": 0.010344827586206896,
+     "saopaulo,tokyo": 0.010344827586206896,
+     "singapore,lagos": 0.010344827586206896,
+     "singapore,london": 0.010344827586206896,
+     "singapore,newyork": 0.010344827586206896,
+     "singapore,saopaulo": 0.010344827586206896,
+     "singapore,tokyo": 0.010344827586206896,
+     "tokyo,lagos": 0.010344827586206896,
+     "tokyo,london": 0.010344827586206896,
+     "tokyo,newyork": 0.010344827586206896,
+     "tokyo,saopaulo": 0.010344827586206896,
+     "tokyo,singapore": 0.7
+    },
+    "packet_bits": 1000000,
+    "schema": "scene-trace-program/v1",
+    "seed": 7,
+    "total_mbps": 40.0
+   }
+  },
+  {
+   "arms": [
+    "now"
+   ],
+   "diagnostics": {
+    "truth_probe": true,
+    "truth_probe_max": 200000,
+    "truth_probe_stride": 1
+   },
+   "id": "cal-120",
+   "overrides": {
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "vis_k": 3
+    },
+    "demand": {
+     "emission_end_s": 14.0,
+     "emission_start_s": 4.0,
+     "packet_bits": 1000000
+    },
+    "execution": {
+     "compute_delay_s": 0.0,
+     "compute_servers_per_satellite": 0,
+     "max_packets": 40000
+    },
+    "links": {
+     "isl_queue_bits": 64000000,
+     "isl_rate_mbps": 100.0,
+     "rate_model": "constant"
+    },
+    "scenario": {
+     "duration_s": 20.0
+    }
+   },
+   "trace_program": {
+    "cells": {
+     "lagos": [
+      6.52,
+      3.38
+     ],
+     "london": [
+      51.51,
+      -0.13
+     ],
+     "newyork": [
+      40.71,
+      -74.01
+     ],
+     "saopaulo": [
+      -23.55,
+      -46.63
+     ],
+     "singapore": [
+      1.35,
+      103.82
+     ],
+     "tokyo": [
+      35.68,
+      139.69
+     ]
+    },
+    "emission_end_s": 14.0,
+    "emission_start_s": 4.0,
+    "model": "s1_stationary",
+    "od_weights": {
+     "lagos,london": 0.010344827586206896,
+     "lagos,newyork": 0.010344827586206896,
+     "lagos,saopaulo": 0.010344827586206896,
+     "lagos,singapore": 0.010344827586206896,
+     "lagos,tokyo": 0.010344827586206896,
+     "london,lagos": 0.010344827586206896,
+     "london,newyork": 0.010344827586206896,
+     "london,saopaulo": 0.010344827586206896,
+     "london,singapore": 0.010344827586206896,
+     "london,tokyo": 0.010344827586206896,
+     "newyork,lagos": 0.010344827586206896,
+     "newyork,london": 0.010344827586206896,
+     "newyork,saopaulo": 0.010344827586206896,
+     "newyork,singapore": 0.010344827586206896,
+     "newyork,tokyo": 0.010344827586206896,
+     "saopaulo,lagos": 0.010344827586206896,
+     "saopaulo,london": 0.010344827586206896,
+     "saopaulo,newyork": 0.010344827586206896,
+     "saopaulo,singapore": 0.010344827586206896,
+     "saopaulo,tokyo": 0.010344827586206896,
+     "singapore,lagos": 0.010344827586206896,
+     "singapore,london": 0.010344827586206896,
+     "singapore,newyork": 0.010344827586206896,
+     "singapore,saopaulo": 0.010344827586206896,
+     "singapore,tokyo": 0.010344827586206896,
+     "tokyo,lagos": 0.010344827586206896,
+     "tokyo,london": 0.010344827586206896,
+     "tokyo,newyork": 0.010344827586206896,
+     "tokyo,saopaulo": 0.010344827586206896,
+     "tokyo,singapore": 0.7
+    },
+    "packet_bits": 1000000,
+    "schema": "scene-trace-program/v1",
+    "seed": 7,
+    "total_mbps": 120.0
+   }
+  },
+  {
+   "arms": [
+    "now"
+   ],
+   "diagnostics": {
+    "truth_probe": false
+   },
+   "id": "cal-200",
+   "overrides": {
+    "control_plane": {
+     "advertise_interval_s": 1.0,
+     "vis_k": 3
+    },
+    "demand": {
+     "emission_end_s": 14.0,
+     "emission_start_s": 4.0,
+     "packet_bits": 1000000
+    },
+    "execution": {
+     "compute_delay_s": 0.0,
+     "compute_servers_per_satellite": 0,
+     "max_packets": 40000
+    },
+    "links": {
+     "isl_queue_bits": 64000000,
+     "isl_rate_mbps": 100.0,
+     "rate_model": "constant"
+    },
+    "scenario": {
+     "duration_s": 20.0
+    }
+   },
+   "trace_program": {
+    "cells": {
+     "lagos": [
+      6.52,
+      3.38
+     ],
+     "london": [
+      51.51,
+      -0.13
+     ],
+     "newyork": [
+      40.71,
+      -74.01
+     ],
+     "saopaulo": [
+      -23.55,
+      -46.63
+     ],
+     "singapore": [
+      1.35,
+      103.82
+     ],
+     "tokyo": [
+      35.68,
+      139.69
+     ]
+    },
+    "emission_end_s": 14.0,
+    "emission_start_s": 4.0,
+    "model": "s1_stationary",
+    "od_weights": {
+     "lagos,london": 0.010344827586206896,
+     "lagos,newyork": 0.010344827586206896,
+     "lagos,saopaulo": 0.010344827586206896,
+     "lagos,singapore": 0.010344827586206896,
+     "lagos,tokyo": 0.010344827586206896,
+     "london,lagos": 0.010344827586206896,
+     "london,newyork": 0.010344827586206896,
+     "london,saopaulo": 0.010344827586206896,
+     "london,singapore": 0.010344827586206896,
+     "london,tokyo": 0.010344827586206896,
+     "newyork,lagos": 0.010344827586206896,
+     "newyork,london": 0.010344827586206896,
+     "newyork,saopaulo": 0.010344827586206896,
+     "newyork,singapore": 0.010344827586206896,
+     "newyork,tokyo": 0.010344827586206896,
+     "saopaulo,lagos": 0.010344827586206896,
+     "saopaulo,london": 0.010344827586206896,
+     "saopaulo,newyork": 0.010344827586206896,
+     "saopaulo,singapore": 0.010344827586206896,
+     "saopaulo,tokyo": 0.010344827586206896,
+     "singapore,lagos": 0.010344827586206896,
+     "singapore,london": 0.010344827586206896,
+     "singapore,newyork": 0.010344827586206896,
+     "singapore,saopaulo": 0.010344827586206896,
+     "singapore,tokyo": 0.010344827586206896,
+     "tokyo,lagos": 0.010344827586206896,
+     "tokyo,london": 0.010344827586206896,
+     "tokyo,newyork": 0.010344827586206896,
+     "tokyo,saopaulo": 0.010344827586206896,
+     "tokyo,singapore": 0.7
+    },
+    "packet_bits": 1000000,
+    "schema": "scene-trace-program/v1",
+    "seed": 7,
+    "total_mbps": 200.0
+   }
+  }
+ ],
+ "deadline_s": 4.0,
+ "diagnostics": {
+  "control_audit": false,
+  "decisions": true,
+  "timeline": false
+ },
+ "max_duration_s": 20.0,
+ "max_packets": 50000,
+ "schema": "load-calibration-contract/v1"
+}

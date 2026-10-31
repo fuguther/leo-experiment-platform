@@ -112,3 +112,67 @@ def test_trace_program_is_content_addressed(tmp_path, monkeypatch):
     changed = dict(program, seed=999)
     third = LC.materialize_trace_program("cellA", changed)
     assert third["path"] != first["path"]
+
+
+# ---------------------------------------------------------------------------
+# SINGLE PULSE (2026-10-31): the declared positive control whose state-change
+# timescale is shorter than the advertised state-update period.  Unlike the
+# two-state models this is a TREATMENT: it does NOT preserve the long-run mean.
+# ---------------------------------------------------------------------------
+PULSE_BASE = dict(schema=TP.SCHEMA, model="s1_stationary",
+                  cells=CELLS, od_weights=OD, packet_bits=1000,
+                  emission_start_s=2.0, emission_end_s=2.7, seed=111,
+                  total_mbps=10.0)
+
+
+def _rows_inside(rows, start, end):
+    return [r for r in rows if start <= r["emit_time_s"] < end]
+
+
+def test_pulse_multiplies_the_rate_only_inside_its_window():
+    base = TP.generate(dict(PULSE_BASE))
+    pulse = {"start_s": 2.2, "duration_s": 0.1, "multiplier": 3.0}
+    treated = TP.generate(dict(PULSE_BASE, pulse=pulse))
+    base_inside = len(_rows_inside(base, 2.2, 2.3))
+    treated_inside = len(_rows_inside(treated, 2.2, 2.3))
+    base_outside = len(_rows_inside(base, 2.3, 2.7))
+    treated_outside = len(_rows_inside(treated, 2.3, 2.7))
+    # The pulse is a declared multiplier: a factor of 3 in a 1/7 window is far
+    # above Poisson noise even at this small rate, and the rest of the window
+    # is untouched (same seed and same draws).
+    assert treated_inside > base_inside * 1.8
+    assert abs(treated_outside - base_outside) <= max(5, base_outside * 0.02)
+    # The long-run mean is deliberately NOT preserved; assert the direction.
+    assert len(treated) > len(base)
+
+
+def test_pulse_is_deterministic():
+    program = dict(PULSE_BASE, pulse={"start_s": 2.2, "duration_s": 0.1,
+                                      "multiplier": 3.0})
+    first = TP.generate(program)
+    second = TP.generate(program)
+    assert [(r["emit_time_s"], r["packet_id"]) for r in first] == \
+        [(r["emit_time_s"], r["packet_id"]) for r in second]
+
+
+@pytest.mark.parametrize("pulse", [
+    {"start_s": 1.9, "duration_s": 0.1, "multiplier": 3.0},   # before window
+    {"start_s": 2.6, "duration_s": 0.2, "multiplier": 3.0},   # after window
+    {"start_s": 2.2, "duration_s": 0.0, "multiplier": 3.0},   # empty pulse
+    {"start_s": 2.2, "duration_s": 0.1, "multiplier": 1.0},   # not a treatment
+    {"start_s": 2.2, "duration_s": 0.1},                      # missing multiplier
+    {"start_s": 2.2, "duration_s": 0.1, "multiplier": 3.0,
+     "extra": 1},                                             # unknown field
+    "not-an-object",
+])
+def test_pulse_declarations_are_validated_before_generation(pulse):
+    with pytest.raises(TP.TraceProgramError):
+        TP.generate(dict(PULSE_BASE, pulse=pulse))
+
+
+def test_program_without_a_pulse_is_byte_identical_to_the_historical_stream():
+    first = TP.generate(dict(PULSE_BASE))
+    second = TP.generate(dict(PULSE_BASE))
+    assert [(r["emit_time_s"], r["src_lat"], r["dst_lat"]) for r in first] == \
+        [(r["emit_time_s"], r["src_lat"], r["dst_lat"]) for r in second]
+
