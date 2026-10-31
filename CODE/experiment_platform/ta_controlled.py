@@ -152,7 +152,8 @@ def cell_id(cell: Cell) -> str:
     swing = cell.qmax_bits / C_BPS * 1e3
     spread = (cell.eta_e_s - cell.eta_n_s) * 1e3
     return (f"{corr}-tau{cell.tau_s * 1e3:g}ms-d{cell.margin_s * 1e3:g}ms-"
-            f"qswing{swing:g}ms-spread{spread:g}ms-{cell.advert_class}")
+            f"qswing{swing:g}ms-spread{spread:g}ms-"
+            f"age{cell.measurement_age_s * 1e3:g}ms-{cell.advert_class}")
 
 
 def build_cells() -> list[Cell]:
