@@ -1,0 +1,3339 @@
+{
+ "cell": "p1-high-ewma",
+ "definitions": {
+  "corridor": "top 0.1 of active directed ISL links ranked by served rate in the eval window",
+  "delta": "delta_r = (bits wrongly routed into r - bits that should have entered r but went elsewhere)/window [bit/s]; sum_r delta_r = 0",
+  "epsilon": "epsilon_r = mu_r - served_bits_r/window; mu_r = link rate_bps; clipped exactly per window from link_service_windows (stage=isl)",
+  "epsilon_caveat": "served <= rate*window always holds, so epsilon >= 0 by construction; epsilon == 0 means saturated in that window (z = inf). Offered load from queue_enter arrivals is reported separately because it CAN exceed mu.",
+  "flip": "truth-substituted same-decision re-ranking (same rule as sq_policy_analyze.py); geometry has no state term -> flip = 0 by construction",
+  "flip_rate": "flips / multi-candidate scored forward decisions inside the window",
+  "persistence_stream": "same-(sat,dst) decision stream; dst and bits are joined from trace.jsonl.gz by pid because load_calibration's decision projection drops dst (a decision-row dst would silently degrade this to per-sat)",
+  "tau_error": "duration of a same-sign |delta_r| > frac*mu run per resource (0.5 s bins, censored at window edges)",
+  "tau_relax": "time from a queue peak to 50% of the peak, and back into the p10-p90 band of the preceding 2 s",
+  "windows": {
+   "bin_s": 0.5,
+   "burst_s": [
+    8.0,
+    8.5
+   ],
+   "eval_s": [
+    4.0,
+    14.0
+   ]
+  },
+  "z": "z = |delta_r| / epsilon_r, evaluated on the 0.5 s bin containing the decision; non-flips carry no delta and are a separate contrast row",
+  "z_caveat": "delta_r and lambda_r are on different accounting bases: lambda_r counts bits actually served (misrouted bits included), delta_r is a counterfactual bookkeeping swing. z is therefore a NORMALISED BIAS MAGNITUDE (bias relative to residual capacity), not a load-triggered overload indicator; z >= 1 says the swing is comparable to or larger than the link's spare capacity in that bin, so correcting the bias would need more headroom than the link had."
+ },
+ "directional_bias": {
+  "accounting": {
+   "net_sum_mbps": 0.0,
+   "note": "delta_r counts the bits a decision moved from the link it should have taken to the link it actually took. It is a per-decision attribution, NOT end-to-end rerouted net traffic: later hops of the same packet can correct it. Every flip contributes one + and one -, so sum_r delta_r = 0 and sum_r |delta_r| counts each moved bit twice.",
+   "one_way_moved_mbps": 327.5,
+   "sum_abs_delta_mbps": 655.0,
+   "sum_negative_deficit_mbps": -327.5,
+   "sum_positive_excess_mbps": 327.5,
+   "top5_positive_excess_mbps": 210.9
+  },
+  "corridor_delta_mbps": {
+   "isl:105:125": 0.0,
+   "isl:125:5": -43.2,
+   "isl:126:6": 0.0,
+   "isl:127:126": 0.6,
+   "isl:128:127": 0.0,
+   "isl:24:44": 36.9,
+   "isl:25:24": -6.4,
+   "isl:25:45": 16.4,
+   "isl:26:25": 1.0,
+   "isl:41:40": 0.0,
+   "isl:42:41": 0.0,
+   "isl:43:42": 3.1,
+   "isl:44:43": 64.1,
+   "isl:45:65": 0.0,
+   "isl:4:24": 2.4,
+   "isl:5:25": -23.3,
+   "isl:5:4": -0.1,
+   "isl:65:85": 0.0,
+   "isl:6:26": 68.1,
+   "isl:85:105": 0.0
+  },
+  "longest_negative_run_s": 10.0,
+  "longest_positive_run_s": 10.0,
+  "n_flips_unattributed": 29,
+  "n_resources_abs_over_1mbps": 53,
+  "n_resources_touched": 104,
+  "net_sum_mbps": 0.0,
+  "note": "a flip needs both endpoint links; unpaired flips are dropped so that sum_r delta_r = 0 exactly",
+  "top_deficit": [
+   {
+    "delta_mbps": -63.6,
+    "link": "isl:23:43",
+    "z": -0.636
+   },
+   {
+    "delta_mbps": -43.2,
+    "link": "isl:125:5",
+    "z": -1.4293991856338888
+   },
+   {
+    "delta_mbps": -36.9,
+    "link": "isl:3:23",
+    "z": -0.369
+   },
+   {
+    "delta_mbps": -27.4,
+    "link": "isl:106:105",
+    "z": -0.274
+   },
+   {
+    "delta_mbps": -23.3,
+    "link": "isl:5:25",
+    "z": -0.33477011494252573
+   },
+   {
+    "delta_mbps": -16.1,
+    "link": "isl:35:55",
+    "z": -0.16132264529058116
+   },
+   {
+    "delta_mbps": -16.1,
+    "link": "isl:46:45",
+    "z": -0.2283687943262391
+   },
+   {
+    "delta_mbps": -15.7,
+    "link": "isl:37:57",
+    "z": -0.157
+   },
+   {
+    "delta_mbps": -14.8,
+    "link": "isl:15:35",
+    "z": -0.17548942614898785
+   },
+   {
+    "delta_mbps": -13.6,
+    "link": "isl:135:15",
+    "z": -0.16113744075829323
+   }
+  ],
+  "top_excess": [
+   {
+    "delta_mbps": 68.1,
+    "link": "isl:6:26",
+    "z": 2.333208090392416
+   },
+   {
+    "delta_mbps": 64.1,
+    "link": "isl:44:43",
+    "z": 2.1168821236821036
+   },
+   {
+    "delta_mbps": 36.9,
+    "link": "isl:24:44",
+    "z": 1.174623872051053
+   },
+   {
+    "delta_mbps": 22.8,
+    "link": "isl:26:46",
+    "z": 0.3175487465181032
+   },
+   {
+    "delta_mbps": 19.0,
+    "link": "isl:14:34",
+    "z": 0.23543990086740893
+   },
+   {
+    "delta_mbps": 16.4,
+    "link": "isl:25:45",
+    "z": 0.30258302583025276
+   },
+   {
+    "delta_mbps": 16.4,
+    "link": "isl:56:57",
+    "z": 0.20865139949109296
+   },
+   {
+    "delta_mbps": 16.1,
+    "link": "isl:54:55",
+    "z": 0.19189511323003497
+   },
+   {
+    "delta_mbps": 16.0,
+    "link": "isl:34:54",
+    "z": 0.1982651796778181
+   },
+   {
+    "delta_mbps": 6.0,
+    "link": "isl:4:3",
+    "z": 0.06666666666666651
+   }
+  ],
+  "total_misrouted_mbps": 327.5
+ },
+ "epsilon": {
+  "corridor_links": [
+   "isl:128:127",
+   "isl:127:126",
+   "isl:126:6",
+   "isl:45:65",
+   "isl:65:85",
+   "isl:85:105",
+   "isl:6:26",
+   "isl:105:125",
+   "isl:125:5",
+   "isl:44:43",
+   "isl:43:42",
+   "isl:42:41",
+   "isl:41:40",
+   "isl:24:44",
+   "isl:25:45",
+   "isl:4:24",
+   "isl:26:25",
+   "isl:5:4",
+   "isl:5:25",
+   "isl:25:24"
+  ],
+  "corridor_rho": 0.1,
+  "eval_epsilon_mbps": {
+   "p50": 97.00000000000006,
+   "p90": 99.4,
+   "p95": 99.8,
+   "p99": 99.89999999999999
+  },
+  "levels": {
+   "rho=0.05": {
+    "epsilon_mbps": {
+     "max": 30.28038230513492,
+     "min": 25.22458012555763,
+     "p50": 27.90000000000155,
+     "p90": 30.222488185371606,
+     "p95": 30.28038230513492,
+     "p99": 30.28038230513492
+    },
+    "links": [
+     "isl:128:127",
+     "isl:127:126",
+     "isl:126:6",
+     "isl:45:65",
+     "isl:65:85",
+     "isl:85:105",
+     "isl:6:26",
+     "isl:105:125",
+     "isl:125:5",
+     "isl:44:43"
+    ],
+    "n_links": 10,
+    "utilization": {
+     "max": 0.7477541987444237,
+     "min": 0.6971961769486508
+    }
+   },
+   "rho=0.1": {
+    "epsilon_mbps": {
+     "max": 70.30000000000064,
+     "min": 25.22458012555763,
+     "p50": 30.400000000001505,
+     "p90": 57.05281817442967,
+     "p95": 69.60000000000062,
+     "p99": 70.30000000000064
+    },
+    "links": [
+     "isl:128:127",
+     "isl:127:126",
+     "isl:126:6",
+     "isl:45:65",
+     "isl:65:85",
+     "isl:85:105",
+     "isl:6:26",
+     "isl:105:125",
+     "isl:125:5",
+     "isl:44:43",
+     "isl:43:42",
+     "isl:42:41",
+     "isl:41:40",
+     "isl:24:44",
+     "isl:25:45",
+     "isl:4:24",
+     "isl:26:25",
+     "isl:5:4",
+     "isl:5:25",
+     "isl:25:24"
+    ],
+    "n_links": 20,
+    "utilization": {
+     "max": 0.7477541987444237,
+     "min": 0.29699999999999355
+    }
+   },
+   "rho=0.2": {
+    "epsilon_mbps": {
+     "max": 84.00000000000034,
+     "min": 25.22458012555763,
+     "p50": 70.50000000000063,
+     "p90": 83.20000000000036,
+     "p95": 83.40000000000036,
+     "p99": 84.00000000000034
+    },
+    "links": [
+     "isl:128:127",
+     "isl:127:126",
+     "isl:126:6",
+     "isl:45:65",
+     "isl:65:85",
+     "isl:85:105",
+     "isl:6:26",
+     "isl:105:125",
+     "isl:125:5",
+     "isl:44:43",
+     "isl:43:42",
+     "isl:42:41",
+     "isl:41:40",
+     "isl:24:44",
+     "isl:25:45",
+     "isl:4:24",
+     "isl:26:25",
+     "isl:5:4",
+     "isl:5:25",
+     "isl:25:24",
+     "isl:46:45",
+     "isl:26:46",
+     "isl:56:57",
+     "isl:57:58",
+     "isl:58:59",
+     "isl:59:40",
+     "isl:128:129",
+     "isl:129:130",
+     "isl:130:131",
+     "isl:131:132",
+     "isl:132:133",
+     "isl:133:134",
+     "isl:134:14",
+     "isl:34:54",
+     "isl:14:34",
+     "isl:36:56",
+     "isl:105:85",
+     "isl:125:105",
+     "isl:85:65",
+     "isl:54:55",
+     "isl:35:36"
+    ],
+    "n_links": 41,
+    "utilization": {
+     "max": 0.7477541987444237,
+     "min": 0.15999999999999662
+    }
+   }
+  },
+  "n_link_bins": 2688,
+  "n_saturated_link_bins": 0,
+  "offered_overload": {
+   "burst_links_over_mu": 0,
+   "burst_offered_util_max": 0.98,
+   "n_link_bins": 400,
+   "n_link_bins_offered_over_mu": 0
+  },
+  "subbin_resolution": {
+   "burst": {
+    "epsilon_min_mbps": 0.0,
+    "frac_saturated_subbins": 0.08,
+    "n_link_subbins": 100,
+    "n_saturated_subbins": 8,
+    "n_subbins_offered_over_mu": 18,
+    "offered_util_max": 1.1000000000000039,
+    "saturated_links": [
+     "isl:126:6",
+     "isl:127:126",
+     "isl:128:127",
+     "isl:45:65"
+    ],
+    "served_util_max": 1.0000000000000002
+   },
+   "eval": {
+    "epsilon_min_mbps": 0.0,
+    "frac_saturated_subbins": 0.0295,
+    "n_link_subbins": 2000,
+    "n_saturated_subbins": 59,
+    "n_subbins_offered_over_mu": 138,
+    "offered_util_max": 1.2000000000000042,
+    "saturated_links": [
+     "isl:105:125",
+     "isl:125:5",
+     "isl:126:6",
+     "isl:127:126",
+     "isl:128:127",
+     "isl:24:44",
+     "isl:25:24",
+     "isl:25:45",
+     "isl:26:25",
+     "isl:41:40",
+     "isl:42:41",
+     "isl:43:42",
+     "isl:44:43",
+     "isl:45:65",
+     "isl:4:24",
+     "isl:5:4",
+     "isl:65:85",
+     "isl:6:26",
+     "isl:85:105"
+    ],
+    "served_util_max": 1.0000000000000002
+   },
+   "n_corridor_links": 20,
+   "sub_bin_s": 0.1
+  },
+  "utilization": {
+   "p50": 0.02999999999999936,
+   "p90": 0.2949999999999938,
+   "p95": 0.695999999999985,
+   "p99": 0.7289999999999843
+  }
+ },
+ "ewma_alpha": 0.25,
+ "flip": {
+  "flip_bits_eval_mbit": 4078.0,
+  "flip_rate_all": 0.28492849284928495,
+  "flip_rate_eval": 0.2849954574044308,
+  "geometry_check_ok": null,
+  "geometry_constructive_zero": false,
+  "n_decisions_all": 14544,
+  "n_decisions_eval": 14309,
+  "n_decisions_eval_with_truth": 14309,
+  "n_decisions_with_truth": 14527,
+  "n_flips_all": 4144,
+  "n_flips_burst": 274,
+  "n_flips_eval": 4078
+ },
+ "hysteresis_eta_s": 0.0,
+ "inputs": {
+  "backlog_rebuild": {
+   "baseline_band": {
+    "grid_s": 0.5,
+    "sample_s": 0.001,
+    "window_s": 2.0
+   },
+   "definition": "backlog = queued bits + in-service remaining bits (linear decay over [service_start, service_end])",
+   "finish_from_rate_fallback": 0,
+   "service_duration_ms": {
+    "p50": 9.999999999999787,
+    "p90": 9.999999999999787
+   },
+   "unmatched_queue_enter": 0,
+   "windows_matched": 22282
+  },
+  "config_sha256": "025063f30c40ab44b77f6bb81c639eb31e31c5df988866a24b97ea6b657a15f1",
+  "control_share_of_isl_busy_time": 0.012927051449727991,
+  "isl_queue_bits": 64000000.0,
+  "mu_bps": 100000000.0,
+  "n_active_isl_links": 203,
+  "n_link_entries": 203,
+  "probe": {
+   "filter": "identity_source == 'used_state' and arm == 'now'",
+   "rows_skipped": 1257,
+   "rows_used": 45796
+  },
+  "trace_join": {
+   "bits_source": "trace.jsonl.gz bits joined by pid",
+   "dst_source": "trace.jsonl.gz dst_grid_id joined by pid",
+   "eval_rows_without_bits": 0,
+   "eval_rows_without_dst": 0,
+   "reason": "load_calibration._project_decision drops the decision dst field, so reading dst from the decision row would silently collapse the (sat,dst) stream key to per-sat",
+   "superseded_lens": "per-sat grouping (Round-1 W/switch) is kept only as a documented cross-check in persistence.flip_runs_by_sat_only"
+  },
+  "trace_source_sha256": "64f505df72cd9c0f4f44c6bd9669f105990cf759c096a0924432ce82cd2f022e"
+ },
+ "per_bin": [
+  {
+   "bin": "[4.0,4.5)",
+   "e2e_ms": {
+    "p50": 314.82315555020347,
+    "p90": 369.64134992010946,
+    "p95": 451.98694467930875,
+    "p99": 535.9309933158531
+   },
+   "flip_bits_mbit": 197.0,
+   "is_burst": false,
+   "n_decisions": 746,
+   "n_flips": 197,
+   "n_z_ge_1": 95,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.6691425527728754,
+    "p95": 0.7534778947855416,
+    "p99": 1.668690785409801
+   },
+   "top_delta_mbps": [
+    [
+     "isl:125:5",
+     -68.0
+    ],
+    [
+     "isl:6:26",
+     68.0
+    ],
+    [
+     "isl:25:45",
+     -66.0
+    ],
+    [
+     "isl:46:45",
+     66.0
+    ],
+    [
+     "isl:44:43",
+     56.0
+    ]
+   ],
+   "z_p50": 0.9411764705881956
+  },
+  {
+   "bin": "[4.5,5.0)",
+   "e2e_ms": {
+    "p50": 299.4967913307311,
+    "p90": 363.1117928870173,
+    "p95": 364.48106847548354,
+    "p99": 427.0552042184033
+   },
+   "flip_bits_mbit": 220.0,
+   "is_burst": false,
+   "n_decisions": 722,
+   "n_flips": 220,
+   "n_z_ge_1": 157,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.5627825988181576,
+    "p95": 1.2324864129333242,
+    "p99": 1.826101315654366
+   },
+   "top_delta_mbps": [
+    [
+     "isl:44:43",
+     82.0
+    ],
+    [
+     "isl:6:26",
+     76.0
+    ],
+    [
+     "isl:25:45",
+     -74.0
+    ],
+    [
+     "isl:46:45",
+     72.0
+    ],
+    [
+     "isl:5:25",
+     -70.0
+    ]
+   ],
+   "z_p50": 2.8398373719555825
+  },
+  {
+   "bin": "[5.0,5.5)",
+   "e2e_ms": {
+    "p50": 294.62357048068276,
+    "p90": 359.79321259391736,
+    "p95": 427.48231434829796,
+    "p99": 498.98329018938716
+   },
+   "flip_bits_mbit": 183.0,
+   "is_burst": false,
+   "n_decisions": 670,
+   "n_flips": 183,
+   "n_z_ge_1": 120,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.7952134580597018,
+    "p95": 1.328372675090456,
+    "p99": 1.663744473102149
+   },
+   "top_delta_mbps": [
+    [
+     "isl:25:45",
+     -68.0
+    ],
+    [
+     "isl:46:45",
+     66.0
+    ],
+    [
+     "isl:6:26",
+     62.0
+    ],
+    [
+     "isl:5:25",
+     -58.0
+    ],
+    [
+     "isl:26:46",
+     54.0
+    ]
+   ],
+   "z_p50": 1.293518586045932
+  },
+  {
+   "bin": "[5.5,6.0)",
+   "e2e_ms": {
+    "p50": 295.65549296793137,
+    "p90": 358.40456829486914,
+    "p95": 433.07659023322833,
+    "p99": 496.0419481574414
+   },
+   "flip_bits_mbit": 185.0,
+   "is_burst": false,
+   "n_decisions": 636,
+   "n_flips": 185,
+   "n_z_ge_1": 135,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.837753029620476,
+    "p95": 1.4382573693153184,
+    "p99": 1.9277923923465028
+   },
+   "top_delta_mbps": [
+    [
+     "isl:6:26",
+     72.0
+    ],
+    [
+     "isl:25:45",
+     -70.0
+    ],
+    [
+     "isl:46:45",
+     70.0
+    ],
+    [
+     "isl:44:43",
+     66.0
+    ],
+    [
+     "isl:23:43",
+     -64.0
+    ]
+   ],
+   "z_p50": 2.1918125882000417
+  },
+  {
+   "bin": "[6.0,6.5)",
+   "e2e_ms": {
+    "p50": 296.07970258523505,
+    "p90": 359.6646958761331,
+    "p95": 438.15003600632974,
+    "p99": 582.2101597037062
+   },
+   "flip_bits_mbit": 185.0,
+   "is_burst": false,
+   "n_decisions": 705,
+   "n_flips": 185,
+   "n_z_ge_1": 125,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.2557028907185511,
+    "p95": 0.9166439302104674,
+    "p99": 1.7085051850497388
+   },
+   "top_delta_mbps": [
+    [
+     "isl:25:45",
+     62.0
+    ],
+    [
+     "isl:46:45",
+     -62.0
+    ],
+    [
+     "isl:6:26",
+     62.0
+    ],
+    [
+     "isl:23:43",
+     -60.0
+    ],
+    [
+     "isl:44:43",
+     60.0
+    ]
+   ],
+   "z_p50": 1.9221003215698176
+  },
+  {
+   "bin": "[6.5,7.0)",
+   "e2e_ms": {
+    "p50": 295.3698980344095,
+    "p90": 363.1777775593843,
+    "p95": 436.63791755183377,
+    "p99": 536.3875661214807
+   },
+   "flip_bits_mbit": 201.0,
+   "is_burst": false,
+   "n_decisions": 685,
+   "n_flips": 201,
+   "n_z_ge_1": 137,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.79549634010922,
+    "p95": 1.356425843756022,
+    "p99": 1.938755325707794
+   },
+   "top_delta_mbps": [
+    [
+     "isl:25:45",
+     78.0
+    ],
+    [
+     "isl:6:26",
+     76.0
+    ],
+    [
+     "isl:46:45",
+     -74.0
+    ],
+    [
+     "isl:125:5",
+     -62.0
+    ],
+    [
+     "isl:3:23",
+     -62.0
+    ]
+   ],
+   "z_p50": 1.5805705883931922
+  },
+  {
+   "bin": "[7.0,7.5)",
+   "e2e_ms": {
+    "p50": 296.3130095035025,
+    "p90": 367.968038572462,
+    "p95": 427.2470080669253,
+    "p99": 503.01694828231814
+   },
+   "flip_bits_mbit": 196.0,
+   "is_burst": false,
+   "n_decisions": 699,
+   "n_flips": 196,
+   "n_z_ge_1": 117,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.5557651793369208,
+    "p95": 1.1770418600632022,
+    "p99": 1.7098246236403023
+   },
+   "top_delta_mbps": [
+    [
+     "isl:23:43",
+     -66.0
+    ],
+    [
+     "isl:44:43",
+     66.0
+    ],
+    [
+     "isl:25:45",
+     -64.0
+    ],
+    [
+     "isl:46:45",
+     62.0
+    ],
+    [
+     "isl:6:26",
+     52.0
+    ]
+   ],
+   "z_p50": 1.3529411764705312
+  },
+  {
+   "bin": "[7.5,8.0)",
+   "e2e_ms": {
+    "p50": 292.1397491105147,
+    "p90": 357.3138126669955,
+    "p95": 357.3241181440281,
+    "p99": 357.7189596651289
+   },
+   "flip_bits_mbit": 168.0,
+   "is_burst": false,
+   "n_decisions": 550,
+   "n_flips": 168,
+   "n_z_ge_1": 132,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.8248311515530025,
+    "p95": 1.4393652835391488,
+    "p99": 1.846647426388554
+   },
+   "top_delta_mbps": [
+    [
+     "isl:6:26",
+     70.0
+    ],
+    [
+     "isl:25:45",
+     -68.0
+    ],
+    [
+     "isl:46:45",
+     68.0
+    ],
+    [
+     "isl:26:46",
+     64.0
+    ],
+    [
+     "isl:5:25",
+     -64.0
+    ]
+   ],
+   "z_p50": 1.9345819808510691
+  },
+  {
+   "bin": "[8.0,8.5)",
+   "e2e_ms": {
+    "p50": 302.59498252721073,
+    "p90": 376.83289439058143,
+    "p95": 492.0950453116237,
+    "p99": 585.2954856602892
+   },
+   "flip_bits_mbit": 274.0,
+   "is_burst": true,
+   "n_decisions": 1017,
+   "n_flips": 274,
+   "n_z_ge_1": 150,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.6111094224586247,
+    "p95": 1.3929173540560966,
+    "p99": 2.085128321910234
+   },
+   "top_delta_mbps": [
+    [
+     "isl:25:45",
+     86.0
+    ],
+    [
+     "isl:6:26",
+     86.0
+    ],
+    [
+     "isl:46:45",
+     -84.0
+    ],
+    [
+     "isl:23:43",
+     -76.0
+    ],
+    [
+     "isl:44:43",
+     72.0
+    ]
+   ],
+   "z_p50": 2.2087511461466423
+  },
+  {
+   "bin": "[8.5,9.0)",
+   "e2e_ms": {
+    "p50": 307.2259748512174,
+    "p90": 447.1605665036602,
+    "p95": 500.88513559877157,
+    "p99": 529.6114199599025
+   },
+   "flip_bits_mbit": 295.0,
+   "is_burst": false,
+   "n_decisions": 999,
+   "n_flips": 295,
+   "n_z_ge_1": 161,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.6510429482499941,
+    "p95": 1.2247313206195802,
+    "p99": 1.866077276739771
+   },
+   "top_delta_mbps": [
+    [
+     "isl:46:45",
+     -86.0
+    ],
+    [
+     "isl:6:26",
+     86.0
+    ],
+    [
+     "isl:25:45",
+     84.0
+    ],
+    [
+     "isl:106:105",
+     -74.0
+    ],
+    [
+     "isl:24:44",
+     70.0
+    ]
+   ],
+   "z_p50": 2.916756935503573
+  },
+  {
+   "bin": "[9.0,9.5)",
+   "e2e_ms": {
+    "p50": 297.13763669223425,
+    "p90": 437.14252500739906,
+    "p95": 464.1515786061703,
+    "p99": 502.88233003891844
+   },
+   "flip_bits_mbit": 220.0,
+   "is_burst": false,
+   "n_decisions": 795,
+   "n_flips": 220,
+   "n_z_ge_1": 152,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.37950762991806025,
+    "p95": 1.0702858680769596,
+    "p99": 1.78255031404188
+   },
+   "top_delta_mbps": [
+    [
+     "isl:25:45",
+     -72.0
+    ],
+    [
+     "isl:5:25",
+     -72.0
+    ],
+    [
+     "isl:6:26",
+     72.0
+    ],
+    [
+     "isl:26:46",
+     68.0
+    ],
+    [
+     "isl:46:45",
+     66.0
+    ]
+   ],
+   "z_p50": 2.2029160829767567
+  },
+  {
+   "bin": "[9.5,10.0)",
+   "e2e_ms": {
+    "p50": 295.2676091791915,
+    "p90": 357.3010572856088,
+    "p95": 427.44990913162974,
+    "p99": 431.10248760722135
+   },
+   "flip_bits_mbit": 159.0,
+   "is_burst": false,
+   "n_decisions": 562,
+   "n_flips": 159,
+   "n_z_ge_1": 116,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.41445049826372743,
+    "p95": 1.2446264376201823,
+    "p99": 1.8387023483687097
+   },
+   "top_delta_mbps": [
+    [
+     "isl:25:45",
+     -62.0
+    ],
+    [
+     "isl:6:26",
+     62.0
+    ],
+    [
+     "isl:46:45",
+     60.0
+    ],
+    [
+     "isl:23:43",
+     -56.0
+    ],
+    [
+     "isl:5:25",
+     -54.0
+    ]
+   ],
+   "z_p50": 1.3217448652979
+  },
+  {
+   "bin": "[10.0,10.5)",
+   "e2e_ms": {
+    "p50": 295.36738688368126,
+    "p90": 357.2523309362907,
+    "p95": 357.4037174672142,
+    "p99": 521.2723748075607
+   },
+   "flip_bits_mbit": 185.0,
+   "is_burst": false,
+   "n_decisions": 664,
+   "n_flips": 185,
+   "n_z_ge_1": 140,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.38367333746621407,
+    "p95": 1.0470746745078199,
+    "p99": 1.4959225675159935
+   },
+   "top_delta_mbps": [
+    [
+     "isl:25:45",
+     76.0
+    ],
+    [
+     "isl:23:43",
+     -74.0
+    ],
+    [
+     "isl:44:43",
+     74.0
+    ],
+    [
+     "isl:46:45",
+     -74.0
+    ],
+    [
+     "isl:6:26",
+     66.0
+    ]
+   ],
+   "z_p50": 2.5209606743857003
+  },
+  {
+   "bin": "[10.5,11.0)",
+   "e2e_ms": {
+    "p50": 295.2002806864815,
+    "p90": 357.24652414307025,
+    "p95": 381.9970131956545,
+    "p99": 436.90988718025636
+   },
+   "flip_bits_mbit": 200.0,
+   "is_burst": false,
+   "n_decisions": 630,
+   "n_flips": 200,
+   "n_z_ge_1": 141,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.7622136030807694,
+    "p95": 1.302771325346824,
+    "p99": 2.381435758549039
+   },
+   "top_delta_mbps": [
+    [
+     "isl:25:45",
+     72.0
+    ],
+    [
+     "isl:46:45",
+     -68.0
+    ],
+    [
+     "isl:23:43",
+     -66.0
+    ],
+    [
+     "isl:3:23",
+     -64.0
+    ],
+    [
+     "isl:44:43",
+     64.0
+    ]
+   ],
+   "z_p50": 1.791365871003849
+  },
+  {
+   "bin": "[11.0,11.5)",
+   "e2e_ms": {
+    "p50": 294.971335010608,
+    "p90": 357.23696851812826,
+    "p95": 381.9970131956545,
+    "p99": 438.4241397037911
+   },
+   "flip_bits_mbit": 203.0,
+   "is_burst": false,
+   "n_decisions": 665,
+   "n_flips": 203,
+   "n_z_ge_1": 139,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.7101259138878081,
+    "p95": 1.202862654010798,
+    "p99": 1.876150765978264
+   },
+   "top_delta_mbps": [
+    [
+     "isl:23:43",
+     -72.0
+    ],
+    [
+     "isl:44:43",
+     70.0
+    ],
+    [
+     "isl:6:26",
+     64.0
+    ],
+    [
+     "isl:25:45",
+     62.0
+    ],
+    [
+     "isl:3:23",
+     -62.0
+    ]
+   ],
+   "z_p50": 1.5499999999999499
+  },
+  {
+   "bin": "[11.5,12.0)",
+   "e2e_ms": {
+    "p50": 294.6338545784304,
+    "p90": 357.223354806413,
+    "p95": 377.9627513427446,
+    "p99": 477.48209629112637
+   },
+   "flip_bits_mbit": 213.0,
+   "is_burst": false,
+   "n_decisions": 763,
+   "n_flips": 213,
+   "n_z_ge_1": 140,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.8838183346569128,
+    "p95": 1.3288011315630683,
+    "p99": 1.8488389250908839
+   },
+   "top_delta_mbps": [
+    [
+     "isl:25:45",
+     78.0
+    ],
+    [
+     "isl:46:45",
+     -76.0
+    ],
+    [
+     "isl:6:26",
+     74.0
+    ],
+    [
+     "isl:23:43",
+     -72.0
+    ],
+    [
+     "isl:44:43",
+     72.0
+    ]
+   ],
+   "z_p50": 2.2486563397322237
+  },
+  {
+   "bin": "[12.0,12.5)",
+   "e2e_ms": {
+    "p50": 297.5295072099407,
+    "p90": 357.87299268934447,
+    "p95": 363.70569784405757,
+    "p99": 444.3003222177904
+   },
+   "flip_bits_mbit": 207.0,
+   "is_burst": false,
+   "n_decisions": 718,
+   "n_flips": 207,
+   "n_z_ge_1": 134,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.8018074707454476,
+    "p95": 1.33964783890373,
+    "p99": 1.939370663165405
+   },
+   "top_delta_mbps": [
+    [
+     "isl:25:45",
+     74.0
+    ],
+    [
+     "isl:46:45",
+     -74.0
+    ],
+    [
+     "isl:6:26",
+     70.0
+    ],
+    [
+     "isl:23:43",
+     -62.0
+    ],
+    [
+     "isl:44:43",
+     60.0
+    ]
+   ],
+   "z_p50": 1.654306908491212
+  },
+  {
+   "bin": "[12.5,13.0)",
+   "e2e_ms": {
+    "p50": 298.39576737262166,
+    "p90": 358.2753829858678,
+    "p95": 415.5961435717952,
+    "p99": 524.4592431166133
+   },
+   "flip_bits_mbit": 204.0,
+   "is_burst": false,
+   "n_decisions": 748,
+   "n_flips": 204,
+   "n_z_ge_1": 134,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.39534618750175277,
+    "p95": 0.9688180056031326,
+    "p99": 1.5202334273173406
+   },
+   "top_delta_mbps": [
+    [
+     "isl:25:45",
+     68.0
+    ],
+    [
+     "isl:46:45",
+     -68.0
+    ],
+    [
+     "isl:6:26",
+     68.0
+    ],
+    [
+     "isl:23:43",
+     -66.0
+    ],
+    [
+     "isl:44:43",
+     62.0
+    ]
+   ],
+   "z_p50": 1.9237895261212934
+  },
+  {
+   "bin": "[13.0,13.5)",
+   "e2e_ms": {
+    "p50": 293.4479870772453,
+    "p90": 359.9290802276496,
+    "p95": 436.52093199454714,
+    "p99": 462.91398174694365
+   },
+   "flip_bits_mbit": 166.0,
+   "is_burst": false,
+   "n_decisions": 600,
+   "n_flips": 166,
+   "n_z_ge_1": 126,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 1.0584112261657668,
+    "p95": 1.3216278419318,
+    "p99": 2.0216651653435194
+   },
+   "top_delta_mbps": [
+    [
+     "isl:25:45",
+     66.0
+    ],
+    [
+     "isl:44:43",
+     62.0
+    ],
+    [
+     "isl:46:45",
+     -62.0
+    ],
+    [
+     "isl:6:26",
+     62.0
+    ],
+    [
+     "isl:23:43",
+     -60.0
+    ]
+   ],
+   "z_p50": 1.701563792540381
+  },
+  {
+   "bin": "[13.5,14.0)",
+   "e2e_ms": {
+    "p50": 302.90226864386403,
+    "p90": 436.7267513176767,
+    "p95": 463.6161040376496,
+    "p99": 514.0593262982574
+   },
+   "flip_bits_mbit": 217.0,
+   "is_burst": false,
+   "n_decisions": 735,
+   "n_flips": 217,
+   "n_z_ge_1": 133,
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.0,
+    "p95": 2.328306436538696e-16,
+    "p99": 1.5842321630870853
+   },
+   "top_delta_mbps": [
+    [
+     "isl:23:43",
+     -68.0
+    ],
+    [
+     "isl:25:45",
+     66.0
+    ],
+    [
+     "isl:44:43",
+     64.0
+    ],
+    [
+     "isl:46:45",
+     -64.0
+    ],
+    [
+     "isl:24:44",
+     62.0
+    ]
+   ],
+   "z_p50": 1.6785273939851357
+  }
+ ],
+ "persistence": {
+  "binned_bias_runs": {
+   "by_threshold": {
+    "0.01": {
+     "duration_max_s": 8.5,
+     "duration_s": {
+      "p50": 0.5,
+      "p90": 2.0,
+      "p95": 3.0
+     },
+     "n_censored": 82,
+     "n_runs": 310,
+     "n_runs_corridor": 44,
+     "n_runs_ge_1s": 108,
+     "threshold_mbps": 1.0
+    },
+    "0.05": {
+     "duration_max_s": 5.0,
+     "duration_s": {
+      "p50": 0.5,
+      "p90": 1.0,
+      "p95": 1.5
+     },
+     "n_censored": 45,
+     "n_runs": 146,
+     "n_runs_corridor": 27,
+     "n_runs_ge_1s": 38,
+     "threshold_mbps": 5.0
+    },
+    "0.1": {
+     "duration_max_s": 6.0,
+     "duration_s": {
+      "p50": 1.0,
+      "p90": 1.5,
+      "p95": 1.5
+     },
+     "n_censored": 30,
+     "n_runs": 86,
+     "n_runs_corridor": 19,
+     "n_runs_ge_1s": 37,
+     "threshold_mbps": 10.0
+    }
+   },
+   "note": "0.5 s-bin view of the same |delta_r| bias: durations are QUANTIZED to the bin width and are NOT tau_error",
+   "quantization_s": 0.5
+  },
+  "error_runs_exact": {
+   "count": {
+    "p50": 10.0,
+    "p90": 165.0
+   },
+   "definition": "per-link runs of flip decisions wrongly pushed into the same link, joined only while consecutive decisions are <= 1 s apart; duration is t_last - t_first",
+   "n_runs": 51,
+   "n_runs_censored": 18,
+   "n_runs_ge1s": 17,
+   "n_runs_ge2": 51,
+   "n_runs_on_corridor": 12,
+   "n_runs_with_relax": 4,
+   "tau_error_max_s": 9.914197482403287,
+   "tau_error_s": {
+    "p50": 0.934555724566108,
+    "p90": 9.732300991776086,
+    "p95": 9.735291083174083
+   },
+   "threshold_mbps": 5.0,
+   "top_runs": [
+    {
+     "censored": true,
+     "count": 694,
+     "duration_s": 9.914197482403287,
+     "link": "isl:6:26",
+     "mean_mbps": 70.00062296840272,
+     "t0": 4.0674064856589816,
+     "t1": 13.981603968062268
+    },
+    {
+     "censored": true,
+     "count": 666,
+     "duration_s": 9.766213475945033,
+     "link": "isl:44:43",
+     "mean_mbps": 68.1942906163593,
+     "t0": 4.215217600889532,
+     "t1": 13.981431076834564
+    },
+    {
+     "censored": true,
+     "count": 190,
+     "duration_s": 9.735291083174083,
+     "link": "isl:14:34",
+     "mean_mbps": 19.51662239749411,
+     "t0": 4.203657383858375,
+     "t1": 13.938948467032459
+    },
+    {
+     "censored": true,
+     "count": 159,
+     "duration_s": 9.735111641979831,
+     "link": "isl:34:54",
+     "mean_mbps": 16.332632418344218,
+     "t0": 4.220444521239611,
+     "t1": 13.955556163219443
+    },
+    {
+     "censored": true,
+     "count": 160,
+     "duration_s": 9.734932205174236,
+     "link": "isl:54:55",
+     "mean_mbps": 16.435656317663728,
+     "t0": 4.23723134867591,
+     "t1": 13.972163553850146
+    },
+    {
+     "censored": true,
+     "count": 165,
+     "duration_s": 9.732300991776086,
+     "link": "isl:56:57",
+     "mean_mbps": 16.95385296235978,
+     "t0": 4.182487462598545,
+     "t1": 13.914788454374632
+    },
+    {
+     "censored": true,
+     "count": 390,
+     "duration_s": 8.986381255524545,
+     "link": "isl:24:44",
+     "mean_mbps": 43.399004439105035,
+     "t0": 5.006175625355456,
+     "t1": 13.992556880880002
+    },
+    {
+     "censored": false,
+     "count": 27,
+     "duration_s": 4.645083715763814,
+     "link": "isl:126:127",
+     "mean_mbps": 5.8125970708280885,
+     "t0": 8.335957097133448,
+     "t1": 12.981040812897263
+    },
+    {
+     "censored": true,
+     "count": 286,
+     "duration_s": 3.969046672416596,
+     "link": "isl:25:45",
+     "mean_mbps": 72.05760566828152,
+     "t0": 10.00197189566254,
+     "t1": 13.971018568079137
+    },
+    {
+     "censored": false,
+     "count": 30,
+     "duration_s": 3.5948613748883282,
+     "link": "isl:4:3",
+     "mean_mbps": 8.34524530196437,
+     "t0": 5.384735115988352,
+     "t1": 8.97959649087668
+    }
+   ]
+  },
+  "flip_runs_by_sat_only": {
+   "duration_max_ms": 9735.291083174083,
+   "duration_max_ms_ge2": 9735.291083174083,
+   "duration_ms": {
+    "p50": 756.2644114719941,
+    "p90": 7835.923157003579,
+    "p95": 8762.100659678566
+   },
+   "duration_ms_ge2": {
+    "p50": 1737.6708540572583,
+    "p90": 7835.923157003579,
+    "p95": 9734.932205174235
+   },
+   "length_max": 211,
+   "length_p50": 5.0,
+   "length_p90": 148.0,
+   "n_runs": 34,
+   "n_runs_ge2": 28,
+   "n_runs_ge3": 25,
+   "note": "per-sat key (the Round-1 W/switch lens) - superseded: the decision projection drops dst, so a per-sat key is what the old numbers implicitly used; the (sat,dst) join above is authoritative",
+   "superseded_round1_lens": true,
+   "top_runs": [
+    {
+     "count": 211,
+     "direction": "S",
+     "dst": "G1:91:283",
+     "duration_ms": 3002.9482571985413,
+     "sat": 26,
+     "t0": 10.00197189566254,
+     "t1": 13.004920152861082
+    },
+    {
+     "count": 161,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 9735.291083174083,
+     "sat": 134,
+     "t0": 4.203657383858375,
+     "t1": 13.938948467032459
+    },
+    {
+     "count": 161,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 9734.932205174235,
+     "sat": 34,
+     "t0": 4.23723134867591,
+     "t1": 13.972163553850146
+    },
+    {
+     "count": 148,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 1925.9670861254242,
+     "sat": 126,
+     "t0": 7.073901298820874,
+     "t1": 8.999868384946298
+    },
+    {
+     "count": 116,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 1737.6708540572583,
+     "sat": 24,
+     "t0": 12.243760222777306,
+     "t1": 13.981431076834564
+    },
+    {
+     "count": 44,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 605.0607168240081,
+     "sat": 6,
+     "t0": 9.133386441130982,
+     "t1": 9.73844715795499
+    },
+    {
+     "count": 34,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 2103.038089295912,
+     "sat": 14,
+     "t0": 6.274022211409608,
+     "t1": 8.37706030070552
+    },
+    {
+     "count": 34,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 1376.1394431090785,
+     "sat": 4,
+     "t0": 9.027086034402542,
+     "t1": 10.40322547751162
+    },
+    {
+     "count": 21,
+     "direction": "S",
+     "dst": "G1:130:105",
+     "duration_ms": 5329.279934238753,
+     "sat": 54,
+     "t0": 8.56804401548802,
+     "t1": 13.897323949726774
+    },
+    {
+     "count": 20,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 1530.2776283751473,
+     "sat": 36,
+     "t0": 10.500572410171861,
+     "t1": 12.030850038547008
+    }
+   ]
+  },
+  "flip_runs_by_stream": {
+   "duration_max_ms": 9735.291083174083,
+   "duration_max_ms_ge2": 9735.291083174083,
+   "duration_ms": {
+    "p50": 10.183697379416046,
+    "p90": 1532.0222723693319,
+    "p95": 3834.8906754842255
+   },
+   "duration_ms_ge2": {
+    "p50": 261.8345778813342,
+    "p90": 3002.9482571985413,
+    "p95": 7700.323208342308
+   },
+   "length_max": 211,
+   "length_p50": 2.0,
+   "length_p90": 21.0,
+   "n_runs": 445,
+   "n_runs_ge2": 237,
+   "n_runs_ge3": 188,
+   "top_runs": [
+    {
+     "count": 211,
+     "direction": "S",
+     "dst": "G1:91:283",
+     "duration_ms": 3002.9482571985413,
+     "sat": 26,
+     "t0": 10.00197189566254,
+     "t1": 13.004920152861082
+    },
+    {
+     "count": 161,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 9735.291083174083,
+     "sat": 134,
+     "t0": 4.203657383858375,
+     "t1": 13.938948467032459
+    },
+    {
+     "count": 161,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 9734.932205174235,
+     "sat": 34,
+     "t0": 4.23723134867591,
+     "t1": 13.972163553850146
+    },
+    {
+     "count": 148,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 1925.9670861254242,
+     "sat": 126,
+     "t0": 7.073901298820874,
+     "t1": 8.999868384946298
+    },
+    {
+     "count": 133,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 1951.4838307196421,
+     "sat": 126,
+     "t0": 12.030120137342626,
+     "t1": 13.981603968062268
+    },
+    {
+     "count": 116,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 1737.6708540572583,
+     "sat": 24,
+     "t0": 12.243760222777306,
+     "t1": 13.981431076834564
+    },
+    {
+     "count": 86,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 1220.0349740888034,
+     "sat": 24,
+     "t0": 7.417756683957211,
+     "t1": 8.637791658046014
+    },
+    {
+     "count": 86,
+     "direction": "S",
+     "dst": "G1:91:283",
+     "duration_ms": 988.5199538909078,
+     "sat": 26,
+     "t0": 8.015411151770984,
+     "t1": 9.003931105661891
+    },
+    {
+     "count": 83,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 1196.8888859057643,
+     "sat": 24,
+     "t0": 11.026871705091047,
+     "t1": 12.223760590996811
+    },
+    {
+     "count": 72,
+     "direction": "E",
+     "dst": "G1:91:283",
+     "duration_ms": 925.9822475839119,
+     "sat": 126,
+     "t0": 4.0674064856589816,
+     "t1": 4.9933887332428935
+    }
+   ]
+  },
+  "load_runs": {
+   "0.01": {
+    "duration_max_s": 8.5,
+    "duration_s": {
+     "p50": 0.5,
+     "p90": 2.0,
+     "p95": 3.0
+    },
+    "n_censored": 82,
+    "n_runs": 310,
+    "n_runs_corridor": 44,
+    "n_runs_ge_1s": 108,
+    "threshold_mbps": 1.0
+   },
+   "0.05": {
+    "duration_max_s": 5.0,
+    "duration_s": {
+     "p50": 0.5,
+     "p90": 1.0,
+     "p95": 1.5
+    },
+    "n_censored": 45,
+    "n_runs": 146,
+    "n_runs_corridor": 27,
+    "n_runs_ge_1s": 38,
+    "threshold_mbps": 5.0
+   },
+   "0.1": {
+    "duration_max_s": 6.0,
+    "duration_s": {
+     "p50": 1.0,
+     "p90": 1.5,
+     "p95": 1.5
+    },
+    "n_censored": 30,
+    "n_runs": 86,
+    "n_runs_corridor": 19,
+    "n_runs_ge_1s": 37,
+    "threshold_mbps": 10.0
+   }
+  },
+  "load_runs_top": [
+   {
+    "censored": true,
+    "duration_s": 10.0,
+    "in_corridor": true,
+    "link": "isl:125:5",
+    "mean_mbps": -43.2,
+    "sign": -1,
+    "t0": 4.0,
+    "t1": 14.0
+   },
+   {
+    "censored": true,
+    "duration_s": 10.0,
+    "in_corridor": false,
+    "link": "isl:14:34",
+    "mean_mbps": 19.0,
+    "sign": 1,
+    "t0": 4.0,
+    "t1": 14.0
+   },
+   {
+    "censored": true,
+    "duration_s": 10.0,
+    "in_corridor": false,
+    "link": "isl:23:43",
+    "mean_mbps": -63.6,
+    "sign": -1,
+    "t0": 4.0,
+    "t1": 14.0
+   },
+   {
+    "censored": true,
+    "duration_s": 10.0,
+    "in_corridor": false,
+    "link": "isl:37:57",
+    "mean_mbps": -15.7,
+    "sign": -1,
+    "t0": 4.0,
+    "t1": 14.0
+   },
+   {
+    "censored": true,
+    "duration_s": 10.0,
+    "in_corridor": true,
+    "link": "isl:44:43",
+    "mean_mbps": 64.1,
+    "sign": 1,
+    "t0": 4.0,
+    "t1": 14.0
+   },
+   {
+    "censored": true,
+    "duration_s": 10.0,
+    "in_corridor": false,
+    "link": "isl:56:57",
+    "mean_mbps": 16.4,
+    "sign": 1,
+    "t0": 4.0,
+    "t1": 14.0
+   },
+   {
+    "censored": true,
+    "duration_s": 10.0,
+    "in_corridor": true,
+    "link": "isl:6:26",
+    "mean_mbps": 68.1,
+    "sign": 1,
+    "t0": 4.0,
+    "t1": 14.0
+   },
+   {
+    "censored": true,
+    "duration_s": 9.5,
+    "in_corridor": false,
+    "link": "isl:106:105",
+    "mean_mbps": -28.736842105263158,
+    "sign": -1,
+    "t0": 4.5,
+    "t1": 14.0
+   },
+   {
+    "censored": true,
+    "duration_s": 9.0,
+    "in_corridor": false,
+    "link": "isl:15:35",
+    "mean_mbps": -15.222222222222221,
+    "sign": -1,
+    "t0": 4.0,
+    "t1": 13.0
+   },
+   {
+    "censored": true,
+    "duration_s": 9.0,
+    "in_corridor": false,
+    "link": "isl:34:54",
+    "mean_mbps": 16.555555555555557,
+    "sign": 1,
+    "t0": 4.0,
+    "t1": 13.0
+   }
+  ],
+  "tau_error_definition": "duration = t(last flip) - t(first flip) of a maximal run of consecutive flips with the same chosen direction inside one (sat,dst) stream; decision timestamps, no bin quantization"
+ },
+ "policy": "queue_greedy_ewma",
+ "queue_relaxation": {
+  "n_corridor_links": 20,
+  "n_excursions": 35,
+  "peak_floor_mbit": 1.9999999999999574,
+  "peak_floor_rule": "peak backlog >= 2 service slots (1 slot = one packet in service)",
+  "per_link": {
+   "isl:105:125": {
+    "delta_mbps": 0.0,
+    "episodes": [],
+    "epsilon_mbps": 29.90000000000152,
+    "lambda_mbps": 70.09999999999847,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.7009999999999847
+   },
+   "isl:125:5": {
+    "delta_mbps": -43.2,
+    "episodes": [],
+    "epsilon_mbps": 30.222488185371606,
+    "lambda_mbps": 69.7775118146284,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.6977751181462839
+   },
+   "isl:126:6": {
+    "delta_mbps": 0.0,
+    "episodes": [],
+    "epsilon_mbps": 27.100000000001565,
+    "lambda_mbps": 72.89999999999843,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.7289999999999843
+   },
+   "isl:127:126": {
+    "delta_mbps": 0.6,
+    "episodes": [],
+    "epsilon_mbps": 25.397340765321584,
+    "lambda_mbps": 74.60265923467841,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.7460265923467841
+   },
+   "isl:128:127": {
+    "delta_mbps": 0.0,
+    "episodes": [
+     {
+      "baseline_p10_mbit": 0.0,
+      "baseline_p90_mbit": 2.8854357706147034,
+      "peak_mbit": 3.231477540348828,
+      "t_peak": 4.604131014235754,
+      "tau_50_ms": 26.15738770174314,
+      "tau_50_s": 0.02615738770174314,
+      "tau_band_ms": 3.460417697341178,
+      "tau_band_s": 0.003460417697341178
+     },
+     {
+      "baseline_p10_mbit": 0.0,
+      "baseline_p90_mbit": 2.494646508448426,
+      "peak_mbit": 2.501297596832916,
+      "t_peak": 5.060340189184725,
+      "tau_50_ms": 22.506487984164103,
+      "tau_50_s": 0.022506487984164103,
+      "tau_band_ms": 0.06651088384490578,
+      "tau_band_s": 6.651088384490578e-05
+     },
+     {
+      "baseline_p10_mbit": 0.0,
+      "baseline_p90_mbit": 2.214552964094054,
+      "peak_mbit": 2.4690924541625665,
+      "t_peak": 5.5500935767800845,
+      "tau_50_ms": 12.345462270812568,
+      "tau_50_s": 0.012345462270812568,
+      "tau_band_ms": 2.5453949006850607,
+      "tau_band_s": 0.0025453949006850607
+     },
+     {
+      "baseline_p10_mbit": 0.0,
+      "baseline_p90_mbit": 2.214552964094054,
+      "peak_mbit": 2.442572269966411,
+      "t_peak": 5.837971005627167,
+      "tau_50_ms": 12.212861349832238,
+      "tau_50_s": 0.012212861349832238,
+      "tau_band_ms": 2.280193058723512,
+      "tau_band_s": 0.002280193058723512
+     },
+     {
+      "baseline_p10_mbit": 0.0,
+      "baseline_p90_mbit": 2.0445789639053737,
+      "peak_mbit": 2.533887569540171,
+      "t_peak": 6.046741053582916,
+      "tau_50_ms": 12.669437847701026,
+      "tau_50_s": 0.012669437847701026,
+      "tau_band_ms": 4.893086056347862,
+      "tau_band_s": 0.004893086056347862
+     }
+    ],
+    "epsilon_mbps": 25.22458012555763,
+    "lambda_mbps": 74.77541987444236,
+    "n_excursions": 33,
+    "n_tau_50": 33,
+    "n_tau_band": 33,
+    "q_peak_mbit": 3.3909800533632524,
+    "tau_50_ms": {
+     "p50": 12.34698264071632,
+     "p90": 26.15738770174314
+    },
+    "tau_band_ms": {
+     "p50": 4.3320269971296455,
+     "p90": 15.293505849134803
+    },
+    "utilization": 0.7477541987444237
+   },
+   "isl:24:44": {
+    "delta_mbps": 36.9,
+    "episodes": [],
+    "epsilon_mbps": 31.414311319561033,
+    "lambda_mbps": 68.58568868043896,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.6858568868043896
+   },
+   "isl:25:24": {
+    "delta_mbps": -6.4,
+    "episodes": [],
+    "epsilon_mbps": 70.30000000000064,
+    "lambda_mbps": 29.699999999999356,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.29699999999999355
+   },
+   "isl:25:45": {
+    "delta_mbps": 16.4,
+    "episodes": [
+     {
+      "baseline_p10_mbit": 1.164153218269348e-16,
+      "baseline_p90_mbit": 0.901405763256433,
+      "peak_mbit": 2.468626643920633,
+      "t_peak": 12.906953318114523,
+      "tau_50_ms": 22.343133219603573,
+      "tau_50_s": 0.022343133219603573,
+      "tau_band_ms": 25.67220880664145,
+      "tau_band_s": 0.02567220880664145
+     }
+    ],
+    "epsilon_mbps": 54.20000000000099,
+    "lambda_mbps": 45.79999999999901,
+    "n_excursions": 1,
+    "n_tau_50": 1,
+    "n_tau_band": 1,
+    "q_peak_mbit": 2.468626643920633,
+    "tau_50_ms": {
+     "p50": 22.343133219603573,
+     "p90": 22.343133219603573
+    },
+    "tau_band_ms": {
+     "p50": 25.67220880664145,
+     "p90": 25.67220880664145
+    },
+    "utilization": 0.4579999999999901
+   },
+   "isl:26:25": {
+    "delta_mbps": 1.0,
+    "episodes": [],
+    "epsilon_mbps": 56.90000000000093,
+    "lambda_mbps": 43.09999999999907,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.43099999999999067
+   },
+   "isl:41:40": {
+    "delta_mbps": 0.0,
+    "episodes": [],
+    "epsilon_mbps": 30.69866637799625,
+    "lambda_mbps": 69.30133362200375,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.6930133362200375
+   },
+   "isl:42:41": {
+    "delta_mbps": 0.0,
+    "episodes": [],
+    "epsilon_mbps": 30.525907053405568,
+    "lambda_mbps": 69.47409294659444,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.6947409294659443
+   },
+   "isl:43:42": {
+    "delta_mbps": 3.1,
+    "episodes": [],
+    "epsilon_mbps": 30.400000000001505,
+    "lambda_mbps": 69.59999999999849,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.695999999999985
+   },
+   "isl:44:43": {
+    "delta_mbps": 64.1,
+    "episodes": [],
+    "epsilon_mbps": 30.28038230513492,
+    "lambda_mbps": 69.71961769486508,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.6971961769486508
+   },
+   "isl:45:65": {
+    "delta_mbps": 0.0,
+    "episodes": [],
+    "epsilon_mbps": 27.800000000001578,
+    "lambda_mbps": 72.19999999999843,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.7219999999999842
+   },
+   "isl:4:24": {
+    "delta_mbps": 2.4,
+    "episodes": [],
+    "epsilon_mbps": 56.025568808800976,
+    "lambda_mbps": 43.974431191199024,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.43974431191199026
+   },
+   "isl:5:25": {
+    "delta_mbps": -23.3,
+    "episodes": [],
+    "epsilon_mbps": 69.60000000000062,
+    "lambda_mbps": 30.399999999999366,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.30399999999999366
+   },
+   "isl:5:4": {
+    "delta_mbps": -0.1,
+    "episodes": [
+     {
+      "baseline_p10_mbit": 0.0,
+      "baseline_p90_mbit": 0.8241844089900314,
+      "peak_mbit": 2.715120994970612,
+      "t_peak": 11.038774807168407,
+      "tau_50_ms": 63.57560497485082,
+      "tau_50_s": 0.06357560497485082,
+      "tau_band_ms": 68.90936585980434,
+      "tau_band_s": 0.06890936585980434
+     }
+    ],
+    "epsilon_mbps": 57.05281817442967,
+    "lambda_mbps": 42.94718182557033,
+    "n_excursions": 1,
+    "n_tau_50": 1,
+    "n_tau_band": 1,
+    "q_peak_mbit": 2.715120994970612,
+    "tau_50_ms": {
+     "p50": 63.57560497485082,
+     "p90": 63.57560497485082
+    },
+    "tau_band_ms": {
+     "p50": 68.90936585980434,
+     "p90": 68.90936585980434
+    },
+    "utilization": 0.4294718182557033
+   },
+   "isl:65:85": {
+    "delta_mbps": 0.0,
+    "episodes": [],
+    "epsilon_mbps": 27.90000000000155,
+    "lambda_mbps": 72.09999999999845,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.7209999999999845
+   },
+   "isl:6:26": {
+    "delta_mbps": 68.1,
+    "episodes": [],
+    "epsilon_mbps": 29.187280928957538,
+    "lambda_mbps": 70.81271907104247,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.7081271907104246
+   },
+   "isl:85:105": {
+    "delta_mbps": 0.0,
+    "episodes": [],
+    "epsilon_mbps": 28.00000000000155,
+    "lambda_mbps": 71.99999999999845,
+    "n_excursions": 0,
+    "n_tau_50": 0,
+    "n_tau_band": 0,
+    "q_peak_mbit": null,
+    "tau_50_ms": {},
+    "tau_band_ms": {},
+    "utilization": 0.7199999999999845
+   }
+  },
+  "service_slot_ms": 9.999999999999787,
+  "tau_50_ms": {
+   "p50": 12.669437847701026,
+   "p90": 31.881416046406486,
+   "p95": 41.93745068324617
+  },
+  "tau_band_ms": {
+   "p50": 4.4991728928653885,
+   "p90": 16.566075763953414,
+   "p95": 16.97387526181693
+  }
+ },
+ "schema": "sq-persistence-cell/v1",
+ "tau_error_vs_relax": {
+  "degenerate_ratio_split": true,
+  "group_by_delta": {
+   "high": {
+    "delta_mbps": {
+     "p50": 74.198194520728,
+     "p90": 89.9317719382366,
+     "p95": 89.9317719382366,
+     "p99": 89.9317719382366
+    },
+    "e2e_mean_ms": 319.8261445903774,
+    "e2e_vs_link_baseline_ms": 9.231229283353404,
+    "n_packets": 154,
+    "n_segments": 2,
+    "q_level_mbit": {
+     "p50": 1.164153218269348e-16,
+     "p90": 0.7275323095539733,
+     "p95": 0.7275323095539733,
+     "p99": 0.7275323095539733
+    },
+    "queue_slope_mbps": {
+     "p50": 0.7394737510191809,
+     "p90": 0.7435030292073802,
+     "p95": 0.7435030292073802,
+     "p99": 0.7435030292073802
+    },
+    "ratio": {
+     "p50": 43.79509237381245,
+     "p90": 44.03372719750341
+    },
+    "segments": [
+     {
+      "delta_mbps": 74.198194520728,
+      "e2e_mean_ms": 311.53941205798293,
+      "e2e_vs_link_baseline_ms": 0.944496750958923,
+      "link": "isl:25:45",
+      "n_packets": 71,
+      "q_level_mbit": 0.7275323095539733,
+      "queue_slope_mbps": 0.7394737510191809,
+      "ratio": 44.03372719750341,
+      "tau_error_s": 0.9838514329294998,
+      "tau_relax_s": 0.022343133219603573
+     },
+     {
+      "delta_mbps": 89.9317719382366,
+      "e2e_mean_ms": 328.11287712277186,
+      "e2e_vs_link_baseline_ms": 17.517961815747885,
+      "link": "isl:25:45",
+      "n_packets": 83,
+      "q_level_mbit": 1.164153218269348e-16,
+      "queue_slope_mbps": 0.7435030292073802,
+      "ratio": 43.79509237381245,
+      "tau_error_s": 0.9785195832729361,
+      "tau_relax_s": 0.022343133219603573
+     }
+    ],
+    "tau_error_s": {
+     "p50": 0.9785195832729361,
+     "p90": 0.9838514329294998
+    },
+    "tau_relax_s": {
+     "p50": 0.022343133219603573,
+     "p90": 0.022343133219603573
+    }
+   },
+   "low": {
+    "delta_mbps": {
+     "p50": 27.09821500465831,
+     "p90": 72.05760566828152,
+     "p95": 72.05760566828152,
+     "p99": 72.05760566828152
+    },
+    "e2e_mean_ms": 302.8259928153307,
+    "e2e_vs_link_baseline_ms": -3.4868662117167046,
+    "n_packets": 302,
+    "n_segments": 2,
+    "q_level_mbit": {
+     "p50": 0.23489703682742466,
+     "p90": 0.8250956929718171,
+     "p95": 0.8250956929718171,
+     "p99": 0.8250956929718171
+    },
+    "queue_slope_mbps": {
+     "p50": -2.7886454650010353,
+     "p90": 0.05918223095230199,
+     "p95": 0.05918223095230199,
+     "p99": 0.05918223095230199
+    },
+    "ratio": {
+     "p50": 4.063187410667131,
+     "p90": 177.6405588869786
+    },
+    "segments": [
+     {
+      "delta_mbps": 72.05760566828152,
+      "e2e_mean_ms": 305.083331072992,
+      "e2e_vs_link_baseline_ms": -5.511584234031974,
+      "link": "isl:25:45",
+      "n_packets": 284,
+      "q_level_mbit": 0.23489703682742466,
+      "queue_slope_mbps": 0.05918223095230199,
+      "ratio": 177.6405588869786,
+      "tau_error_s": 3.969046672416596,
+      "tau_relax_s": 0.022343133219603573
+     },
+     {
+      "delta_mbps": 27.09821500465831,
+      "e2e_mean_ms": 300.56865455766945,
+      "e2e_vs_link_baseline_ms": -1.4621481894014354,
+      "link": "isl:5:4",
+      "n_packets": 18,
+      "q_level_mbit": 0.8250956929718171,
+      "queue_slope_mbps": -2.7886454650010353,
+      "ratio": 4.063187410667131,
+      "tau_error_s": 0.2583195977593604,
+      "tau_relax_s": 0.06357560497485082
+     }
+    ],
+    "tau_error_s": {
+     "p50": 0.2583195977593604,
+     "p90": 3.969046672416596
+    },
+    "tau_relax_s": {
+     "p50": 0.022343133219603573,
+     "p90": 0.06357560497485082
+    }
+   },
+   "median_delta_mbps": 73.12790009450475
+  },
+  "group_by_ratio": {
+   "<1": {
+    "n_segments": 0
+   },
+   ">=1": {
+    "delta_mbps": {
+     "p50": 74.198194520728,
+     "p90": 89.9317719382366,
+     "p95": 89.9317719382366,
+     "p99": 89.9317719382366
+    },
+    "e2e_mean_ms": 311.32606870285406,
+    "e2e_vs_link_baseline_ms": 2.8721815358183496,
+    "n_packets": 456,
+    "n_segments": 4,
+    "q_level_mbit": {
+     "p50": 0.7275323095539733,
+     "p90": 0.8250956929718171,
+     "p95": 0.8250956929718171,
+     "p99": 0.8250956929718171
+    },
+    "queue_slope_mbps": {
+     "p50": 0.7394737510191809,
+     "p90": 0.7435030292073802,
+     "p95": 0.7435030292073802,
+     "p99": 0.7435030292073802
+    },
+    "ratio": {
+     "p50": 44.03372719750341,
+     "p90": 177.6405588869786
+    },
+    "segments": [
+     {
+      "delta_mbps": 72.05760566828152,
+      "e2e_mean_ms": 305.083331072992,
+      "e2e_vs_link_baseline_ms": -5.511584234031974,
+      "link": "isl:25:45",
+      "n_packets": 284,
+      "q_level_mbit": 0.23489703682742466,
+      "queue_slope_mbps": 0.05918223095230199,
+      "ratio": 177.6405588869786,
+      "tau_error_s": 3.969046672416596,
+      "tau_relax_s": 0.022343133219603573
+     },
+     {
+      "delta_mbps": 74.198194520728,
+      "e2e_mean_ms": 311.53941205798293,
+      "e2e_vs_link_baseline_ms": 0.944496750958923,
+      "link": "isl:25:45",
+      "n_packets": 71,
+      "q_level_mbit": 0.7275323095539733,
+      "queue_slope_mbps": 0.7394737510191809,
+      "ratio": 44.03372719750341,
+      "tau_error_s": 0.9838514329294998,
+      "tau_relax_s": 0.022343133219603573
+     },
+     {
+      "delta_mbps": 89.9317719382366,
+      "e2e_mean_ms": 328.11287712277186,
+      "e2e_vs_link_baseline_ms": 17.517961815747885,
+      "link": "isl:25:45",
+      "n_packets": 83,
+      "q_level_mbit": 1.164153218269348e-16,
+      "queue_slope_mbps": 0.7435030292073802,
+      "ratio": 43.79509237381245,
+      "tau_error_s": 0.9785195832729361,
+      "tau_relax_s": 0.022343133219603573
+     },
+     {
+      "delta_mbps": 27.09821500465831,
+      "e2e_mean_ms": 300.56865455766945,
+      "e2e_vs_link_baseline_ms": -1.4621481894014354,
+      "link": "isl:5:4",
+      "n_packets": 18,
+      "q_level_mbit": 0.8250956929718171,
+      "queue_slope_mbps": -2.7886454650010353,
+      "ratio": 4.063187410667131,
+      "tau_error_s": 0.2583195977593604,
+      "tau_relax_s": 0.06357560497485082
+     }
+    ],
+    "tau_error_s": {
+     "p50": 0.9838514329294998,
+     "p90": 3.969046672416596
+    },
+    "tau_relax_s": {
+     "p50": 0.022343133219603573,
+     "p90": 0.06357560497485082
+    }
+   }
+  },
+  "n_segments_total": 4,
+  "note": "coverage: only error runs on a corridor link that has at least one relaxation episode can enter this table; see persistence.error_runs_exact.n_runs_with_relax for the covered count. descriptive split only: no fit, no significance claim. tau_relax is the per-link median tau_50 over that link's relaxation episodes (resolved at event timestamps); tau_error is the run duration at |delta| > 0.05*mu. E2E is measured on packets that entered the link queue inside the segment; the baseline is every packet that entered that link at any time in the run."
+ },
+ "z_bins": {
+  "bin_labels": [
+   "[0,0.1)",
+   "[0.1,0.3)",
+   "[0.3,0.5)",
+   "[0.5,1)",
+   "[1,inf)"
+  ],
+  "burst_window": {
+   "bins": {
+    "[0,0.1)": {
+     "decisions": 35,
+     "e2e": [
+      0.2560813081903941,
+      0.35731381266699547,
+      0.29106003423945914,
+      0.27719972690760475,
+      0.26354249921977857,
+      0.35730919938826844,
+      0.2110271720030017,
+      0.26318482077740946,
+      0.29107949230967023,
+      0.20902737856354747,
+      0.37683289439058143,
+      0.38677571264547517,
+      0.26724091927863824,
+      0.5257752025493936,
+      0.3133273444487994,
+      0.1289069496323325,
+      0.5353283034211227,
+      0.2110271720030017,
+      0.3781967415791936,
+      0.5353283034211227,
+      0.22191602947391686,
+      0.3573046289548234,
+      0.20902737856354747,
+      0.20902737856354747,
+      0.2750036763431378,
+      0.26797268334742164,
+      0.26724091927863824,
+      0.2717159425643967,
+      0.20433880120119952,
+      0.29107949230967023,
+      0.3133273444487994,
+      0.2760792885870327,
+      0.49209504531162374,
+      0.30179020494252917,
+      0.22192123891169757
+     ],
+     "flips": 35
+    },
+    "[0.1,0.3)": {
+     "decisions": 8,
+     "e2e": [
+      0.2560813081903941,
+      0.27719972690760475,
+      0.1254101488055479,
+      0.3133273444487994,
+      0.28453444784833515,
+      0.2885715535065394,
+      0.26797268334742164,
+      0.22191602947391686
+     ],
+     "flips": 8
+    },
+    "[0.3,0.5)": {
+     "decisions": 0,
+     "e2e": [],
+     "flips": 0
+    },
+    "[0.5,1)": {
+     "decisions": 79,
+     "e2e": [
+      0.3577189596651289,
+      0.35731695503238203,
+      0.35731275028605847,
+      0.3577189596651289,
+      0.357316469772643,
+      0.35731275028605847,
+      0.3577189596651289,
+      0.3573104820972137,
+      0.36862977877224967,
+      0.3573104820972137,
+      0.36862977877224967,
+      0.3573104820972137,
+      0.35731381266699547,
+      0.36862977877224967,
+      0.35730919938826844,
+      0.35730919938826844,
+      0.35731275028605847,
+      0.35730919938826844,
+      0.3577189596651289,
+      0.17777400380269803,
+      0.3573104820972137,
+      0.35730595210721994,
+      0.36103317863300965,
+      0.35730595210721994,
+      0.36862977877224967,
+      0.3597164052801567,
+      0.36103317863300965,
+      0.35730595210721994,
+      0.3597164052801567,
+      0.36103317863300965,
+      0.35730919938826844,
+      0.3573046289548234,
+      0.3597164052801567,
+      0.3573046289548234,
+      0.3649467052915494,
+      0.3573046289548234,
+      0.3618686690322104,
+      0.3649467052915494,
+      0.22967740702467054,
+      0.36617663280117974,
+      0.3618686690322104,
+      0.2750036763431378,
+      0.3649467052915494,
+      0.36617663280117974,
+      0.367628048099494,
+      0.3618686690322104,
+      0.2750036763431378,
+      0.36617663280117974,
+      0.367628048099494,
+      0.23142285781773886,
+      0.367628048099494,
+      0.35730187722257334,
+      0.35730595210721994,
+      0.35730139515307613,
+      0.36103317863300965,
+      0.5043277728355005,
+      0.3597164052801567,
+      0.35730187722257334,
+      0.35730139515307613,
+      0.3633018524175231,
+      0.5043277728355005,
+      0.36758208123177916,
+      0.35730139515307613,
+      0.3633018524175231,
+      0.37043600941979093,
+      0.3573046289548234,
+      0.5043277728355005,
+      0.36758208123177916,
+      0.37001897355628444,
+      0.3633018524175231,
+      0.37043600941979093,
+      0.3674599377211045,
+      0.36758208123177916,
+      0.37001897355628444,
+      0.3649467052915494,
+      0.37043600941979093,
+      0.3674599377211045,
+      0.3618686690322104,
+      0.37001897355628444
+     ],
+     "flips": 79
+    },
+    "[1,inf)": {
+     "decisions": 150,
+     "e2e": [
+      0.28878969775642016,
+      0.31132979680032147,
+      0.2965712878072857,
+      0.31332875960062,
+      0.2963515134388617,
+      0.3010434942816236,
+      0.28849773183701366,
+      0.29203763705472063,
+      0.29848561262327244,
+      0.2972645995543619,
+      0.2965712878072857,
+      0.3060896531620134,
+      0.30322956208224383,
+      0.28899369382385487,
+      0.28849773183701366,
+      0.29931552463836475,
+      0.28866973460879564,
+      0.29848561262327244,
+      0.29569248722272956,
+      0.29212577551684227,
+      0.3060896531620134,
+      0.3021457826444678,
+      0.293122816547978,
+      0.28899369382385487,
+      0.3015437452853229,
+      0.2890778577022193,
+      0.28866973460879564,
+      0.2884984999988074,
+      0.28879512454315126,
+      0.29212577551684227,
+      0.2954925414005505,
+      0.293122816547978,
+      0.31132979680032147,
+      0.30731883402827886,
+      0.2890778577022193,
+      0.31332875960062,
+      0.31132979680032147,
+      0.2884984999988074,
+      0.2884988603162775,
+      0.31332875960062,
+      0.2954925414005505,
+      0.29472990217699824,
+      0.2965712878072857,
+      0.29868594416082495,
+      0.2965712878072857,
+      0.28849773183701366,
+      0.3028869862677528,
+      0.2884988603162775,
+      0.5852954856602892,
+      0.29472990217699824,
+      0.28849773183701366,
+      0.3060896531620134,
+      0.29548287644634996,
+      0.29868594416082495,
+      0.29848561262327244,
+      0.28899369382385487,
+      0.3027258398957944,
+      0.3028869862677528,
+      0.3060896531620134,
+      0.28866973460879564,
+      0.30503480337352507,
+      0.5852954856602892,
+      0.28899369382385487,
+      0.29212577551684227,
+      0.2593539130251976,
+      0.28866973460879564,
+      0.29548287644634996,
+      0.30150454692960693,
+      0.29212577551684227,
+      0.3027258398957944,
+      0.2890778577022193,
+      0.30763258993538756,
+      0.293122816547978,
+      0.30503480337352507,
+      0.2884984999988074,
+      0.5257752025493936,
+      0.49209504531162374,
+      0.2890778577022193,
+      0.2593539130251976,
+      0.2954925414005505,
+      0.4465385444377148,
+      0.2884984999988074,
+      0.30150454692960693,
+      0.3099767196913721,
+      0.2954925414005505,
+      0.30763258993538756,
+      0.2885715535065394,
+      0.2884988603162775,
+      0.49209504531162374,
+      0.4465385444377148,
+      0.2968298505553104,
+      0.2884988603162775,
+      0.29868594416082495,
+      0.3099767196913721,
+      0.26797268334742164,
+      0.29472990217699824,
+      0.3028869862677528,
+      0.2885715535065394,
+      0.2988239384134701,
+      0.1289069496323325,
+      0.29868594416082495,
+      0.30259498252721073,
+      0.3028869862677528,
+      0.2968298505553104,
+      0.5353283034211227,
+      0.3043990267640524,
+      0.1289069496323325,
+      0.29548287644634996,
+      0.26797268334742164,
+      0.3065760711240131,
+      0.3027258398957944,
+      0.2988239384134701,
+      0.3104901156070756,
+      0.29548287644634996,
+      0.30503480337352507,
+      0.30259498252721073,
+      0.3076971602132481,
+      0.3027258398957944,
+      0.3043990267640524,
+      0.30150454692960693,
+      0.30179020494252917,
+      0.30503480337352507,
+      0.3065760711240131,
+      0.30763258993538756,
+      0.3130243954788501,
+      0.30150454692960693,
+      0.3104901156070756,
+      0.49209504531162374,
+      0.3063083595029408,
+      0.30763258993538756,
+      0.2760792885870327,
+      0.3076971602132481,
+      0.30512832355535124,
+      0.49209504531162374,
+      0.30179020494252917,
+      0.3099767196913721,
+      0.3130243954788501,
+      0.29135843043558474,
+      0.3099767196913721,
+      0.3063083595029408,
+      0.44036712118926324,
+      0.30512832355535124,
+      0.2968298505553104,
+      0.30029152149457516,
+      0.4322982359306877,
+      0.2968298505553104,
+      0.29135843043558474,
+      0.2988239384134701,
+      0.2930436130460148,
+      0.44036712118926324
+     ],
+     "flips": 150
+    }
+   },
+   "n_flips": 274,
+   "n_flips_z_ge_0_5": 229,
+   "n_flips_z_ge_1": 150,
+   "window": [
+    8.0,
+    8.5
+   ]
+  },
+  "epsilon_floor_mbps": 1.0,
+  "epsilon_floor_rule": "z_valid only keeps flips whose epsilon_r >= max(EPS_FLOOR, 1% of mu)",
+  "flip_decisions": {
+   "[0,0.1)": {
+    "e2e_ms": {
+     "p50": 290.5113130896453,
+     "p90": 438.4241397037911,
+     "p95": 514.0593262982574,
+     "p99": 535.3283034211227
+    },
+    "frac_of_flips": 0.13437959784207945,
+    "frac_relaxed_at_2s": 0.9379562043795621,
+    "n_decisions": 548,
+    "n_flips": 548,
+    "q_at_t2_mbit": {
+     "p50": 0.0,
+     "p90": 3.4924596548080445e-16,
+     "p95": 0.36288945571137593,
+     "p99": 0.8626859176404458
+    },
+    "q_at_t_mbit": {
+     "p50": 0.0,
+     "p90": 0.05646362672813272,
+     "p95": 0.637227959856648,
+     "p99": 0.9128050921438396
+    },
+    "q_peak_next2_mbit": {
+     "p50": 1.0,
+     "p90": 1.3502035558350234,
+     "p95": 1.8465343741255364,
+     "p99": 1.9999735143280337
+    },
+    "queue_growth_mbps": {
+     "p50": 0.0,
+     "p90": 0.0,
+     "p95": 0.8439186045528583,
+     "p99": 1.7930073601267464
+    },
+    "top_resources": [
+     [
+      "isl:126:127",
+      41
+     ],
+     [
+      "isl:6:5",
+      37
+     ],
+     [
+      "isl:54:53",
+      32
+     ],
+     [
+      "isl:124:125",
+      31
+     ],
+     [
+      "isl:75:76",
+      28
+     ]
+    ]
+   },
+   "[0.1,0.3)": {
+    "e2e_ms": {
+     "p50": 357.28547434968584,
+     "p90": 367.45993772110455,
+     "p95": 462.90416859910624,
+     "p99": 515.8414686761032
+    },
+    "frac_of_flips": 0.12236390387444826,
+    "frac_relaxed_at_2s": 0.8396793587174348,
+    "n_decisions": 499,
+    "n_flips": 499,
+    "q_at_t2_mbit": {
+     "p50": 3.4924596548080445e-16,
+     "p90": 0.5317974766830719,
+     "p95": 0.8166233566328353,
+     "p99": 0.9382741510355986
+    },
+    "q_at_t_mbit": {
+     "p50": 3.4924596548080445e-16,
+     "p90": 0.6663305262726883,
+     "p95": 0.7275937193010384,
+     "p99": 0.9863209541462792
+    },
+    "q_peak_next2_mbit": {
+     "p50": 1.0000551993180058,
+     "p90": 1.6131480584270175,
+     "p95": 1.9511705434066744,
+     "p99": 3.0024848135900863
+    },
+    "queue_growth_mbps": {
+     "p50": 0.0,
+     "p90": 0.6839058319727234,
+     "p95": 1.2636651954867786,
+     "p99": 1.7362312533521533
+    },
+    "top_resources": [
+     [
+      "isl:14:34",
+      97
+     ],
+     [
+      "isl:34:54",
+      90
+     ],
+     [
+      "isl:56:57",
+      89
+     ],
+     [
+      "isl:54:55",
+      86
+     ],
+     [
+      "isl:4:3",
+      37
+     ]
+    ]
+   },
+   "[0.3,0.5)": {
+    "e2e_ms": {
+     "p50": 358.82772565296864,
+     "p90": 375.63717179762256,
+     "p95": 451.98694467930875,
+     "p99": 504.0271953140341
+    },
+    "frac_of_flips": 0.026238352133398726,
+    "frac_relaxed_at_2s": 0.9345794392523364,
+    "n_decisions": 107,
+    "n_flips": 107,
+    "q_at_t2_mbit": {
+     "p50": 4.656612873077392e-16,
+     "p90": 6.984919309616089e-16,
+     "p95": 0.4906783033600813,
+     "p99": 0.5419880497720919
+    },
+    "q_at_t_mbit": {
+     "p50": 3.4924596548080445e-16,
+     "p90": 0.6783763016317368,
+     "p95": 0.6786827444155964,
+     "p99": 0.6949493040284842
+    },
+    "q_peak_next2_mbit": {
+     "p50": 1.0000552000479108,
+     "p90": 1.000055388761222,
+     "p95": 1.0000553890622257,
+     "p99": 1.9448685752845727
+    },
+    "queue_growth_mbps": {
+     "p50": 0.0,
+     "p90": 0.7769418309212904,
+     "p95": 1.1300035163181361,
+     "p99": 1.8963076847140008
+    },
+    "top_resources": [
+     [
+      "isl:14:34",
+      43
+     ],
+     [
+      "isl:54:55",
+      27
+     ],
+     [
+      "isl:56:57",
+      23
+     ],
+     [
+      "isl:34:54",
+      14
+     ]
+    ]
+   },
+   "[0.5,1)": {
+    "e2e_ms": {
+     "p50": 358.6969740999368,
+     "p90": 464.1515786061703,
+     "p95": 503.8790380781055,
+     "p99": 535.3283034211227
+    },
+    "frac_of_flips": 0.051741049534085336,
+    "frac_relaxed_at_2s": 0.9052132701421801,
+    "n_decisions": 211,
+    "n_flips": 211,
+    "q_at_t2_mbit": {
+     "p50": 3.4924596548080445e-16,
+     "p90": 0.4126568509617548,
+     "p95": 0.7746240165094233,
+     "p99": 0.9199856783501859
+    },
+    "q_at_t_mbit": {
+     "p50": 0.35595422945782984,
+     "p90": 0.6945537963638208,
+     "p95": 0.8556065891936098,
+     "p99": 1.1213452960247026
+    },
+    "q_peak_next2_mbit": {
+     "p50": 1.0001106197251133,
+     "p90": 1.9999735143280337,
+     "p95": 1.9999735143280337,
+     "p99": 1.9999735143280337
+    },
+    "queue_growth_mbps": {
+     "p50": 0.0,
+     "p90": 0.7973484390604028,
+     "p95": 1.6566329907519515,
+     "p99": 1.920485360726373
+    },
+    "top_resources": [
+     [
+      "isl:14:34",
+      43
+     ],
+     [
+      "isl:34:54",
+      39
+     ],
+     [
+      "isl:54:55",
+      39
+     ],
+     [
+      "isl:56:57",
+      37
+     ],
+     [
+      "isl:26:46",
+      16
+     ]
+    ]
+   },
+   "[1,inf)": {
+    "e2e_ms": {
+     "p50": 295.8913341726417,
+     "p90": 311.32979680032145,
+     "p95": 322.2270126511617,
+     "p99": 477.48209629112637
+    },
+    "frac_of_flips": 0.6581657675331045,
+    "frac_relaxed_at_2s": 0.7507451564828614,
+    "n_decisions": 2684,
+    "n_flips": 2684,
+    "q_at_t2_mbit": {
+     "p50": 0.019927085163653012,
+     "p90": 0.8022111761583706,
+     "p95": 0.905878947719449,
+     "p99": 0.9953283253399063
+    },
+    "q_at_t_mbit": {
+     "p50": 0.664275013514285,
+     "p90": 0.727532243386635,
+     "p95": 0.7778210209842656,
+     "p99": 1.6681351160886675
+    },
+    "q_peak_next2_mbit": {
+     "p50": 1.0550480671680744,
+     "p90": 1.9999936560811882,
+     "p95": 2.468626643920633,
+     "p99": 2.468626643920633
+    },
+    "queue_growth_mbps": {
+     "p50": -0.2356905026873739,
+     "p90": 1.069323762643771,
+     "p95": 1.5039306358741165,
+     "p99": 1.928591285520339
+    },
+    "top_resources": [
+     [
+      "isl:6:26",
+      694
+     ],
+     [
+      "isl:44:43",
+      666
+     ],
+     [
+      "isl:25:45",
+      447
+     ],
+     [
+      "isl:24:44",
+      378
+     ],
+     [
+      "isl:46:45",
+      268
+     ]
+    ]
+   }
+  },
+  "flip_decisions_valid": {
+   "[0,0.1)": {
+    "e2e_ms": {
+     "p50": 290.5113130896453,
+     "p90": 438.4241397037911,
+     "p95": 514.0593262982574,
+     "p99": 535.3283034211227
+    },
+    "frac_of_valid_flips": 0.13534205976784391,
+    "frac_relaxed_at_2s": 0.9379562043795621,
+    "n_decisions": 548,
+    "n_flips": 548,
+    "q_at_t_mbit": {
+     "p50": 0.0,
+     "p90": 0.05646362672813272,
+     "p95": 0.637227959856648,
+     "p99": 0.9128050921438396
+    },
+    "q_peak_next2_mbit": {
+     "p50": 1.0,
+     "p90": 1.3502035558350234,
+     "p95": 1.8465343741255364,
+     "p99": 1.9999735143280337
+    },
+    "queue_growth_mbps": {
+     "p50": 0.0,
+     "p90": 0.0,
+     "p95": 0.8439186045528583,
+     "p99": 1.7930073601267464
+    },
+    "top_resources": [
+     [
+      "isl:126:127",
+      41
+     ],
+     [
+      "isl:6:5",
+      37
+     ],
+     [
+      "isl:54:53",
+      32
+     ],
+     [
+      "isl:124:125",
+      31
+     ],
+     [
+      "isl:75:76",
+      28
+     ]
+    ]
+   },
+   "[0.1,0.3)": {
+    "e2e_ms": {
+     "p50": 357.28547434968584,
+     "p90": 367.45993772110455,
+     "p95": 462.90416859910624,
+     "p99": 515.8414686761032
+    },
+    "frac_of_valid_flips": 0.1232403062484564,
+    "frac_relaxed_at_2s": 0.8396793587174348,
+    "n_decisions": 499,
+    "n_flips": 499,
+    "q_at_t_mbit": {
+     "p50": 3.4924596548080445e-16,
+     "p90": 0.6663305262726883,
+     "p95": 0.7275937193010384,
+     "p99": 0.9863209541462792
+    },
+    "q_peak_next2_mbit": {
+     "p50": 1.0000551993180058,
+     "p90": 1.6131480584270175,
+     "p95": 1.9511705434066744,
+     "p99": 3.0024848135900863
+    },
+    "queue_growth_mbps": {
+     "p50": 0.0,
+     "p90": 0.6839058319727234,
+     "p95": 1.2636651954867786,
+     "p99": 1.7362312533521533
+    },
+    "top_resources": [
+     [
+      "isl:14:34",
+      97
+     ],
+     [
+      "isl:34:54",
+      90
+     ],
+     [
+      "isl:56:57",
+      89
+     ],
+     [
+      "isl:54:55",
+      86
+     ],
+     [
+      "isl:4:3",
+      37
+     ]
+    ]
+   },
+   "[0.3,0.5)": {
+    "e2e_ms": {
+     "p50": 358.82772565296864,
+     "p90": 375.63717179762256,
+     "p95": 451.98694467930875,
+     "p99": 504.0271953140341
+    },
+    "frac_of_valid_flips": 0.026426278093356383,
+    "frac_relaxed_at_2s": 0.9345794392523364,
+    "n_decisions": 107,
+    "n_flips": 107,
+    "q_at_t_mbit": {
+     "p50": 3.4924596548080445e-16,
+     "p90": 0.6783763016317368,
+     "p95": 0.6786827444155964,
+     "p99": 0.6949493040284842
+    },
+    "q_peak_next2_mbit": {
+     "p50": 1.0000552000479108,
+     "p90": 1.000055388761222,
+     "p95": 1.0000553890622257,
+     "p99": 1.9448685752845727
+    },
+    "queue_growth_mbps": {
+     "p50": 0.0,
+     "p90": 0.7769418309212904,
+     "p95": 1.1300035163181361,
+     "p99": 1.8963076847140008
+    },
+    "top_resources": [
+     [
+      "isl:14:34",
+      43
+     ],
+     [
+      "isl:54:55",
+      27
+     ],
+     [
+      "isl:56:57",
+      23
+     ],
+     [
+      "isl:34:54",
+      14
+     ]
+    ]
+   },
+   "[0.5,1)": {
+    "e2e_ms": {
+     "p50": 358.6969740999368,
+     "p90": 464.1515786061703,
+     "p95": 503.8790380781055,
+     "p99": 535.3283034211227
+    },
+    "frac_of_valid_flips": 0.05211163250185231,
+    "frac_relaxed_at_2s": 0.9052132701421801,
+    "n_decisions": 211,
+    "n_flips": 211,
+    "q_at_t_mbit": {
+     "p50": 0.35595422945782984,
+     "p90": 0.6945537963638208,
+     "p95": 0.8556065891936098,
+     "p99": 1.1213452960247026
+    },
+    "q_peak_next2_mbit": {
+     "p50": 1.0001106197251133,
+     "p90": 1.9999735143280337,
+     "p95": 1.9999735143280337,
+     "p99": 1.9999735143280337
+    },
+    "queue_growth_mbps": {
+     "p50": 0.0,
+     "p90": 0.7973484390604028,
+     "p95": 1.6566329907519515,
+     "p99": 1.920485360726373
+    },
+    "top_resources": [
+     [
+      "isl:14:34",
+      43
+     ],
+     [
+      "isl:34:54",
+      39
+     ],
+     [
+      "isl:54:55",
+      39
+     ],
+     [
+      "isl:56:57",
+      37
+     ],
+     [
+      "isl:26:46",
+      16
+     ]
+    ]
+   },
+   "[1,inf)": {
+    "e2e_ms": {
+     "p50": 295.8913341726417,
+     "p90": 311.32979680032145,
+     "p95": 322.2270126511617,
+     "p99": 477.48209629112637
+    },
+    "frac_of_valid_flips": 0.662879723388491,
+    "frac_relaxed_at_2s": 0.7507451564828614,
+    "n_decisions": 2684,
+    "n_flips": 2684,
+    "q_at_t_mbit": {
+     "p50": 0.664275013514285,
+     "p90": 0.727532243386635,
+     "p95": 0.7778210209842656,
+     "p99": 1.6681351160886675
+    },
+    "q_peak_next2_mbit": {
+     "p50": 1.0550480671680744,
+     "p90": 1.9999936560811882,
+     "p95": 2.468626643920633,
+     "p99": 2.468626643920633
+    },
+    "queue_growth_mbps": {
+     "p50": -0.2356905026873739,
+     "p90": 1.069323762643771,
+     "p95": 1.5039306358741165,
+     "p99": 1.928591285520339
+    },
+    "top_resources": [
+     [
+      "isl:6:26",
+      694
+     ],
+     [
+      "isl:44:43",
+      666
+     ],
+     [
+      "isl:25:45",
+      447
+     ],
+     [
+      "isl:24:44",
+      378
+     ],
+     [
+      "isl:46:45",
+      268
+     ]
+    ]
+   }
+  },
+  "n_flips_excluded_by_floor": 0,
+  "n_flips_without_resource": 29,
+  "non_flip_decisions": {
+   "e2e_ms": {
+    "p50": 297.1153306082215,
+    "p90": 367.45993772110455,
+    "p95": 436.7184368836714,
+    "p99": 514.0593262982574
+   },
+   "frac_relaxed_at_2s": 0.8970775095298602,
+   "n_decisions": 10231,
+   "note": "no delta by definition -> no z; contrast row only",
+   "q_at_t_mbit": {
+    "p50": 0.0,
+    "p90": 0.3207721858567393,
+    "p95": 0.7275565967651487,
+    "p99": 0.9421205372819076
+   },
+   "queue_growth_mbps": {
+    "p50": 0.0,
+    "p90": 0.4047115546502145,
+    "p95": 1.0731945374543146,
+    "p99": 1.846647426388554
+   }
+  },
+  "z_percentiles": {
+   "frac_ge_0_5": 0.7099068170671898,
+   "frac_ge_1": 0.6581657675331045,
+   "n": 4078,
+   "p50": 1.7863265800589536,
+   "p90": 3.1631005478545275,
+   "p99": 6.561649715540943
+  },
+  "z_percentiles_valid": {
+   "frac_ge_0_5": 0.7149913558903433,
+   "frac_ge_1": 0.662879723388491,
+   "n": 4049,
+   "p50": 1.7863265800589536,
+   "p90": 3.1631005478545275,
+   "p99": 6.561649715540943
+  }
+ }
+}

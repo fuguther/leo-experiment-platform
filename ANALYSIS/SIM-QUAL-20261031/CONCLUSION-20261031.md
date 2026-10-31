@@ -50,7 +50,7 @@ D3. **把 AoI 压低 8.7× 不改变网络性能、也不消除 flip**：adv 1.0
     487.7→56.3 ms（其中 50 ms 是半周期、7 ms 是传播），但：
     - greedy/hyst/ewma 的 flip 仍为 22.3% / 16.4% / 19.6%（只降 3.5–8.9 pp）；
     - E2E 变化为 −1.7/+7.5/−17.6/+2.3 ms，没有系统性改善；
-    - greedy 的 switch rate 反而从 0.332 升到 0.438（更频繁观测 → 更多候选抖动）。
+    - greedy 的 per-(sat,dst) switch rate 反而从 0.187 升到 0.316（更频繁观测 → 更多候选抖动）。
     ⇒ "高频同步 + 简单稳定机制"在 action 层面**不能**基本消除问题；在性能层面，
     本 regime 本来就没有可被它消除的损失。
 
@@ -60,7 +60,7 @@ D4. **策略类别（是否看队列）是网络性能的主因，stale state �
     **low load 下符号反转**：geometry 比 greedy 快 20.7 ms（配对 427 包）。该收益与 AoI 无关。
 
 D5. **hysteresis 降低的是切换/抖动，不是离最优的距离**：
-    η=5 ms 时 rule-relative flip 27.8%→18.2%、switch 0.332→0.254，但相对 truth-optimal 的
+    η=5 ms 时 rule-relative flip 27.8%→18.2%、per-(sat,dst) switch 0.187→0.071，但相对 truth-optimal 的
     偏离率反而 29.7%（greedy 27.7%）、regret 均值略升（1.87 vs 1.66 ms），
     且 high load E2E 305.6→339.6 ms、hops 19.3→21.1、1 个 NO_ROUTE；low load 下 E2E 反而略好
     （291.0→287.2）。**EWMA(α=0.25) 不降低 flip（28.5%）但给出最好的 high-load E2E（295.0）

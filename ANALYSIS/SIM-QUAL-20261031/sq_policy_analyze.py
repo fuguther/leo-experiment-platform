@@ -68,6 +68,32 @@ def _cells_arms(cell):
     return cell / "arms" / "now"
 
 
+def load_trace_map(cell):
+    """pid -> {dst, bits, src} from the cell's compiled trace.
+
+    load_calibration's decision projection (``_project_decision``) drops the
+    packet ``dst`` field, so a per-(sat, dst) stream key would silently become
+    per-sat if read from the decision row.  The compiled trace is the same
+    input every arm used, so the join is exact and does not invent state.
+    """
+    path = cell / "trace.jsonl.gz"
+    out = {}
+    if not path.is_file():
+        return out
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for line in fh:
+            row = json.loads(line)
+            pid = row.get("packet_id")
+            if pid is None:
+                continue
+            out[int(pid)] = {
+                "dst": row.get("dst_grid_id"),
+                "src": row.get("src_grid_id"),
+                "bits": row.get("bits"),
+            }
+    return out
+
+
 # ------------------------------------------------------------- decision log
 def load_decisions(cell):
     """Rows with >=2 candidates that were scored by the policy layer."""
@@ -79,6 +105,7 @@ def load_decisions(cell):
         if row.get("arm") != "now":
             continue
         probe[row["decision_id"]][row["direction"]] = row
+    trace_map = load_trace_map(cell)
     rows = []
     with gzip.open(base / "decisions.jsonl.gz", "rt", encoding="utf-8") as fh:
         for line in fh:
@@ -121,7 +148,10 @@ def load_decisions(cell):
                 "t": float(decision["t"]),
                 "pid": decision.get("pid"),
                 "sat": decision.get("sat"),
-                "dst": str(decision.get("dst")),
+                # the projection drops dst; the trace join restores it
+                "dst": str((trace_map.get(decision.get("pid")) or {})
+                           .get("dst", decision.get("dst"))),
+                "bits": (trace_map.get(decision.get("pid")) or {}).get("bits"),
                 "chosen": chosen,
                 "directions": directions,
                 "j_used": j_used,

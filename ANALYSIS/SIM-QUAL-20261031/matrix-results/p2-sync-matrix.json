@@ -88,14 +88,14 @@
     },
     "schema": "sq-policy-decision-stats/v1",
     "switch": {
-     "pairs": 14657,
-     "rate": 0.30565600054581427
+     "pairs": 14510,
+     "rate": 0.13218470020675396
     },
     "wrong_duration_W_ms": {
-     "censored": 8,
-     "n": 903,
-     "p50": 29.34459824974578,
-     "p90": 175.69399819221587
+     "censored": 35,
+     "n": 590,
+     "p50": 60.09974619752967,
+     "p90": 807.6751272934252
     }
    },
    "network": {
@@ -265,8 +265,8 @@
     },
     "schema": "sq-policy-decision-stats/v1",
     "switch": {
-     "pairs": 14694,
-     "rate": 0.33217639853001224
+     "pairs": 14587,
+     "rate": 0.21669980119284293
     },
     "wrong_duration_W_ms": {
      "censored": 0,
@@ -442,14 +442,14 @@
     },
     "schema": "sq-policy-decision-stats/v1",
     "switch": {
-     "pairs": 14931,
-     "rate": 0.4378809188935771
+     "pairs": 14776,
+     "rate": 0.3161207363291825
     },
     "wrong_duration_W_ms": {
-     "censored": 8,
-     "n": 1138,
-     "p50": 30.065679999999873,
-     "p90": 181.26887513376744
+     "censored": 40,
+     "n": 843,
+     "p50": 47.778228296046166,
+     "p90": 482.3400173881369
     }
    },
    "network": {
@@ -619,14 +619,14 @@
     },
     "schema": "sq-policy-decision-stats/v1",
     "switch": {
-     "pairs": 14911,
-     "rate": 0.31734960767218834
+     "pairs": 14770,
+     "rate": 0.14752877454299254
     },
     "wrong_duration_W_ms": {
-     "censored": 5,
-     "n": 812,
-     "p50": 25.287392144173637,
-     "p90": 173.75694831695654
+     "censored": 28,
+     "n": 550,
+     "p50": 50.00385289696574,
+     "p90": 559.8726931175202
     }
    },
    "network": {

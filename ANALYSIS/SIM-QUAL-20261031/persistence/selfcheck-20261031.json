@@ -1,0 +1,131 @@
+{
+ "all_identical": true,
+ "cells": [
+  {
+   "cell": "p1-high-geom",
+   "identical": true,
+   "only_in_recomputed": 0,
+   "only_in_reference": 0,
+   "policy": "geometry",
+   "recomputed_flips_eval": 0,
+   "reference_flips_eval": 0,
+   "reference_flips_whole_run": 0
+  },
+  {
+   "cell": "p1-high-greedy",
+   "identical": true,
+   "only_in_recomputed": 0,
+   "only_in_reference": 0,
+   "policy": "queue_greedy",
+   "recomputed_flips_eval": 4037,
+   "reference_flips_eval": 4037,
+   "reference_flips_whole_run": 4098
+  },
+  {
+   "cell": "p1-high-hyst",
+   "identical": true,
+   "only_in_recomputed": 0,
+   "only_in_reference": 0,
+   "policy": "queue_greedy_hysteresis",
+   "recomputed_flips_eval": 2695,
+   "reference_flips_eval": 2695,
+   "reference_flips_whole_run": 2740
+  },
+  {
+   "cell": "p1-high-ewma",
+   "identical": true,
+   "only_in_recomputed": 0,
+   "only_in_reference": 0,
+   "policy": "queue_greedy_ewma",
+   "recomputed_flips_eval": 4078,
+   "reference_flips_eval": 4078,
+   "reference_flips_whole_run": 4144
+  },
+  {
+   "cell": "p1-low-geom",
+   "identical": true,
+   "only_in_recomputed": 0,
+   "only_in_reference": 0,
+   "policy": "geometry",
+   "recomputed_flips_eval": 0,
+   "reference_flips_eval": 0,
+   "reference_flips_whole_run": 0
+  },
+  {
+   "cell": "p1-low-greedy",
+   "identical": true,
+   "only_in_recomputed": 0,
+   "only_in_reference": 0,
+   "policy": "queue_greedy",
+   "recomputed_flips_eval": 1371,
+   "reference_flips_eval": 1371,
+   "reference_flips_whole_run": 1382
+  },
+  {
+   "cell": "p1-low-hyst",
+   "identical": true,
+   "only_in_recomputed": 0,
+   "only_in_reference": 0,
+   "policy": "queue_greedy_hysteresis",
+   "recomputed_flips_eval": 703,
+   "reference_flips_eval": 703,
+   "reference_flips_whole_run": 706
+  },
+  {
+   "cell": "p1-low-ewma",
+   "identical": true,
+   "only_in_recomputed": 0,
+   "only_in_reference": 0,
+   "policy": "queue_greedy_ewma",
+   "recomputed_flips_eval": 1385,
+   "reference_flips_eval": 1385,
+   "reference_flips_whole_run": 1396
+  },
+  {
+   "cell": "p2-sync-geom",
+   "identical": true,
+   "only_in_recomputed": 0,
+   "only_in_reference": 0,
+   "policy": "geometry",
+   "recomputed_flips_eval": 0,
+   "reference_flips_eval": 0,
+   "reference_flips_whole_run": 0
+  },
+  {
+   "cell": "p2-sync-greedy",
+   "identical": true,
+   "only_in_recomputed": 0,
+   "only_in_reference": 0,
+   "policy": "queue_greedy",
+   "recomputed_flips_eval": 3307,
+   "reference_flips_eval": 3307,
+   "reference_flips_whole_run": 3345
+  },
+  {
+   "cell": "p2-sync-hyst",
+   "identical": true,
+   "only_in_recomputed": 0,
+   "only_in_reference": 0,
+   "policy": "queue_greedy_hysteresis",
+   "recomputed_flips_eval": 2419,
+   "reference_flips_eval": 2419,
+   "reference_flips_whole_run": 2456
+  },
+  {
+   "cell": "p2-sync-ewma",
+   "identical": true,
+   "only_in_recomputed": 0,
+   "only_in_reference": 0,
+   "policy": "queue_greedy_ewma",
+   "recomputed_flips_eval": 2830,
+   "reference_flips_eval": 2830,
+   "reference_flips_whole_run": 2883
+  }
+ ],
+ "eval_window_s": [
+  4.0,
+  14.0
+ ],
+ "reference": "ANALYSIS/SIM-QUAL-20261031/sq_policy_analyze.py (load_decisions + _fresh_action, unmodified semantics)",
+ "schema": "sq-persistence-selfcheck/v1"
+}

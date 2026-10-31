@@ -156,42 +156,62 @@ def calibration_contract() -> dict:
     }
 
 
-def matrix_contract(load_a: float, load_b: float, load_c: float,
-                    load_d: float, burst_mult: float, burst_start: float,
-                    burst_duration: float) -> dict:
+def matrix_contract(load_a: float, load_b: float, load_c_high: float,
+                    load_c_max: float, load_d: float, burst_mult: float,
+                    burst_start: float, burst_duration: float) -> dict:
+    """Round-2 matrix.
+
+    Regime loads are chosen from the measured calibration curve, not from the
+    configured Mbps: A=90 (measured max corridor rho 0.599), B=160 (0.877);
+    the near-capacity C candidates are 180 and 200 because realised rho
+    saturates sub-linearly for a queue-aware router (the router diverts before
+    a link reaches rho~0.95), so both are generated and the measured slack of
+    the executed one defines the regime in the analysis.
+    """
     burst = {"start_s": burst_start, "duration_s": burst_duration,
              "multiplier": burst_mult}
     policies = {"geom": "geometry", "greedy": "queue_greedy",
                 "ewma": "queue_greedy_ewma"}
     cells = []
-    # Regimes A/B/C: three policies x three trace seeds, stationary trace.
-    for tag, load in (("a", load_a), ("b", load_b), ("c", load_c)):
+    # calibration extension: does realised rho keep rising or plateau?
+    for load in (load_c_high, load_c_max):
+        cells.append(cell(f"cal-{int(load):03d}", total_mbps=load, seed=7,
+                          pulse=None))
+    # A: stable / slack control (measured rho ~0.6)
+    for name in ("geom", "greedy"):
+        cells.append(cell(f"m2-a-{name}-s7", total_mbps=load_a, seed=7,
+                          pulse=None, policy=policies[name]))
+    # B: high but stable (measured rho ~0.88)
+    for name, policy in policies.items():
+        for seed in (7, 8):
+            cells.append(cell(f"m2-b-{name}-s{seed}", total_mbps=load_b,
+                              seed=seed, pulse=None, policy=policy))
+    # C: near-capacity candidates x three policies x three seeds
+    for tag, load in (("c1", load_c_high), ("c2", load_c_max)):
         for name, policy in policies.items():
             for seed in (7, 8, 9):
                 cells.append(cell(f"m2-{tag}-{name}-s{seed}",
                                   total_mbps=load, seed=seed, pulse=None,
                                   policy=policy))
-    # Hysteresis secondary: only near-capacity, seeds 7/8 (the Round-1 finding
-    # "lower flip != better performance" must be re-checked under pressure).
-    for seed in (7, 8):
-        cells.append(cell(f"m2-c-hyst-s{seed}", total_mbps=load_c, seed=seed,
+    # hysteresis secondary at the near-capacity baseline (all C candidates)
+    for tag, load in (("c1", load_c_high), ("c2", load_c_max)):
+        cells.append(cell(f"m2-{tag}-hyst-s7", total_mbps=load, seed=7,
                           pulse=None, policy="queue_greedy_hysteresis"))
-    # Regime D: short over-critical burst on the B baseline, finite window.
+    # D: short over-critical burst on the B baseline (finite window)
     for name, policy in policies.items():
-        for seed in (7, 8):
-            cells.append(cell(f"m2-d-{name}-s{seed}", total_mbps=load_d,
-                              seed=seed, pulse=burst, policy=policy))
-    # Strong-sync sweep: vis_k=1 keeps only the direct-neighbour
-    # advertisements, which are exactly the state the scorer uses for a
-    # candidate (the candidate resource is the peer's egress), so state
-    # freshness is unchanged while 20 ms advertisements stay affordable.
-    # All three levels use the same vis_k so the sync axis is clean.
-    for advert_ms in (1000, 100, 20):
-        for name, policy in policies.items():
-            cells.append(cell(f"m2-sync{advert_ms:04d}-{name}-s7",
-                              total_mbps=load_c, seed=7, pulse=None,
-                              policy=policy, advert_s=advert_ms / 1000.0,
-                              ctrl_bits=2_000, vis_k=1))
+        cells.append(cell(f"m2-d-{name}-s7", total_mbps=load_d, seed=7,
+                          pulse=burst, policy=policy))
+    # strong-sync sweep: vis_k=1 keeps only direct-neighbour advertisements
+    # (the state a candidate actually needs: the peer's own egress queue), so
+    # state freshness is unchanged while 20 ms advertisements stay affordable.
+    # All three sync levels share vis_k=1, so the axis is clean.
+    for tag, load in (("c1", load_c_high), ("c2", load_c_max)):
+        for advert_ms in (1000, 100, 20):
+            for name, policy in policies.items():
+                cells.append(cell(f"m2-sync{advert_ms:04d}-{tag}-{name}-s7",
+                                  total_mbps=load, seed=7, pulse=None,
+                                  policy=policy, advert_s=advert_ms / 1000.0,
+                                  ctrl_bits=2_000, vis_k=1))
     return {
         "schema": "load-calibration-contract/v1",
         "base_profile": BASE_PROFILE,
@@ -214,10 +234,11 @@ def write(document: dict, path: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("what", choices=["calib", "matrix"])
-    parser.add_argument("--load-a", type=float, default=85.0)
-    parser.add_argument("--load-b", type=float, default=145.0)
-    parser.add_argument("--load-c", type=float, default=160.0)
-    parser.add_argument("--load-d", type=float, default=140.0)
+    parser.add_argument("--load-a", type=float, default=90.0)
+    parser.add_argument("--load-b", type=float, default=160.0)
+    parser.add_argument("--load-c-high", type=float, default=180.0)
+    parser.add_argument("--load-c-max", type=float, default=200.0)
+    parser.add_argument("--load-d", type=float, default=160.0)
     parser.add_argument("--burst-mult", type=float, default=1.6)
     parser.add_argument("--burst-start", type=float, default=8.0)
     parser.add_argument("--burst-duration", type=float, default=0.5)
@@ -225,8 +246,8 @@ def main() -> None:
     if args.what == "calib":
         write(calibration_contract(), CONTRACT_DIR / "sq-calib-20261031.json")
     else:
-        write(matrix_contract(args.load_a, args.load_b, args.load_c,
-                              args.load_d, args.burst_mult,
+        write(matrix_contract(args.load_a, args.load_b, args.load_c_high,
+                              args.load_c_max, args.load_d, args.burst_mult,
                               args.burst_start, args.burst_duration),
               CONTRACT_DIR / "sq-matrix2-20261031.json")
 
