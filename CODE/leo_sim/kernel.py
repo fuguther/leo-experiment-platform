@@ -1790,6 +1790,13 @@ class Kernel:
             "control_snapshots": 0,
             "control_registered": 0,
             "control_entered_queue": 0,
+            # A logical topology direction whose link is beyond the maximum
+            # ISL range physically exists in `topo` but no data or control
+            # packet can ever be served on it.  Control injection now skips
+            # those directions (see `_control_direction_available`); before
+            # the fix such packets were enqueued, never served and expired,
+            # inflating control offered bits / isl_ctrl queue area.
+            "control_geometry_unavailable_skips": 0,
             "control_tx_started": 0,
             "control_tx_completed": 0,
             "control_initialized": bool(self.cfg_cp["enabled"]),
@@ -3658,6 +3665,26 @@ class Kernel:
         row.update(fields)
         self.timeline_sink.append(row)
 
+    def _control_direction_available(self, sat: int, direction: str) -> bool:
+        """Can a control packet be physically injected on this directed ISL?
+
+        The logical topology keeps a direction even when the current orbital
+        geometry puts the two satellites beyond ``max_isl_km`` (196 of 560
+        directed slots in the 140-sat pilot).  Data decisions already filter
+        those directions through the legal gate; control injection did not, so
+        such packets waited forever in the ctrl queue and expired at their TTL,
+        inflating control offered bits and ``isl_ctrl`` queue area without ever
+        delivering information.  The predicate is the SAME one the data
+        legality gate uses, so no reachable direction changes semantics.
+        """
+        link = self.isls[sat].get(direction)
+        if link is None or link.peer is None:
+            return False
+        if not self.cfg_links["geometry_loss"]:
+            return True
+        return bool(self.geometry.isl_available(
+            sat, link.peer, float(self.env.now)))
+
     def _advertise(self, sat: int):
         self.ctrl_seq += 1
         # metrics are bound to the CURRENT peer identity: after a rematch an
@@ -3781,6 +3808,14 @@ class Kernel:
         self.seen_ctrl[sat].add((sat, self.ctrl_seq))
         for d in self.control_children[sat][sat]:
             link = self.isls[sat][d]
+            if not self._control_direction_available(sat, d):
+                self.mech["control_geometry_unavailable_skips"] += 1
+                self._ctrl_audit(
+                    "ctrl_advert_skipped", origin=int(sat),
+                    seq=int(self.ctrl_seq), sat=int(sat),
+                    toward=(None if link.peer is None else int(link.peer)),
+                    direction=str(d), reason="isl_geometry_unavailable")
+                continue
             self.ctrl_iid += 1
             pkt = ControlPacket(
                 self.ctrl_iid, sat, self.ctrl_seq, self.env.now,
@@ -3949,6 +3984,16 @@ class Kernel:
         if pkt.remaining_hops > 1:
             for d in self.control_children[pkt.origin][sat]:
                 link = self.isls[sat][d]
+                if not self._control_direction_available(sat, d):
+                    self.mech["control_geometry_unavailable_skips"] += 1
+                    self._ctrl_audit(
+                        "ctrl_advert_skipped", origin=int(pkt.origin),
+                        seq=int(pkt.seq), sat=int(sat),
+                        toward=(None if link.peer is None
+                                else int(link.peer)),
+                        direction=str(d), hops=int(hops),
+                        reason="isl_geometry_unavailable")
+                    continue
                 self.ctrl_iid += 1
                 fwd = ControlPacket(
                     self.ctrl_iid, pkt.origin, pkt.seq, pkt.generated_at,

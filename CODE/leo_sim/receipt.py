@@ -132,6 +132,14 @@ MECHANISM_COUNTER_KEYS = {
     # commit fail self-verification.  Both are plain non-negative integers; no
     # research mechanism, field or value changes by declaring them here.
     "event_adverts_emitted", "serving_changes_seen",
+    # 2026-11-01 control-availability fix: control injection now skips
+    # logical directions whose ISL is physically unavailable
+    # (geometry.isl_available False).  The counter attributes the suppressed
+    # dead letters instead of hiding them.  Same precedent as
+    # event_adverts_emitted below: this set IS the exact-key schema every new
+    # receipt must satisfy; archived receipts are verified against their own
+    # pinned code identity, not this checkout.
+    "control_geometry_unavailable_skips",
     "ge_initialized", "mbb_events", "learning_initialized",
     "learning_decisions", "learning_transitions", "learning_train_steps",
     "learning_discarded_at_stop", "learning_discarded_at_rematch",
