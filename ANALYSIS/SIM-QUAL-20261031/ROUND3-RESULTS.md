@@ -97,9 +97,25 @@ greedy −1.1 ms、EWMA +11.0 ms、softmin −5.0 ms、sticky **−21.2 ms**、B
 
 （待填）
 
-## 7. same-continuation causal regret（n=36，运行中）
+## 7. same-continuation causal regret（n=36，已冻结）
 
-（待填：`round3-results/fork-results-n36.md`）
+证据：`fk-c-*`（12，s7）+ `fk3-s8-*`（12）+ `fk3-s9-*`（12）；样本 `fork-samples/round3-expansion.json`；
+结果 `round3-results/fork-results-n36.{json,md}`。sign：Δ = fresh − stale（<0 = fresh 更快）。
+
+- **`branch_states_identical` 36/36 true**（决策日志前缀见证，**不是** full SimPy state）。
+- **cohort（全网受影响包）均值：mean −0.065 ms，median 0.000，bootstrap 95% CI [−0.747, +0.424]，
+  15 fresh 更好 / 16 stale 更好** ⇒ 总体与 0 无法区分。
+- **tagged packet 因果差：median 0，mean −11.2 ms，CI [−70.6, +43.2]，15/15 正负对半**
+  ⇒ 也不支持“fresh 系统性更好/更差”。
+- **分层异质**（说明符号取决于具体决策，而不是总体方向）：
+  high_z（n=5）tagged 全为 **stale 更快**（mean +125.6 ms，CI [+68.7,+166.2]）；
+  large_proxy_R（n=4）tagged 全为 **fresh 更快**（mean −343.7 ms，CI [−479.7,−206.5]）；
+  long_persistence cohort mean −1.88 ms（CI [−5.63,−0.003]）——唯一略偏 fresh 的层。
+- proxy regret 中位 6.28 ms，与 causal 不可互换（同一决策可 ±数百 ms）。
+
+**答 E[ΔM_fresh−stale]**：**≈ 0**（网络 cohort 口径 CI 跨 0；tagged 口径 CI 跨 0）。
+不能写成 “fresh 平均更好” 或 “stale 平均更好”。**限制**：n=36 只覆盖 near-capacity greedy 的
+3 个 seed/3 个 cell；不是 population 样本；witness 仍是 decision-log prefix。
 
 ## 8. 受控瓶颈（见 §3）
 

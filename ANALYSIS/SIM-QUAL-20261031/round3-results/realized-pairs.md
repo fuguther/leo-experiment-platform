@@ -117,3 +117,27 @@
 | isl:37:36 | 39.400 | 25.100 | 14.300 | 74.900 | 0.191 |
 | isl:38:37 | 39.400 | 25.100 | 14.300 | 74.900 | 0.191 |
 | isl:39:38 | 39.400 | 25.100 | 14.300 | 74.900 | 0.191 |
+
+# realized-vs-counterfactual freshness comparison
+
+- advertised cell: m3-b-queue_greedy_ewma-h1000-s7
+- fresh (ideal_current) cell: m3-real-b-queue_greedy_ewma-h1000-s7
+- same trace: True  policy: queue_greedy_ewma -> queue_greedy_ewma
+- state_source of fresh arm: ideal_current
+- sum |Δλ| over directed ISLs: 1519.398 Mbps
+- max |Δλ|: 43.882 Mbps
+- z_realized p50 / max: 0.01026694045174538 / 0.7348856173345786
+- paired E2E (fresh - advertised): mean 3.9449950938013694 ms, fresh faster 678 / slower 714
+
+| link | λ advertised (Mbps) | λ fresh (Mbps) | Δ (Mbps) | ε (Mbps) | z_realized |
+|---|---|---|---|---|---|
+| isl:126:6 | 86.868 | 50.468 | 36.400 | 49.532 | 0.735 |
+| isl:105:125 | 80.366 | 36.484 | 43.882 | 63.516 | 0.691 |
+| isl:45:65 | 83.205 | 59.000 | 24.205 | 41.000 | 0.590 |
+| isl:65:85 | 83.127 | 59.045 | 24.082 | 40.955 | 0.588 |
+| isl:85:105 | 82.996 | 58.900 | 24.096 | 41.100 | 0.586 |
+| isl:25:24 | 69.500 | 29.500 | 40.000 | 70.500 | 0.567 |
+| isl:6:26 | 72.700 | 46.200 | 26.500 | 53.800 | 0.493 |
+| isl:25:5 | 14.100 | 41.200 | -27.100 | 58.800 | 0.461 |
+| isl:5:25 | 74.524 | 53.900 | 20.624 | 46.100 | 0.447 |
+| isl:45:25 | 21.700 | 45.875 | -24.175 | 54.125 | 0.447 |

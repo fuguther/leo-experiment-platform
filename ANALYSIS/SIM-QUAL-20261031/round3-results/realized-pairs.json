@@ -679,6 +679,142 @@
    ],
    "z_realized_max": 0.3835941409164008,
    "z_realized_p50": 0.0071090047393364926
+  },
+  {
+   "advertise_interval_s": 1.0,
+   "advertised_cell": "m3-b-queue_greedy_ewma-h1000-s7",
+   "e2e": {
+    "advertised_mean_ms": 0.3655923883683003,
+    "fresh_faster": 678,
+    "fresh_mean_ms": 0.36932881360297476,
+    "fresh_slower": 714,
+    "paired_mean_delta_ms": 3.9449950938013694,
+    "paired_n": 1646,
+    "paired_p50_delta_ms": 0.0
+   },
+   "fates": {
+    "advertised": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 1649,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 1,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 0,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    },
+    "fresh": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 1647,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 3,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 0,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    }
+   },
+   "fresh_cell": "m3-real-b-queue_greedy_ewma-h1000-s7",
+   "fresh_state_source": "ideal_current",
+   "links": 295,
+   "max_abs_delta_mbps": 43.88178627287401,
+   "policy_advertised": "queue_greedy_ewma",
+   "policy_fresh": "queue_greedy_ewma",
+   "queue_area_isl_data": {
+    "advertised": 18647155.365171127,
+    "fresh": 19371410.17696949
+   },
+   "same_trace": true,
+   "schema": "sq-realized-compare/v1",
+   "sum_abs_delta_mbps": 1519.3982545672154,
+   "top_links": [
+    {
+     "delta_bps": 36399999.99999999,
+     "epsilon_bps": 49531517.75105133,
+     "lambda_advertised_bps": 86868482.24894866,
+     "lambda_fresh_bps": 50468482.24894867,
+     "link": "isl:126:6",
+     "z_realized": 0.7348856173345786
+    },
+    {
+     "delta_bps": 43881786.27287401,
+     "epsilon_bps": 63515744.45237322,
+     "lambda_advertised_bps": 80366041.82050079,
+     "lambda_fresh_bps": 36484255.54762678,
+     "link": "isl:105:125",
+     "z_realized": 0.6908804525746908
+    },
+    {
+     "delta_bps": 24204559.746967465,
+     "epsilon_bps": 41000000.0,
+     "lambda_advertised_bps": 83204559.74696746,
+     "lambda_fresh_bps": 59000000.0,
+     "link": "isl:45:65",
+     "z_realized": 0.5903551157796942
+    },
+    {
+     "delta_bps": 24081796.18853306,
+     "epsilon_bps": 40955092.68331603,
+     "lambda_advertised_bps": 83126703.50521703,
+     "lambda_fresh_bps": 59044907.31668397,
+     "link": "isl:65:85",
+     "z_realized": 0.5880049246804249
+    },
+    {
+     "delta_bps": 24096373.839165166,
+     "epsilon_bps": 41100000.0,
+     "lambda_advertised_bps": 82996373.83916517,
+     "lambda_fresh_bps": 58900000.0,
+     "link": "isl:85:105",
+     "z_realized": 0.5862864681062084
+    },
+    {
+     "delta_bps": 40000000.0,
+     "epsilon_bps": 70500000.0,
+     "lambda_advertised_bps": 69500000.0,
+     "lambda_fresh_bps": 29500000.0,
+     "link": "isl:25:24",
+     "z_realized": 0.5673758865248227
+    },
+    {
+     "delta_bps": 26500000.0,
+     "epsilon_bps": 53800000.0,
+     "lambda_advertised_bps": 72700000.0,
+     "lambda_fresh_bps": 46200000.0,
+     "link": "isl:6:26",
+     "z_realized": 0.49256505576208176
+    },
+    {
+     "delta_bps": -27100000.0,
+     "epsilon_bps": 58800000.0,
+     "lambda_advertised_bps": 14100000.0,
+     "lambda_fresh_bps": 41200000.0,
+     "link": "isl:25:5",
+     "z_realized": 0.4608843537414966
+    },
+    {
+     "delta_bps": 20624483.783849925,
+     "epsilon_bps": 46100000.0,
+     "lambda_advertised_bps": 74524483.78384992,
+     "lambda_fresh_bps": 53900000.0,
+     "link": "isl:5:25",
+     "z_realized": 0.4473857653763541
+    },
+    {
+     "delta_bps": -24175236.533323474,
+     "epsilon_bps": 54124763.466676526,
+     "lambda_advertised_bps": 21700000.0,
+     "lambda_fresh_bps": 45875236.533323474,
+     "link": "isl:45:25",
+     "z_realized": 0.44665759229059093
+    }
+   ],
+   "z_realized_max": 0.7348856173345786,
+   "z_realized_p50": 0.01026694045174538
   }
  ],
  "schema": "sq-realized-compare-batch/v1"
