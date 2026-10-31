@@ -1,5 +1,10 @@
 # CONCLUSION-20261031 — Strict / Defeasible / Unknown
 
+> **PRE-FIX NOTICE（2026-11-01）**：本文件基于 Round-1 pre-fix release `76427851…`。
+> 控制面死信修复后 data plane 发生实质变化（E2E +35–43 ms、跳数 +2），因此本文件的
+> 网络级数字只作 pre-fix 历史；Round-2 的 post-fix 结果见 `RESULTS-ROUND2-20261031.md`，
+> 两者不得并列比较；最终结论以 Round-2 为准（若 Round-2 与本文件冲突，以 Round-2 为准）。
+>
 > 依据：`QUALIFICATION-20261031.md`（A–F 资格考试）、`RESULTS-20261031.md`（12 cell 诊断矩阵）、
 > `AUDIT-MECHANISMS.md` / `AUDIT-EXISTING-TESTS.md` / `AUDIT-HARNESS.md`（独立审计）。
 > 证据边界：**DIAGNOSTIC**、单 seed（7）、单场景（140-sat Walker + 合成 30/70 hotspot trace）。

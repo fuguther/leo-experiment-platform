@@ -19,7 +19,12 @@
 | F2 | Round-1 W/switch 的 per-sat 口径错误（decisions 投影丢 `dst`）→ 从 `trace.jsonl.gz` join 回 dst，按 (sat,dst) 重算 | `sq_policy_analyze.load_trace_map`；`RESULTS-20261031.md §0b` |
 | F3 | 控制面修复不改变 data plane：pre/post 同配置 run 的 fates/deliveries/packet_events 必须逐位一致 | `CONTROL-FIX-COMPARISON.md` |
 
-**pre-fix 结果（Round-1，release `76427851…`）与 post-fix 结果（本轮的 `fb90c01…`/`4e7a7b5…`）分开报告，不混合。**
+**pre-fix 结果（Round-1，release `76427851…`）与 post-fix 结果（本轮的 `fb90c01…`/`038fb16…`）分开报告，不混合。**
+实测（CONTROL-FIX-COMPARISON）：dead-letter 修复后 delivered control bits/arrived instances 逐位不变、
+TTL expiry 6566→0、`isl_ctrl` 面积 848→0.09 Mbit·s、AoI 不变；但 **data plane 并非逐位不变**：
+死信曾把"几何不可用的对端出口"伪装成有积压（pre-fix 40.9%/45.6% 的正积压样本恰为整数个控制包线长），
+修复后这些出口显示空闲 → 决策去试探 → 对端 hold 重选，导致 +2 跳、E2E +35–43 ms。
+因此 Round-1（pre-fix）的所有网络级数字只作历史/机制线索，Round-2 结论一律基于 post-fix release。
 
 ## 2. 校准（先测后冻结，禁止硬编码 Mbps 当 near-capacity）
 
@@ -30,10 +35,15 @@ directed-ISL `λ=served_bits/window`、`μ=rate`、`ρ`、`ε=μ−λ`。依据�
 
 | regime | 目标 | 选用 global load | 实测 max corridor ρ | 实测 ε（top link） | 说明 |
 |---|---|---|---|---|---|
-| A stable | ρ 0.4–0.6 | 90 Mbps | 0.599（待 runner 复核） | ≈40 Mbps | slack 大 |
-| B high-stable | ρ 0.8–0.9 | 160 Mbps | 0.877 | ≈12 Mbps | 接近容量 |
-| C near-capacity | ρ 0.95–0.99 | 180 或 200 Mbps（**实测决定**） | 见 CALIB | 见 CALIB | 若 realized ρ 平台化，按实测 ε/队列增长报告并明确偏离目标带 |
-| D over-critical burst | 短时 ρ>1 | B(160) + pulse 1.6×, 8.0–8.5 s | 见 burst run | 瞬时 | 有限窗口，自然结束 |
+| A stable | ρ 0.4–0.6 | 90 Mbps（cal-090） | **0.599** | 40.1 Mbps | 带内上沿；slack 大 |
+| B high-stable | ρ 0.8–0.9 | 160 Mbps（cal-160） | **0.877** | 12.3 Mbps | 接近容量 |
+| C near-capacity | ρ 0.95–0.99 | **200 Mbps**（cal-200，sq3 校准） | **0.943** | **5.7 Mbps** | 目标带未完全达到（曲线凹，0.95 需 ≈210+）；C 按实测 ε 定义，报告写明偏离 |
+| D over-critical burst | 短时 ρ>1 | 140 Mbps + pulse 1.6×, 8.0–8.5 s | 瞬时 ≈1.31（标度估计） | 瞬时 | 从 ρ=0.818 的干净 baseline 起跳，有限窗口 |
+
+C 的实测补充（本轮新增校准）：180 Mbps → ρ 0.908 / ε 9.2 Mbps / isl_data area 23.6 Mbit·s；
+200 Mbps → ρ 0.943 / ε 5.7 Mbps / isl_data area 36.1 Mbit·s（IN_SYSTEM 16、NO_ROUTE 6）。
+realized ρ 在 160→200 只从 0.877 升到 0.943，确认**queue-aware 路由会绕行、单链路 ρ 呈次线性**；
+C 因此以"实测 ε≈5.7 Mbps 的最高可持续压力"定义，而不是硬说 0.99。
 
 **注意（校准发现的机制）**：queue-aware 路由在接近容量前会绕行，realized corridor ρ 呈次线性
 （140→0.818，150→0.846，160→0.877），因此 "ρ≥0.95 sustained" 可能在该策略类下不可达；

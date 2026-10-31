@@ -1,0 +1,160 @@
+{
+ "cell": "m2-c2-greedy-s7",
+ "decisions": [
+  {
+   "chosen": "E",
+   "decision_id": 30317,
+   "fresh": "S",
+   "gamma": 3239.857768511656,
+   "margin_s": 2.6171930692237e-06,
+   "pid": 1145,
+   "proxy_regret_s": 0.02607630174096056,
+   "sat": 44,
+   "stratum": "large_gamma",
+   "t": 10.004877850227471
+  },
+  {
+   "chosen": "N",
+   "decision_id": 22466,
+   "fresh": "E",
+   "gamma": 1863.5953340837746,
+   "margin_s": 1.1360215774122717e-05,
+   "pid": 915,
+   "proxy_regret_s": 0.01596767053530418,
+   "sat": 45,
+   "stratum": "large_gamma",
+   "t": 8.57887328978228
+  },
+  {
+   "chosen": "E",
+   "decision_id": 28716,
+   "fresh": "N",
+   "gamma": 1549.631945140233,
+   "margin_s": 1.2645287888121692e-06,
+   "pid": 1115,
+   "proxy_regret_s": 0.005974788993329906,
+   "sat": 36,
+   "stratum": "large_gamma",
+   "t": 9.669901700098148
+  },
+  {
+   "chosen": "W",
+   "decision_id": 45045,
+   "fresh": "S",
+   "gamma": 1251.2293173465885,
+   "margin_s": 7.074657887823355e-06,
+   "pid": 1788,
+   "proxy_regret_s": 0.0038413124423996303,
+   "sat": 26,
+   "stratum": "large_gamma",
+   "t": 12.848472680456522
+  },
+  {
+   "chosen": "E",
+   "decision_id": 976,
+   "fresh": "W",
+   "gamma": null,
+   "margin_s": 0.0,
+   "pid": 44,
+   "proxy_regret_s": 0.005097885223602321,
+   "sat": 55,
+   "stratum": "small_margin",
+   "t": 4.363850282541761
+  },
+  {
+   "chosen": "E",
+   "decision_id": 1474,
+   "fresh": "W",
+   "gamma": null,
+   "margin_s": 0.0,
+   "pid": 71,
+   "proxy_regret_s": 0.005098225067395427,
+   "sat": 55,
+   "stratum": "small_margin",
+   "t": 4.463850282541759
+  },
+  {
+   "chosen": "E",
+   "decision_id": 2447,
+   "fresh": "W",
+   "gamma": null,
+   "margin_s": 0.0,
+   "pid": 135,
+   "proxy_regret_s": 0.002446004721256438,
+   "sat": 45,
+   "stratum": "small_margin",
+   "t": 4.666970559505078
+  },
+  {
+   "chosen": "N",
+   "decision_id": 4537,
+   "fresh": "E",
+   "gamma": 5.216976021558002,
+   "margin_s": 0.0020601281000835747,
+   "pid": 183,
+   "proxy_regret_s": 0.047027217914290306,
+   "sat": 24,
+   "stratum": "large_proxy_R",
+   "t": 5.189333666179738
+  },
+  {
+   "chosen": "N",
+   "decision_id": 4596,
+   "fresh": "E",
+   "gamma": 4.742130253663562,
+   "margin_s": 0.0020589423282848796,
+   "pid": 186,
+   "proxy_regret_s": 0.044179633873469834,
+   "sat": 24,
+   "stratum": "large_proxy_R",
+   "t": 5.2021824359923565
+  },
+  {
+   "chosen": "N",
+   "decision_id": 5280,
+   "fresh": "W",
+   "gamma": 2.8398072476063065,
+   "margin_s": 0.002046874131925905,
+   "pid": 209,
+   "proxy_regret_s": 0.04334794666484432,
+   "sat": 64,
+   "stratum": "large_proxy_R",
+   "t": 5.332953942324419
+  },
+  {
+   "chosen": "E",
+   "decision_id": 284,
+   "fresh": "N",
+   "gamma": 0.001193348730256834,
+   "margin_s": 0.0034206937993005865,
+   "pid": 14,
+   "proxy_regret_s": 0.006578121567273387,
+   "sat": 34,
+   "stratum": "sustained",
+   "t": 4.199789225319472
+  },
+  {
+   "chosen": "S",
+   "decision_id": 45316,
+   "fresh": "E",
+   "gamma": 10.478748516659426,
+   "margin_s": 0.0033956801705279233,
+   "pid": 1793,
+   "proxy_regret_s": 0.012428151620916372,
+   "sat": 5,
+   "stratum": "random_control",
+   "t": 12.91766844908592
+  }
+ ],
+ "eligible_flips": 6752,
+ "n": 12,
+ "policy": "queue_greedy",
+ "schema": "sq-fork-sample/v1",
+ "strata": {
+  "large_gamma": 4,
+  "large_proxy_R": 3,
+  "random_control": 1,
+  "small_margin": 3,
+  "sustained": 1
+ }
+}

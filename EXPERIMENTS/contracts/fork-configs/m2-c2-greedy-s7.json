@@ -1,0 +1,255 @@
+{
+ "access": {
+  "acquisition_delay_s": 0.01,
+  "association": "bbm",
+  "downlink_queue_bits": 4000000000,
+  "downlink_rate_mbps": 20000.0,
+  "drr_quantum_bits": 1000000,
+  "dual_connect": false,
+  "holding_queue_bits": 268435456,
+  "hysteresis_deg": 0.0,
+  "idle_release_s": 0.2,
+  "min_dwell_s": 0.0,
+  "retirement_deadline_s": 5.0,
+  "retiring_link_limit": 4,
+  "slot_lease_s": 10.0,
+  "slots_per_satellite": 256,
+  "unavailable_policy": "queue",
+  "uplink_queue_bits": 4000000000,
+  "uplink_rate_mbps": 20000.0
+ },
+ "async_routing": {
+  "enabled": false,
+  "install_delay_s": 0.001,
+  "max_pending_per_scope": 1,
+  "trigger": "periodic",
+  "update_interval_s": 0.5,
+  "valid_window_s": 1.0,
+  "window_bins": 4
+ },
+ "control_plane": {
+  "advertise_interval_s": 1.0,
+  "advertisement_protocol_version": 2,
+  "enabled": true,
+  "packet_bits": 8000,
+  "priority": "nonpreemptive_priority",
+  "ttl_s": 10.0,
+  "vis_k": 3
+ },
+ "demand": {
+  "burst_duration_s": null,
+  "burst_lon_max": null,
+  "burst_lon_min": null,
+  "burst_multiplier": 2.0,
+  "burst_start_s": null,
+  "csv_path": "/tmp/t1-trace-programs/m2-c2-greedy-s7-a77d898bf2a2e889.csv",
+  "deadline_s": null,
+  "destination_population_exponent": 1.0,
+  "destination_rejection_max_draws": 10000,
+  "diurnal_amplitude": 0.5,
+  "diurnal_phase_h": 12.0,
+  "emission_end_s": 14.0,
+  "emission_start_s": 4.0,
+  "gravity_alpha": 1.5,
+  "gravity_d_floor_km": 500.0,
+  "hotspot_concentration": 0.8,
+  "hotspot_fraction": 0.1,
+  "mode": "csv",
+  "nested_master_offered_mbps": null,
+  "offered_mbps": 120.0,
+  "packet_bits": 1000000,
+  "population_destination_sampler": "scan",
+  "population_path": null,
+  "research_deadline_s": null,
+  "source_population_exponent": 1.0,
+  "temporal_model": "constant",
+  "utc_start_hour": 0.0
+ },
+ "endpoints": {
+  "aggregation_deg": 1.0,
+  "grid_deg": 0.25,
+  "mlab_auto": false,
+  "mlab_max_sites": 64,
+  "region_lat_bounds_deg": null,
+  "region_lon_bounds_deg": null,
+  "sites": [
+   {
+    "demand_weight": 1.0,
+    "lat": 35.68,
+    "lon": 139.69,
+    "name": "tokyo"
+   },
+   {
+    "demand_weight": 1.0,
+    "lat": 1.35,
+    "lon": 103.82,
+    "name": "singapore"
+   },
+   {
+    "demand_weight": 1.0,
+    "lat": 51.51,
+    "lon": -0.13,
+    "name": "london"
+   },
+   {
+    "demand_weight": 1.0,
+    "lat": 40.71,
+    "lon": -74.01,
+    "name": "newyork"
+   },
+   {
+    "demand_weight": 1.0,
+    "lat": -23.55,
+    "lon": -46.63,
+    "name": "saopaulo"
+   },
+   {
+    "demand_weight": 1.0,
+    "lat": 6.52,
+    "lon": 3.38,
+    "name": "lagos"
+   }
+  ]
+ },
+ "execution": {
+  "available_capacity_interval_s": 0.5,
+  "compute_delay_s": 0.0,
+  "compute_servers_per_satellite": 0,
+  "decision_observation_mode": "refresh",
+  "dry_run": false,
+  "max_entities": 20000,
+  "max_events": 20000000,
+  "max_packets": 40000,
+  "monitor": false,
+  "node_process_delay_s": 0.0
+ },
+ "learning": {
+  "algorithm": "none",
+  "arrive_reward": 50.0,
+  "batch_size": 64,
+  "checkpoint_metadata_sha256": null,
+  "checkpoint_path": null,
+  "checkpoint_sha256": null,
+  "epsilon_decay_s": 300.0,
+  "epsilon_end": 0.05,
+  "epsilon_start": 1.0,
+  "fast_train": true,
+  "fixed_inference": false,
+  "forward_step_penalty": -20.0,
+  "gamma": 0.99,
+  "lr": 0.001,
+  "mode": "train",
+  "obs_hops": null,
+  "qlearning_alpha": 0.25,
+  "replay_size": 50000,
+  "resume_path": null,
+  "resume_sha256": null,
+  "reward": "queue",
+  "reward_beta": 200.0,
+  "reward_w1": 20.0,
+  "seed": null,
+  "target_update_interval": 500
+ },
+ "links": {
+  "ge_enabled": false,
+  "ge_gsl": {
+   "mean_bad_s": 1.0,
+   "mean_good_s": 300.0
+  },
+  "ge_isl": {
+   "mean_bad_s": 0.5,
+   "mean_good_s": 900.0
+  },
+  "geometry_loss": true,
+  "isl_dirs": [
+   "N",
+   "S",
+   "E",
+   "W"
+  ],
+  "isl_queue_bits": 64000000,
+  "isl_rate_mbps": 100.0,
+  "max_isl_km": 3000.0,
+  "mcs_table": "legacy-dvbs2x",
+  "rate_model": "constant",
+  "rf_downlink": {
+   "antenna_diameter_rx_m": 0.26,
+   "antenna_diameter_tx_m": 0.26,
+   "bandwidth_hz": 500000000.0,
+   "frequency_hz": 20000000000.0,
+   "max_ptx_w": 10.0,
+   "min_rate_bps": 10000.0,
+   "noise_figure_db": 2.0,
+   "noise_temperature_k": 290.0,
+   "pointing_loss_db": 0.3
+  },
+  "rf_isl": {
+   "antenna_diameter_rx_m": 0.26,
+   "antenna_diameter_tx_m": 0.26,
+   "bandwidth_hz": 500000000.0,
+   "frequency_hz": 26000000000.0,
+   "max_ptx_w": 10.0,
+   "min_rate_bps": 10000.0,
+   "noise_figure_db": 2.0,
+   "noise_temperature_k": 290.0,
+   "pointing_loss_db": 0.3
+  },
+  "rf_uplink": {
+   "antenna_diameter_rx_m": 0.26,
+   "antenna_diameter_tx_m": 0.33,
+   "bandwidth_hz": 500000000.0,
+   "frequency_hz": 30000000000.0,
+   "max_ptx_w": 20.0,
+   "min_rate_bps": 10000.0,
+   "noise_figure_db": 2.0,
+   "noise_temperature_k": 290.0,
+   "pointing_loss_db": 0.3
+  }
+ },
+ "outputs": {
+  "out_dir": "leo_sim_out/ta-pilot-140-adv1",
+  "plotting": false,
+  "trace_path": null
+ },
+ "routing": {
+  "contract": "C3",
+  "learning_enabled": false,
+  "max_hops": 64,
+  "min_remaining_hop_only": false,
+  "policy": "known_serving"
+ },
+ "scenario": {
+  "altitude_km": 600.0,
+  "duration_s": 20.0,
+  "geometry_epoch_s": 0.0,
+  "inclination_deg": 98.6,
+  "min_elevation_deg": 5.0,
+  "name": "ta-pilot-140-adv1",
+  "num_planes": 7,
+  "num_satellites": 140,
+  "seed": 7,
+  "time_step_s": 0.1
+ },
+ "time_alignment": {
+  "arm": "now",
+  "candidate_target_rule": "arrival",
+  "common_horizon_s": null,
+  "common_rule": "median_eta",
+  "enabled": true,
+  "ewma_alpha": 0.25,
+  "execution_mode": "per_packet",
+  "history_limit": 4,
+  "hysteresis_eta_s": 0.0,
+  "min_observation_age_s": null,
+  "per_flow_ttl_s": 0.5,
+  "predictor": "hold_last",
+  "query_delay_s": 1e-06,
+  "state_policy": "queue_greedy",
+  "state_source": "advertised",
+  "tie_sig_digits": null
+ },
+ "topology": {
+  "matching": "markovian",
+  "recompute_interval_s": null
+ }
+}
