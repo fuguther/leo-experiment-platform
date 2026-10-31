@@ -1,0 +1,150 @@
+{
+ "rows": [
+  {
+   "fresh_delay_ms": 72.50147671418537,
+   "paired_delta_ms": 22.524038290843787,
+   "paired_delta_ms_max": 23.364643143280386,
+   "paired_delta_ms_min": 22.097734486607056,
+   "slack": 0.05,
+   "slow_share": 0.7576203074126905,
+   "stale_delay_ms": 95.00713597403303,
+   "tau_s": 0.1,
+   "warmup_s": 60.0,
+   "window_s": 120.0
+  },
+  {
+   "fresh_delay_ms": 72.50147671418537,
+   "paired_delta_ms": 146.36534907520317,
+   "paired_delta_ms_max": 157.85834147638414,
+   "paired_delta_ms_min": 135.67982698109313,
+   "slack": 0.05,
+   "slow_share": 0.8948131187133518,
+   "stale_delay_ms": 218.80192297625678,
+   "tau_s": 0.5,
+   "warmup_s": 60.0,
+   "window_s": 120.0
+  },
+  {
+   "fresh_delay_ms": 150.09826733650902,
+   "paired_delta_ms": 20.801197206937523,
+   "paired_delta_ms_max": 21.78458378089862,
+   "paired_delta_ms_min": 19.62048044942012,
+   "slack": 0.02,
+   "slow_share": 0.7213433893982953,
+   "stale_delay_ms": 170.85860366181836,
+   "tau_s": 0.1,
+   "warmup_s": 60.0,
+   "window_s": 120.0
+  },
+  {
+   "fresh_delay_ms": 150.09826733650902,
+   "paired_delta_ms": 147.23264777421343,
+   "paired_delta_ms_max": 160.43791470939024,
+   "paired_delta_ms_min": 138.87319171606018,
+   "slack": 0.02,
+   "slow_share": 0.8611083095460302,
+   "stale_delay_ms": 297.35852064567945,
+   "tau_s": 0.5,
+   "warmup_s": 60.0,
+   "window_s": 120.0
+  },
+  {
+   "fresh_delay_ms": 80.44358770087958,
+   "paired_delta_ms": 22.42159179697291,
+   "paired_delta_ms_max": 24.05140597917528,
+   "paired_delta_ms_min": 20.193090043148302,
+   "slack": 0.05,
+   "slow_share": 0.7526850943986542,
+   "stale_delay_ms": 102.90251252872814,
+   "tau_s": 0.1,
+   "warmup_s": 120.0,
+   "window_s": 120.0
+  },
+  {
+   "fresh_delay_ms": 80.44358770087958,
+   "paired_delta_ms": 145.93692502669134,
+   "paired_delta_ms_max": 152.4257519308012,
+   "paired_delta_ms_min": 141.09549200869756,
+   "slack": 0.05,
+   "slow_share": 0.8954456318174158,
+   "stale_delay_ms": 226.57993917607268,
+   "tau_s": 0.5,
+   "warmup_s": 120.0,
+   "window_s": 120.0
+  },
+  {
+   "fresh_delay_ms": 184.6862909793426,
+   "paired_delta_ms": 22.531882290168557,
+   "paired_delta_ms_max": 23.36758594876068,
+   "paired_delta_ms_min": 21.13445969373399,
+   "slack": 0.02,
+   "slow_share": 0.7419819613750166,
+   "stale_delay_ms": 207.3698795819514,
+   "tau_s": 0.1,
+   "warmup_s": 120.0,
+   "window_s": 120.0
+  },
+  {
+   "fresh_delay_ms": 184.6862909793426,
+   "paired_delta_ms": 155.17966878055253,
+   "paired_delta_ms_max": 161.73844950991776,
+   "paired_delta_ms_min": 146.49271048169066,
+   "slack": 0.02,
+   "slow_share": 0.8733543066484722,
+   "stale_delay_ms": 341.11251546575113,
+   "tau_s": 0.5,
+   "warmup_s": 120.0,
+   "window_s": 120.0
+  },
+  {
+   "fresh_delay_ms": 80.60697239054322,
+   "paired_delta_ms": 22.661520000229245,
+   "paired_delta_ms_max": 25.70135905958022,
+   "paired_delta_ms_min": 20.954437127179766,
+   "slack": 0.05,
+   "slow_share": 0.7551114503984474,
+   "stale_delay_ms": 103.28302226895443,
+   "tau_s": 0.1,
+   "warmup_s": 200.0,
+   "window_s": 200.0
+  },
+  {
+   "fresh_delay_ms": 80.60697239054322,
+   "paired_delta_ms": 148.9004589229438,
+   "paired_delta_ms_max": 155.10752488848482,
+   "paired_delta_ms_min": 144.91788118081732,
+   "slack": 0.05,
+   "slow_share": 0.8986199446206765,
+   "stale_delay_ms": 229.55057570029615,
+   "tau_s": 0.5,
+   "warmup_s": 200.0,
+   "window_s": 200.0
+  },
+  {
+   "fresh_delay_ms": 236.28300161799,
+   "paired_delta_ms": 21.45122684156257,
+   "paired_delta_ms_max": 25.792323379820544,
+   "paired_delta_ms_min": 15.720067132965106,
+   "slack": 0.02,
+   "slow_share": 0.7157558688661619,
+   "stale_delay_ms": 257.7054247470502,
+   "tau_s": 0.1,
+   "warmup_s": 200.0,
+   "window_s": 200.0
+  },
+  {
+   "fresh_delay_ms": 236.28300161799,
+   "paired_delta_ms": 153.49078115007902,
+   "paired_delta_ms_max": 170.4556949640018,
+   "paired_delta_ms_min": 138.65655863403086,
+   "slack": 0.02,
+   "slow_share": 0.8542838367561812,
+   "stale_delay_ms": 389.6473023112664,
+   "tau_s": 0.5,
+   "warmup_s": 200.0,
+   "window_s": 200.0
+  }
+ ],
+ "schema": "controlled-bottleneck-sensitivity/v1",
+ "warning": "MECHANISM MODEL - NOT LEO EVIDENCE"
+}

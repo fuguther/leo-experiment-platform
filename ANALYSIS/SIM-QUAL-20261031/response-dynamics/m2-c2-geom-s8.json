@@ -1,0 +1,119 @@
+{
+ "action_runs": {
+  "duration_max_ms": 9949.669733468263,
+  "duration_ms": {
+   "p50": 0.0,
+   "p90": 172.62449011689006,
+   "p95": 590.0174582672317
+  },
+  "length_max": 1003,
+  "length_p50": 1.0,
+  "length_p90": 5.0,
+  "n_runs": 4740
+ },
+ "caliber": {
+  "delta_j": "J_truth(chosen) - J_truth(fresh) in ms; positive = the stale choice was worse under the truth cost",
+  "entropy": "empirical choice entropy over realised directions per (sat,dst) stream; NO policy softmin exists in the logs, so policy entropy is not reported",
+  "flip": "truth-substituted same-decision re-ranking; semantics imported from sq_persistence_analyze (verified identical to sq_policy_analyze by its selfcheck)",
+  "stream_key": "per-(sat,dst), dst joined from trace.jsonl.gz by pid",
+  "switch": "adjacent decisions inside one (sat,dst) stream whose committed direction differs",
+  "windows": "eval 4-14 s only"
+ },
+ "cell": "m2-c2-geom-s8",
+ "decisions": {
+  "audit_policy_counts": {
+   "geometry": 21650
+  },
+  "flip_rate": 0.0,
+  "n_decisions": 21650,
+  "n_flips": 0,
+  "n_streams": 182
+ },
+ "entropy": {
+  "choice_entropy_bits_max": 1.0,
+  "choice_entropy_bits_mean_weighted": 0.40471622897520637,
+  "choice_entropy_bits_p50": 0.0,
+  "distinct_directions_mean": 1.3722222222222222,
+  "modal_direction_share_p50": 1.0,
+  "n_streams_used": 180,
+  "policy_softmin_available": false,
+  "reason": "no softmin/probability field in the decision logs or in CODE/leo_sim; entropy below is over realised choices only"
+ },
+ "ewma_alpha": 0.25,
+ "flip_consequences": {
+  "P_consequential_proxy": null,
+  "P_harmful_proxy": null,
+  "delta_j_ms": {},
+  "delta_j_zero_share": null,
+  "n_flips_with_cost": 0,
+  "partition_primary": {},
+  "primary_tol_ms": 0.5,
+  "regret_ms": {
+   "mean": null
+  },
+  "regret_ms_per_decision": 0.0,
+  "thresholds": {
+   "0.1": {
+    "P_beneficial_proxy": null,
+    "P_consequential_proxy": null,
+    "P_harmful_proxy": null,
+    "n": 0,
+    "n_fresh_better": 0,
+    "n_proxy_gap_tiny": 0,
+    "n_stale_better": 0,
+    "tol_ms": 0.1
+   },
+   "0.5": {
+    "P_beneficial_proxy": null,
+    "P_consequential_proxy": null,
+    "P_harmful_proxy": null,
+    "n": 0,
+    "n_fresh_better": 0,
+    "n_proxy_gap_tiny": 0,
+    "n_stale_better": 0,
+    "tol_ms": 0.5
+   },
+   "1": {
+    "P_beneficial_proxy": null,
+    "P_consequential_proxy": null,
+    "P_harmful_proxy": null,
+    "n": 0,
+    "n_fresh_better": 0,
+    "n_proxy_gap_tiny": 0,
+    "n_stale_better": 0,
+    "tol_ms": 1.0
+   },
+   "5": {
+    "P_beneficial_proxy": null,
+    "P_consequential_proxy": null,
+    "P_harmful_proxy": null,
+    "n": 0,
+    "n_fresh_better": 0,
+    "n_proxy_gap_tiny": 0,
+    "n_stale_better": 0,
+    "tol_ms": 5.0
+   }
+  }
+ },
+ "hysteresis_eta_s": 0.0,
+ "inputs": {
+  "config_sha256": "3c8ee01abc5a2921f9a45c1a1245f9d556a8a8e025dcdea8cf9ecc8ff24c00ff",
+  "probe": {
+   "filter": "identity_source == 'used_state' and arm == 'now'",
+   "rows_skipped": 2004,
+   "rows_used": 70944
+  },
+  "trace_source_sha256": "6ac591e28374f08d7facb87571c112fa0dfae3c251b3590a4ef909e88e771441"
+ },
+ "policy": "geometry",
+ "schema": "sq-response-dynamics-cell/v1",
+ "switch": {
+  "moves": 4558,
+  "pairs": 21468,
+  "rate": 0.21231600521706726
+ },
+ "window_s": [
+  4.0,
+  14.0
+ ]
+}

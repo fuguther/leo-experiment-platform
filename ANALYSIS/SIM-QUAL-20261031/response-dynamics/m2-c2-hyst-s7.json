@@ -1,0 +1,134 @@
+{
+ "action_runs": {
+  "duration_max_ms": 9936.133262884525,
+  "duration_ms": {
+   "p50": 0.0,
+   "p90": 273.02916319048086,
+   "p95": 1041.5031952793986
+  },
+  "length_max": 720,
+  "length_p50": 1.0,
+  "length_p90": 8.0,
+  "n_runs": 5144
+ },
+ "caliber": {
+  "delta_j": "J_truth(chosen) - J_truth(fresh) in ms; positive = the stale choice was worse under the truth cost",
+  "entropy": "empirical choice entropy over realised directions per (sat,dst) stream; NO policy softmin exists in the logs, so policy entropy is not reported",
+  "flip": "truth-substituted same-decision re-ranking; semantics imported from sq_persistence_analyze (verified identical to sq_policy_analyze by its selfcheck)",
+  "stream_key": "per-(sat,dst), dst joined from trace.jsonl.gz by pid",
+  "switch": "adjacent decisions inside one (sat,dst) stream whose committed direction differs",
+  "windows": "eval 4-14 s only"
+ },
+ "cell": "m2-c2-hyst-s7",
+ "decisions": {
+  "audit_policy_counts": {
+   "queue_greedy_hysteresis": 26064
+  },
+  "flip_rate": 0.1885742786985881,
+  "n_decisions": 26064,
+  "n_flips": 4915,
+  "n_streams": 199
+ },
+ "entropy": {
+  "choice_entropy_bits_max": 1.5821930667351334,
+  "choice_entropy_bits_mean_weighted": 0.8047700707428995,
+  "choice_entropy_bits_p50": 0.5916727785823275,
+  "distinct_directions_mean": 1.8225806451612903,
+  "modal_direction_share_p50": 0.8571428571428571,
+  "n_streams_used": 186,
+  "policy_softmin_available": false,
+  "reason": "no softmin/probability field in the decision logs or in CODE/leo_sim; entropy below is over realised choices only"
+ },
+ "ewma_alpha": 0.25,
+ "flip_consequences": {
+  "P_consequential_proxy": 0.9898270600203459,
+  "P_harmful_proxy": 0.9536113936927773,
+  "delta_j_ms": {
+   "p50": 8.071975358103986,
+   "p90": 17.541255615325767,
+   "p95": 22.610467564981626,
+   "p99": 31.67382500268523
+  },
+  "delta_j_zero_share": 0.0004069175991861648,
+  "n_flips_with_cost": 4915,
+  "partition_primary": {
+   "fresh_better_other": 464,
+   "persistent_bias": 3470,
+   "proxy_gap_tiny": 50,
+   "quick_remerge": 753,
+   "stale_better": 178
+  },
+  "primary_tol_ms": 0.5,
+  "regret_ms": {
+   "mean": 9.579793808958774,
+   "p50": 8.071975358103986,
+   "p90": 17.541255615325767,
+   "p95": 22.610467564981626,
+   "p99": 31.67382500268523
+  },
+  "regret_ms_per_decision": 1.8065027076056006,
+  "thresholds": {
+   "0.1": {
+    "P_beneficial_proxy": 0.03763987792472025,
+    "P_consequential_proxy": 0.9955239064089522,
+    "P_harmful_proxy": 0.9578840284842319,
+    "n": 4915,
+    "n_fresh_better": 4708,
+    "n_proxy_gap_tiny": 22,
+    "n_stale_better": 185,
+    "tol_ms": 0.1
+   },
+   "0.5": {
+    "P_beneficial_proxy": 0.03621566632756867,
+    "P_consequential_proxy": 0.9898270600203459,
+    "P_harmful_proxy": 0.9536113936927773,
+    "n": 4915,
+    "n_fresh_better": 4687,
+    "n_proxy_gap_tiny": 50,
+    "n_stale_better": 178,
+    "tol_ms": 0.5
+   },
+   "1": {
+    "P_beneficial_proxy": 0.0335707019328586,
+    "P_consequential_proxy": 0.9796541200406917,
+    "P_harmful_proxy": 0.9460834181078331,
+    "n": 4915,
+    "n_fresh_better": 4650,
+    "n_proxy_gap_tiny": 100,
+    "n_stale_better": 165,
+    "tol_ms": 1.0
+   },
+   "5": {
+    "P_beneficial_proxy": 0.0,
+    "P_consequential_proxy": 0.8954221770091556,
+    "P_harmful_proxy": 0.8954221770091556,
+    "n": 4915,
+    "n_fresh_better": 4401,
+    "n_proxy_gap_tiny": 514,
+    "n_stale_better": 0,
+    "tol_ms": 5.0
+   }
+  }
+ },
+ "hysteresis_eta_s": 0.005,
+ "inputs": {
+  "config_sha256": "55a6ed3c5a5d993d5576108a3df4a3f2ba1011f5687f891aebc0231a18a42d60",
+  "probe": {
+   "filter": "identity_source == 'used_state' and arm == 'now'",
+   "rows_skipped": 2465,
+   "rows_used": 97926
+  },
+  "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c"
+ },
+ "policy": "queue_greedy_hysteresis",
+ "schema": "sq-response-dynamics-cell/v1",
+ "switch": {
+  "moves": 4945,
+  "pairs": 25865,
+  "rate": 0.19118499903344288
+ },
+ "window_s": [
+  4.0,
+  14.0
+ ]
+}

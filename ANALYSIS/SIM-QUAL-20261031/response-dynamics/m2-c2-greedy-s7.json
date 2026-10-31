@@ -1,0 +1,133 @@
+{
+ "action_runs": {
+  "duration_max_ms": 9936.133262884525,
+  "duration_ms": {
+   "p50": 0.0,
+   "p90": 140.1630826208944,
+   "p95": 577.3624385095246
+  },
+  "length_max": 363,
+  "length_p50": 1.0,
+  "length_p90": 5.0,
+  "n_runs": 7578
+ },
+ "caliber": {
+  "delta_j": "J_truth(chosen) - J_truth(fresh) in ms; positive = the stale choice was worse under the truth cost",
+  "entropy": "empirical choice entropy over realised directions per (sat,dst) stream; NO policy softmin exists in the logs, so policy entropy is not reported",
+  "flip": "truth-substituted same-decision re-ranking; semantics imported from sq_persistence_analyze (verified identical to sq_policy_analyze by its selfcheck)",
+  "stream_key": "per-(sat,dst), dst joined from trace.jsonl.gz by pid",
+  "switch": "adjacent decisions inside one (sat,dst) stream whose committed direction differs",
+  "windows": "eval 4-14 s only"
+ },
+ "cell": "m2-c2-greedy-s7",
+ "decisions": {
+  "audit_policy_counts": {
+   "queue_greedy": 24990
+  },
+  "flip_rate": 0.26378551420568225,
+  "n_decisions": 24990,
+  "n_flips": 6592,
+  "n_streams": 208
+ },
+ "entropy": {
+  "choice_entropy_bits_max": 1.533203957236256,
+  "choice_entropy_bits_mean_weighted": 0.8629753201245445,
+  "choice_entropy_bits_p50": 0.5916727785823275,
+  "distinct_directions_mean": 1.8810810810810812,
+  "modal_direction_share_p50": 0.8571428571428571,
+  "n_streams_used": 185,
+  "policy_softmin_available": false,
+  "reason": "no softmin/probability field in the decision logs or in CODE/leo_sim; entropy below is over realised choices only"
+ },
+ "ewma_alpha": 0.25,
+ "flip_consequences": {
+  "P_consequential_proxy": 0.9764866504854369,
+  "P_harmful_proxy": 0.9764866504854369,
+  "delta_j_ms": {
+   "p50": 6.455318018929887,
+   "p90": 13.224053652228243,
+   "p95": 16.1350612682675,
+   "p99": 21.64625785570913
+  },
+  "delta_j_zero_share": 0.0,
+  "n_flips_with_cost": 6592,
+  "partition_primary": {
+   "fresh_better_other": 585,
+   "persistent_bias": 4824,
+   "proxy_gap_tiny": 155,
+   "quick_remerge": 1028
+  },
+  "primary_tol_ms": 0.5,
+  "regret_ms": {
+   "mean": 7.221401589332534,
+   "p50": 6.455318018929887,
+   "p90": 13.224053652228243,
+   "p95": 16.1350612682675,
+   "p99": 21.64625785570913
+  },
+  "regret_ms_per_decision": 1.9049011315278135,
+  "thresholds": {
+   "0.1": {
+    "P_beneficial_proxy": 0.0,
+    "P_consequential_proxy": 0.9927184466019418,
+    "P_harmful_proxy": 0.9927184466019418,
+    "n": 6592,
+    "n_fresh_better": 6544,
+    "n_proxy_gap_tiny": 48,
+    "n_stale_better": 0,
+    "tol_ms": 0.1
+   },
+   "0.5": {
+    "P_beneficial_proxy": 0.0,
+    "P_consequential_proxy": 0.9764866504854369,
+    "P_harmful_proxy": 0.9764866504854369,
+    "n": 6592,
+    "n_fresh_better": 6437,
+    "n_proxy_gap_tiny": 155,
+    "n_stale_better": 0,
+    "tol_ms": 0.5
+   },
+   "1": {
+    "P_beneficial_proxy": 0.0,
+    "P_consequential_proxy": 0.9590412621359223,
+    "P_harmful_proxy": 0.9590412621359223,
+    "n": 6592,
+    "n_fresh_better": 6322,
+    "n_proxy_gap_tiny": 270,
+    "n_stale_better": 0,
+    "tol_ms": 1.0
+   },
+   "5": {
+    "P_beneficial_proxy": 0.0,
+    "P_consequential_proxy": 0.6645934466019418,
+    "P_harmful_proxy": 0.6645934466019418,
+    "n": 6592,
+    "n_fresh_better": 4381,
+    "n_proxy_gap_tiny": 2211,
+    "n_stale_better": 0,
+    "tol_ms": 5.0
+   }
+  }
+ },
+ "hysteresis_eta_s": 0.0,
+ "inputs": {
+  "config_sha256": "db54d2473cf2d0df242a75adfa984fb655fc3214243f9788f6957b1c566f0728",
+  "probe": {
+   "filter": "identity_source == 'used_state' and arm == 'now'",
+   "rows_skipped": 2309,
+   "rows_used": 92593
+  },
+  "trace_source_sha256": "2b27aac1976be68a10d56ffd016afaaa4666ae01f0fc41c5cef5ad8ca06c667c"
+ },
+ "policy": "queue_greedy",
+ "schema": "sq-response-dynamics-cell/v1",
+ "switch": {
+  "moves": 7370,
+  "pairs": 24782,
+  "rate": 0.29739326930836896
+ },
+ "window_s": [
+  4.0,
+  14.0
+ ]
+}
