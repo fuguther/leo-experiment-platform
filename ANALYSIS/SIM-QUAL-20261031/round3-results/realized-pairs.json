@@ -1,0 +1,685 @@
+{
+ "pairs": [
+  {
+   "advertise_interval_s": 1.0,
+   "advertised_cell": "m3-c2-queue_greedy-h1000-s7",
+   "e2e": {
+    "advertised_mean_ms": 0.4080592771665568,
+    "fresh_faster": 887,
+    "fresh_mean_ms": 0.40697729560094403,
+    "fresh_slower": 918,
+    "paired_mean_delta_ms": -1.0715329848403552,
+    "paired_n": 2010,
+    "paired_p50_delta_ms": 0.0
+   },
+   "fates": {
+    "advertised": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 2024,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 19,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 4,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    },
+    "fresh": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 2033,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 13,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 1,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    }
+   },
+   "fresh_cell": "m3-real-c2-queue_greedy-h1000-s7",
+   "fresh_state_source": "ideal_current",
+   "links": 307,
+   "max_abs_delta_mbps": 16.0,
+   "policy_advertised": "queue_greedy",
+   "policy_fresh": "queue_greedy",
+   "queue_area_isl_data": {
+    "advertised": 35862703.7485628,
+    "fresh": 35913769.36615017
+   },
+   "same_trace": true,
+   "schema": "sq-realized-compare/v1",
+   "sum_abs_delta_mbps": 923.3937981861201,
+   "top_links": [
+    {
+     "delta_bps": 15237801.593531936,
+     "epsilon_bps": 41893830.01318264,
+     "lambda_advertised_bps": 73343971.5803493,
+     "lambda_fresh_bps": 58106169.98681736,
+     "link": "isl:5:25",
+     "z_realized": 0.3637242426566655
+    },
+    {
+     "delta_bps": 11681804.210418396,
+     "epsilon_bps": 35498499.89146743,
+     "lambda_advertised_bps": 76183304.31895097,
+     "lambda_fresh_bps": 64501500.10853257,
+     "link": "isl:45:65",
+     "z_realized": 0.32907881308038833
+    },
+    {
+     "delta_bps": 11352977.40638417,
+     "epsilon_bps": 35100000.0,
+     "lambda_advertised_bps": 76252977.40638417,
+     "lambda_fresh_bps": 64900000.0,
+     "link": "isl:65:85",
+     "z_realized": 0.32344664975453474
+    },
+    {
+     "delta_bps": 11322643.223760575,
+     "epsilon_bps": 35200000.0,
+     "lambda_advertised_bps": 76122643.22376058,
+     "lambda_fresh_bps": 64800000.0,
+     "link": "isl:85:105",
+     "z_realized": 0.32166600067501633
+    },
+    {
+     "delta_bps": 13887965.973902442,
+     "epsilon_bps": 48400000.0,
+     "lambda_advertised_bps": 65487965.97390244,
+     "lambda_fresh_bps": 51600000.0,
+     "link": "isl:126:6",
+     "z_realized": 0.286941445741786
+    },
+    {
+     "delta_bps": -15500000.0,
+     "epsilon_bps": 56100000.0,
+     "lambda_advertised_bps": 28400000.0,
+     "lambda_fresh_bps": 43900000.0,
+     "link": "isl:64:44",
+     "z_realized": 0.27629233511586454
+    },
+    {
+     "delta_bps": 12892310.269593164,
+     "epsilon_bps": 59200000.0,
+     "lambda_advertised_bps": 53692310.269593164,
+     "lambda_fresh_bps": 40800000.0,
+     "link": "isl:105:125",
+     "z_realized": 0.21777551131069534
+    },
+    {
+     "delta_bps": -11400000.0,
+     "epsilon_bps": 54100000.0,
+     "lambda_advertised_bps": 34500000.0,
+     "lambda_fresh_bps": 45900000.0,
+     "link": "isl:25:5",
+     "z_realized": 0.21072088724584104
+    },
+    {
+     "delta_bps": 11064749.156083718,
+     "epsilon_bps": 60200000.0,
+     "lambda_advertised_bps": 50864749.15608372,
+     "lambda_fresh_bps": 39800000.0,
+     "link": "isl:36:56",
+     "z_realized": 0.1837998198685003
+    },
+    {
+     "delta_bps": 10396924.504324839,
+     "epsilon_bps": 59396924.50432484,
+     "lambda_advertised_bps": 51000000.0,
+     "lambda_fresh_bps": 40603075.49567516,
+     "link": "isl:24:44",
+     "z_realized": 0.1750414620132026
+    }
+   ],
+   "z_realized_max": 0.3637242426566655,
+   "z_realized_p50": 0.013819095477386936
+  },
+  {
+   "advertise_interval_s": 1.0,
+   "advertised_cell": "m3-c2-queue_greedy_ewma-h1000-s7",
+   "e2e": {
+    "advertised_mean_ms": 0.3961392382308753,
+    "fresh_faster": 835,
+    "fresh_mean_ms": 0.40697729560094403,
+    "fresh_slower": 934,
+    "paired_mean_delta_ms": 10.966669875162479,
+    "paired_n": 2026,
+    "paired_p50_delta_ms": 0.0
+   },
+   "fates": {
+    "advertised": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 2040,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 7,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 0,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    },
+    "fresh": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 2033,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 13,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 1,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    }
+   },
+   "fresh_cell": "m3-real-c2-queue_greedy_ewma-h1000-s7",
+   "fresh_state_source": "ideal_current",
+   "links": 307,
+   "max_abs_delta_mbps": 32.00407397952707,
+   "policy_advertised": "queue_greedy_ewma",
+   "policy_fresh": "queue_greedy_ewma",
+   "queue_area_isl_data": {
+    "advertised": 32439278.992816698,
+    "fresh": 35913769.36615017
+   },
+   "same_trace": true,
+   "schema": "sq-realized-compare/v1",
+   "sum_abs_delta_mbps": 2020.0570559326457,
+   "top_links": [
+    {
+     "delta_bps": 24200000.000000007,
+     "epsilon_bps": 35498499.89146743,
+     "lambda_advertised_bps": 88701500.10853258,
+     "lambda_fresh_bps": 64501500.10853257,
+     "link": "isl:45:65",
+     "z_realized": 0.6817189479552296
+    },
+    {
+     "delta_bps": 23864743.00642705,
+     "epsilon_bps": 35100000.0,
+     "lambda_advertised_bps": 88764743.00642705,
+     "lambda_fresh_bps": 64900000.0,
+     "link": "isl:65:85",
+     "z_realized": 0.6799072081603148
+    },
+    {
+     "delta_bps": 23834408.417822257,
+     "epsilon_bps": 35200000.0,
+     "lambda_advertised_bps": 88634408.41782226,
+     "lambda_fresh_bps": 64800000.0,
+     "link": "isl:85:105",
+     "z_realized": 0.6771138755063141
+    },
+    {
+     "delta_bps": 25752654.997867033,
+     "epsilon_bps": 39478914.443183914,
+     "lambda_advertised_bps": 86273740.55468312,
+     "lambda_fresh_bps": 60521085.556816086,
+     "link": "isl:125:5",
+     "z_realized": 0.6523141621568387
+    },
+    {
+     "delta_bps": 32004073.97952707,
+     "epsilon_bps": 59200000.0,
+     "lambda_advertised_bps": 72804073.97952707,
+     "lambda_fresh_bps": 40800000.0,
+     "link": "isl:105:125",
+     "z_realized": 0.5406093577622816
+    },
+    {
+     "delta_bps": 25287965.973902434,
+     "epsilon_bps": 48400000.0,
+     "lambda_advertised_bps": 76887965.97390243,
+     "lambda_fresh_bps": 51600000.0,
+     "link": "isl:126:6",
+     "z_realized": 0.5224786358244304
+    },
+    {
+     "delta_bps": 26583275.200123355,
+     "epsilon_bps": 52483275.200123355,
+     "lambda_advertised_bps": 74100000.0,
+     "lambda_fresh_bps": 47516724.799876645,
+     "link": "isl:6:26",
+     "z_realized": 0.5065094565603802
+    },
+    {
+     "delta_bps": -23710855.046430953,
+     "epsilon_bps": 50300000.0,
+     "lambda_advertised_bps": 25989144.953569047,
+     "lambda_fresh_bps": 49700000.0,
+     "link": "isl:45:25",
+     "z_realized": 0.4713887683187068
+    },
+    {
+     "delta_bps": -22295313.311186586,
+     "epsilon_bps": 49489481.35467492,
+     "lambda_advertised_bps": 28215205.334138494,
+     "lambda_fresh_bps": 50510518.64532508,
+     "link": "isl:125:105",
+     "z_realized": 0.45050610151687326
+    },
+    {
+     "delta_bps": -22225689.606461026,
+     "epsilon_bps": 49591004.00378652,
+     "lambda_advertised_bps": 28183306.389752455,
+     "lambda_fresh_bps": 50408995.99621348,
+     "link": "isl:105:85",
+     "z_realized": 0.4481798675575107
+    }
+   ],
+   "z_realized_max": 0.6817189479552296,
+   "z_realized_p50": 0.028688524590163935
+  },
+  {
+   "advertise_interval_s": 1.0,
+   "advertised_cell": "m3-c2-queue_softmin-h1000-s7",
+   "e2e": {
+    "advertised_mean_ms": 0.4972116091470869,
+    "fresh_faster": 697,
+    "fresh_mean_ms": 0.4895072893427398,
+    "fresh_slower": 638,
+    "paired_mean_delta_ms": -4.961952167020457,
+    "paired_n": 1414,
+    "paired_p50_delta_ms": 0.0
+   },
+   "fates": {
+    "advertised": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 1664,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 287,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 96,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    },
+    "fresh": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 1701,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 250,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 96,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    }
+   },
+   "fresh_cell": "m3-real-c2-queue_softmin-h1000-s7",
+   "fresh_state_source": "ideal_current",
+   "links": 364,
+   "max_abs_delta_mbps": 4.92195089966879,
+   "policy_advertised": "queue_softmin",
+   "policy_fresh": "queue_softmin",
+   "queue_area_isl_data": {
+    "advertised": 44300609.94532425,
+    "fresh": 42526536.8154911
+   },
+   "same_trace": true,
+   "schema": "sq-realized-compare/v1",
+   "sum_abs_delta_mbps": 386.65306128937743,
+   "top_links": [
+    {
+     "delta_bps": -3354934.1131032705,
+     "epsilon_bps": 40225213.57682945,
+     "lambda_advertised_bps": 56419852.31006728,
+     "lambda_fresh_bps": 59774786.42317055,
+     "link": "isl:57:58",
+     "z_realized": 0.08340376134225877
+    },
+    {
+     "delta_bps": -3229841.8168697804,
+     "epsilon_bps": 40100000.0,
+     "lambda_advertised_bps": 56670158.18313022,
+     "lambda_fresh_bps": 59900000.0,
+     "link": "isl:56:57",
+     "z_realized": 0.08054468371246336
+    },
+    {
+     "delta_bps": -3202025.7834066004,
+     "epsilon_bps": 40697974.2165934,
+     "lambda_advertised_bps": 56100000.0,
+     "lambda_fresh_bps": 59302025.7834066,
+     "link": "isl:58:59",
+     "z_realized": 0.07867776824383237
+    },
+    {
+     "delta_bps": -4700000.0,
+     "epsilon_bps": 62400000.0,
+     "lambda_advertised_bps": 32900000.0,
+     "lambda_fresh_bps": 37600000.0,
+     "link": "isl:36:56",
+     "z_realized": 0.07532051282051282
+    },
+    {
+     "delta_bps": -3029265.143642649,
+     "epsilon_bps": 41170734.85635735,
+     "lambda_advertised_bps": 55800000.0,
+     "lambda_fresh_bps": 58829265.14364265,
+     "link": "isl:59:40",
+     "z_realized": 0.0735781169369846
+    },
+    {
+     "delta_bps": 4800000.0,
+     "epsilon_bps": 71100000.0,
+     "lambda_advertised_bps": 33700000.0,
+     "lambda_fresh_bps": 28900000.0,
+     "link": "isl:64:63",
+     "z_realized": 0.06751054852320675
+    },
+    {
+     "delta_bps": 4800000.0,
+     "epsilon_bps": 71200000.0,
+     "lambda_advertised_bps": 33600000.0,
+     "lambda_fresh_bps": 28800000.0,
+     "link": "isl:62:61",
+     "z_realized": 0.06741573033707865
+    },
+    {
+     "delta_bps": 4800000.0,
+     "epsilon_bps": 71200000.0,
+     "lambda_advertised_bps": 33600000.0,
+     "lambda_fresh_bps": 28800000.0,
+     "link": "isl:63:62",
+     "z_realized": 0.06741573033707865
+    },
+    {
+     "delta_bps": 4790840.403152801,
+     "epsilon_bps": 71300000.0,
+     "lambda_advertised_bps": 33490840.4031528,
+     "lambda_fresh_bps": 28700000.0,
+     "link": "isl:60:79",
+     "z_realized": 0.06719271252668725
+    },
+    {
+     "delta_bps": 4700000.0,
+     "epsilon_bps": 71200000.0,
+     "lambda_advertised_bps": 33500000.0,
+     "lambda_fresh_bps": 28800000.0,
+     "link": "isl:61:60",
+     "z_realized": 0.06601123595505617
+    }
+   ],
+   "z_realized_max": 0.08340376134225877,
+   "z_realized_p50": 0.008968609865470852
+  },
+  {
+   "advertise_interval_s": 1.0,
+   "advertised_cell": "m3-c2-queue_greedy_sticky-h1000-s7",
+   "e2e": {
+    "advertised_mean_ms": 0.48407050044663635,
+    "fresh_faster": 875,
+    "fresh_mean_ms": 0.4657159168540349,
+    "fresh_slower": 812,
+    "paired_mean_delta_ms": -21.213178133442188,
+    "paired_n": 1843,
+    "paired_p50_delta_ms": 0.0
+   },
+   "fates": {
+    "advertised": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 1919,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 102,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 26,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    },
+    "fresh": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 1962,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 75,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 10,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    }
+   },
+   "fresh_cell": "m3-real-c2-queue_greedy_sticky-h1000-s7",
+   "fresh_state_source": "ideal_current",
+   "links": 355,
+   "max_abs_delta_mbps": 29.61329745792418,
+   "policy_advertised": "queue_greedy_sticky",
+   "policy_fresh": "queue_greedy_sticky",
+   "queue_area_isl_data": {
+    "advertised": 157494776.86480787,
+    "fresh": 140286373.19160387
+   },
+   "same_trace": true,
+   "schema": "sq-realized-compare/v1",
+   "sum_abs_delta_mbps": 1126.1984219482022,
+   "top_links": [
+    {
+     "delta_bps": 29613297.45792418,
+     "epsilon_bps": 77013297.45792419,
+     "lambda_advertised_bps": 52600000.0,
+     "lambda_fresh_bps": 22986702.54207582,
+     "link": "isl:6:26",
+     "z_realized": 0.3845218739543421
+    },
+    {
+     "delta_bps": 17599999.999999993,
+     "epsilon_bps": 53442057.58200708,
+     "lambda_advertised_bps": 64157942.41799291,
+     "lambda_fresh_bps": 46557942.41799292,
+     "link": "isl:126:6",
+     "z_realized": 0.32932863733760087
+    },
+    {
+     "delta_bps": 17600000.000000007,
+     "epsilon_bps": 60329756.843928106,
+     "lambda_advertised_bps": 57270243.1560719,
+     "lambda_fresh_bps": 39670243.156071894,
+     "link": "isl:134:14",
+     "z_realized": 0.29173000059540866
+    },
+    {
+     "delta_bps": -17900000.0,
+     "epsilon_bps": 65800000.0,
+     "lambda_advertised_bps": 16300000.0,
+     "lambda_fresh_bps": 34200000.0,
+     "link": "isl:126:125",
+     "z_realized": 0.27203647416413373
+    },
+    {
+     "delta_bps": -12180202.616974182,
+     "epsilon_bps": 46235648.67601059,
+     "lambda_advertised_bps": 41584148.70701523,
+     "lambda_fresh_bps": 53764351.32398941,
+     "link": "isl:24:44",
+     "z_realized": 0.26343747661734207
+    },
+    {
+     "delta_bps": -17400000.0,
+     "epsilon_bps": 69700000.0,
+     "lambda_advertised_bps": 12900000.0,
+     "lambda_fresh_bps": 30300000.0,
+     "link": "isl:134:135",
+     "z_realized": 0.24964131994261118
+    },
+    {
+     "delta_bps": -14975348.696001891,
+     "epsilon_bps": 62900000.0,
+     "lambda_advertised_bps": 22124651.30399811,
+     "lambda_fresh_bps": 37100000.0,
+     "link": "isl:76:56",
+     "z_realized": 0.2380818552623512
+    },
+    {
+     "delta_bps": 19195398.420929242,
+     "epsilon_bps": 80684536.80029097,
+     "lambda_advertised_bps": 38510861.620638266,
+     "lambda_fresh_bps": 19315463.199709024,
+     "link": "isl:26:46",
+     "z_realized": 0.23790678092930462
+    },
+    {
+     "delta_bps": -17100000.0,
+     "epsilon_bps": 74500000.0,
+     "lambda_advertised_bps": 8400000.0,
+     "lambda_fresh_bps": 25500000.0,
+     "link": "isl:125:124",
+     "z_realized": 0.2295302013422819
+    },
+    {
+     "delta_bps": 18700000.0,
+     "epsilon_bps": 82600000.0,
+     "lambda_advertised_bps": 36100000.0,
+     "lambda_fresh_bps": 17400000.0,
+     "link": "isl:46:45",
+     "z_realized": 0.22639225181598063
+    }
+   ],
+   "z_realized_max": 0.3845218739543421,
+   "z_realized_p50": 0.013259668508287293
+  },
+  {
+   "advertise_interval_s": 1.0,
+   "advertised_cell": "m3-b-queue_greedy-h1000-s7",
+   "e2e": {
+    "advertised_mean_ms": 0.3642629741534184,
+    "fresh_faster": 692,
+    "fresh_mean_ms": 0.36932881360297476,
+    "fresh_slower": 732,
+    "paired_mean_delta_ms": 4.650217135462094,
+    "paired_n": 1643,
+    "paired_p50_delta_ms": 0.0
+   },
+   "fates": {
+    "advertised": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 1646,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 4,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 0,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    },
+    "fresh": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 1647,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 3,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 0,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    }
+   },
+   "fresh_cell": "m3-real-b-queue_greedy-h1000-s7",
+   "fresh_state_source": "ideal_current",
+   "links": 304,
+   "max_abs_delta_mbps": 19.599999999999998,
+   "policy_advertised": "queue_greedy",
+   "policy_fresh": "queue_greedy",
+   "queue_area_isl_data": {
+    "advertised": 18100982.852577366,
+    "fresh": 19371410.17696949
+   },
+   "same_trace": true,
+   "schema": "sq-realized-compare/v1",
+   "sum_abs_delta_mbps": 695.2948337368622,
+   "top_links": [
+    {
+     "delta_bps": 18999999.999999993,
+     "epsilon_bps": 49531517.75105133,
+     "lambda_advertised_bps": 69468482.24894866,
+     "lambda_fresh_bps": 50468482.24894867,
+     "link": "isl:126:6",
+     "z_realized": 0.3835941409164008
+    },
+    {
+     "delta_bps": -19600000.0,
+     "epsilon_bps": 69700000.0,
+     "lambda_advertised_bps": 10700000.0,
+     "lambda_fresh_bps": 30300000.0,
+     "link": "isl:126:125",
+     "z_realized": 0.2812051649928264
+    },
+    {
+     "delta_bps": 14815744.452373222,
+     "epsilon_bps": 63515744.45237322,
+     "lambda_advertised_bps": 51300000.0,
+     "lambda_fresh_bps": 36484255.54762678,
+     "link": "isl:105:125",
+     "z_realized": 0.23326097458375364
+    },
+    {
+     "delta_bps": 14531893.4661313,
+     "epsilon_bps": 68931893.4661313,
+     "lambda_advertised_bps": 45600000.0,
+     "lambda_fresh_bps": 31068106.5338687,
+     "link": "isl:36:56",
+     "z_realized": 0.21081523711910422
+    },
+    {
+     "delta_bps": -16600000.0,
+     "epsilon_bps": 81600000.0,
+     "lambda_advertised_bps": 1800000.0,
+     "lambda_fresh_bps": 18400000.0,
+     "link": "isl:105:104",
+     "z_realized": 0.2034313725490196
+    },
+    {
+     "delta_bps": -16000000.0,
+     "epsilon_bps": 82800000.0,
+     "lambda_advertised_bps": 1200000.0,
+     "lambda_fresh_bps": 17200000.0,
+     "link": "isl:104:84",
+     "z_realized": 0.1932367149758454
+    },
+    {
+     "delta_bps": 14300000.0,
+     "epsilon_bps": 74900000.0,
+     "lambda_advertised_bps": 39400000.0,
+     "lambda_fresh_bps": 25100000.0,
+     "link": "isl:20:39",
+     "z_realized": 0.1909212283044059
+    },
+    {
+     "delta_bps": 14300000.0,
+     "epsilon_bps": 74900000.0,
+     "lambda_advertised_bps": 39400000.0,
+     "lambda_fresh_bps": 25100000.0,
+     "link": "isl:37:36",
+     "z_realized": 0.1909212283044059
+    },
+    {
+     "delta_bps": 14300000.0,
+     "epsilon_bps": 74900000.0,
+     "lambda_advertised_bps": 39400000.0,
+     "lambda_fresh_bps": 25100000.0,
+     "link": "isl:38:37",
+     "z_realized": 0.1909212283044059
+    },
+    {
+     "delta_bps": 14300000.0,
+     "epsilon_bps": 74900000.0,
+     "lambda_advertised_bps": 39400000.0,
+     "lambda_fresh_bps": 25100000.0,
+     "link": "isl:39:38",
+     "z_realized": 0.1909212283044059
+    }
+   ],
+   "z_realized_max": 0.3835941409164008,
+   "z_realized_p50": 0.0071090047393364926
+  }
+ ],
+ "schema": "sq-realized-compare-batch/v1"
+}
