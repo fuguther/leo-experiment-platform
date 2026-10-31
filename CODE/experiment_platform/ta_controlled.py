@@ -486,7 +486,13 @@ def render_markdown(result: dict) -> str:
     for check in hypotheses(result["cells"]):
         lines.append(f"* **{check['id']}** {'SUPPORTED' if check['supported'] else 'REFUTED'}"
                      f" — {check['claim']}")
-        lines.append(f"  deltas: {json.dumps({k: round(v, 3) for k, v in check['deltas_ms'].items()})}")
+        deltas = check.get("deltas_ms")
+        if deltas is not None:
+            lines.append(
+                "  deltas: "
+                + json.dumps({k: round(v, 3) for k, v in deltas.items()}))
+        else:
+            lines.append("  cells: " + json.dumps(check["cells"]))
     return "\n".join(lines) + "\n"
 
 
