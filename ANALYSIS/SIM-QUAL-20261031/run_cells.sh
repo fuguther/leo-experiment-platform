@@ -17,6 +17,11 @@ EVIDENCE_ROOT="/Users/lge/Desktop/topic/三端文件与同步治理/evidence/t1"
 REMOTE_RUNS="/data/论文/leo-t1-wt/runs"
 CONCURRENCY="${CONCURRENCY:-2}"
 TIMEOUT_S="${TIMEOUT_S:-3600}"
+# Run-id date suffix.  The default is the campaign date; a second suffix exists
+# ONLY for cells whose first attempt was killed with its launcher and left an
+# incomplete run directory (no receipt, no result).  A run id is still never
+# reused: the killed attempt keeps its id, the retry gets a new one.
+RUN_DATE="${RUN_DATE:-20261031-01}"
 
 mode="${1:-}"; shift || true
 release_id="${1:-}"; shift || true
@@ -33,7 +38,7 @@ if [[ "$mode" == launch ]]; then
     prefix="${RUN_ID_PREFIX:-}"
     [[ -n "$prefix" ]] || die "set RUN_ID_PREFIX (e.g. sq2-)"
     [[ -f "$contract" ]] || die "contract not found: $contract"
-    run_id_for() { printf '%s%s-20261031-01' "$prefix" "$1"; }
+    run_id_for() { printf '%s%s-%s' "$prefix" "$1" "$RUN_DATE"; }
     launch_one() {
         local cell="$1" run_id
         run_id="$(run_id_for "$cell")"
@@ -49,16 +54,21 @@ if [[ "$mode" == launch ]]; then
                 --cell "$cell" \
                 --out-dir "$REMOTE_RUNS/$run_id/$cell"
     }
-    index=0; total="${#cells[@]}"
-    while (( index < total )); do
-        chunk=("${cells[@]:$index:$CONCURRENCY}")
-        for cell in "${chunk[@]}"; do launch_one "$cell" & done
-        wait
-        index=$((index + CONCURRENCY))
+    # Static round-robin worker pool: each worker starts its next cell as soon
+    # as its previous one finishes.  (The old chunked loop gated every chunk on
+    # the slowest cell, which is wasteful for mixed 1 s / 20 ms cells.)
+    total="${#cells[@]}"
+    for ((worker = 0; worker < CONCURRENCY; worker++)); do
+        (
+            for ((index = worker; index < total; index += CONCURRENCY)); do
+                launch_one "${cells[index]}"
+            done
+        ) &
     done
+    wait
 else
     prefix="$third"
-    run_id_for() { printf '%s%s-20261031-01' "$prefix" "$1"; }
+    run_id_for() { printf '%s%s-%s' "$prefix" "$1" "$RUN_DATE"; }
     for cell in "${cells[@]}"; do
         run_id="$(run_id_for "$cell")"
         echo "[cells] pull cell=$cell run_id=$run_id"

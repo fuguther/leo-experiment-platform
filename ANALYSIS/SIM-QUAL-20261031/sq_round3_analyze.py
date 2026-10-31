@@ -1474,7 +1474,10 @@ def sync_deltas(blocks):
         if len(members) < 2:
             continue
         syncs = sorted(members)
-        slow, fast = syncs[0], syncs[-1]
+        # sync_MS: the SMALLER interval is the fast-sync side, so it is
+        # syncs[0].  (Earlier builds had these two labels swapped, which made
+        # delta = slow-fast while the docstring said fast-slow.)
+        fast, slow = syncs[0], syncs[-1]
         slow_block, fast_block = members[slow], members[fast]
         deltas = {}
         for name in SYNC_DELTA_KEYS:

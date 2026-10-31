@@ -141,3 +141,51 @@
 | isl:25:5 | 14.100 | 41.200 | -27.100 | 58.800 | 0.461 |
 | isl:5:25 | 74.524 | 53.900 | 20.624 | 46.100 | 0.447 |
 | isl:45:25 | 21.700 | 45.875 | -24.175 | 54.125 | 0.447 |
+
+# realized-vs-counterfactual freshness comparison
+
+- advertised cell: m3-c2-queue_greedy-h20-s7
+- fresh (ideal_current) cell: m3-real-c2-queue_greedy-h20-s7
+- same trace: True  policy: queue_greedy -> queue_greedy
+- state_source of fresh arm: ideal_current
+- sum |Δλ| over directed ISLs: 645.380 Mbps
+- max |Δλ|: 12.800 Mbps
+- z_realized p50 / max: 0.010227272727272727 / 0.2057877813504823
+- paired E2E (fresh - advertised): mean -20.301199308619832 ms, fresh faster 1018 / slower 770
+
+| link | λ advertised (Mbps) | λ fresh (Mbps) | Δ (Mbps) | ε (Mbps) | z_realized |
+|---|---|---|---|---|---|
+| isl:105:125 | 50.600 | 37.800 | 12.800 | 62.200 | 0.206 |
+| isl:24:44 | 53.274 | 44.742 | 8.532 | 55.258 | 0.154 |
+| isl:37:36 | 43.600 | 34.819 | 8.781 | 65.181 | 0.135 |
+| isl:22:21 | 44.200 | 35.514 | 8.686 | 64.486 | 0.135 |
+| isl:21:20 | 44.127 | 35.500 | 8.627 | 64.500 | 0.134 |
+| isl:23:22 | 44.200 | 35.617 | 8.583 | 64.383 | 0.133 |
+| isl:38:37 | 43.800 | 35.159 | 8.641 | 64.841 | 0.133 |
+| isl:20:39 | 44.002 | 35.400 | 8.602 | 64.600 | 0.133 |
+| isl:24:23 | 44.243 | 35.700 | 8.543 | 64.300 | 0.133 |
+| isl:39:38 | 43.830 | 35.300 | 8.530 | 64.700 | 0.132 |
+
+# realized-vs-counterfactual freshness comparison
+
+- advertised cell: m3-c2-queue_greedy_ewma-h20-s7
+- fresh (ideal_current) cell: m3-real-c2-queue_greedy_ewma-h20-s7
+- same trace: True  policy: queue_greedy_ewma -> queue_greedy_ewma
+- state_source of fresh arm: ideal_current
+- sum |Δλ| over directed ISLs: 1962.292 Mbps
+- max |Δλ|: 39.447 Mbps
+- z_realized p50 / max: 0.016210739614994935 / 0.6341909646399128
+- paired E2E (fresh - advertised): mean -10.118347047166752 ms, fresh faster 992 / slower 809
+
+| link | λ advertised (Mbps) | λ fresh (Mbps) | Δ (Mbps) | ε (Mbps) | z_realized |
+|---|---|---|---|---|---|
+| isl:105:125 | 77.247 | 37.800 | 39.447 | 62.200 | 0.634 |
+| isl:64:44 | 7.500 | 41.500 | -34.000 | 58.500 | 0.581 |
+| isl:126:6 | 81.300 | 60.700 | 20.600 | 39.300 | 0.524 |
+| isl:65:85 | 81.986 | 65.266 | 16.721 | 34.734 | 0.481 |
+| isl:85:105 | 81.856 | 65.036 | 16.820 | 34.964 | 0.481 |
+| isl:76:56 | 10.400 | 39.200 | -28.800 | 60.800 | 0.474 |
+| isl:45:65 | 81.496 | 65.300 | 16.196 | 34.700 | 0.467 |
+| isl:125:5 | 76.700 | 56.800 | 19.900 | 43.200 | 0.461 |
+| isl:6:26 | 73.100 | 50.210 | 22.890 | 49.790 | 0.460 |
+| isl:24:44 | 69.074 | 44.742 | 24.332 | 55.258 | 0.440 |

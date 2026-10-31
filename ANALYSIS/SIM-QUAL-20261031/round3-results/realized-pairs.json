@@ -815,6 +815,278 @@
    ],
    "z_realized_max": 0.7348856173345786,
    "z_realized_p50": 0.01026694045174538
+  },
+  {
+   "advertise_interval_s": 0.02,
+   "advertised_cell": "m3-c2-queue_greedy-h20-s7",
+   "e2e": {
+    "advertised_mean_ms": 0.424773431387503,
+    "fresh_faster": 1018,
+    "fresh_mean_ms": 0.40507494066237293,
+    "fresh_slower": 770,
+    "paired_mean_delta_ms": -20.301199308619832,
+    "paired_n": 2003,
+    "paired_p50_delta_ms": -0.7836800015503798
+   },
+   "fates": {
+    "advertised": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 2015,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 31,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 1,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    },
+    "fresh": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 2035,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 10,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 2,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    }
+   },
+   "fresh_cell": "m3-real-c2-queue_greedy-h20-s7",
+   "fresh_state_source": "ideal_current",
+   "links": 314,
+   "max_abs_delta_mbps": 12.799999999999999,
+   "policy_advertised": "queue_greedy",
+   "policy_fresh": "queue_greedy",
+   "queue_area_isl_data": {
+    "advertised": 39118242.38819229,
+    "fresh": 35299467.85446334
+   },
+   "same_trace": true,
+   "schema": "sq-realized-compare/v1",
+   "sum_abs_delta_mbps": 645.3795447540858,
+   "top_links": [
+    {
+     "delta_bps": 12800000.0,
+     "epsilon_bps": 62200000.0,
+     "lambda_advertised_bps": 50600000.0,
+     "lambda_fresh_bps": 37800000.0,
+     "link": "isl:105:125",
+     "z_realized": 0.2057877813504823
+    },
+    {
+     "delta_bps": 8531905.750235535,
+     "epsilon_bps": 55257532.91989624,
+     "lambda_advertised_bps": 53274372.8303393,
+     "lambda_fresh_bps": 44742467.08010376,
+     "link": "isl:24:44",
+     "z_realized": 0.15440258186343142
+    },
+    {
+     "delta_bps": 8780753.553580098,
+     "epsilon_bps": 65180753.5535801,
+     "lambda_advertised_bps": 43600000.0,
+     "lambda_fresh_bps": 34819246.4464199,
+     "link": "isl:37:36",
+     "z_realized": 0.13471390057437913
+    },
+    {
+     "delta_bps": 8685888.868186578,
+     "epsilon_bps": 64485888.86818658,
+     "lambda_advertised_bps": 44200000.0,
+     "lambda_fresh_bps": 35514111.13181342,
+     "link": "isl:22:21",
+     "z_realized": 0.13469441176411648
+    },
+    {
+     "delta_bps": 8626920.960238144,
+     "epsilon_bps": 64500000.0,
+     "lambda_advertised_bps": 44126920.960238144,
+     "lambda_fresh_bps": 35500000.0,
+     "link": "isl:21:20",
+     "z_realized": 0.13375071256183169
+    },
+    {
+     "delta_bps": 8582764.358487464,
+     "epsilon_bps": 64382764.358487464,
+     "lambda_advertised_bps": 44200000.0,
+     "lambda_fresh_bps": 35617235.641512536,
+     "link": "isl:23:22",
+     "z_realized": 0.13330841637519739
+    },
+    {
+     "delta_bps": 8641437.212257043,
+     "epsilon_bps": 64841437.21225704,
+     "lambda_advertised_bps": 43800000.0,
+     "lambda_fresh_bps": 35158562.78774296,
+     "link": "isl:38:37",
+     "z_realized": 0.13327029109440441
+    },
+    {
+     "delta_bps": 8602392.868547164,
+     "epsilon_bps": 64600000.0,
+     "lambda_advertised_bps": 44002392.868547164,
+     "lambda_fresh_bps": 35400000.0,
+     "link": "isl:20:39",
+     "z_realized": 0.13316397629329976
+    },
+    {
+     "delta_bps": 8543375.781407103,
+     "epsilon_bps": 64300000.0,
+     "lambda_advertised_bps": 44243375.7814071,
+     "lambda_fresh_bps": 35700000.0,
+     "link": "isl:24:23",
+     "z_realized": 0.1328674305039985
+    },
+    {
+     "delta_bps": 8530269.028783217,
+     "epsilon_bps": 64700000.0,
+     "lambda_advertised_bps": 43830269.02878322,
+     "lambda_fresh_bps": 35300000.0,
+     "link": "isl:39:38",
+     "z_realized": 0.13184341620994153
+    }
+   ],
+   "z_realized_max": 0.2057877813504823,
+   "z_realized_p50": 0.010227272727272727
+  },
+  {
+   "advertise_interval_s": 0.02,
+   "advertised_cell": "m3-c2-queue_greedy_ewma-h20-s7",
+   "e2e": {
+    "advertised_mean_ms": 0.4156726133979001,
+    "fresh_faster": 992,
+    "fresh_mean_ms": 0.40507494066237293,
+    "fresh_slower": 809,
+    "paired_mean_delta_ms": -10.118347047166752,
+    "paired_n": 2035,
+    "paired_p50_delta_ms": 0.0
+   },
+   "fates": {
+    "advertised": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 2047,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 0,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 0,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    },
+    "fresh": {
+     "ACCESS_QUEUE_OVERFLOW": 0,
+     "ACCESS_REJECTED": 0,
+     "DATA_DEADLINE_EXPIRED": 0,
+     "DELIVERED": 2035,
+     "GEOMETRY_LOSS_IN_FLIGHT": 0,
+     "HOLDING_QUEUE_OVERFLOW": 0,
+     "IN_SYSTEM_AT_STOP": 10,
+     "ISL_QUEUE_OVERFLOW": 0,
+     "NO_ROUTE": 2,
+     "RANDOM_OUTAGE_IN_FLIGHT": 0
+    }
+   },
+   "fresh_cell": "m3-real-c2-queue_greedy_ewma-h20-s7",
+   "fresh_state_source": "ideal_current",
+   "links": 305,
+   "max_abs_delta_mbps": 39.446678000602574,
+   "policy_advertised": "queue_greedy_ewma",
+   "policy_fresh": "queue_greedy_ewma",
+   "queue_area_isl_data": {
+    "advertised": 34036480.487370454,
+    "fresh": 35299467.85446334
+   },
+   "same_trace": true,
+   "schema": "sq-realized-compare/v1",
+   "sum_abs_delta_mbps": 1962.2916600603617,
+   "top_links": [
+    {
+     "delta_bps": 39446678.00060257,
+     "epsilon_bps": 62200000.0,
+     "lambda_advertised_bps": 77246678.00060257,
+     "lambda_fresh_bps": 37800000.0,
+     "link": "isl:105:125",
+     "z_realized": 0.6341909646399128
+    },
+    {
+     "delta_bps": -34000000.0,
+     "epsilon_bps": 58500000.0,
+     "lambda_advertised_bps": 7500000.0,
+     "lambda_fresh_bps": 41500000.0,
+     "link": "isl:64:44",
+     "z_realized": 0.5811965811965812
+    },
+    {
+     "delta_bps": 20600000.0,
+     "epsilon_bps": 39300000.0,
+     "lambda_advertised_bps": 81300000.0,
+     "lambda_fresh_bps": 60700000.0,
+     "link": "isl:126:6",
+     "z_realized": 0.5241730279898219
+    },
+    {
+     "delta_bps": 16720677.413574465,
+     "epsilon_bps": 34734212.61498705,
+     "lambda_advertised_bps": 81986464.79858741,
+     "lambda_fresh_bps": 65265787.38501295,
+     "link": "isl:65:85",
+     "z_realized": 0.48138927457246744
+    },
+    {
+     "delta_bps": 16820359.056847133,
+     "epsilon_bps": 34964228.79996113,
+     "lambda_advertised_bps": 81856130.256886,
+     "lambda_fresh_bps": 65035771.20003887,
+     "link": "isl:85:105",
+     "z_realized": 0.48107336080771307
+    },
+    {
+     "delta_bps": -28800000.0,
+     "epsilon_bps": 60800000.0,
+     "lambda_advertised_bps": 10400000.0,
+     "lambda_fresh_bps": 39200000.0,
+     "link": "isl:76:56",
+     "z_realized": 0.47368421052631576
+    },
+    {
+     "delta_bps": 16196090.972468227,
+     "epsilon_bps": 34700000.0,
+     "lambda_advertised_bps": 81496090.97246823,
+     "lambda_fresh_bps": 65300000.0,
+     "link": "isl:45:65",
+     "z_realized": 0.4667461375351074
+    },
+    {
+     "delta_bps": 19900000.0,
+     "epsilon_bps": 43200000.0,
+     "lambda_advertised_bps": 76700000.0,
+     "lambda_fresh_bps": 56800000.0,
+     "link": "isl:125:5",
+     "z_realized": 0.46064814814814814
+    },
+    {
+     "delta_bps": 22889704.91939678,
+     "epsilon_bps": 49789704.91939678,
+     "lambda_advertised_bps": 73100000.0,
+     "lambda_fresh_bps": 50210295.08060322,
+     "link": "isl:6:26",
+     "z_realized": 0.4597276677267381
+    },
+    {
+     "delta_bps": 24331587.13385292,
+     "epsilon_bps": 55257532.91989624,
+     "lambda_advertised_bps": 69074054.21395668,
+     "lambda_fresh_bps": 44742467.08010376,
+     "link": "isl:24:44",
+     "z_realized": 0.4403306815945812
+    }
+   ],
+   "z_realized_max": 0.6341909646399128,
+   "z_realized_p50": 0.016210739614994935
   }
  ],
  "schema": "sq-realized-compare-batch/v1"

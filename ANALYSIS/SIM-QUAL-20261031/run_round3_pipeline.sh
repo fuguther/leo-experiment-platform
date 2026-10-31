@@ -11,12 +11,16 @@ OUT="ANALYSIS/SIM-QUAL-20261031/round3-results"
 mkdir -p "$OUT"
 
 CELLS=()
-for run in "$E"/sq5-*-20261031-01; do
-    [ -d "$run" ] || continue
-    cell="$(basename "$run")"
-    cell="${cell#sq5-}"
-    cell="${cell%-20261031-01}"
-    [ -d "$run/$cell/arms/now" ] && CELLS+=("$run/$cell")
+# -01 is the normal suffix; -02 is the documented retry suffix for cells whose
+# first attempt was killed with its launcher before producing a receipt.
+for date in 20261031-01 20261031-02; do
+    for run in "$E"/sq5-*-"$date"; do
+        [ -d "$run" ] || continue
+        cell="$(basename "$run")"
+        cell="${cell#sq5-}"
+        cell="${cell%-"$date"}"
+        [ -d "$run/$cell/arms/now" ] && CELLS+=("$run/$cell")
+    done
 done
 echo "[pipeline] evidence cell dirs: ${#CELLS[@]}"
 if [ "${#CELLS[@]}" -eq 0 ]; then
