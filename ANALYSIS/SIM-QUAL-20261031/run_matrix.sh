@@ -56,16 +56,18 @@ pull_one() {
 }
 
 if [[ "$mode" == launch ]]; then
-    running=0
-    for cell in "${cells[@]}"; do
-        launch_one "$cell" &
-        running=$((running + 1))
-        if (( running >= CONCURRENCY )); then
-            wait -n || die "one concurrent launch failed; inspect its run receipt"
-            running=$((running - 1))
-        fi
+    # macOS ships bash 3.2 (no `wait -n`): launch at most CONCURRENCY runs and
+    # wait for the whole chunk, which keeps the VM below its 2-run ceiling.
+    index=0
+    total="${#cells[@]}"
+    while (( index < total )); do
+        chunk=("${cells[@]:$index:$CONCURRENCY}")
+        for cell in "${chunk[@]}"; do
+            launch_one "$cell" &
+        done
+        wait
+        index=$((index + CONCURRENCY))
     done
-    wait
 else
     for cell in "${cells[@]}"; do
         pull_one "$cell"

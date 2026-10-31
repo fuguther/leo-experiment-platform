@@ -1,0 +1,763 @@
+{
+ "cells": {
+  "p1-low-ewma": {
+   "cell": "/Users/lge/Desktop/topic/\u4e09\u7aef\u6587\u4ef6\u4e0e\u540c\u6b65\u6cbb\u7406/evidence/t1/sq-p1-low-ewma-20261031-01/p1-low-ewma",
+   "decisions": {
+    "aoi_decomposition_ms": {
+     "generated_to_received": {
+      "p50": 7.02981934959368,
+      "p90": 7.366903976395278,
+      "p95": 7.366903976395278,
+      "p99": 10.697669803066745
+     },
+     "received_to_decision": {
+      "p50": 514.7304866816338,
+      "p90": 906.3715790901741,
+      "p95": 952.5034100497312,
+      "p99": 989.8417028902653
+     }
+    },
+    "aoi_ms": {
+     "p50": 519.6679042082284,
+     "p90": 912.700629238695,
+     "p95": 958.1660054126733,
+     "p99": 995.2859017703996
+    },
+    "config_sha256": "c5fbbde80a153de36e0af897458b6afb94f7b8e0ad4e764a5489730063dff1b4",
+    "ewma_alpha": 0.25,
+    "flip": {
+     "n": 1396,
+     "rate": 0.2807158656746431,
+     "semantics": "truth_substituted_rerank_not_resimulated_counterfactual"
+    },
+    "gamma": {
+     "bins": [
+      {
+       "bin": "[0,0.5)",
+       "flip_rate": 0.14867876472461,
+       "n": 3141
+      },
+      {
+       "bin": "[0.5,1)",
+       "flip_rate": 0.7192307692307692,
+       "n": 260
+      },
+      {
+       "bin": "[1,2)",
+       "flip_rate": 0.8057851239669421,
+       "n": 242
+      },
+      {
+       "bin": "[2,5)",
+       "flip_rate": 0.8241206030150754,
+       "n": 199
+      },
+      {
+       "bin": "[5,inf)",
+       "flip_rate": 0.8774509803921569,
+       "n": 204
+      }
+     ],
+     "definition": "Gamma = |d(Q_a/rate_a)/dt - d(Q_b/rate_b)/dt| * tau / m_truth",
+     "median": 0.040671877748517264,
+     "n": 4046
+    },
+    "hysteresis_eta_s": null,
+    "margin_truth_ms": {
+     "p50": 11.374570043729658,
+     "p90": 24.048304275794038,
+     "p95": 33.96570731390037,
+     "p99": 72.75063976395627
+    },
+    "margin_used_ms": {
+     "p50": 12.635268493374651,
+     "p90": 31.03082428468562,
+     "p95": 34.02643852624068,
+     "p99": 72.75063976395627
+    },
+    "n_decisions_multi": 4973,
+    "n_decisions_with_truth": 4967,
+    "policy": "queue_greedy_ewma",
+    "regret_ms": {
+     "frac_gt_0": 0.2798951401492236,
+     "frac_gt_1ms": 0.27001411574914297,
+     "mean": 1.8243830276890889,
+     "p50": 0.0,
+     "p90": 7.894705629818491,
+     "p99": 9.19133553246567
+    },
+    "schema": "sq-policy-decision-stats/v1",
+    "switch": {
+     "pairs": 4932,
+     "rate": 0.289132197891322
+    },
+    "wrong_duration_W_ms": {
+     "censored": 14,
+     "n": 177,
+     "p50": 156.77550576798893,
+     "p90": 913.9737444071336
+    }
+   },
+   "network": {
+    "control": {
+     "bits": {
+      "delivered": 291812840,
+      "in_system": 54466616,
+      "offered": 406526960,
+      "terminal_loss": 60247504
+     },
+     "counters": {
+      "arrived": 31760,
+      "duplicate": 0,
+      "entered_queue": 44240,
+      "expired": 6556,
+      "geometry_lost": 0,
+      "in_system": 5924,
+      "lost": 0,
+      "overflow": 0,
+      "registered": 44240,
+      "snapshots_created": 2940,
+      "transmission_completed": 31760,
+      "transmission_started": 32124
+     },
+     "fate_counts": {
+      "CONTROL_EXPIRED": 6556,
+      "DELIVERED": 31760,
+      "DUPLICATE": 0,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "IN_SYSTEM_AT_STOP": 5924,
+      "QUEUE_OVERFLOW": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "service_share_estimate": 0.00035301098901098906
+    },
+    "delivered_bits": 427000000,
+    "delivery": {
+     "delivered": 427,
+     "fate_counts": {
+      "ACCESS_QUEUE_OVERFLOW": 0,
+      "ACCESS_REJECTED": 0,
+      "DATA_DEADLINE_EXPIRED": 0,
+      "DELIVERED": 427,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "HOLDING_QUEUE_OVERFLOW": 0,
+      "IN_SYSTEM_AT_STOP": 0,
+      "ISL_QUEUE_OVERFLOW": 0,
+      "NO_ROUTE": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "offered": 427
+    },
+    "e2e_ms": {
+     "mean": 275.251728636293,
+     "p50": 288.8534152329765,
+     "p90": 300.21422200643235,
+     "p95": 357.25510844722305,
+     "p99": 436.9113327494176
+    },
+    "goodput_mbps_window": 21.35,
+    "hops_max": 32,
+    "hops_mean": 17.80093676814988,
+    "offered_bits": 427000000,
+    "queue_area_bits_s": {
+     "downlink": 0.0,
+     "holding": 189658.92007949488,
+     "isl_ctrl": 848277195.7288997,
+     "isl_data": 781731.2388446149,
+     "uplink": 41807.99999999874
+    },
+    "queue_wait_ms": {
+     "p50": 0.0,
+     "p90": 8.335410597659632,
+     "p95": 9.999999999999787,
+     "p99": 17.101376029310167
+    },
+    "schema": "sq-policy-network-stats/v1"
+   },
+   "policy": "queue_greedy_ewma",
+   "trace_source_sha256": "d94f08935e5384bfe1a383f42efc72581764bd34a5cb476853f9ad4a343931f4"
+  },
+  "p1-low-geom": {
+   "cell": "/Users/lge/Desktop/topic/\u4e09\u7aef\u6587\u4ef6\u4e0e\u540c\u6b65\u6cbb\u7406/evidence/t1/sq-p1-low-geom-20261031-01/p1-low-geom",
+   "decisions": {
+    "aoi_decomposition_ms": {
+     "generated_to_received": {
+      "p50": 7.02981934959368,
+      "p90": 7.366903976395278,
+      "p95": 7.366903976395278,
+      "p99": 10.697669803066745
+     },
+     "received_to_decision": {
+      "p50": 516.2201260616008,
+      "p90": 906.8622839777323,
+      "p95": 952.1085208281157,
+      "p99": 989.1246037021109
+     }
+    },
+    "aoi_ms": {
+     "p50": 521.8951104632215,
+     "p90": 912.700629238695,
+     "p95": 957.676613093561,
+     "p99": 995.7274297978156
+    },
+    "config_sha256": "4940023ac4ce5c6a2354cd3ec41f30f621f3f295e8a83597a23b97b3f2c51a46",
+    "ewma_alpha": null,
+    "flip": {
+     "n": 0,
+     "rate": 0.0,
+     "semantics": "truth_substituted_rerank_not_resimulated_counterfactual"
+    },
+    "gamma": {
+     "bins": [
+      {
+       "bin": "[0,0.5)",
+       "flip_rate": 0.0,
+       "n": 3140
+      },
+      {
+       "bin": "[0.5,1)",
+       "flip_rate": 0.0,
+       "n": 287
+      },
+      {
+       "bin": "[1,2)",
+       "flip_rate": 0.0,
+       "n": 249
+      },
+      {
+       "bin": "[2,5)",
+       "flip_rate": 0.0,
+       "n": 202
+      },
+      {
+       "bin": "[5,inf)",
+       "flip_rate": 0.0,
+       "n": 118
+      }
+     ],
+     "definition": "Gamma = |d(Q_a/rate_a)/dt - d(Q_b/rate_b)/dt| * tau / m_truth",
+     "median": 0.02871162630851837,
+     "n": 3996
+    },
+    "hysteresis_eta_s": null,
+    "margin_truth_ms": {
+     "p50": 12.917487880214802,
+     "p90": 31.028559403390318,
+     "p95": 34.03265779343975,
+     "p99": 72.75063976395627
+    },
+    "margin_used_ms": {
+     "p50": 12.87963316102568,
+     "p90": 31.028559403390318,
+     "p95": 34.0323590506962,
+     "p99": 72.75063976395627
+    },
+    "n_decisions_multi": 4933,
+    "n_decisions_with_truth": 4927,
+    "policy": "geometry",
+    "regret_ms": {
+     "frac_gt_0": 0.0,
+     "frac_gt_1ms": 0.0,
+     "mean": 0.0,
+     "p50": 0.0,
+     "p90": 0.0,
+     "p99": 0.0
+    },
+    "schema": "sq-policy-decision-stats/v1",
+    "switch": {
+     "pairs": 4900,
+     "rate": 0.2857142857142857
+    },
+    "wrong_duration_W_ms": {
+     "censored": 0,
+     "n": 0,
+     "p50": null,
+     "p90": null
+    }
+   },
+   "network": {
+    "control": {
+     "bits": {
+      "delivered": 291812840,
+      "in_system": 54466616,
+      "offered": 406526960,
+      "terminal_loss": 60247504
+     },
+     "counters": {
+      "arrived": 31760,
+      "duplicate": 0,
+      "entered_queue": 44240,
+      "expired": 6556,
+      "geometry_lost": 0,
+      "in_system": 5924,
+      "lost": 0,
+      "overflow": 0,
+      "registered": 44240,
+      "snapshots_created": 2940,
+      "transmission_completed": 31760,
+      "transmission_started": 32124
+     },
+     "fate_counts": {
+      "CONTROL_EXPIRED": 6556,
+      "DELIVERED": 31760,
+      "DUPLICATE": 0,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "IN_SYSTEM_AT_STOP": 5924,
+      "QUEUE_OVERFLOW": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "service_share_estimate": 0.00035301098901098906
+    },
+    "delivered_bits": 427000000,
+    "delivery": {
+     "delivered": 427,
+     "fate_counts": {
+      "ACCESS_QUEUE_OVERFLOW": 0,
+      "ACCESS_REJECTED": 0,
+      "DATA_DEADLINE_EXPIRED": 0,
+      "DELIVERED": 427,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "HOLDING_QUEUE_OVERFLOW": 0,
+      "IN_SYSTEM_AT_STOP": 0,
+      "ISL_QUEUE_OVERFLOW": 0,
+      "NO_ROUTE": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "offered": 427
+    },
+    "e2e_ms": {
+     "mean": 270.31501727470925,
+     "p50": 288.87186119679774,
+     "p90": 300.85984617072194,
+     "p95": 308.13907038741473,
+     "p99": 326.1940062001489
+    },
+    "goodput_mbps_window": 21.35,
+    "hops_max": 30,
+    "hops_mean": 17.430913348946135,
+    "offered_bits": 427000000,
+    "queue_area_bits_s": {
+     "downlink": 0.0,
+     "holding": 189658.92007949488,
+     "isl_ctrl": 848277112.573918,
+     "isl_data": 1395251.7094555527,
+     "uplink": 41807.99999999874
+    },
+    "queue_wait_ms": {
+     "p50": 0.0,
+     "p90": 11.242469938613553,
+     "p95": 17.39737194025537,
+     "p99": 31.043177098631247
+    },
+    "schema": "sq-policy-network-stats/v1"
+   },
+   "policy": "geometry",
+   "trace_source_sha256": "d94f08935e5384bfe1a383f42efc72581764bd34a5cb476853f9ad4a343931f4"
+  },
+  "p1-low-greedy": {
+   "cell": "/Users/lge/Desktop/topic/\u4e09\u7aef\u6587\u4ef6\u4e0e\u540c\u6b65\u6cbb\u7406/evidence/t1/sq-p1-low-greedy-20261031-01/p1-low-greedy",
+   "decisions": {
+    "aoi_decomposition_ms": {
+     "generated_to_received": {
+      "p50": 7.02981934959368,
+      "p90": 7.366903976395278,
+      "p95": 7.366903976395278,
+      "p99": 10.697669803066745
+     },
+     "received_to_decision": {
+      "p50": 514.3590386848373,
+      "p90": 906.3715790901741,
+      "p95": 952.9318830828295,
+      "p99": 989.7043858338534
+     }
+    },
+    "aoi_ms": {
+     "p50": 519.6679042082284,
+     "p90": 912.4472870153842,
+     "p95": 958.4144780335411,
+     "p99": 995.6305634629281
+    },
+    "config_sha256": "06ce96a6aed30803e4a62269276ae94c22a3f1756176acb5d09367d7f93a12dd",
+    "ewma_alpha": null,
+    "flip": {
+     "n": 1382,
+     "rate": 0.2764,
+     "semantics": "truth_substituted_rerank_not_resimulated_counterfactual"
+    },
+    "gamma": {
+     "bins": [
+      {
+       "bin": "[0,0.5)",
+       "flip_rate": 0.15524691358024692,
+       "n": 3240
+      },
+      {
+       "bin": "[0.5,1)",
+       "flip_rate": 0.7037037037037037,
+       "n": 270
+      },
+      {
+       "bin": "[1,2)",
+       "flip_rate": 0.7415254237288136,
+       "n": 236
+      },
+      {
+       "bin": "[2,5)",
+       "flip_rate": 0.8681318681318682,
+       "n": 182
+      },
+      {
+       "bin": "[5,inf)",
+       "flip_rate": 0.8959537572254336,
+       "n": 173
+      }
+     ],
+     "definition": "Gamma = |d(Q_a/rate_a)/dt - d(Q_b/rate_b)/dt| * tau / m_truth",
+     "median": 0.03974393535860239,
+     "n": 4101
+    },
+    "hysteresis_eta_s": null,
+    "margin_truth_ms": {
+     "p50": 11.279662318633415,
+     "p90": 24.04344069502505,
+     "p95": 33.94912352717117,
+     "p99": 72.75063976395627
+    },
+    "margin_used_ms": {
+     "p50": 12.954133149187571,
+     "p90": 31.023305114782836,
+     "p95": 34.03125697141697,
+     "p99": 72.75063976395627
+    },
+    "n_decisions_multi": 5000,
+    "n_decisions_with_truth": 4994,
+    "policy": "queue_greedy",
+    "regret_ms": {
+     "frac_gt_0": 0.27557160048134777,
+     "frac_gt_1ms": 0.2641395908543923,
+     "mean": 1.8635444756113442,
+     "p50": 0.0,
+     "p90": 7.871708585510465,
+     "p99": 12.004829405951266
+    },
+    "schema": "sq-policy-decision-stats/v1",
+    "switch": {
+     "pairs": 4958,
+     "rate": 0.2670431625655506
+    },
+    "wrong_duration_W_ms": {
+     "censored": 13,
+     "n": 188,
+     "p50": 159.26516314143237,
+     "p90": 1020.4499889496823
+    }
+   },
+   "network": {
+    "control": {
+     "bits": {
+      "delivered": 291812840,
+      "in_system": 54466616,
+      "offered": 406526960,
+      "terminal_loss": 60247504
+     },
+     "counters": {
+      "arrived": 31760,
+      "duplicate": 0,
+      "entered_queue": 44240,
+      "expired": 6556,
+      "geometry_lost": 0,
+      "in_system": 5924,
+      "lost": 0,
+      "overflow": 0,
+      "registered": 44240,
+      "snapshots_created": 2940,
+      "transmission_completed": 31760,
+      "transmission_started": 32124
+     },
+     "fate_counts": {
+      "CONTROL_EXPIRED": 6556,
+      "DELIVERED": 31760,
+      "DUPLICATE": 0,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "IN_SYSTEM_AT_STOP": 5924,
+      "QUEUE_OVERFLOW": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "service_share_estimate": 0.00035301098901098906
+    },
+    "delivered_bits": 427000000,
+    "delivery": {
+     "delivered": 427,
+     "fate_counts": {
+      "ACCESS_QUEUE_OVERFLOW": 0,
+      "ACCESS_REJECTED": 0,
+      "DATA_DEADLINE_EXPIRED": 0,
+      "DELIVERED": 427,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "HOLDING_QUEUE_OVERFLOW": 0,
+      "IN_SYSTEM_AT_STOP": 0,
+      "ISL_QUEUE_OVERFLOW": 0,
+      "NO_ROUTE": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "offered": 427
+    },
+    "e2e_ms": {
+     "mean": 290.9757267377122,
+     "p50": 288.86726539166574,
+     "p90": 427.33574847659384,
+     "p95": 427.70018320095284,
+     "p99": 439.0742873451856
+    },
+    "goodput_mbps_window": 21.35,
+    "hops_max": 32,
+    "hops_mean": 18.707259953161593,
+    "offered_bits": 427000000,
+    "queue_area_bits_s": {
+     "downlink": 0.0,
+     "holding": 189658.92007949488,
+     "isl_ctrl": 848278423.2661669,
+     "isl_data": 803920.1335223573,
+     "uplink": 41807.99999999874
+    },
+    "queue_wait_ms": {
+     "p50": 0.0,
+     "p90": 8.514607034268096,
+     "p95": 9.999999999999787,
+     "p99": 17.101376029310167
+    },
+    "schema": "sq-policy-network-stats/v1"
+   },
+   "policy": "queue_greedy",
+   "trace_source_sha256": "d94f08935e5384bfe1a383f42efc72581764bd34a5cb476853f9ad4a343931f4"
+  },
+  "p1-low-hyst": {
+   "cell": "/Users/lge/Desktop/topic/\u4e09\u7aef\u6587\u4ef6\u4e0e\u540c\u6b65\u6cbb\u7406/evidence/t1/sq-p1-low-hyst-20261031-01/p1-low-hyst",
+   "decisions": {
+    "aoi_decomposition_ms": {
+     "generated_to_received": {
+      "p50": 6.789674966904968,
+      "p90": 7.366903976395278,
+      "p95": 7.366903976395278,
+      "p99": 11.347366458499764
+     },
+     "received_to_decision": {
+      "p50": 516.2165352601704,
+      "p90": 905.4002963235846,
+      "p95": 952.0053634251404,
+      "p99": 989.8417028902653
+     }
+    },
+    "aoi_ms": {
+     "p50": 521.5053430557308,
+     "p90": 910.3849911116946,
+     "p95": 957.4480537602188,
+     "p99": 994.566868597504
+    },
+    "config_sha256": "3767ee1cac6f5998dd7d1542c2fab1ff567ca36d6ff3d791468102ec6d67bdd8",
+    "ewma_alpha": null,
+    "flip": {
+     "n": 706,
+     "rate": 0.14452405322415557,
+     "semantics": "truth_substituted_rerank_not_resimulated_counterfactual"
+    },
+    "gamma": {
+     "bins": [
+      {
+       "bin": "[0,0.5)",
+       "flip_rate": 0.0792629423808131,
+       "n": 3419
+      },
+      {
+       "bin": "[0.5,1)",
+       "flip_rate": 0.36212624584717606,
+       "n": 301
+      },
+      {
+       "bin": "[1,2)",
+       "flip_rate": 0.44,
+       "n": 200
+      },
+      {
+       "bin": "[2,5)",
+       "flip_rate": 0.5131578947368421,
+       "n": 152
+      },
+      {
+       "bin": "[5,inf)",
+       "flip_rate": 0.5897435897435898,
+       "n": 78
+      }
+     ],
+     "definition": "Gamma = |d(Q_a/rate_a)/dt - d(Q_b/rate_b)/dt| * tau / m_truth",
+     "median": 0.02337051200347501,
+     "n": 4150
+    },
+    "hysteresis_eta_s": 0.005,
+    "margin_truth_ms": {
+     "p50": 10.934151683399007,
+     "p90": 23.751153565076585,
+     "p95": 25.49541307574485,
+     "p99": 34.92660495093093
+    },
+    "margin_used_ms": {
+     "p50": 11.55784614671819,
+     "p90": 29.79334259821116,
+     "p95": 31.02668497006121,
+     "p99": 38.23322165320434
+    },
+    "n_decisions_multi": 4885,
+    "n_decisions_with_truth": 4885,
+    "policy": "queue_greedy_hysteresis",
+    "regret_ms": {
+     "frac_gt_0": 0.3170081967213115,
+     "frac_gt_1ms": 0.2805327868852459,
+     "mean": 1.674522064421497,
+     "p50": 0.0,
+     "p90": 7.010407607966715,
+     "p99": 12.002474682860143
+    },
+    "schema": "sq-policy-decision-stats/v1",
+    "switch": {
+     "pairs": 4846,
+     "rate": 0.20614940156830375
+    },
+    "wrong_duration_W_ms": {
+     "censored": 3,
+     "n": 158,
+     "p50": 61.08635571056986,
+     "p90": 742.4218545435224
+    }
+   },
+   "network": {
+    "control": {
+     "bits": {
+      "delivered": 291812840,
+      "in_system": 54466616,
+      "offered": 406526960,
+      "terminal_loss": 60247504
+     },
+     "counters": {
+      "arrived": 31760,
+      "duplicate": 0,
+      "entered_queue": 44240,
+      "expired": 6556,
+      "geometry_lost": 0,
+      "in_system": 5924,
+      "lost": 0,
+      "overflow": 0,
+      "registered": 44240,
+      "snapshots_created": 2940,
+      "transmission_completed": 31760,
+      "transmission_started": 32124
+     },
+     "fate_counts": {
+      "CONTROL_EXPIRED": 6556,
+      "DELIVERED": 31760,
+      "DUPLICATE": 0,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "IN_SYSTEM_AT_STOP": 5924,
+      "QUEUE_OVERFLOW": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "service_share_estimate": 0.00035301098901098906
+    },
+    "delivered_bits": 427000000,
+    "delivery": {
+     "delivered": 427,
+     "fate_counts": {
+      "ACCESS_QUEUE_OVERFLOW": 0,
+      "ACCESS_REJECTED": 0,
+      "DATA_DEADLINE_EXPIRED": 0,
+      "DELIVERED": 427,
+      "GEOMETRY_LOSS_IN_FLIGHT": 0,
+      "HOLDING_QUEUE_OVERFLOW": 0,
+      "IN_SYSTEM_AT_STOP": 0,
+      "ISL_QUEUE_OVERFLOW": 0,
+      "NO_ROUTE": 0,
+      "RANDOM_OUTAGE_IN_FLIGHT": 0
+     },
+     "offered": 427
+    },
+    "e2e_ms": {
+     "mean": 287.22019189884844,
+     "p50": 288.20265940920376,
+     "p90": 426.70393980121446,
+     "p95": 427.70099162654594,
+     "p99": 447.9839228088123
+    },
+    "goodput_mbps_window": 21.35,
+    "hops_max": 29,
+    "hops_mean": 18.494145199063233,
+    "offered_bits": 427000000,
+    "queue_area_bits_s": {
+     "downlink": 0.0,
+     "holding": 189658.92007949488,
+     "isl_ctrl": 848278757.7571447,
+     "isl_data": 883365.743048926,
+     "uplink": 41807.99999999874
+    },
+    "queue_wait_ms": {
+     "p50": 0.0,
+     "p90": 8.584095210843579,
+     "p95": 11.531532448877613,
+     "p99": 19.574913729834442
+    },
+    "schema": "sq-policy-network-stats/v1"
+   },
+   "policy": "queue_greedy_hysteresis",
+   "trace_source_sha256": "d94f08935e5384bfe1a383f42efc72581764bd34a5cb476853f9ad4a343931f4"
+  }
+ },
+ "paired_vs_baseline": [
+  {
+   "baseline": "p1-low-geom",
+   "cell": "p1-low-geom",
+   "faster": 0,
+   "mean_delta_ms": 0.0,
+   "p50_delta_ms": 0.0,
+   "paired_packets": 427,
+   "same_trace": true,
+   "slower": 0
+  },
+  {
+   "baseline": "p1-low-geom",
+   "cell": "p1-low-greedy",
+   "faster": 98,
+   "mean_delta_ms": 20.660709463002963,
+   "p50_delta_ms": 0.0,
+   "paired_packets": 427,
+   "same_trace": true,
+   "slower": 86
+  },
+  {
+   "baseline": "p1-low-geom",
+   "cell": "p1-low-hyst",
+   "faster": 199,
+   "mean_delta_ms": 16.90517462413921,
+   "p50_delta_ms": 0.0,
+   "paired_packets": 427,
+   "same_trace": true,
+   "slower": 75
+  },
+  {
+   "baseline": "p1-low-geom",
+   "cell": "p1-low-ewma",
+   "faster": 88,
+   "mean_delta_ms": 4.936711361583811,
+   "p50_delta_ms": 0.0,
+   "paired_packets": 427,
+   "same_trace": true,
+   "slower": 32
+  }
+ ],
+ "schema": "sq-policy-matrix/v1",
+ "trace_groups": {
+  "d94f08935e5384bfe1a383f42efc72581764bd34a5cb476853f9ad4a343931f4": [
+   "p1-low-geom",
+   "p1-low-greedy",
+   "p1-low-hyst",
+   "p1-low-ewma"
+  ]
+ }
+}
