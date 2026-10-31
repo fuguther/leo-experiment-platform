@@ -103,6 +103,40 @@ EWMA < greedy < hysteresis ≈ sticky < softmin << geometry。
 40–47% 明显高于 rule flip 13–22%，即“保持”让决策离 truth-optimal 更远（与 Round-1 的
 hysteresis rule-relative 结论一致）。二者都不是“更好的响应策略”。
 
+## 2b. 附录：响应强度的两个连续轴（运行于主矩阵之后，参数网格预注册）
+
+**P4 softmin temperature（J 与 greedy 相同，只改随机化强度）**
+
+| regime | T=2.5 ms | T=10 ms（主） | T=40 ms | greedy（hard, T→0 极限） |
+|---|---|---|---|---|
+| C 1 s E2E | 458.1 | 497.2 | 580.5 | 402.1 |
+| C 1 s PDR | 0.9678 | 0.8129 | 0.5183 | 0.9924 |
+| C 1 s switch | 0.4841 | 0.6304 | 0.7180 | 0.2756 |
+| B 1 s E2E | 432.4 | 491.6 | 552.5 | 374.3 |
+
+**P5 sticky hold（J 与 greedy 相同，只改决策惯性强度）**
+
+| regime | H=20 ms | H=100 ms（主） | H=500 ms | greedy（H→0 极限） |
+|---|---|---|---|---|
+| C 1 s E2E | 401.9 | 473.3 | 646.6 | 402.1 |
+| C 1 s PDR | 0.9795 | 0.9383 | 0.9477 | 0.9924 |
+| C 1 s switch | 0.2377 | 0.1775 | 0.0979 | 0.2756 |
+| B 1 s E2E | 382.3 | 412.1 | 517.3 | 374.3 |
+
+**FACT-APX**：两个“连续响应轴”都是**单调**的：softmin 的 T 越大（随机化越强）越差
+（C：458→497→581，PDR 0.97→0.81→0.52）；sticky 的 H 越大（惯性越强）越差
+（C：402→473→647）。H=20 ms 几乎回到 greedy（401.9 vs 402.1），T 再小也回不到 greedy
+（T=2.5 仍比 greedy 差 56 ms，因为随机采样本身在制造错误）。因此**不存在“额外随机化/额外惯性
+的中间最优”**；最优区就在“无随机化、无惯性”的平滑/硬 argmin 一侧，且 EWMA 平滑比 hard argmin 再低 ~20 ms。
+
+**附录完整性**：16/16 个 P4/P5 参数网格 cell 完成（C/B × 1 s/20 ms × T 或 H 网格，s7），
+表中所有数字为对应 cell 的实测；未做 seed 扩展，因此只作机制曲线。
+
+**100 ms sanity（selected cells，C/B，s7）**：C 档 E2E = EWMA 420.2、greedy 439.3、sticky 454.9、
+hysteresis 466.4、softmin 499.0、geometry 675.2；B 档 = EWMA 391.8、greedy 403.5、sticky 404.9、
+hysteresis 417.2、softmin 487.1、geometry 692.3。100 ms 基本落在 1 s 与 20 ms 之间（单 seed），
+与“freshness 单调影响”一致的 sanity，不构成额外证据。
+
 ## 3. freshness–stability trade-off（Δ = 20 ms − 1 s；同 trace/seed 配对）
 
 | regime | policy | ΔAoI p50 | Δflip | Δswitch | ΔE2E mean | Δhops | Δarea |
@@ -231,7 +265,5 @@ B 最优 1 s EWMA=358.0，最优 20 ms greedy=376.1。freshness 本身不是性�
   `sq5-m3-c2-queue_greedy-h1000-s8-20261031-01`、`sq5-m3-c2-queue_greedy-h1000-s9-20261031-01`）。
 - 覆盖：A/B/C/D 四个 regime × 6 policies × 2 sync × seeds 7/8/9 **全部 156 cells 完成**
   （每组 n_cells=3，identity_checks 为空）。
-- 已知小缺口：appendix 只跑了 Tier-1 中包含的 12 个 100 ms sanity cell；
-  P4 的 temperature 网格（2.5/40 ms）与 P5 的 hold 网格（20/500 ms）未在 time budget 内运行，
-  主结果只用预注册 T=10 ms、H=100 ms（协议已冻结），因此不改变主结论，但“T/H 敏感性曲线”
-  只能留待下一轮。
+- appendix：12 个 100 ms sanity + 16 个 P4/P5 参数网格 cell 全部完成（见 §2b），
+  只用于机制曲线，不参与主结论的策略选择。主结果仍只用预注册 T=10 ms、H=100 ms。

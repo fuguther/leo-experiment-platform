@@ -132,6 +132,9 @@ S5. 20 ms 档的 measured AoI p50 = 16.3–16.6 ms，不是“advertisement inte
 
 D1. 策略类别一阶：B/C 下 queue-aware 比 geometry 低 ~300 ms（3 seeds）。
 D2. 响应形状排序：EWMA < greedy < hysteresis≈sticky < softmin（B/C，1 s）。
+    附录的两个连续轴单调：softmin T=2.5/10/40 ms → C 1 s E2E 458/497/581 ms（PDR 0.97/0.81/0.52）；
+    sticky H=20/100/500 ms → 402/473/647 ms。H=20 ms 几乎回到 greedy，T 再小也回不到 greedy；
+    即“额外随机化/额外惯性”的中间最优不存在，最优区在“无随机化、无惯性”的平滑/argmin 一侧。
 D3. freshness 效应符号随策略：state-driven 变差（C EWMA +33.7、greedy +16.6），
     sticky 变好（−29.0）；所有 queue-aware Δswitch>0。
 D4. hop-stretch 介导：ΔE2E vs Δhops r=+0.978（24 对）；vs Δswitch +0.218。
@@ -146,8 +149,8 @@ U1. 真实 Starlink / 真实运营网络的 AoI 分布、queue trace 与路由�
 U2. 真实网络是否存在本 topology 未覆盖的“ε→0 且持续”的 regime；
     受控模型只能证明有界放大，不能证明真实系统同样有界。
 U3. same-continuation causal 的总体分布（n=36，非概率样本，单一策略/负载）。
-U4. P4/P5 的 temperature/hold 敏感性未完成全网格（time budget），
-    主结果只用预注册 T=10 ms、H=100 ms。
+U4. P4/P5 的预注册 T/H 网格已在附录完成（16 cells，均为单 seed s7、C/B）：
+    结论是单调变差，不改变主结果；但更细的 T/H 网格与更多 seed 仍未做。
 U5. formal 判据下的统计显著性与论文级外推（本轮全部 diagnostic）。
 
 ## 3. 论文方向建议（只从证据出发）
