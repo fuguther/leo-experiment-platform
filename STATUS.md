@@ -4,25 +4,23 @@
 
 ## 当前分支状态（`qual/sim-qual-20261031`，2026-11-01 凌晨；本 worktree）
 
-- 本轮两条线的入口都在 `ANALYSIS/SIM-QUAL-20261031/`：
-  - **Round-1（pre-fix）**：`QUALIFICATION-20261031.md`（A–F 资格，15 tests/144 断言全绿）、
-    `PROTOCOL-20261031.md`、`RESULTS-20261031.md`、`CONCLUSION-20261031.md`。
-    注意：pre-fix 网络数字已被 control dead-letter 修复推翻（见下），只作历史。
-  - **Round-2（post-fix）**：`calibration/{CALIB-20261031.md,CONTROL-FIX-COMPARISON.md}`、
-    `PROTOCOL-ROUND2-20261031.md`、`RESULTS-ROUND2-20261031.md`、`CONCLUSION-ROUND2-20261031.md`、
-    `persistence/`、`round2-results/`、`fork-samples/`、`fork-configs/`（在 EXPERIMENTS/contracts/）。
-- 关键发布与运行：
-  - control 修复 `fb90c01`（release `fb90c01…-96da8e3f…`）：死信 eliminated（expired 0，
-    isl_ctrl area −99.99%），delivered ads/AoI 不变；**data plane 改变**（+2 hops、+35–43 ms），
-    pre/post 不可混。pre-fix release `76427851…` 保留。
-  - Round-2 矩阵 release `038fb16…-b8eb375…`（B/C/D/sync）、`4e7a7b5…-aac7223…`（A）、
-    fork release `de632b3…-76a4127…`。
-  - 证据根 `三端文件与同步治理/evidence/t1/`：`sq4-*`（矩阵）、`sq3-*`（校准/A）、
-    `sq2-*`（校准/pre-post 对照）、`fk-c-*`（same-continuation forks）。
-- 结论（详见 `CONCLUSION-ROUND2-20261031.md`）：**SHRINK** —— stale state 是动作层现象
-  （flip 26–28%、Γ 单调），但在实测 A/B/C/D、多 seed、20 ms 同步下没有性能层转化；
-  AoI 510→16.6 ms 后 flip 只降 1.8–3.7 pp、E2E 反而变差；网络性能由策略类别决定。
-- 尚未关闭：完整 fork 汇总（n=12 冻结中）、根 STATUS/现态 Issue 的更新、pre-fix 历史的同 release 重跑。
+- **Round-3 入口**：`ANALYSIS/SIM-QUAL-20261031/ROUND3-PROTOCOL.md`（运行前冻结）、
+  `ROUND3-RESULTS.md`、`ROUND3-CONCLUSION.md`、`round3-results/`（156 cells 分析）、
+  `controlled-bottleneck/`、`response-dynamics/`、`fork-samples/round3-expansion.json`。
+- 关键发布：P4/P5 + 矩阵 release `2354c0f3…-c5d2dc9f…`；fork release
+  `73154a8…-2820a6ae…`（CODE 与 Round-2 相同）；realized oracle 附录
+  `b92df2c…-02e8c82d…`。证据 `evidence/t1/sq5-*`(156)、`sq5r-*`(8)、`fk3-*`(24)+`fk-c-*`(12)。
+- Round-3 结论：**KILL** “stale state 造成系统性能损失 / 预测 stale queue 提升 E2E”作为主命题；
+  保留 action-level SHRINK（flip 19–28%、Γ 单调预测 flip）与新的正结果主线
+  **responsiveness–stability trade-off**（策略如何响应队列状态 × capacity slack；
+  B/C 下 EWMA 358/381 ms vs geometry 665/674 ms；freshness 二阶且符号随策略；
+  hop-stretch 介导 r=0.978 vs switch r=0.218；受控瓶颈放大有界、无持续 queue growth）。
+- Round-1/2 保留：`QUALIFICATION/…`、`RESULTS-20261031.md`、`CONCLUSION-20261031.md`、
+  `calibration/`、`RESULTS-ROUND2/…`；pre-fix 网络数字只作历史，不与 post-fix 并列。
+- 未完成：P4 T 网格 / P5 H 网格 appendix（G13）、seed 10/11 与第二 topology replication（G14）、
+  多跳受控瓶颈（G15）、根 STATUS/现态 Issue 需 Issue 主控权限更新。
+- 运行事故：3 个 Tier-1 cell 首次 attempt 被 launcher 杀死留下 dead manifest（无 receipt），
+  manifest 已标 failed（带原因），以 `-20261031-02` 新 run-id 重跑成功；run-id 未复用。
 
 ## 历史分支状态（`night/time-exp-20261031`，2026-10-31）
 
