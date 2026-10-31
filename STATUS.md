@@ -17,8 +17,8 @@
   hop-stretch 介导 r=0.978 vs switch r=0.218；受控瓶颈放大有界、无持续 queue growth）。
 - Round-1/2 保留：`QUALIFICATION/…`、`RESULTS-20261031.md`、`CONCLUSION-20261031.md`、
   `calibration/`、`RESULTS-ROUND2/…`；pre-fix 网络数字只作历史，不与 post-fix 并列。
-- 未完成：P4 T 网格 / P5 H 网格 appendix（G13）、seed 10/11 与第二 topology replication（G14）、
-  多跳受控瓶颈（G15）、根 STATUS/现态 Issue 需 Issue 主控权限更新。
+- 未完成：seed 10/11 与第二 topology replication（G14）、多跳受控瓶颈（G15）、
+  根 STATUS/现态 Issue 需 Issue 主控权限更新。P4 T 网格/P5 H 网格 appendix 已完成（16 cells）。
 - 运行事故：3 个 Tier-1 cell 首次 attempt 被 launcher 杀死留下 dead manifest（无 receipt），
   manifest 已标 failed（带原因），以 `-20261031-02` 新 run-id 重跑成功；run-id 未复用。
 
