@@ -35,6 +35,30 @@ The four policies (POLICY-SPEC-20261031):
     ``J = J_a - resource_work_s + qbar_a / rate_a``.  ``n = 1`` therefore
     degenerates to greedy.  The level is recomputed from the received series on
     every decision (pure, deterministic; no hidden running state).
+``queue_softmin`` (Round 3, P4 -- continuous response strength)
+    The SAME ``J`` as ``queue_greedy`` (hold-last queue, no extrapolation), but
+    the action is SAMPLED instead of hard-argmin:
+
+        P(a) = exp(-(J_a - J_min)/T) / sum_b exp(-(J_b - J_min)/T)
+
+    over the complete (non-fallback) candidates only.  ``T`` comes from
+    ``time_alignment.softmin_temperature_s`` (frozen grid 0.0025/0.010/0.040 s,
+    main value 0.010); ``T -> 0`` is the hard greedy limit.  The uniform draw is
+    supplied BY THE CALLER (one uniform per decision, from the kernel's
+    per-decision private stream) so this function stays pure and deterministic:
+    ``sampled = inverse_cdf(probabilities, uniform)``.  A sampled direction is
+    placed first and the rest keep the greedy order; the kernel's existing
+    legality/loop/queue-room filters are untouched, so a filtered sample falls
+    through the same fallback order as every other policy.
+``queue_greedy_sticky`` (Round 3, P5 -- smooth decisions, not smooth state)
+    The SAME ``J`` as ``queue_greedy`` plus a per ``(satellite, src cell,
+    dst cell)`` memory of the last committed forward direction and the instant
+    it last CHANGED.  The flow identity is the OD pair ``(src, dst)`` -- this is
+    an OD-pair-level flowlet, not a TCP flow.  While
+    ``now - last_switch_at < H`` and the remembered direction is still a
+    complete (non-fallback) candidate, it is held first; otherwise the greedy
+    argmin is used.  ``H`` comes from ``time_alignment.sticky_hold_s`` (frozen
+    grid 0.02/0.1/0.5 s, main value 0.1).
 
 Information boundary
 --------------------
@@ -59,24 +83,36 @@ Audit contract (fixed by the Lead; offline flip/regret replay depends on it)
     The alpha actually used, or ``None`` when the policy does not use it.
 ``last_direction`` / ``snapshot_at``
     The committed memory entry consulted and the frozen decision instant.
+``softmin_temperature_s`` / ``sticky_hold_s``
+    The Round-3 parameter actually used, or ``None`` when the policy does not
+    use it.
 ``per_direction``
     One entry per scored direction with EXACTLY these keys:
     ``j_used_s`` (the J this policy sorted on; geometry included),
     ``resource_work_used_s`` (the queue time term this policy actually
     counted: ``0.0`` for geometry, ``qbar/rate`` for EWMA, the predictor's
-    ``resource_work_s`` for greedy/hysteresis, ``None`` when the direction is
-    a fallback), ``q_used_bits`` (the queue bits that term corresponds to;
-    ``None`` for geometry/fallback), ``service_rate_bps`` (the rate that term
-    was divided by), ``ewma_samples`` (arrived samples used, ``0`` for
-    non-EWMA), ``fallback`` and ``kept`` (``True`` only for the direction the
-    hysteresis rule kept).
+    ``resource_work_s`` for greedy/hysteresis/softmin/sticky, ``None`` when the
+    direction is a fallback), ``q_used_bits`` (the queue bits that term
+    corresponds to; ``None`` for geometry/fallback), ``service_rate_bps`` (the
+    rate that term was divided by), ``ewma_samples`` (arrived samples used,
+    ``0`` for non-EWMA), ``fallback`` and ``kept`` (``True`` only for the
+    direction a keep rule -- hysteresis or sticky -- held).
     The identity ``resource_work_used_s == q_used_bits / service_rate_bps``
     holds whenever both sides are not null, which is what makes the offline
     replay ``J_fresh = j_used_s - resource_work_used_s
     + truth_bits / service_rate_bps`` exact.
 ``selection``
-    ``{"winner": direction|None, "rule": "argmin"|"hysteresis_keep",
-    "kept_direction": direction|None}``.
+    ``{"winner": direction|None, "rule": "argmin"|"hysteresis_keep"|
+    "softmin_sample"|"sticky_keep", "kept_direction": direction|None}`` plus,
+    for ``queue_softmin``: ``sampled``, ``probabilities`` (complete candidates
+    only, they sum to 1), ``entropy_nats``, ``entropy_bits``, ``uniform``,
+    ``temperature_s``, ``j_min_s`` and ``tie_count``; and for
+    ``queue_greedy_sticky``: ``held``, ``held_ms``, ``h_s``, ``flow_key``,
+    ``voluntary_switch``, ``forced_switch`` and ``forced_keep_count``.
+``rng_key``
+    ``queue_softmin`` only: the private stream key the kernel drew the uniform
+    from (``softmin:<sat>:<pid>:<decision-ref>``), recorded so a replay can
+    reproduce the draw without guessing the stream name.
 ``scorer_ranking`` / ``applied_order`` / ``reason``
     Diagnostics: what the untouched scorer said, what this policy returned,
     and why.
@@ -99,10 +135,13 @@ GEOMETRY = "geometry"
 QUEUE_GREEDY = "queue_greedy"
 QUEUE_GREEDY_HYSTERESIS = "queue_greedy_hysteresis"
 QUEUE_GREEDY_EWMA = "queue_greedy_ewma"
+QUEUE_SOFTMIN = "queue_softmin"
+QUEUE_GREEDY_STICKY = "queue_greedy_sticky"
 
 POLICIES = (LEGACY, GEOMETRY, QUEUE_GREEDY, QUEUE_GREEDY_HYSTERESIS,
-            QUEUE_GREEDY_EWMA)
-QUEUE_POLICIES = (QUEUE_GREEDY, QUEUE_GREEDY_HYSTERESIS, QUEUE_GREEDY_EWMA)
+            QUEUE_GREEDY_EWMA, QUEUE_SOFTMIN, QUEUE_GREEDY_STICKY)
+QUEUE_POLICIES = (QUEUE_GREEDY, QUEUE_GREEDY_HYSTERESIS, QUEUE_GREEDY_EWMA,
+                  QUEUE_SOFTMIN, QUEUE_GREEDY_STICKY)
 
 #: Pre-registered grid (POLICY-SPEC-20261031 §4).  ``eta`` may only take a
 #: value from this grid; the main experiment is frozen at 0.005 s and other
@@ -110,6 +149,12 @@ QUEUE_POLICIES = (QUEUE_GREEDY, QUEUE_GREEDY_HYSTERESIS, QUEUE_GREEDY_EWMA)
 HYSTERESIS_ETA_GRID_S = (0.0, 0.002, 0.005, 0.010)
 #: Pre-registered grid (POLICY-SPEC-20261031 §5).  Main value 0.25.
 EWMA_ALPHA_GRID = (0.1, 0.25, 0.5)
+#: Round-3 P4 pre-registered grid (seconds).  Main value 0.010.
+SOFTMIN_TEMPERATURE_GRID_S = (0.0025, 0.010, 0.040)
+SOFTMIN_TEMPERATURE_DEFAULT_S = 0.010
+#: Round-3 P5 pre-registered grid (seconds).  Main value 0.1.
+STICKY_HOLD_GRID_S = (0.02, 0.1, 0.5)
+STICKY_HOLD_DEFAULT_S = 0.1
 
 #: Membership tolerance for the two frozen grids.  The grids are decimal
 #: constants that are not exactly representable in binary floating point; the
@@ -126,6 +171,8 @@ QUEUE_TERMS = ("resource_work_s", "local_egress_wait_s")
 
 _SELECTION_ARGMIN = "argmin"
 _SELECTION_HYSTERESIS_KEEP = "hysteresis_keep"
+_SELECTION_SOFTMIN_SAMPLE = "softmin_sample"
+_SELECTION_STICKY_KEEP = "sticky_keep"
 
 
 class StatePolicyError(ValueError):
@@ -192,6 +239,38 @@ def validate_alpha(value, frozen_grid: bool = True) -> float:
             f"{list(EWMA_ALPHA_GRID)}, got {value!r}; the value is frozen "
             "before the experiment and may not be chosen afterwards")
     return alpha
+
+
+def validate_temperature_s(value, frozen_grid: bool = True) -> float:
+    """``softmin_temperature_s``: finite, >= 0 (RUN grid 0.0025/0.010/0.040).
+
+    ``T = 0`` is the mathematical hard-argmin limit and is accepted by the pure
+    model only (``frozen_grid=False``); a RUN may not register it, because the
+    registered cells are 0.0025/0.010/0.040 s.
+    """
+    temperature = _finite("softmin_temperature_s", value)
+    if temperature < 0.0:
+        raise StatePolicyError(
+            f"softmin_temperature_s must be >= 0, got {value!r}")
+    if frozen_grid and not _on_grid(temperature, SOFTMIN_TEMPERATURE_GRID_S):
+        raise StatePolicyError(
+            "softmin_temperature_s must be one of the pre-registered grid "
+            f"{list(SOFTMIN_TEMPERATURE_GRID_S)} s, got {value!r}; the value "
+            "is frozen before the experiment and may not be chosen afterwards")
+    return temperature
+
+
+def validate_sticky_hold_s(value, frozen_grid: bool = True) -> float:
+    """``sticky_hold_s``: finite, > 0 (RUN grid 0.02/0.1/0.5 s)."""
+    hold = _finite("sticky_hold_s", value)
+    if hold <= 0.0:
+        raise StatePolicyError(f"sticky_hold_s must be > 0, got {value!r}")
+    if frozen_grid and not _on_grid(hold, STICKY_HOLD_GRID_S):
+        raise StatePolicyError(
+            "sticky_hold_s must be one of the pre-registered grid "
+            f"{list(STICKY_HOLD_GRID_S)} s, got {value!r}; the value is "
+            "frozen before the experiment and may not be chosen afterwards")
+    return hold
 
 
 # --------------------------------------------------------------------------
@@ -405,11 +484,89 @@ def _min_j(j_by_direction, index) -> tuple:
 
 
 # --------------------------------------------------------------------------
+# Round-3 P4: softmin distribution (pure, caller supplies the uniform)
+# --------------------------------------------------------------------------
+def softmin_distribution(j_by_direction, index, temperature_s) -> tuple:
+    """``({direction: p}, j_min, ranked, tie_count)`` over COMPLETE candidates.
+
+    ``P(a) = exp(-(J_a - J_min)/T) / sum_b exp(-(J_b - J_min)/T)``.
+
+    Fallbacks (``J is None``) are EXCLUDED from the distribution: a candidate
+    whose cost is not known may not receive invented probability mass.  The
+    returned ``probabilities`` therefore sum to 1 over the complete candidates.
+
+    ``T = 0`` is defined as EXACTLY the hard greedy choice (the scorer's
+    tie-broken argmin gets probability 1.0), not as the ``T -> 0`` limit
+    distribution: that keeps the degenerate case identical to
+    ``queue_greedy``.  For ``T > 0`` the limit as ``T -> 0`` is uniform over the
+    argmin set, and an exponential underflow is clamped to 0 weight (which is
+    that same limit, not a NaN).
+    """
+    temperature_s = validate_temperature_s(temperature_s, frozen_grid=False)
+    ranked = []
+    for direction, j in j_by_direction.items():
+        if j is None:
+            continue
+        ranked.append((float(j), index.get(direction, 0), str(direction)))
+    ranked.sort()
+    if not ranked:
+        return {}, None, [], 0
+    j_min = ranked[0][0]
+    tie_count = sum(1 for j, _index, _direction in ranked if j == j_min)
+    if temperature_s <= 0.0:
+        # hard greedy: the first (J, visible order, name) candidate wins
+        winner = ranked[0][2]
+        return ({direction: (1.0 if direction == winner else 0.0)
+                 for _j, _i, direction in ranked}, j_min, ranked, tie_count)
+    weights = {}
+    for j, _index, direction in ranked:
+        exponent = -(j - j_min) / temperature_s
+        weights[direction] = math.exp(exponent) if exponent > -745.0 else 0.0
+    total = sum(weights.values())
+    if not math.isfinite(total) or total <= 0.0:
+        # unreachable for finite inputs; never invent a distribution
+        weights = {direction: (1.0 if j == j_min else 0.0)
+                   for j, _index, direction in ranked}
+        total = sum(weights.values())
+    return ({d: w / total for d, w in weights.items()}, j_min, ranked,
+            tie_count)
+
+
+def inverse_cdf_sample(ranked, probabilities, uniform) -> str:
+    """Deterministic inverse-CDF draw over ``ranked`` (sorted by J, idx, name)."""
+    uniform = _finite("softmin_uniform", uniform)
+    if not 0.0 <= uniform < 1.0:
+        raise StatePolicyError(
+            f"softmin_uniform must be in [0, 1), got {uniform!r}")
+    cumulative = 0.0
+    last = None
+    for _j, _index, direction in ranked:
+        last = direction
+        cumulative += float(probabilities.get(direction, 0.0))
+        if uniform < cumulative:
+            return direction
+    if last is None:
+        raise StatePolicyError("inverse_cdf_sample got no complete candidate")
+    return last
+
+
+def distribution_entropy_nats(probabilities) -> float:
+    """Shannon entropy of the sampled distribution, in nats."""
+    return -sum(float(p) * math.log(float(p))
+                for p in probabilities.values() if float(p) > 0.0)
+
+
+# --------------------------------------------------------------------------
 # the ONE entry point
 # --------------------------------------------------------------------------
+
 def rank(scored, history_by_resource=None, snapshot_at=None, policy=LEGACY,
          eta_s=0.0, alpha=0.25, last_direction=None, visible_order=None,
-         tie_sig_digits=None) -> tuple:
+         tie_sig_digits=None,
+         softmin_temperature_s=SOFTMIN_TEMPERATURE_DEFAULT_S,
+         softmin_uniform=None,
+         sticky_hold_s=STICKY_HOLD_DEFAULT_S, sticky_state=None,
+         flow_key=None) -> tuple:
     """Order one decision's already-scored candidates under one policy.
 
     Parameters
@@ -420,21 +577,32 @@ def rank(scored, history_by_resource=None, snapshot_at=None, policy=LEGACY,
         The RECEIVED advertisement samples (``order_history`` output grouped by
         resource).  Only ``queue_greedy_ewma`` reads it.
     snapshot_at : float
-        The frozen decision instant; samples received after it never enter.
-        Required by every policy that measures a series (EWMA).
+        The frozen decision instant; samples received after it never enter, and
+        it is the ``now`` the Round-3 sticky hold compares its memory against.
     policy : str
         One of ``POLICIES``.
-    eta_s, alpha : float
-        Frozen hysteresis / EWMA parameters (validated against the
-        pre-registered grids).
+    eta_s, alpha, softmin_temperature_s, sticky_hold_s : float
+        Frozen policy parameters (validated here against the mathematical
+        domain; the pre-registered grids are the RUN rule enforced by
+        ``config.py`` / ``Kernel.__init__``).
     last_direction : str or None
         The direction the last committed FORWARD action used for this
         ``(satellite, destination)``; ``None`` when nothing was committed yet.
+        Used by ``queue_greedy_hysteresis``.
     visible_order : sequence of str, optional
         The snapshot's legal-direction order (the scorer's tie-break order).
     tie_sig_digits : int or None
         The scorer's diagnostics-only quantisation, applied to the policy J so
         a tie experiment means the same thing on both sides.
+    softmin_uniform : float or None
+        One uniform draw in ``[0, 1)`` from the CALLER's private per-decision
+        stream.  ``queue_softmin`` requires it (a missing draw is an error: the
+        function never reaches for a global RNG).
+    sticky_state : (direction, switched_at) or None
+        The committed memory of the ``(satellite, src, dst)`` flowlet, as of
+        ``snapshot_at``; ``None`` means "nothing committed for this flow yet".
+    flow_key : sequence or None
+        The memory key recorded in the audit (satellite + OD-pair identity).
 
     Returns
     -------
@@ -448,9 +616,12 @@ def rank(scored, history_by_resource=None, snapshot_at=None, policy=LEGACY,
     validate_policy(policy)
     # The MATHEMATICAL domain is checked here; the pre-registered grid is the
     # RUN rule and is enforced by config.py / Kernel.__init__, so the frozen
-    # definition stays testable (eta=0, alpha=1) without weakening a run.
+    # definition stays testable (eta=0, alpha=1, T=0) without weakening a run.
     eta_s = validate_eta_s(eta_s, frozen_grid=False)
     alpha = validate_alpha(alpha, frozen_grid=False)
+    softmin_temperature_s = validate_temperature_s(
+        softmin_temperature_s, frozen_grid=False)
+    sticky_hold_s = validate_sticky_hold_s(sticky_hold_s, frozen_grid=False)
     ranking = [str(d) for d in scored.ranking]
     index = _direction_index(scored, visible_order)
     fallback_by_direction = {s.direction: bool(s.fallback)
@@ -478,7 +649,7 @@ def rank(scored, history_by_resource=None, snapshot_at=None, policy=LEGACY,
             work_by_direction[score.direction] = work_s
             q_by_direction[score.direction] = level
             ewma_samples[score.direction] = int(count)
-    else:  # legacy / queue_greedy / queue_greedy_hysteresis
+    else:  # legacy / greedy / hysteresis / softmin / sticky: the greedy J
         for score in scored.scores:
             j = _greedy_j(score)
             j_by_direction[score.direction] = j
@@ -499,6 +670,9 @@ def rank(scored, history_by_resource=None, snapshot_at=None, policy=LEGACY,
     j_best = None
     best_direction = None
     reason = None
+    # Round-3 audit payloads (only the policy that uses them fills them).
+    softmin_audit = None
+    sticky_audit = None
 
     if policy == LEGACY:
         # The legacy layer is the existing ranking itself; no re-sort, no
@@ -540,6 +714,111 @@ def rank(scored, history_by_resource=None, snapshot_at=None, policy=LEGACY,
             else:
                 reason = ("J_last %.12g > J_best %.12g + eta %.12g s: switch"
                           % (float(j_last), float(j_best), eta_s))
+    elif policy == QUEUE_SOFTMIN:
+        if softmin_uniform is None:
+            raise StatePolicyError(
+                "queue_softmin requires softmin_uniform: the caller must draw "
+                "one uniform from its own per-decision stream (no global RNG)")
+        probabilities, j_min, ranked_known, tie_count = softmin_distribution(
+            j_by_direction, index, softmin_temperature_s)
+        greedy_best, j_best = _min_j(j_by_direction, index)
+        uniform = _finite("softmin_uniform", softmin_uniform)
+        if not 0.0 <= uniform < 1.0:
+            raise StatePolicyError(
+                f"softmin_uniform must be in [0, 1), got {uniform!r}")
+        if ranked_known:
+            sampled = inverse_cdf_sample(ranked_known, probabilities, uniform)
+            rule = _SELECTION_SOFTMIN_SAMPLE
+            best_direction = sampled
+            order = [sampled] + [d for d in ranking if d != sampled]
+            entropy = distribution_entropy_nats(probabilities)
+            reason = (
+                "sampled from P(a) proportional to exp(-(J_a - J_min)/T) over "
+                "the %d complete candidate(s); the greedy argmin is %r and "
+                "T=%.6g s, uniform=%.12g"
+                % (len(ranked_known), greedy_best,
+                   softmin_temperature_s, uniform))
+        else:
+            sampled = None
+            order = list(ranking)
+            entropy = 0.0
+            reason = ("no complete candidate: no distribution to sample; the "
+                      "scorer order is kept")
+        softmin_audit = {
+            "temperature_s": float(softmin_temperature_s),
+            "uniform": uniform,
+            "sampled": sampled,
+            "greedy_argmin": greedy_best,
+            "j_min_s": j_min,
+            "tie_count": int(tie_count),
+            "probabilities": dict(probabilities),
+            "entropy_nats": float(entropy),
+            "entropy_bits": (float(entropy) / math.log(2.0)
+                             if entropy else 0.0),
+        }
+    elif policy == QUEUE_GREEDY_STICKY:
+        greedy_best, j_best = _min_j(j_by_direction, index)
+        order = list(ranking)
+        best_direction = greedy_best
+        held = False
+        held_ms = None
+        last_complete = False
+        previous_direction = None
+        if sticky_state is not None:
+            if snapshot_at is None:
+                raise StatePolicyError(
+                    "queue_greedy_sticky requires snapshot_at: the hold window "
+                    "cannot be evaluated without the decision instant")
+            previous_direction = str(sticky_state[0])
+            switched_at = _finite("sticky_state_switched_at", sticky_state[1])
+            held_ms = (float(snapshot_at) - switched_at) * 1000.0
+            held = (float(snapshot_at) - switched_at) < sticky_hold_s
+            last_complete = j_by_direction.get(previous_direction) is not None
+            if held and last_complete:
+                kept_direction = previous_direction
+                kept_by_direction[kept_direction] = True
+                rule = _SELECTION_STICKY_KEEP
+                best_direction = kept_direction
+                order = [kept_direction] + [
+                    d for d in order if d != kept_direction]
+                reason = ("flowlet held: switched %.3f ms ago < H %.1f ms and "
+                          "%r is still a complete candidate"
+                          % (held_ms, sticky_hold_s * 1000.0,
+                             previous_direction))
+            elif held and not last_complete:
+                reason = ("flowlet memory exists (%.3f ms ago, inside H) but "
+                          "%r is no longer a complete candidate: forced "
+                          "switch to the greedy argmin"
+                          % (held_ms, previous_direction))
+            else:
+                reason = ("flowlet hold expired (%.3f ms >= H %.1f ms): "
+                          "greedy argmin"
+                          % (held_ms, sticky_hold_s * 1000.0))
+        else:
+            reason = "no committed forward direction for this flowlet yet"
+        greedy_switch = (previous_direction is not None
+                         and greedy_best is not None
+                         and greedy_best != previous_direction)
+        sticky_audit = {
+            "hold_s": float(sticky_hold_s),
+            "held": bool(held),
+            "held_ms": (None if held_ms is None else float(held_ms)),
+            "flow_key": (None if flow_key is None else
+                         {"satellite": int(flow_key[0]),
+                          "src": str(flow_key[1]),
+                          "dst": str(flow_key[2])}
+                         if len(flow_key) == 3
+                         else [str(part) for part in flow_key]),
+            "previous_direction": previous_direction,
+            "greedy_argmin": greedy_best,
+            "voluntary_switch": bool(rule == _SELECTION_ARGMIN
+                                     and last_complete and greedy_switch),
+            "forced_switch": bool(rule == _SELECTION_ARGMIN
+                                  and previous_direction is not None
+                                  and not last_complete),
+            "forced_keep_count": int(
+                1 if rule == _SELECTION_STICKY_KEEP and greedy_switch else 0),
+        }
     else:  # geometry / queue_greedy_ewma
         order = _sorted_known(j_by_direction, scored, index, tie_sig_digits)
         best_direction, j_best = _min_j(j_by_direction, index)
@@ -564,22 +843,32 @@ def rank(scored, history_by_resource=None, snapshot_at=None, policy=LEGACY,
             entry["geometry_terms_s"] = geometry_terms.get(direction)
         per_direction[direction] = entry
 
+    selection = {
+        "winner": best_direction,
+        "rule": rule,
+        "kept_direction": kept_direction,
+    }
+    if softmin_audit is not None:
+        selection.update(softmin_audit)
+    if sticky_audit is not None:
+        selection.update(sticky_audit)
+
     audit = {
         "schema": SCHEMA,
         "policy": policy,
         "hysteresis_eta_s": (float(eta_s) if policy == QUEUE_GREEDY_HYSTERESIS
                               else None),
         "ewma_alpha": (float(alpha) if policy == QUEUE_GREEDY_EWMA else None),
+        "softmin_temperature_s": (
+            float(softmin_temperature_s) if policy == QUEUE_SOFTMIN else None),
+        "sticky_hold_s": (float(sticky_hold_s)
+                          if policy == QUEUE_GREEDY_STICKY else None),
         "last_direction": (None if last_direction is None
                            else str(last_direction)),
         "snapshot_at": (None if snapshot_at is None
                         else float(snapshot_at)),
         "per_direction": per_direction,
-        "selection": {
-            "winner": best_direction,
-            "rule": rule,
-            "kept_direction": kept_direction,
-        },
+        "selection": selection,
         "j_last_s": j_last,
         "j_best_s": j_best,
         "threshold_s": (float(eta_s) if policy == QUEUE_GREEDY_HYSTERESIS
@@ -590,4 +879,12 @@ def rank(scored, history_by_resource=None, snapshot_at=None, policy=LEGACY,
         "source": "leo_sim.state_policy.rank: received advertisements and the "
                   "existing scorer terms only; no truth, no extrapolation",
     }
+    if policy in (QUEUE_SOFTMIN, QUEUE_GREEDY_STICKY):
+        # The kernel records these AFTER the unchanged legality pipeline runs
+        # (a policy only orders candidates; it may never commit a direction the
+        # existing filters rejected).  Declared here as None so the block schema
+        # is stable for every decision of the Round-3 policies, including the
+        # ones that end in hold/fail and therefore never commit anything.
+        audit["override"] = None
+        audit["committed_direction"] = None
     return list(order), audit

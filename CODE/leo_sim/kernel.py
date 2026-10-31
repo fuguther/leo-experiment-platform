@@ -1344,6 +1344,21 @@ class Kernel:
         self._state_policy_alpha = _state_policy.validate_alpha(
             self.cfg_ta.get("ewma_alpha", 0.25))
         self._state_policy_last: dict = {}
+        # ROUND-3 P4/P5.  softmin samples one action from a softmin over the
+        # SAME greedy J; sticky holds one OD-pair flowlet direction for a
+        # bounded hold time.  Both are parameters of the frozen registry here
+        # (the config validator has already applied the grid rule), and the
+        # flow memory is indexed by (satellite, src cell, dst cell): the flow
+        # identity is the OD pair -- an OD-pair-level flowlet, NOT a TCP flow.
+        self._state_policy_temperature_s = (
+            _state_policy.validate_temperature_s(
+                self.cfg_ta.get(
+                    "softmin_temperature_s",
+                    _state_policy.SOFTMIN_TEMPERATURE_DEFAULT_S)))
+        self._state_policy_sticky_hold_s = _state_policy.validate_sticky_hold_s(
+            self.cfg_ta.get("sticky_hold_s",
+                            _state_policy.STICKY_HOLD_DEFAULT_S))
+        self._state_policy_flow: dict = {}
         # EVENT-ADVERT: the deployable alternative to the periodic schedule.
         # A satellite emits an extra report when ITS OWN serving set changes
         # (an association becomes active, or a link is released).  The trigger
@@ -5322,12 +5337,15 @@ class Kernel:
 
     def _time_aligned_order(self, pkt: DataPacket, sat: int, now: float,
                             cands: list, own_q: dict, frozen_hit=None,
-                            query_charge=None):
+                            query_charge=None, decision_ref=None):
         """Reorder the legal forward candidates with the shared scorer.
 
         Returns (ordered_candidates, audit).  With time_alignment disabled the
         candidate order and the audit are exactly what the historical path
         produced.  A scoring failure is fail-loud, never a silent fallback.
+
+        decision_ref is the decision's stable ordinal (the packet's hop index)
+        used ONLY to derive the softmin sampling stream; see _score_order.
 
         frozen_hit is the per_flow cache entry that was selected WHEN THE
         DECISION WAS REQUESTED.  The frozen contract is "freeze at request,
@@ -5364,7 +5382,8 @@ class Kernel:
                                if frozen_hit is not None else ""),
                 }
             order, audit = self._score_order(
-                pkt, sat, now, cands, own_q, query_charge=query_charge)
+                pkt, sat, now, cands, own_q, query_charge=query_charge,
+                decision_ref=decision_ref)
             self._store_flow_cache(pkt, sat, now, order)
             if audit is not None:
                 audit["execution_mode"] = "per_flow"
@@ -5393,7 +5412,8 @@ class Kernel:
                           "advertisements; per-decision scoring skipped",
             }
         return self._score_order(pkt, sat, now, cands, own_q,
-                                 query_charge=query_charge)
+                                 query_charge=query_charge,
+                                 decision_ref=decision_ref)
 
     def _split_zero_rate_directions(self, sat: int, now: float,
                                     cands: list) -> tuple:
@@ -5429,9 +5449,16 @@ class Kernel:
         return kept, dropped, errors
 
     def _score_order(self, pkt, sat: int, now: float, cands: list, own_q: dict,
-                     query_charge=None):
+                     query_charge=None, decision_ref=None):
         """The full per-packet scoring path (observation -> prediction ->
-        scoring -> ranking).  Returns (order, audit)."""
+        scoring -> ranking).  Returns (order, audit).
+
+        decision_ref is the decision's STABLE ordinal (the packet's hop index),
+        used only to derive the queue_softmin uniform from a private stream.  It
+        is deliberately NOT the ledger's decision_id: that id is None whenever
+        no sink is attached (``_next_decision_id``), so keying the RNG on it
+        would make an output-only audit change the routing.
+        """
         arm = str(self.cfg_ta["arm"])
         # ZERO-RATE EGRESS GUARD (MCS abstraction).  A directed ISL whose
         # DVB-S2X MCS rate is currently 0 (no step fits this range/SNR) cannot
@@ -5466,6 +5493,14 @@ class Kernel:
                         self._state_policy_alpha
                         if self._state_policy
                         == _state_policy.QUEUE_GREEDY_EWMA else None),
+                    "softmin_temperature_s": (
+                        self._state_policy_temperature_s
+                        if self._state_policy
+                        == _state_policy.QUEUE_SOFTMIN else None),
+                    "sticky_hold_s": (
+                        self._state_policy_sticky_hold_s
+                        if self._state_policy
+                        == _state_policy.QUEUE_GREEDY_STICKY else None),
                     "last_direction": None,
                     "snapshot_at": float(now),
                     "per_direction": {},
@@ -5525,6 +5560,27 @@ class Kernel:
         if pkt is not None:
             state_last = self._state_policy_last.get(
                 (int(sat), str(pkt.dst)))
+        # ROUND-3 P4: the softmin action is SAMPLED, so the draw must come from
+        # a private per-decision stream keyed by (run seed, decision identity)
+        # -- never from a global RNG, whose other consumers would then perturb
+        # this policy's decisions.  The pure ranker only receives the uniform.
+        softmin_uniform = None
+        softmin_rng_key = None
+        if self._state_policy == _state_policy.QUEUE_SOFTMIN:
+            softmin_rng_key = "softmin:%d:%s:%s" % (
+                int(sat),
+                "None" if pkt is None else getattr(pkt, "pid", None),
+                "None" if decision_ref is None else decision_ref)
+            softmin_uniform = float(rngmod.link_stream(
+                int(self.cfg_sc["seed"]), softmin_rng_key).random())
+        # ROUND-3 P5: the OD-pair flowlet memory, read as of the decision
+        # snapshot.  Its key is (satellite, source cell, destination cell).
+        sticky_state = None
+        flow_key = None
+        if self._state_policy == _state_policy.QUEUE_GREEDY_STICKY \
+                and pkt is not None:
+            flow_key = (int(sat), str(pkt.src), str(pkt.dst))
+            sticky_state = self._state_policy_flow.get(flow_key)
         ranked, state_policy_audit = _state_policy.rank(
             scored,
             history_by_resource=state_history,
@@ -5532,10 +5588,20 @@ class Kernel:
             policy=self._state_policy,
             eta_s=self._state_policy_eta_s,
             alpha=self._state_policy_alpha,
-            last_direction=state_last,
+            last_direction=(sticky_state[0] if sticky_state is not None
+                            else state_last),
             visible_order=probe.legal_directions,
             tie_sig_digits=self.cfg_ta.get("tie_sig_digits"),
+            softmin_temperature_s=self._state_policy_temperature_s,
+            softmin_uniform=softmin_uniform,
+            sticky_hold_s=self._state_policy_sticky_hold_s,
+            sticky_state=sticky_state,
+            flow_key=flow_key,
         )
+        if softmin_rng_key is not None:
+            # the replay key is part of the audit: a reader can reproduce the
+            # exact draw without guessing which stream was used
+            state_policy_audit["rng_key"] = softmin_rng_key
         order = [d for d in ranked if d in scored_cands]
         order += [d for d in cands if d not in order]
         if policy_choice is not None:
@@ -6088,6 +6154,34 @@ class Kernel:
             "prediction_method": "same_policy_on_advertised_peer_state",
         }, None
 
+    def _note_state_policy_commit(self, ta_audit, committed) -> None:
+        """Record the policy's preferred direction against the COMMITTED action.
+
+        A state policy only orders candidates; the kernel's existing legality,
+        loop and queue-room filters decide what may actually be committed.  If
+        the policy's first choice was filtered out (a softmin SAMPLE that is no
+        longer legal, a sticky KEPT direction that lost its candidate), the
+        pipeline falls through to the next legal direction exactly as before --
+        legality is never relaxed for a policy.  This helper records that
+        override (and the committed direction) in the same audit block so the
+        offline analysis can separate "the policy chose differently" from "the
+        policy's choice was not committable".
+
+        Output only: it never changes the action, the order or any fate.
+        """
+        if not isinstance(ta_audit, dict):
+            return
+        block = ta_audit.get("state_policy")
+        if not isinstance(block, dict):
+            return
+        selection = block.get("selection")
+        preferred = (selection or {}).get("winner") \
+            if isinstance(selection, dict) else None
+        block["committed_direction"] = (None if committed is None
+                                        else str(committed))
+        block["override"] = bool(preferred is not None
+                                 and str(preferred) != str(committed))
+
     def _record_decision(self, pkt: DataPacket, sat: int, kind: str,
                          candidates: list, chosen: str,
                          audit_candidates: list | None = None,
@@ -6129,6 +6223,21 @@ class Kernel:
         # belongs to the routing rule, not to the optional ledger.
         if kind == "forward" and self._state_policy != _state_policy.LEGACY:
             self._state_policy_last[(int(sat), str(pkt.dst))] = str(chosen)
+        # ROUND-3 P5: the sticky flowlet memory.  Keyed by (satellite, source
+        # cell, destination cell) -- the flow identity is the OD pair, an
+        # OD-pair-level flowlet rather than a TCP flow.  The switch instant is
+        # refreshed ONLY when the committed direction actually changes; holding
+        # the same direction must NOT restart the hold window, otherwise a
+        # persistently good direction could never be distinguished from a
+        # switching flow.  Written before the sink early return, like the
+        # hysteresis memory: it belongs to the routing rule.
+        if (kind == "forward"
+                and self._state_policy == _state_policy.QUEUE_GREEDY_STICKY):
+            flow = (int(sat), str(pkt.src), str(pkt.dst))
+            committed_at = float(self.env.now)
+            previous = self._state_policy_flow.get(flow)
+            if previous is None or str(previous[0]) != str(chosen):
+                self._state_policy_flow[flow] = (str(chosen), committed_at)
         if self.decision_sink is None:
             return
         obs = pkt.learning_state
@@ -7108,8 +7217,14 @@ class Kernel:
             # scorer prices partially can no longer be chosen.
             cands, hop_restriction = self._min_remaining_hop_filter(
                 pkt, sat, now, cands)
-            cands, ta_audit = self._time_aligned_order(pkt, sat, now, cands,
-                                                       own_q)
+            # decision_ref: this observation will become the packet's NEXT
+            # decision ordinal (the commit half calls _allocate_decision, which
+            # consumes pkt.decision_ordinal).  It is the stable per-decision key
+            # the softmin stream is derived from, and it is independent of
+            # whether a ledger sink is attached.
+            cands, ta_audit = self._time_aligned_order(
+                pkt, sat, now, cands, own_q,
+                decision_ref=int(pkt.decision_ordinal))
             legal = self._forward_legal_now(pkt, sat, now, cands)
             chosen = (self._fixed_policy_action(pkt, sat, legal)
                       if legal else None)
@@ -7119,6 +7234,10 @@ class Kernel:
                 kind, action = "forward", legal[0]
             else:
                 kind, action, legal = "hold", None, []
+        if kind == "forward":
+            # the action was chosen against the SAME unchanged legality
+            # pipeline; record whether the state policy's first choice survived
+            self._note_state_policy_commit(ta_audit, action)
         # T1-FROZEN-LEDGER: the observation the commit half will be judged
         # against, plus the only prediction it legally supports.  Both are
         # read-only records: they never enter the routing decision.
@@ -7415,7 +7534,7 @@ class Kernel:
         # differ ONLY in the ordering they feed the same pipeline.
         cands, ta_audit = self._time_aligned_order(
             pkt, sat, now, cands, own_q, frozen_hit=frozen_flow_hit,
-            query_charge=query_charge)
+            query_charge=query_charge, decision_ref=hop_index)
         unavailable = False
         rate_blocked = False
         recover_at = float("inf")
@@ -7470,6 +7589,9 @@ class Kernel:
                 action = legal[0]
             action = self._apply_forced_action(pkt, sat, decision_id, action,
                                                legal)
+            # state-policy override record: the policy's preferred direction
+            # vs the direction the (unchanged) legality pipeline committed
+            self._note_state_policy_commit(ta_audit, action)
             pkt.decision_id = decision_id
             self._record_decision(pkt, sat, "forward", legal, action,
                                   audit_candidates=cands,

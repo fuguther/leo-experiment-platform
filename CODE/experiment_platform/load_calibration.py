@@ -125,6 +125,11 @@ OVERRIDE_FIELDS = {
                        # state_policy="legacy", i.e. every pre-existing
                        # contract is unchanged.
                        "state_policy", "hysteresis_eta_s", "ewma_alpha",
+                       # Round-3 response-strength policies (P4 softmin / P5
+                       # sticky).  Same rationale as the three keys above: the
+                       # frozen grid values are part of the experiment identity
+                       # and must be expressible as cell overrides.
+                       "softmin_temperature_s", "sticky_hold_s",
                        # Diagnostics-only score quantisation, used by the
                        # tie-break A/B intervention.  Absent keeps the
                        # historical sort key exactly.

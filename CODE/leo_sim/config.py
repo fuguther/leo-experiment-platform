@@ -368,6 +368,14 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # EWMA weight, frozen grid {0.1, 0.25, 0.5}.  Meaningful only for
         # state_policy=queue_greedy_ewma.
         "ewma_alpha": (int, float),
+        # ROUND-3 P4: softmin temperature (seconds), frozen grid
+        # {0.0025, 0.010, 0.040}, main value 0.010.  Meaningful only for
+        # state_policy=queue_softmin; T -> 0 is the hard greedy limit.
+        "softmin_temperature_s": (int, float),
+        # ROUND-3 P5: sticky OD-pair flowlet hold (seconds), frozen grid
+        # {0.02, 0.1, 0.5}, main value 0.1.  Meaningful only for
+        # state_policy=queue_greedy_sticky.
+        "sticky_hold_s": (int, float),
     },
     "async_routing": {
         "enabled": bool,
@@ -637,6 +645,12 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "state_policy": "legacy",
         "hysteresis_eta_s": 0.0,
         "ewma_alpha": 0.25,
+        # ROUND-3: the two new policies' pre-registered MAIN values.  Same
+        # contract as the Round-2 keys: part of config identity, read only
+        # under their own policy.  An EXPLICITLY changed value is refused when
+        # that policy is not selected; the default itself is always present.
+        "softmin_temperature_s": _state_policy.SOFTMIN_TEMPERATURE_DEFAULT_S,
+        "sticky_hold_s": _state_policy.STICKY_HOLD_DEFAULT_S,
     },
     "async_routing": {
         "enabled": False,
@@ -1442,6 +1456,36 @@ def _validate_time_alignment(ta: Mapping[str, Any],
         raise ConfigError(
             "time_alignment.hysteresis_eta_s is only meaningful for "
             "state_policy='queue_greedy_hysteresis', got "
+            f"{policy!r}; an unused parameter would silently not enter the run")
+    # ROUND-3 P4/P5.  The two new parameters carry a non-zero DEFAULT (its
+    # pre-registered main value), so the Round-2 "non-zero only under its own
+    # policy" rule cannot be applied literally -- the default is always
+    # present.  The enforceable, equally fail-loud rule is: an EXPLICIT change
+    # away from that main value is refused unless the policy that reads it is
+    # selected, so a typo'd `softmin_temperature_s` in a geometry cell cannot
+    # look like it entered the run (same intent as state_source/queue_weight).
+    temperature = ta["softmin_temperature_s"]
+    try:
+        _state_policy.validate_temperature_s(temperature)
+    except _state_policy.StatePolicyError as exc:
+        raise ConfigError(f"time_alignment.{exc}") from exc
+    if (policy != "queue_softmin"
+            and float(temperature)
+            != float(_state_policy.SOFTMIN_TEMPERATURE_DEFAULT_S)):
+        raise ConfigError(
+            "time_alignment.softmin_temperature_s is only meaningful for "
+            "state_policy='queue_softmin', got "
+            f"{policy!r}; an unused parameter would silently not enter the run")
+    hold = ta["sticky_hold_s"]
+    try:
+        _state_policy.validate_sticky_hold_s(hold)
+    except _state_policy.StatePolicyError as exc:
+        raise ConfigError(f"time_alignment.{exc}") from exc
+    if (policy != "queue_greedy_sticky"
+            and float(hold) != float(_state_policy.STICKY_HOLD_DEFAULT_S)):
+        raise ConfigError(
+            "time_alignment.sticky_hold_s is only meaningful for "
+            "state_policy='queue_greedy_sticky', got "
             f"{policy!r}; an unused parameter would silently not enter the run")
     if policy != "legacy" and not ta["enabled"]:
         raise ConfigError(
