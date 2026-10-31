@@ -157,9 +157,13 @@ def _capture_online_decision(resolved, rows, geometry):
         built_snapshots.append(snapshot)
         return snapshot
 
-    def spy(self, pkt, sat, now, cands, own_q):
+    def spy(self, pkt, sat, now, cands, own_q, **kwargs):
+        # Round-3 added the optional `decision_ref` keyword to the kernel's
+        # time-aligned order entry point (softmin derives its sampling stream
+        # from it).  Forward unknown keywords instead of pinning the spy to the
+        # pre-Round-3 signature, otherwise the benchmark refuses to run.
         built_snapshots.clear()
-        result = real(self, pkt, sat, now, cands, own_q)
+        result = real(self, pkt, sat, now, cands, own_q, **kwargs)
         audit = (result[1] if isinstance(result, tuple) and len(result) > 1
                  else None)
         # capture the first decision that REALLY scored candidates: an early
