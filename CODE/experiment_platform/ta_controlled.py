@@ -92,10 +92,21 @@ class Cell:
     margin_s: float           # d: extra physical cost of the E path
     advert_interval_s: float  # advertisement cadence
     measurement_age_s: float  # source -> local receive delay
+    #: Queue-arrival ETAs of the two candidates.  Defaults are the contract's
+    #: E0 values; the dose axis varies them to test the horizon term.
+    eta_n_s: float = 0.009
+    eta_e_s: float = 0.011
+    #: Buffer size of each target queue (the contract's E0 uses 20 Mbit; the
+    #: queue-magnitude dose axis raises it so Qmax = .1*C*tau can grow).
+    buffer_bits: float = 20.0e6
 
     @property
     def advert_class(self) -> str:
         return "fast" if self.advert_interval_s <= 0.01 else "slow"
+
+    @property
+    def eta_s(self) -> dict:
+        return {"N": self.eta_n_s, "E": self.eta_e_s}
 
     @property
     def path_s(self) -> dict:
@@ -103,11 +114,16 @@ class Cell:
 
     @property
     def remaining_s(self) -> dict:
-        return {d: self.path_s[d] - ETA_S[d] for d in ("N", "E")}
+        rem = {d: self.path_s[d] - self.eta_s[d] for d in ("N", "E")}
+        if any(v < -1e-12 for v in rem.values()):
+            raise ValueError(
+                f"candidate ETA exceeds its path cost: {rem!r}")
+        return rem
 
     @property
     def qmax_bits(self) -> float:
-        return 0.1 * C_BPS * self.tau_s
+        # The square wave builds at .1*C for tau seconds; the buffer can bind.
+        return min(0.1 * C_BPS * self.tau_s, self.buffer_bits)
 
     @property
     def deadline_s(self) -> float:
@@ -124,6 +140,8 @@ class Cell:
             "measurement_age_ms": self.measurement_age_s * 1e3,
             "advert_class": self.advert_class,
             "path_ms": {k: v * 1e3 for k, v in self.path_s.items()},
+            "eta_ms": {k: v * 1e3 for k, v in self.eta_s.items()},
+            "buffer_mbit": self.buffer_bits / 1e6,
             "qmax_ms": self.qmax_bits / C_BPS * 1e3,
             "deadline_ms": self.deadline_s * 1e3,
         }
@@ -131,8 +149,10 @@ class Cell:
 
 def cell_id(cell: Cell) -> str:
     corr = "diff" if cell.correlation == "differential" else "common"
+    swing = cell.qmax_bits / C_BPS * 1e3
+    spread = (cell.eta_e_s - cell.eta_n_s) * 1e3
     return (f"{corr}-tau{cell.tau_s * 1e3:g}ms-d{cell.margin_s * 1e3:g}ms-"
-            f"{cell.advert_class}")
+            f"qswing{swing:g}ms-spread{spread:g}ms-{cell.advert_class}")
 
 
 def build_cells() -> list[Cell]:
@@ -178,7 +198,7 @@ class QueueSeries:
                     q[d] = 0.0
                 else:
                     q[d] += (lam[0 if d == "N" else 1] - C_BPS) * self.DT_S
-                q[d] = min(BUFFER_BITS, max(0.0, q[d]))
+                q[d] = min(cell.buffer_bits, max(0.0, q[d]))
                 self.q[d].append(q[d])
 
     def at(self, t: float) -> dict:
@@ -225,7 +245,7 @@ def build_history(cell: Cell, series: QueueSeries, t0: float,
 
 
 def true_delay(cell: Cell, series: QueueSeries, t0: float, direction: str) -> float:
-    arrival = t0 + ETA_S[direction]
+    arrival = t0 + cell.eta_s[direction]
     backlog = series.at(arrival)[direction]
     return cell.path_s[direction] + backlog / C_BPS + TX_S
 
@@ -240,12 +260,12 @@ def decide(cell: Cell, history, t0: float, arm: str):
             egress_queue_bits={"N": 0.0, "E": 0.0},
             local_egress_in_service_s={"N": 0.0, "E": 0.0},
             link_rate_bps={"N": C_BPS, "E": C_BPS},
-            link_propagation_s={d: ETA_S[d] - TX_S for d in ("N", "E")},
+            link_propagation_s={d: cell.eta_s[d] - TX_S for d in ("N", "E")},
             peer_process_s={"N": 0.0, "E": 0.0},
             remaining_prop_s=cell.remaining_s,
             resource_service_rate_bps={"N": C_BPS, "E": C_BPS},
             pkt_bits=PKT_BITS,
-            max_resource_queue_bits=BUFFER_BITS,
+            max_resource_queue_bits=cell.buffer_bits,
             arm=candidate_arm,
             predictor="bounded_linear",
             history_limit=8,
@@ -278,11 +298,11 @@ def _target_offset(cell: Cell, arm: str, direction: str,
     if arm == "now":
         return 0.0
     if arm == "common":
-        return 0.5 * (ETA_S["N"] + ETA_S["E"])
+        return 0.5 * (cell.eta_s["N"] + cell.eta_s["E"])
     if arm == "stale":
         raise ValueError("stale offset is per resource; use last_measured")
     if arm == "candidate":
-        return ETA_S[direction]
+        return cell.eta_s[direction]
     raise ValueError(f"unknown arm {arm!r}")
 
 
@@ -385,20 +405,63 @@ def run_cell(cell: Cell, grid=None, phases: int = PHASES) -> dict:
     return out
 
 
-def run_all() -> dict:
-    cells = build_cells()
+def run_all(cells=None, mode: str = "baseline") -> dict:
+    if cells is None:
+        cells = build_cells() if mode == "baseline" else build_dose_cells()
     rows = {}
     for cell in cells:
         cid = cell_id(cell)
         rows[cid] = run_cell(cell)
     return {"schema": "ta-controlled/v1",
+            "mode": mode,
             "constants": {"C_bps": C_BPS, "pkt_bits": PKT_BITS,
                           "buffer_bits": BUFFER_BITS, "tx_s": TX_S,
                           "eta_ms": {k: v * 1e3 for k, v in ETA_S.items()},
                           "grid": [GRID_START_S, GRID_END_S, GRID_STEP_S],
                           "phases": PHASES,
-                          "practical_delta_ms": PRACTICAL_DELTA_MS},
+                          "practical_delta_ms": PRACTICAL_DELTA_MS,
+                          "dose_axis": DOSE_AXIS},
             "cells": rows}
+
+
+DOSE_AXIS = {
+    "queue_swing_ms": [2.5, 10.0, 18.0],
+    "margin_ms": [0.1, 8.0],
+    "eta_spread_ms": [2.0, 10.0],
+    "advert": ["fast", "slow"],
+    "correlation": "differential (plus one common-flow validity cell pair)",
+    "note": ("Pre-registered BEFORE the dose run: query-time value is predicted "
+             "to scale with queue swing / path margin and with the candidate "
+             "horizon spread, and to be captured only partially by the "
+             "bounded_linear estimator at slow advertisement age."),
+}
+
+
+def build_dose_cells() -> list[Cell]:
+    """Pre-registered dose matrix: queue swing x margin x horizon x advert."""
+    cells = []
+    # (tau, buffer) chosen so Qmax = .1*C*tau is 2.5 / 10 / 18 ms; each half
+    # period is short enough that a full build+drain cycle lies inside the
+    # observation horizon, and the 20 Mbit buffer never clips the construction.
+    queue_levels = ((0.025, 20.0e6), (0.100, 20.0e6), (0.180, 20.0e6))
+    for tau, buf in queue_levels:
+        for margin in (0.0001, 0.008):
+            for spread in (0.002, 0.010):
+                eta_e = 0.009 + spread
+                if eta_e > PATH_BASE_S["E"] + margin + 1e-12:
+                    # The ETA cannot exceed the faster path's total cost; skip
+                    # combinations that are physically impossible.
+                    continue
+                for interval, age in ((0.005, 0.005), (0.050, 0.050)):
+                    cells.append(Cell(
+                        "differential", tau, margin, interval, age,
+                        eta_n_s=0.009, eta_e_s=eta_e, buffer_bits=buf))
+    # Validity control: the same queue level with COMMON flow must show no
+    # candidate distinction.
+    for tau, buf in queue_levels:
+        cells.append(Cell("common", tau, 0.0001, 0.050, 0.050,
+                          eta_n_s=0.009, eta_e_s=0.011, buffer_bits=buf))
+    return cells
 
 
 def hypotheses(rows: dict) -> list[dict]:
@@ -457,6 +520,94 @@ def hypotheses(rows: dict) -> list[dict]:
     return checks
 
 
+def hypotheses_dose(rows: dict) -> list[dict]:
+    """Evaluate the pre-registered dose hypotheses on aggregate means."""
+    def pure(cid):
+        row = rows[cid]
+        return (row["now"]["oracle_predictor"]["mean_delay_ms"]
+                - row["candidate"]["oracle_predictor"]["mean_delay_ms"])
+
+    def real(cid):
+        row = rows[cid]
+        return (row["now"]["mean_delay_ms"]
+                - row["candidate"]["mean_delay_ms"])
+
+    def by_swing(swing):
+        return [cid for cid in rows
+                if f"qswing{swing}" in cid and "d0.1ms" in cid
+                and "spread2ms" in cid and cid.endswith("fast")]
+    big, mid, small = by_swing("18"), by_swing("10"), by_swing("2.5")
+    checks = []
+    checks.append({
+        "id": "H5",
+        "claim": ("pure query-time value is monotone in the queue swing "
+                  "(18 ms > 10 ms > 2.5 ms) and the 18 ms / 2.5 ms ratio is "
+                  "at least 2x"),
+        "cells": {"big": big, "mid": mid, "small": small},
+        "values_ms": {"big": {c: round(pure(c), 4) for c in big},
+                      "mid": {c: round(pure(c), 4) for c in mid},
+                      "small": {c: round(pure(c), 4) for c in small}},
+        "supported": (bool(big) and bool(mid) and bool(small)
+                      and all(pure(b) > pure(m) for b in big for m in mid)
+                      and all(pure(m) > pure(sm) for m in mid for sm in small)
+                      and all(pure(b) >= 2.0 * pure(sm)
+                              for b in big for sm in small)),
+    })
+    slow_cells = [cid for cid in rows if cid.endswith("slow")]
+    capture = {cid: (real(cid) / pure(cid) if pure(cid) > 1e-9 else None)
+               for cid in slow_cells}
+    fast_cells = [cid for cid in rows if cid.endswith("fast")]
+    capture_fast = {cid: (real(cid) / pure(cid) if pure(cid) > 1e-9 else None)
+                    for cid in fast_cells}
+    checks.append({
+        "id": "H6",
+        "claim": ("the estimator captures < 50% of the pure query-time value "
+                  "at 50 ms advertisement age"),
+        "cells": {"slow": slow_cells},
+        "capture_slow": {k: (None if v is None else round(v, 3))
+                         for k, v in capture.items()},
+        "capture_fast_median": _median(
+            [v for v in capture_fast.values() if v is not None]),
+        "supported": all(v is not None and v < 0.5 for v in capture.values()),
+    })
+    wide = [cid for cid in rows if "spread10ms" in cid
+            and "qswing10" in cid and "d0.1ms" in cid and cid.endswith("fast")]
+    narrow = [cid for cid in rows if "spread2ms" in cid
+              and "qswing10" in cid and "d0.1ms" in cid and cid.endswith("fast")]
+    checks.append({
+        "id": "H7",
+        "claim": ("the wider candidate horizon (10 ms) yields more pure "
+                  "query-time value than the 2 ms horizon at the same queue "
+                  "level"),
+        "cells": {"wide": wide, "narrow": narrow},
+        "values_ms": {"wide": {c: pure(c) for c in wide},
+                      "narrow": {c: pure(c) for c in narrow}},
+        "supported": bool(wide) and bool(narrow)
+        and all(pure(w) > pure(n) for w in wide for n in narrow),
+    })
+    common = [cid for cid in rows if cid.startswith("common-")]
+    checks.append({
+        "id": "H8",
+        "claim": ("common-flow validity: every arm identical (no candidate "
+                  "query-time distinction)"),
+        "cells": common,
+        "supported": all(
+            abs(rows[c]["candidate"]["mean_delay_ms"]
+                - rows[c]["now"]["mean_delay_ms"]) < 1e-9 for c in common),
+    })
+    return checks
+
+
+def _median(values):
+    if not values:
+        return None
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return round(ordered[mid], 3)
+    return round(0.5 * (ordered[mid - 1] + ordered[mid]), 3)
+
+
 def render_markdown(result: dict) -> str:
     lines = ["# Controlled two-resource mechanism experiment", ""]
     lines.append("All delays are business delays in ms; `delta = now - arm` "
@@ -483,7 +634,7 @@ def render_markdown(result: dict) -> str:
     lines.append("")
     lines.append("## Pre-registered hypotheses")
     lines.append("")
-    for check in hypotheses(result["cells"]):
+    for check in result.get("hypotheses") or hypotheses(result["cells"]):
         lines.append(f"* **{check['id']}** {'SUPPORTED' if check['supported'] else 'REFUTED'}"
                      f" — {check['claim']}")
         deltas = check.get("deltas_ms")
@@ -500,10 +651,14 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", required=True, help="result JSON path")
     ap.add_argument("--markdown", default=None)
+    ap.add_argument("--mode", choices=("baseline", "dose"), default="baseline")
     args = ap.parse_args(argv)
-    result = run_all()
+    result = run_all(mode=args.mode)
     result["host"] = {"platform": platform.platform(),
                       "python": platform.python_version()}
+    result["hypotheses"] = (
+        hypotheses_dose(result["cells"]) if args.mode == "dose"
+        else hypotheses(result["cells"]))
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n",

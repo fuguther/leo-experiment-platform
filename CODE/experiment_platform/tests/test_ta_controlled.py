@@ -129,3 +129,39 @@ def test_fixture_is_deterministic():
     a = tc.run_cell(cell, grid=grid, phases=2)
     b = tc.run_cell(cell, grid=grid, phases=2)
     assert a == b
+
+
+# ---- dose axis construction ------------------------------------------------
+def test_dose_cells_cover_the_pre_registered_axes_and_have_unique_ids():
+    cells = tc.build_dose_cells()
+    ids = [tc.cell_id(c) for c in cells]
+    assert len(ids) == len(set(ids)), "dose cell ids must be unique"
+    swings = sorted({round(c.qmax_bits / tc.C_BPS * 1e3, 3) for c in cells
+                     if c.correlation == "differential"})
+    assert swings == [2.5, 10.0, 18.0]
+    spreads = sorted({round((c.eta_e_s - c.eta_n_s) * 1e3, 3) for c in cells
+                      if c.correlation == "differential"})
+    assert spreads == [2.0, 10.0]
+    assert any(c.correlation == "common" for c in cells)
+
+
+def test_cell_rejects_eta_beyond_the_path_cost():
+    with pytest.raises(ValueError):
+        _ = _cell(margin_s=0.0001, eta_e_s=0.030).remaining_s
+
+
+def test_dose_renderer_handles_values_maps():
+    cells = tc.build_dose_cells()[:2]
+    res = {"cells": {}}
+    for c in cells:
+        cid = tc.cell_id(c)
+        row = {"oracle": {"mean_delay_ms": 20.0}}
+        for arm in tc.ARMS:
+            row[arm] = {"n": 1, "mean_delay_ms": 20.1, "p95_delay_ms": 20.2,
+                        "miss_pct": 0.0, "mean_regret_ms": 0.1,
+                        "oracle_hit_pct": 90.0, "changed_vs_now_pct": 0.0,
+                        "oracle_predictor": {"mean_delay_ms": 20.05}}
+        res["cells"][cid] = row
+    res["hypotheses"] = tc.hypotheses_dose(res["cells"])
+    text = tc.render_markdown(res)
+    assert "H5" in text and "H8" in text
