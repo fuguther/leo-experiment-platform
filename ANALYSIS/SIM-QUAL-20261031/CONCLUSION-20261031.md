@@ -59,11 +59,14 @@ D4. **策略类别（是否看队列）是网络性能的主因，stale state �
     差在"把流量从最短路分散出去"（isl_data 队列面积 118.9 M vs 7.8–12 M bit·s；hops 17.5 vs 18.8–21.1）；
     **low load 下符号反转**：geometry 比 greedy 快 20.7 ms（配对 427 包）。该收益与 AoI 无关。
 
-D5. **hysteresis 降低 flip/切换，但在 high load 有绕行代价**：
-    η=5 ms 时 flip 27.8%→18.2%、switch 0.332→0.254，但 E2E 305.6→339.6 ms、hops 19.3→21.1、
-    1 个 NO_ROUTE；low load 下 E2E 反而略好（291.0→287.2）。**EWMA(α=0.25) 不降低 flip
-    （28.5%）但给出最好的 high-load E2E（295.0）与最低队列面积。**
-    ⇒ "用简单稳定机制把问题解决"在本 regime 不成立；稳定机制改变的是"在哪儿堵"，不是"少多少 flip"。
+D5. **hysteresis 降低的是切换/抖动，不是离最优的距离**：
+    η=5 ms 时 rule-relative flip 27.8%→18.2%、switch 0.332→0.254，但相对 truth-optimal 的
+    偏离率反而 29.7%（greedy 27.7%）、regret 均值略升（1.87 vs 1.66 ms），
+    且 high load E2E 305.6→339.6 ms、hops 19.3→21.1、1 个 NO_ROUTE；low load 下 E2E 反而略好
+    （291.0→287.2）。**EWMA(α=0.25) 不降低 flip（28.5%）但给出最好的 high-load E2E（295.0）
+    与最低队列面积。**
+    ⇒ "用简单稳定机制把问题解决"在本 regime 不成立；稳定机制改变的是"在哪儿堵"与"抖不抖"，
+    不是"离最优多远"。
 
 D6. **多候选 + 小 margin 是风险集中区**：margin p50 约 11–13 ms，而 queue 项变化常远小于它；
     flip 集中在 truth margin 小的决策，W（连续错误决策时长）p50 29–159 ms 后回到 fresh-optimal。
