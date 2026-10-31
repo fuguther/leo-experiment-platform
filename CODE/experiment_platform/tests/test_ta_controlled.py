@@ -165,3 +165,23 @@ def test_dose_renderer_handles_values_maps():
     res["hypotheses"] = tc.hypotheses_dose(res["cells"])
     text = tc.render_markdown(res)
     assert "H5" in text and "H8" in text
+
+
+# ---- information-age axis --------------------------------------------------
+def test_age_cells_vary_receive_age_at_fixed_cadence():
+    cells = tc.build_age_cells()
+    ages = sorted({round(c.measurement_age_s * 1e3, 3) for c in cells
+                   if c.correlation == "differential"})
+    assert ages == [5.0, 50.0, 150.0]
+    for c in cells:
+        assert c.advert_interval_s == pytest.approx(0.050)
+        assert c.tau_s == pytest.approx(0.100)
+        assert c.margin_s == pytest.approx(0.0001)
+
+
+def test_prediction_error_metric_is_recorded():
+    cell = [c for c in tc.build_age_cells() if c.correlation == "differential"][1]
+    res = tc.run_cell(cell, grid=[0.15, 0.20], phases=1)
+    for arm in tc.ARMS:
+        assert res[arm]["pred_error_ms"] is not None
+        assert res[arm]["pred_error_ms"] >= 0.0

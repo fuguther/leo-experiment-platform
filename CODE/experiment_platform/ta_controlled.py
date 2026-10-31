@@ -332,6 +332,7 @@ def run_cell(cell: Cell, grid=None, phases: int = PHASES) -> dict:
     grid = list(grid)
     arms = {arm: {"delays_ms": [], "miss": 0, "regret_ms": [],
                   "oracle_hit": 0, "changed_vs_now": 0,
+                  "pred_error_ms": [],
                   "oracle_predictor": {"delays_ms": [], "miss": 0,
                                        "regret_ms": [], "oracle_hit": 0}}
             for arm in ARMS}
@@ -351,7 +352,7 @@ def run_cell(cell: Cell, grid=None, phases: int = PHASES) -> dict:
                 d = sample.resource.direction
                 last_measured[d] = max(last_measured[d], sample.measured_at)
             for arm in ARMS:
-                chosen, _plan = decide(cell, history, t0, arm)
+                chosen, plan = decide(cell, history, t0, arm)
                 chosen_by_arm[arm] = chosen
                 delay = truth[chosen]
                 rec = arms[arm]
@@ -374,6 +375,19 @@ def run_cell(cell: Cell, grid=None, phases: int = PHASES) -> dict:
                     orec["oracle_hit"] += 1
                 if oracle_delay > cell.deadline_s:
                     orec["miss"] += 1
+                # C2 evidence: |predicted - true| queue at the arm's target
+                # instant, in delay ms.  Only fully-known scores are scored.
+                targets = dict(plan.targets)
+                for score in plan.scored.scores:
+                    if score.fallback:
+                        continue
+                    target = targets.get(score.direction)
+                    if target is None or score.predicted_bits is None:
+                        continue
+                    truth_bits = series.at(target)[score.direction]
+                    rec["pred_error_ms"].append(
+                        abs(float(score.predicted_bits) - truth_bits)
+                        / C_BPS * 1e3)
             for arm in ARMS:
                 if chosen_by_arm[arm] != chosen_by_arm["now"]:
                     arms[arm]["changed_vs_now"] += 1
@@ -390,6 +404,9 @@ def run_cell(cell: Cell, grid=None, phases: int = PHASES) -> dict:
             "mean_regret_ms": sum(rec["regret_ms"]) / n,
             "oracle_hit_pct": 100.0 * rec["oracle_hit"] / n,
             "changed_vs_now_pct": 100.0 * rec["changed_vs_now"] / n,
+            "pred_error_ms": (sum(rec["pred_error_ms"])
+                              / len(rec["pred_error_ms"])
+                              if rec["pred_error_ms"] else None),
         }
         op = rec["oracle_predictor"]
         od = sorted(op["delays_ms"])
@@ -407,7 +424,8 @@ def run_cell(cell: Cell, grid=None, phases: int = PHASES) -> dict:
 
 def run_all(cells=None, mode: str = "baseline") -> dict:
     if cells is None:
-        cells = build_cells() if mode == "baseline" else build_dose_cells()
+        cells = {"baseline": build_cells, "dose": build_dose_cells,
+                 "age": build_age_cells}[mode]()
     rows = {}
     for cell in cells:
         cid = cell_id(cell)
@@ -420,8 +438,90 @@ def run_all(cells=None, mode: str = "baseline") -> dict:
                           "grid": [GRID_START_S, GRID_END_S, GRID_STEP_S],
                           "phases": PHASES,
                           "practical_delta_ms": PRACTICAL_DELTA_MS,
-                          "dose_axis": DOSE_AXIS},
+                          "dose_axis": DOSE_AXIS, "age_axis": AGE_AXIS},
             "cells": rows}
+
+
+AGE_AXIS = {
+    "geometry": "tau=100 ms differential, d=0.1 ms, ETA spread 2 ms",
+    "advert_interval_ms": 50.0,
+    "measurement_age_ms": [5.0, 50.0, 150.0],
+    "note": ("Pre-registered BEFORE the age run: C1 -> C2 -> C4 -> C5 chain. "
+             "Prediction error at the use instant, flip rate and business "
+             "delay/miss are predicted to grow with the receive age; the "
+             "common-flow cells must keep business metrics identical."),
+}
+
+
+def build_age_cells() -> list[Cell]:
+    """Information-age axis: fixed cadence, varying source->receive delay."""
+    cells = []
+    for corr in ("differential", "common"):
+        for age in AGE_AXIS["measurement_age_ms"]:
+            cells.append(Cell(corr, 0.100, 0.0001, 0.050, age / 1e3,
+                              eta_n_s=0.009, eta_e_s=0.011,
+                              buffer_bits=20.0e6))
+    return cells
+
+
+def hypotheses_age(rows: dict) -> list[dict]:
+    def cid(corr, age):
+        for c in rows:
+            row = rows[c]
+            if (row["cell"]["correlation"] == corr
+                    and abs(row["cell"]["measurement_age_ms"] - age) < 1e-9):
+                return c
+        return None
+
+    diff = {age: cid("differential", age) for age in AGE_AXIS["measurement_age_ms"]}
+    common = {age: cid("common", age) for age in AGE_AXIS["measurement_age_ms"]}
+    checks = []
+    err = {age: rows[c]["candidate"]["pred_error_ms"] for age, c in diff.items()}
+    checks.append({
+        "id": "A1",
+        "claim": ("C1->C2: the mean state error at the use instant grows with "
+                  "the receive age (5 < 50 < 150 ms)"),
+        "cells": diff,
+        "pred_error_ms": err,
+        "supported": (all(v is not None for v in err.values())
+                      and err[5.0] < err[50.0] < err[150.0]),
+    })
+    delay = {age: rows[c]["candidate"]["mean_delay_ms"] for age, c in diff.items()}
+    miss = {age: rows[c]["candidate"]["miss_pct"] for age, c in diff.items()}
+    checks.append({
+        "id": "A2",
+        "claim": ("C5: business delay at the age-150 ms cell exceeds the "
+                  "age-5 ms cell by at least 1.0 ms"),
+        "cells": diff,
+        "mean_delay_ms": delay,
+        "supported": delay[150.0] - delay[5.0] >= 1.0,
+    })
+    checks.append({
+        "id": "A3",
+        "claim": ("C5: deadline-miss at the age-150 ms cell exceeds the "
+                  "age-5 ms cell by at least 1 percentage point"),
+        "cells": diff,
+        "miss_pct": miss,
+        "supported": miss[150.0] - miss[5.0] >= 1.0,
+    })
+    ok = True
+    for age in AGE_AXIS["measurement_age_ms"]:
+        c = common[age]
+        if c is None:
+            ok = False
+            continue
+        row = rows[c]
+        spans = max(abs(row[a]["mean_delay_ms"] - row["now"]["mean_delay_ms"])
+                    for a in ARMS)
+        ok = ok and spans < 1e-9
+    checks.append({
+        "id": "A4",
+        "claim": ("common-flow control: every arm identical at every age "
+                  "(no business effect without a candidate distinction)"),
+        "cells": common,
+        "supported": ok,
+    })
+    return checks
 
 
 DOSE_AXIS = {
@@ -651,14 +751,17 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", required=True, help="result JSON path")
     ap.add_argument("--markdown", default=None)
-    ap.add_argument("--mode", choices=("baseline", "dose"), default="baseline")
+    ap.add_argument("--mode", choices=("baseline", "dose", "age"),
+                    default="baseline")
     args = ap.parse_args(argv)
     result = run_all(mode=args.mode)
     result["host"] = {"platform": platform.platform(),
                       "python": platform.python_version()}
-    result["hypotheses"] = (
-        hypotheses_dose(result["cells"]) if args.mode == "dose"
-        else hypotheses(result["cells"]))
+    result["hypotheses"] = {
+        "baseline": lambda: hypotheses(result["cells"]),
+        "dose": lambda: hypotheses_dose(result["cells"]),
+        "age": lambda: hypotheses_age(result["cells"]),
+    }[args.mode]()
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n",
