@@ -274,6 +274,14 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
         errors.append("manifest trace schema mismatch")
     if manifest.get("packet_id_contract") != trace_mod.PACKET_ID_CONTRACT:
         errors.append("manifest packet_id_contract mismatch")
+    src = ((manifest.get("provenance_contract") or {}).get("source")
+           if isinstance(manifest.get("provenance_contract"), dict) else None)
+    if isinstance(src, dict) and "authenticity" in src:
+        # The input still has to be positively identified; an extension here
+        # must never silently default to something that looks verified.
+        if src.get("authenticity") not in (
+                "REGISTERED_SNAPSHOT", "GENERATED", "UNVERIFIED"):
+            errors.append("provenance_contract.source.authenticity is invalid")
     provenance_contract = manifest.get("provenance_contract")
     provenance_schema = (trace_mod.TRACE_PROVENANCE_SCHEMA
                          if is_v2 else trace_mod.TRACE_PROVENANCE_SCHEMA_V1)
@@ -342,6 +350,7 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
     expected_provenance = {
         "mlab": "measurement_proxy",
         "population_gravity": "population_proxy",
+        "csv": "external_input",
     }.get(mode, "synthetic")
     if manifest.get("provenance") != expected_provenance:
         errors.append("manifest provenance mismatch")

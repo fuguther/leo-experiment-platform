@@ -175,6 +175,9 @@ def test_trace_csv_mode(tmp_path):
     m = trace.compile_trace(cfg, str(tmp_path / "t"))
     assert m["offered_packets"] == 2
     contract = m["provenance_contract"]
+    # An observed trace is an external input, never "synthetic": the top-level
+    # provenance must not claim the generator produced these packets.
+    assert m["provenance"] == "external_input"
     assert contract["source"]["type"] == "csv_input"
     assert contract["source"]["sha256"] == hashlib.sha256(src_csv.read_bytes()).hexdigest()
     assert contract["od_mapping"]["input_coordinate_fields"] == [

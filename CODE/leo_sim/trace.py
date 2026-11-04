@@ -1109,6 +1109,11 @@ def compile_trace(resolved: dict, out_dir: str,
         input_hash = hashlib.sha256(Path(src_path).read_bytes()).hexdigest()
         source_type = "csv_input"
         source_path = str(Path(src_path).resolve())
+        # An observed/replayed trace is an EXTERNAL input, not something this
+        # generator synthesised.  Reporting it as "synthetic" conflated how the
+        # bytes were produced with whether anyone can vouch for them.
+        # NOT a claim of authenticity: the SHA-256 below binds the bytes only.
+        provenance = "external_input"
         with open(src_path, newline="", encoding="utf-8") as fh:
             required = {"packet_id", "emit_time_s", "src_lat", "src_lon", "dst_lat", "dst_lon", "bits"}
             reader = csv.DictReader(fh)
