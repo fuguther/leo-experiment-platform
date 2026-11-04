@@ -333,8 +333,20 @@ def summarize(
         # old denominator while kernel runs use the physical sample ledger.
         denominator = item["available_capacity_bits"]
         if not available_capacity_windows:
-            denominator = item["capacity_bits"]
-            item["available_capacity_bits"] = denominator
+            # No physical availability was sampled: the denominator does not
+            # exist.  Publishing ``served/capacity`` here is a fabrication that
+            # renders as utilization == 1.0 for every link, i.e. a saturated
+            # network on a run whose queues were empty.  Mirror the independent
+            # auditor (metrics_independent.STATUS_DEGENERATE) and say so.
+            item["available_capacity_bits"] = None
+            item["utilization"] = None
+            item["status"] = "DEGENERATE_DENOMINATOR"
+            item["fallback_utilization"] = min(
+                1.0, item["served_bits"] / item["capacity_bits"]
+                if item["capacity_bits"] else 0.0)
+            continue
+        denominator = item["available_capacity_bits"]
+        item["status"] = "OK"
         item["utilization"] = min(
             1.0,
             item["served_bits"] / denominator if denominator else 0.0)

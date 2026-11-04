@@ -48,17 +48,18 @@ def _link_mismatches(report, reference):
                                     rel_tol=1e-12, abs_tol=1e-15):
                     mismatches.append((link_id, key, mine[key], other[key]))
         else:
-            # The production fallback is compared explicitly instead of being
-            # accepted as the answer.
-            if mine["utilization"] is not None:
-                mismatches.append((link_id, "utilization", mine["utilization"],
-                                   other["utilization"]))
+            # Both sides must agree that no sampled denominator exists, and
+            # must agree on the explicitly named fallback ratio.
+            for key in ("utilization",):
+                if mine[key] is not None or other.get(key) is not None:
+                    mismatches.append((link_id, "utilization_not_null",
+                                       mine[key], other.get(key)))
             if not math.isclose(mine["fallback_utilization"],
-                                other["utilization"],
+                                other.get("fallback_utilization") or 0.0,
                                 rel_tol=1e-12, abs_tol=1e-15):
                 mismatches.append((link_id, "fallback_utilization",
                                    mine["fallback_utilization"],
-                                   other["utilization"]))
+                                   other.get("fallback_utilization")))
     return mismatches
 
 
@@ -166,12 +167,16 @@ def test_analytic_degenerate_denominator_is_an_explicit_status_not_one():
     assert link["fallback_utilization"] == pytest.approx(1.0)
     assert link["available_samples"] == 0
 
-    # The production implementation publishes exactly that fallback as if it
-    # were a measurement; this assertion pins the divergence.
+    # Production used to publish that fallback as if it were a measurement.
+    # It now agrees with the independent auditor: no sampled denominator
+    # means no utilization, and the fabricated ratio only survives under its
+    # own explicitly named field.
     production = metrics.summarize(ONE_HOP_EVENTS, ONE_HOP_WINDOWS)
     reference = production["links"]["isl:0:1"]
-    assert reference["utilization"] == pytest.approx(1.0)
-    assert reference["available_capacity_bits"] == pytest.approx(100.0)
+    assert reference["utilization"] is None
+    assert reference["status"] == indep.STATUS_DEGENERATE
+    assert reference["fallback_utilization"] == pytest.approx(1.0)
+    assert reference["available_capacity_bits"] is None
     assert indep.STATUS_DEGENERATE != indep.STATUS_OK
 
 
@@ -616,11 +621,12 @@ def test_kernel_degenerate_availability_is_a_status_not_a_utilization_of_one():
         assert item["capacity_bits"] == pytest.approx(
             reference[link_id]["capacity_bits"])
         assert item["fallback_utilization"] == pytest.approx(1.0)
-        # the production reading the fallback reproduces, and the fabricated
-        # denominator it uses to get there
-        assert reference[link_id]["utilization"] == pytest.approx(1.0)
-        assert reference[link_id]["available_capacity_bits"] == pytest.approx(
-            item["capacity_bits"])
+        # production reports the same degenerate status; the fabricated
+        # ratio survives only as the explicitly named fallback field
+        assert reference[link_id]["utilization"] is None
+        assert reference[link_id]["status"] == indep.STATUS_DEGENERATE
+        assert reference[link_id]["fallback_utilization"] == pytest.approx(1.0)
+        assert reference[link_id]["available_capacity_bits"] is None
     assert _link_mismatches(report, reference) == []
 
     # the delay decomposition never reads the denominator, so it still closes

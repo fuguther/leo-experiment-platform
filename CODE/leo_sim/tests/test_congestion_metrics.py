@@ -79,7 +79,11 @@ def test_summarize_recomputes_queue_tx_propagation_and_link_utilization():
     link = got["links"]["isl:0:1"]
     assert link["capacity_bits"] == pytest.approx(100.0)
     assert link["served_bits"] == 100
-    assert link["utilization"] == pytest.approx(1.0)
+    # No availability ledger in this fixture, so no sampled denominator
+    # exists: production must say so rather than publish served/capacity.
+    assert link["utilization"] is None
+    assert link["status"] == "DEGENERATE_DENOMINATOR"
+    assert link["fallback_utilization"] == pytest.approx(1.0)
     assert got["validation"]["ok"] is True
 
 
@@ -633,7 +637,7 @@ def test_idle_link_denominator():
     assert stalled["utilization"] != pytest.approx(occupancy), \
         "goodput utilization and time occupancy are different quantities"
 
-    # ---- the degenerate substitute is a different, meaningless number -----
+    # ---- the degenerate substitute is reported as "not measured" ----------
     degenerate = metrics.summarize(_IDLE_EVENTS, windows)
     degenerate_links = degenerate["links"]
     assert set(degenerate_links) == {"isl:0:1", "isl:1:2"}, \
@@ -642,12 +646,19 @@ def test_idle_link_denominator():
     assert "isl:2:3" not in degenerate_links
     for item in degenerate_links.values():
         assert item["available_time_s"] == 0.0
-        assert item["available_capacity_bits"] == item["capacity_bits"]
-    assert degenerate_links["isl:0:1"]["utilization"] == pytest.approx(1.0)
-    # ...and it is emphatically not the sampled reading
-    assert degenerate_links["isl:0:1"]["utilization"] != pytest.approx(
+        # No sampled denominator exists, so the field is null, not a number.
+        assert item["available_capacity_bits"] is None
+        assert item["status"] == "DEGENERATE_DENOMINATOR"
+        assert item["utilization"] is None
+        # The fabricated ratio is still available for forensics, under a name
+        # that says what it is.  It equals served/capacity, so a stalled link
+        # reads 0.0 and a fully served link reads 1.0.
+        assert item["fallback_utilization"] == pytest.approx(
+            item["served_bits"] / item["capacity_bits"])
+    # ...and it must never be presented as the sampled reading
+    assert degenerate_links["isl:0:1"]["fallback_utilization"] != pytest.approx(
         served["utilization"]), \
-        "the default denominator silently publishes ~1.0; it must never be " \
+        "the degenerate denominator yields ~1.0; it must never be " \
         "reported as link utilization"
 
 
