@@ -1392,18 +1392,39 @@ def forward_reward(wait_s: float, w1: float, beta: float,
     return raw + float(step_penalty)
 
 
+#: Suggested congestion reference for the occupancy features (bits).
+#:
+#: Flat (buffer-capacity) normalisation has a resolution problem: with the
+#: 256 Mbit default buffer and 1 Mbit packets a single queued packet is
+#: 1/256 = 3.9e-3 of the buffer, so ``min(q/cap, 1.0)`` maps 1 packet and
+#: 100 packets to 0.0039 and 0.39 -- almost no resolution in the range that
+#: actually matters for routing.  8 Mbit = 8 packets = ~8 ms of queueing at
+#: a 1 Gbit/s ISL, the same "9 ms is a high queue" reference the legacy
+#: platform used (getSatScore docstring, SimulationRL.py:5386-5389).
+#:
+#: This is only a *suggestion*: the default stays ``None`` = legacy
+#: buffer-capacity normalisation so that existing golden characterisations
+#: and every prior run keep their exact semantics.  Opt in through
+#: ``learning.queue_ref_bits``.
+SUGGESTED_QUEUE_REF_BITS = 8_000_000
+
+
 def own_state(slots_used: int, slots_cap: int, isl_queue_bits: dict,
-              isl_queue_cap: int, n_visible: int, n_cells: int) -> np.ndarray:
+              isl_queue_cap: int, n_visible: int, n_cells: int,
+              queue_ref_bits: int | None = None) -> np.ndarray:
     """Own state: access-slot ratio + per-direction ISL egress queue
     occupancy + visible-cell ratio + bias flag.
 
     The per-direction queue block is the M2 local out-queue observation
-    (legacy _appendOwnQueueM2, SimulationRL.py:9866-9875): each direction is
-    min(queue/cap, 1.0); a direction with no link reads as fully congested
-    (1.0), matching the legacy infQueue clip (getQueues,
+    (legacy _appendOwnQueueM2, SimulationRL.py:9866-9875).  Occupancy is
+    normalised by ``queue_ref_bits`` (a congestion reference), NOT by the
+    buffer capacity: the legacy clip at the buffer limit made one packet and
+    a hundred packets indistinguishable.  A direction with no link reads as
+    fully congested (1.0), matching the legacy infQueue clip (getQueues,
     SimulationRL.py:9077-9092).
     """
-    cap = max(1, isl_queue_cap)
+    cap = max(1, int(isl_queue_cap if queue_ref_bits is None
+                     else queue_ref_bits))
     qs = [1.0 if d not in isl_queue_bits
           else min(isl_queue_bits[d] / cap, 1.0) for d in GRAPH_DIRS]
     return np.array([
@@ -1435,7 +1456,8 @@ def _peer_bit_value(record, peer: int | None):
 
 def _origin_features(entry, now: float, isl_queue_cap: int,
                      topo: dict | None = None,
-                     origin: int | None = None) -> np.ndarray:
+                     origin: int | None = None,
+                     queue_ref_bits: int | None = None) -> np.ndarray:
     p = entry.payload
     peers = (topo.get(origin, {}) if topo is not None and origin is not None
              else {})
@@ -1446,7 +1468,12 @@ def _origin_features(entry, now: float, isl_queue_cap: int,
     nvis = len(p.get("visible_cells", ()))
     aoi = max(0.0, entry.aoi(now))
     return np.array([
-        q / max(1, isl_queue_cap * 4),
+        # ``queue_ref_bits=None`` keeps the legacy 4x-buffer denominator so
+        # prior runs and golden characterisations are untouched; set
+        # learning.queue_ref_bits to get the congestion reference instead
+        # (4 links x reference, because ``q`` is the 4-direction sum).
+        q / max(1, (isl_queue_cap if queue_ref_bits is None
+                    else int(queue_ref_bits)) * 4),
         used / cap,
         min(1.0, nvis / 10.0),
         min(1.0, aoi / max(entry.ttl_s, 1e-9)),
