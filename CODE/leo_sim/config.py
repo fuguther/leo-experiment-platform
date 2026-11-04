@@ -176,6 +176,7 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "replay_size": int,
         "target_update_interval": int,
         "reward": str,  # queue (corrected queue reward) — the ONLY v1 reward
+        "queue_ref_bits": (int, type(None)),  # occupancy congestion reference
         "reward_w1": (int, float),  # M1 queue reward weight (legacy w1=20)
         "reward_beta": (int, float),  # M1 decay rate s^-1 (legacy _M1_BETA=200)
         "forward_step_penalty": (int, float),  # non-positive hop cost; must dominate reward_w1
@@ -382,6 +383,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "replay_size": 50_000,
         "target_update_interval": 500,
         "reward": "queue",
+        "queue_ref_bits": None,
         # corrected (M1) queue reward parameters, absorbed as the v1 baseline
         # (legacy w1/_M1_BETA defaults, SimulationRL.py:270/345) plus the
         # legacy ArriveReward (SimulationRL.py:579)
@@ -867,6 +869,12 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(
             "learning.forward_step_penalty must be <= -reward_w1 so "
             "an extra forwarding hop cannot have positive reward")
+    qr = lr["queue_ref_bits"]
+    if qr is not None and (not isinstance(qr, int) or isinstance(qr, bool)
+                           or qr <= 0):
+        raise ConfigError(
+            "learning.queue_ref_bits must be null or a positive int "
+            "(null keeps the legacy buffer-capacity normalisation)")
     if lr["arrive_reward"] < 0:
         raise ConfigError("learning.arrive_reward must be >= 0")
     if not 0 < lr["qlearning_alpha"] <= 1:

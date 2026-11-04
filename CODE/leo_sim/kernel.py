@@ -3204,6 +3204,7 @@ class Kernel:
             len(self.slots[sat]), self.cfg_access["slots_per_satellite"],
             queues, self.cfg_links["isl_queue_bits"], visible,
             len(self.endpoints),
+            queue_ref_bits=self.cfg_learning.get("queue_ref_bits"),
         )
         obs_hops = self.cfg_learning.get("obs_hops")
         ep = self.endpoints.get(dst_cell)
