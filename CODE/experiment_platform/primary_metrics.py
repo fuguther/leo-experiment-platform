@@ -47,10 +47,10 @@ SUPPORTED_PRIMARY_METRICS = frozenset({
 #: The subset whose value IS a link-utilization ratio, i.e. served bits over an
 #: available-capacity denominator.  These are the metrics that cannot be
 #: interpreted at all without execution.available_capacity_interval_s: with the
-#: interval null, metrics.summarize substitutes the service-window capacity as
-#: the denominator and publishes ~1.0 for any successfully served link, with
-#: available_samples == 0 (metrics.py:334-340).  matrix.py refuses to compile a
-#: request that asks for one of these without sampling.
+#: interval null no availability sample exists, so metrics.summarize reports
+#: utilization=None with status DEGENERATE_DENOMINATOR for every link.  Any
+#: aggregate over such links has no value, which is why matrix.py refuses to
+#: compile a request that asks for one of these without sampling.
 UTILIZATION_PRIMARY_METRICS = frozenset({
     "link_utilization_mean",
     "service_window_utilization_mean",

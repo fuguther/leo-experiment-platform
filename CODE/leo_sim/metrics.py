@@ -329,15 +329,14 @@ def summarize(
         item["available_samples"] += 1
 
     for item in links.values():
-        # Hand-built legacy fixtures omit availability samples; preserve their
-        # old denominator while kernel runs use the physical sample ledger.
-        denominator = item["available_capacity_bits"]
-        if not available_capacity_windows:
-            # No physical availability was sampled: the denominator does not
-            # exist.  Publishing ``served/capacity`` here is a fabrication that
-            # renders as utilization == 1.0 for every link, i.e. a saturated
-            # network on a run whose queues were empty.  Mirror the independent
-            # auditor (metrics_independent.STATUS_DEGENERATE) and say so.
+        # The test is PER LINK, not global.  A link can carry service records
+        # while the availability ledger has no sample of its own (partial
+        # sampling, or a link that only appears in service windows).  Judging
+        # that case by a global "is the whole ledger empty" test would leave
+        # ``available_capacity_bits == 0`` and publish ``utilization == 0.0``
+        # with ``status == "OK"`` -- a fabricated "measured and idle" reading,
+        # the same class of error as the 1.0 this function used to invent.
+        if item["available_samples"] == 0:
             item["available_capacity_bits"] = None
             item["utilization"] = None
             item["status"] = "DEGENERATE_DENOMINATOR"

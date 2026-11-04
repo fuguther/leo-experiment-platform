@@ -153,8 +153,10 @@ STALLED_WINDOW = {
 def test_analytic_degenerate_denominator_is_an_explicit_status_not_one():
     """With no availability ledger the sampled denominator does not exist.
 
-    The production function silently substitutes the service-window sum, which
-    makes utilization ~1.0 by construction; that reading is flagged here.
+    Production used to substitute the service-window sum, which makes
+    utilization ~1.0 by construction.  It now reports the same degenerate
+    status as this auditor; the fabricated ratio survives only under the
+    explicitly named fallback field.
     """
     report = indep.recompute_link_utilization(
         ONE_HOP_EVENTS, ONE_HOP_WINDOWS, [])
