@@ -266,6 +266,9 @@ def _check_evidence(repo: Path, records: list[dict[str, Any]], *, verify: bool,
     if verify and evidence_root is None:
         warnings.append("local evidence root is not configured; indexed receipts were not opened")
         checked["local_receipts_verified"] = 0
+        # Requested but not performed is PARTIAL, never a pass.
+        checked["evidence_verification"] = "PARTIAL"
+        checked["evidence_verification_reason"] = "no evidence root configured"
         return
     for record in records:
         run_id = record["run_id"]
@@ -275,6 +278,7 @@ def _check_evidence(repo: Path, records: list[dict[str, Any]], *, verify: bool,
             continue
         if not evidence.is_dir() or evidence.is_symlink():
             warnings.append(f"run {run_id} local evidence is missing; external storage was not checked")
+            checked.setdefault("evidence_unverified_runs", []).append(run_id)
             continue
         if not verify:
             continue
@@ -300,6 +304,14 @@ def _check_evidence(repo: Path, records: list[dict[str, Any]], *, verify: bool,
             continue
         verified_count += 1
     checked["local_receipts_verified"] = verified_count if verify else 0
+    if not verify:
+        checked["evidence_verification"] = "NOT_REQUESTED"
+    else:
+        missing = checked.get("evidence_unverified_runs") or []
+        checked["evidence_verification"] = "PARTIAL" if missing else "COMPLETE"
+        if missing:
+            checked["evidence_verification_reason"] = (
+                f"{len(missing)} of {len(records)} indexed runs have no local evidence")
 
 
 def run_check(repo: Path, *, verify_evidence: bool = False,
@@ -338,6 +350,10 @@ def run_check(repo: Path, *, verify_evidence: bool = False,
             "errors": len(errors),
             "warnings": len(warnings),
             "info": len(infos),
+            # A scoped report must not read as an unqualified pass: evidence
+            # verification is one of the things it may have skipped.
+            "evidence_verification": checked.get("evidence_verification",
+                                                 "NOT_REQUESTED"),
         },
         "scope": (
             "Local Git path metadata, worktree metadata, root README/AGENTS entry points, "
@@ -362,11 +378,20 @@ def main(argv: list[str] | None = None) -> int:
                         help="read-only verification of indexed local receipts (requires --evidence-root)")
     parser.add_argument("--evidence-root", type=Path,
                         help="private local directory containing one subdirectory per indexed run ID")
+    parser.add_argument("--require-complete-evidence", action="store_true",
+                        help=("exit non-zero unless every indexed run's local evidence was "
+                              "verified; without it a PARTIAL verification still exits 0 but "
+                              "the report says PARTIAL"))
     args = parser.parse_args(argv)
     report = run_check(args.repo, verify_evidence=args.verify_evidence,
                        evidence_root=args.evidence_root)
     print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
-    return 1 if report["errors"] else 0
+    if report["errors"]:
+        return 1
+    if (args.require_complete_evidence
+            and report["summary"]["evidence_verification"] != "COMPLETE"):
+        return 4
+    return 0
 
 
 if __name__ == "__main__":
