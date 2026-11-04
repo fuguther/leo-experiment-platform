@@ -80,6 +80,13 @@ GOVERNANCE_WITNESS_FIELDS = (
 REMOTE_RESULTS_ROOT = Path("/data/论文/leo-direct-sim/CODE/Results")
 ANALYZER_FILES = (
     "CODE/experiment_platform/v2_analysis.py",
+    # Imported and CALLED by this module: authorize_experiment decides formal
+    # eligibility (the `authorized` block) and primary_metrics defines the
+    # metric vocabulary the analysis gates on.  Leaving them out meant a dirty
+    # worktree in either file could change the verdict while the identity
+    # report still said the listed code was clean.
+    "CODE/experiment_platform/authorize_experiment.py",
+    "CODE/experiment_platform/primary_metrics.py",
     "CODE/experiment_platform/isl_pressure.py",
     "CODE/experiment_platform/isl_pressure_decision.py",
     "CODE/experiment_platform/fold_decision_ledger.py",
