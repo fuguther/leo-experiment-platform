@@ -27,4 +27,6 @@ jobs:
       - name: Run read-only repository maintenance check
         run: python -B CODE/scripts/maintenance_check.py --repo .
       - name: Run test suite
-        run: python -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests CODE/scripts/remote/tests ANALYSIS/tests -q
+        # CODE/scripts/tests was missing here, so index_runs and the other
+        # script guards never ran on any PR.
+        run: python -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests CODE/scripts/remote/tests CODE/scripts/tests ANALYSIS/tests -q
