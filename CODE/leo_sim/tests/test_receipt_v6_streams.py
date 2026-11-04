@@ -70,9 +70,23 @@ def test_the_v6_receipt_binds_the_streams_it_was_given(runs):
 
 def test_the_v6_receipt_verifies(runs):
     """C9.  This is the regression guard for the dispatch fall-through: a V6
-    receipt used to reach the legacy identity/v1 branch and fail."""
+    receipt used to reach the legacy identity/v1 branch and fail.
+
+    This fixture streams the two logs OUTSIDE the run directory and the
+    receipt records digests only, not paths, so a bare `receipt verify` cannot
+    recompute them.  It must say so instead of reporting "verified"; supplying
+    the paths must then produce a real verification.
+    """
     verdict = _verify(runs["both"])
-    assert verdict["status"] == "verified", verdict.get("errors")
+    assert verdict["status"] == "PARTIAL", verdict
+    assert sorted(verdict["unverified_stream_bindings"]) == [
+        "decision_log_sha256", "timeline_log_sha256"]
+
+    checked = _run("CODE.leo_sim", "receipt", "verify", str(runs["both"]),
+                   "--decision-log", str(runs["dir"] / "d.jsonl"),
+                   "--timeline-log", str(runs["dir"] / "t.jsonl"))
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+    assert json.loads(checked.stdout)["status"] == "verified"
 
 
 def test_every_schema_version_belongs_to_exactly_one_family():
