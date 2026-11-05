@@ -237,6 +237,47 @@ def derive_status(receipt, artifacts, summary=None):
     """
     bundle_only = ("summary.json" in artifacts) and ("receipt.json" not in artifacts)
     if bundle_only:
+        # A summary bundle without receipt.json is NOT complete merely because
+        # its trace hash matches.  Explicit failure/interruption markers always
+        # win, and an embedded receipt object must carry a terminal verdict:
+        # otherwise a trace-consistent pre-receipt run would be promoted.
+        explicit_receipt = None
+        if isinstance(summary, dict) and "receipt" in summary:
+            explicit_receipt = summary.get("receipt")
+            if explicit_receipt is None:
+                return "summary_bundle_incomplete", (
+                    "独立 summary bundle 但 receipt=null（未收尾/中断）")
+            if not isinstance(explicit_receipt, dict):
+                return "summary_bundle_incomplete", (
+                    "独立 summary bundle 但 receipt 字段类型异常")
+        # A bundle family summary may embed a PARTIAL receipt (no terminal
+        # field); trace self-verification is the declared closing evidence for
+        # that family.  But an explicit failure/early-stop marker - in the
+        # embedded receipt OR at the summary top level - always wins.  Both
+        # layers are inspected independently: an empty/partial receipt must not
+        # hide a top-level early-stop, and either layer may carry the marker.
+        layers = [explicit_receipt if isinstance(explicit_receipt, dict) else None,
+                  summary if isinstance(summary, dict) else None]
+        for layer in layers:
+            if not layer:
+                continue
+            error = layer.get("error")
+            if error not in (None, "", {}, []):
+                return "error", "独立 summary bundle 但 receipt.error=%s" % fmt(error)[:40]
+            if layer.get("interrupted") is True:
+                return "interrupted", "独立 summary bundle 但 receipt.interrupted=True"
+            if layer.get("natural_end") is False:
+                return "not_natural_end", "独立 summary bundle 但 receipt.natural_end=False"
+            # Conservation failure is a failure signal on its own, independent of
+            # whether the summary also carries natural_end.
+            if layer.get("conservation_ok") is False:
+                return "completed_conservation_failed", (
+                    "独立 summary bundle 但 receipt.conservation_ok=False")
+        if isinstance(explicit_receipt, dict) and explicit_receipt.get("natural_end") is True:
+            pass  # explicit completion evidence; trace match still required below
+        note = (summary or {}).get("note") if isinstance(summary, dict) else None
+        if isinstance(note, str) and note.strip().lower().startswith("incomplete"):
+            return "summary_bundle_incomplete", "独立 summary bundle 且 note=incomplete"
         matches = dig(summary, "trace_sha256_matches_manifest", None) if summary else None
         if matches is True:
             return "completed_self_verified", "独立 summary bundle 且 trace_sha256_matches_manifest=True"
