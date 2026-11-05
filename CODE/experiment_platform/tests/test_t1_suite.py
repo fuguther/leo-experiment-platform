@@ -44,6 +44,15 @@ def _small_contract(tmp_path):
     """
     contract = yaml.safe_load(CONTRACT.read_text())
     contract.setdefault("statistics", {})["dev_seeds"] = [7]
+    # The fixture shrinks the matrix but keeps the same predicates.  Its real
+    # observables stop ~1.15 s before the scenario end (measured by the
+    # deadline-horizon gate), so a 30 s or 4 s development D would be censored
+    # and correctly refused by t1_tasks.  Declare a fixture D that fits the
+    # compressed horizon; this is a fixture contract, not a research pin.
+    contract["statistics"]["deadline"] = {
+        "value_s": 0.05,
+        "source": "tiny test fixture: fits the compressed observable horizon (0.104 s at the highest offered load)",
+    }
     for spec in (contract.get("b_round") or {}).get("scenarios") or []:
         spec["status"] = "FIXTURE_SKIPPED"
     path = tmp_path / "contract-small.yaml"

@@ -1010,6 +1010,9 @@ def _acceptance_cells(contract, bundle_dir):
 
 
 def _dev_cells(contract, bundle_dir):
+    # The declared development D comes from the contract, not from a module
+    # constant: every task in this sweep must be runnable at the same frozen D.
+    dev_deadline = _development_deadline_s(contract)
     """Development sweep: ONE factor at a time, then a small two-factor cell.
 
     The candidate ranges are written here, before any arm result is read.  This
@@ -1071,7 +1074,7 @@ def _dev_cells(contract, bundle_dir):
         cfg = _seed_config(contract, bundle_dir, seed, params)
         cells.append(_task_cell(
             f"dev-branch-seed-{seed}", "dev_sweep", "branch_alignment", cfg,
-            extra_args=["--deadline-s", str(DEV_DEADLINE_S),
+            extra_args=["--deadline-s", str(dev_deadline),
                         "--max-branches", "12",
                         "--window-start", str(DEV_WINDOW_S[0]),
                         "--window-end", str(DEV_WINDOW_S[1])],
@@ -1084,6 +1087,11 @@ def _dev_cells(contract, bundle_dir):
                      "require_eligibility_reasons": True}))
         cells.append(_task_cell(
             f"dev-network-seed-{seed}", "dev_sweep", "network_alignment", cfg,
+            # t1_tasks refuses a network cell without a frozen D: the primary
+            # endpoint would otherwise be NOT_COMPUTABLE.  The branch cells in
+            # this same sweep already pass DEV_DEADLINE_S; the network cells
+            # must not rely on an implicit default that no longer exists.
+            extra_args=["--deadline-s", str(dev_deadline)],
             description="four online arms, each running the whole network from "
                         "the same trace",
             seed=seed,
@@ -1112,7 +1120,8 @@ def _dev_cells(contract, bundle_dir):
             tag=f"load{load}")
         cells.append(_task_cell(
             f"dev-offered-{load}", "dev_sweep", "network_alignment", load_cfg,
-            extra_args=["--arms", "candidate"],
+            extra_args=["--deadline-s", str(dev_deadline),
+                        "--arms", "candidate"],
             description=f"single factor: offered load {load} Mbps",
             seed=seeds[-1],
             require={"require_task": "network_alignment",
@@ -1141,7 +1150,7 @@ def _dev_cells(contract, bundle_dir):
             cells.append(_task_cell(
                 f"dev-common-{name}-seed-{seed}", "dev_sweep",
                 "branch_alignment", cfg,
-                extra_args=["--deadline-s", str(DEV_DEADLINE_S),
+                extra_args=["--deadline-s", str(dev_deadline),
                             "--max-branches", "12",
                             "--window-start", str(DEV_WINDOW_S[0]),
                             "--window-end", str(DEV_WINDOW_S[1]),

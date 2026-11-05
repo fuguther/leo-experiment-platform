@@ -68,7 +68,14 @@ def test_network_capture_preserves_complete_history_and_resource_evidence(monkey
         'packet_events': [], 'fates': {}, 'deliveries': {}}
     original = copy.deepcopy(replay)
     monkeypatch.setattr(t1_tasks, '_arm_row', lambda *a, **k:
-                        {'arm': a[3], 'replay': copy.deepcopy(replay)})
+                        {'arm': a[3], 'replay': copy.deepcopy(replay),
+                         # This test is about replay retention.  Production now
+                         # degrades a network block whose primary endpoint was
+                         # not computed, so the fake arm must carry a COMPUTED,
+                         # binding outcome just like a real arm would.
+                         'outcome': {'deadline_primary_loss': {
+                             'status': 'COMPUTED',
+                             'binding': {'binding': True}}}})
     monkeypatch.setattr(t1_tasks.artifact_identity, 'build_identity', lambda **k: {})
     result = t1_tasks.network_alignment(
         {'config': {'scenario': {'seed': 7}, 'time_alignment': {'predictor': 'hold_last'}},
