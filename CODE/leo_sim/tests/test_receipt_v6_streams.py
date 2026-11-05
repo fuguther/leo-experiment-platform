@@ -112,7 +112,7 @@ def test_the_decision_row_contract_matches_what_a_run_writes(runs):
     for row in rows:
         decision_ledger.validate_decision_row(row)
     assert set(rows[0]) == set(decision_ledger.DECISION_ROW_KEYS)
-    assert len(decision_ledger.DECISION_ROW_KEYS) == 20
+    assert len(decision_ledger.DECISION_ROW_KEYS) == 21
 
 
 def test_the_contract_refuses_an_unknown_key():

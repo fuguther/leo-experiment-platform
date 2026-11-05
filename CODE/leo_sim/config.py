@@ -314,6 +314,16 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # accumulation noise) actually tie and the deterministic break becomes
         # reachable.  None = historical sort key, byte for byte.
         "tie_sig_digits": (int, type(None)),
+        # ESTIMATOR PARAMETERS, as CONFIG FIELDS.  These were environment
+        # variables (T1_OU_TAU_S, T1_QUEUE_WEIGHT) recorded only in the
+        # artifact identity, so two runs with the SAME config_sha256 could be
+        # different experiments.  Declaring them here puts them inside the
+        # resolved config and therefore inside config_sha256.  None keeps the
+        # historical value, so an unset profile hashes exactly as before.
+        # ou_tau_s     mean-reversion time constant of predictor=ou_shrink
+        # queue_weight multiplicative weight on the queue term in the scorer
+        "ou_tau_s": (int, float, type(None)),
+        "queue_weight": (int, float, type(None)),
     },
     "async_routing": {
         "enabled": bool,
@@ -361,7 +371,7 @@ VALID_RATE_MODELS = {"constant", "mcs"}
 # taken at decision start and only checks legality at commit time.
 VALID_OBSERVATION_MODES = {"refresh", "frozen"}
 VALID_TIME_ARMS = {"stale", "now", "common", "candidate"}
-VALID_PREDICTORS = {"hold_last", "bounded_linear"}
+VALID_PREDICTORS = {"hold_last", "bounded_linear", "analytic_drain", "zero", "ou_shrink"}
 VALID_COMMON_RULES = {"median_eta", "mean_eta", "fixed_horizon"}
 VALID_EXECUTION_MODES = {
     "per_packet", "per_flow", "precomputed", "async_point", "async_window",
@@ -562,6 +572,12 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         # measurement is younger than this are withheld from the predictor.
         "min_observation_age_s": None, "state_source": "advertised",
         "tie_sig_digits": None,
+        # NOTE: ou_tau_s / queue_weight are accepted by the SCHEMA but
+        # deliberately NOT given a default here.  A default would add the key
+        # to every resolved config and therefore change config_sha256 for
+        # every existing profile, silently invalidating the identity of all
+        # archived evidence.  Absent means "historical constant"; the kernel
+        # reads them with .get(), so an unset profile hashes exactly as before.
     },
     "async_routing": {
         "enabled": False,
@@ -1213,10 +1229,53 @@ def _validate_time_alignment(ta: Mapping[str, Any],
             f"{sorted(VALID_PREDICTORS)}, got {ta['predictor']!r}")
     if isinstance(ta["history_limit"], bool) or ta["history_limit"] < 1:
         raise ConfigError("time_alignment.history_limit must be >= 1")
+    tie = ta["tie_sig_digits"]
+    if tie is not None and (isinstance(tie, bool) or not isinstance(tie, int)
+                            or not 1 <= tie <= 15):
+        raise ConfigError(
+            "time_alignment.tie_sig_digits must be None or an integer within "
+            f"1..15, got {tie!r}")
+    source = ta["state_source"]
+    if source not in ("advertised", "ideal_current"):
+        raise ConfigError(
+            "time_alignment.state_source must be 'advertised' or "
+            f"'ideal_current', got {source!r}")
+    age = ta["min_observation_age_s"]
+    if age is not None and (isinstance(age, bool)
+                            or not isinstance(age, (int, float))
+                            or not math.isfinite(age) or age < 0):
+        raise ConfigError(
+            "time_alignment.min_observation_age_s must be None or a finite "
+            f"non-negative number, got {age!r}")
     if ta["common_rule"] not in VALID_COMMON_RULES:
         raise ConfigError(
             f"time_alignment.common_rule must be one of "
             f"{sorted(VALID_COMMON_RULES)}, got {ta['common_rule']!r}")
+    # ESTIMATOR PARAMETERS.  Strictly positive and finite when set; absent means
+    # "use the historical constant", which is what every pre-existing profile
+    # resolves to (so their config_sha256 does not move).  A typo here used to
+    # be silently absorbed by the environment reader (tau<=0 degenerated to
+    # "shrink fully", tau=inf to hold_last); now it is refused before the
+    # kernel exists.
+    tau = ta.get("ou_tau_s")
+    if tau is not None and (isinstance(tau, bool)
+                            or not isinstance(tau, (int, float))
+                            or not math.isfinite(tau) or tau <= 0):
+        raise ConfigError(
+            "time_alignment.ou_tau_s must be None or a finite positive "
+            f"number, got {tau!r}")
+    weight = ta.get("queue_weight")
+    if weight is not None and (isinstance(weight, bool)
+                               or not isinstance(weight, (int, float))
+                               or not math.isfinite(weight) or weight <= 0):
+        raise ConfigError(
+            "time_alignment.queue_weight must be None or a finite positive "
+            f"number, got {weight!r}")
+    if tau is not None and ta["predictor"] != "ou_shrink":
+        raise ConfigError(
+            "time_alignment.ou_tau_s is only meaningful for "
+            f"predictor='ou_shrink', got {ta['predictor']!r}; an unused "
+            "estimator parameter would silently not enter the run")
     horizon = ta["common_horizon_s"]
     if ta["common_rule"] == "fixed_horizon":
         if (horizon is None or isinstance(horizon, bool)

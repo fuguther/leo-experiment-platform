@@ -411,6 +411,12 @@ def _deadline_summary(packet_rows, deadline_s):
         return {"status": NOT_COMPUTABLE, "deadline_s": deadline_s,
                 "packets": len(population), "value": None,
                 "lower_mean": None, "upper_mean": None,
+                "miss_pp": None,
+                "binding": {
+                    "status": NOT_COMPUTABLE,
+                    "missing_field": ("deadline_s" if deadline_s is None
+                                      else "population_window"),
+                },
                 "missing_field": ("deadline_s" if deadline_s is None
                                   else "population_window")}
     lower, upper, exact = [], [], 0
@@ -433,6 +439,67 @@ def _deadline_summary(packet_rows, deadline_s):
     lo_mean = statistics.fmean(lower)
     hi_mean = statistics.fmean(upper)
     complete = exact == len(population)
+    # Pre-registered endpoint (SPEC 2E.4): the PER-PACKET miss rate, i.e. the
+    # share of the population that did NOT arrive within D.  This is NOT the
+    # normalised loss min(delay,D)/D reported above; both are kept so a reader
+    # cannot silently substitute one for the other.
+    misses = 0
+    miss_undetermined = 0
+    for row in population:
+        item = row["deadline_loss"]
+        fate = row.get("fate")
+        delay = item.get("observed_delay_s")
+        if fate == "DELIVERED" and delay is not None and delay <= deadline_s:
+            continue
+        misses += 1
+        if item.get("status") in ("INTERVAL_CENSORED", NOT_COMPUTABLE):
+            miss_undetermined += 1
+    miss_pp = {
+        "status": "COMPUTED" if miss_undetermined == 0 else "PARTIAL_BOUNDS",
+        "definition": ("100 * |{p : not (fate=DELIVERED and delay(p) <= D)}|"
+                       " / |population|"),
+        "value": 100.0 * misses / len(population),
+        "misses": misses,
+        "undetermined": miss_undetermined,
+        "packets": len(population),
+        "deadline_s": deadline_s,
+    }
+    # DEADLINE BINDING.  A per-packet miss rate is only evidence about LATENESS
+    # if the deadline can actually reject a delivered packet.  With D >= the
+    # slowest observed delay no packet ever fails for being late, the miss rate
+    # degenerates into (100 - delivery ratio), and the pre-registered endpoint
+    # silently stops measuring what it names.  Both components are therefore
+    # reported separately, and binding is FALSE when nothing was late.
+    late_delivered = 0
+    expired_undelivered = 0
+    for row in population:
+        if row.get("fate") == "DELIVERED":
+            delay = row["deadline_loss"].get("observed_delay_s")
+            if delay is not None and delay > deadline_s:
+                late_delivered += 1
+        elif row.get("fate") in EXPIRED_FATES:
+            expired_undelivered += 1
+    binding = bool(late_delivered or expired_undelivered)
+    max_delay = None
+    delivered_delays = [row["deadline_loss"]["observed_delay_s"]
+                        for row in population
+                        if row.get("fate") == "DELIVERED"
+                        and row["deadline_loss"].get("observed_delay_s")
+                        is not None]
+    if delivered_delays:
+        max_delay = max(delivered_delays)
+    deadline_binding = {
+        "binding": binding,
+        "late_delivered": late_delivered,
+        "expired_undelivered": expired_undelivered,
+        "max_delivered_delay_s": max_delay,
+        "deadline_s": deadline_s,
+        "definition": ("D binds iff at least one packet is late (delivered "
+                       "after D) or expired (DATA_DEADLINE_EXPIRED); when "
+                       "binding=false the per-packet miss rate equals "
+                       "(100 - delivery ratio) and carries no lateness "
+                       "information"),
+    }
     return {"status": "COMPUTED" if complete else "PARTIAL_BOUNDS",
             "deadline_s": deadline_s, "packets": len(population),
             "exact_packets": exact,
@@ -440,6 +507,8 @@ def _deadline_summary(packet_rows, deadline_s):
             "not_computable_packets": missing,
             "value": lo_mean if complete else None,
             "lower_mean": lo_mean, "upper_mean": hi_mean,
+            "miss_pp": miss_pp,
+            "binding": deadline_binding,
             "missing_field": None if complete else "packet deadline outcome"}
 
 
@@ -1905,6 +1974,44 @@ def _network_rows(counts, terminal_loss, censoring, delivery_ratio, window_block
                   note="upper bound; unknown outcomes retain their worst-case bound",
                   missing_field=deadline_primary_loss.get("missing_field")
                   or "packet-level delivery/fate/deadline fields"),
+        _value_at("deadline_miss.pp",
+                  (deadline_primary_loss.get("miss_pp") or {}).get("value"),
+                  "percent (pp of the population)",
+                  "trace_rows + result.fates + result.deliveries + stop_time_s",
+                  note=("pre-registered endpoint: share of the population not "
+                        "delivered within D (NOT the normalised loss)"),
+                  missing_field=(None
+                                 if (deadline_primary_loss.get("miss_pp")
+                                     or {}).get("status") == "COMPUTED"
+                                 else "deadline_s or undetermined censored packets")),
+        _value_at("deadline_miss.undetermined",
+                  (deadline_primary_loss.get("miss_pp") or {}).get("undetermined"),
+                  COUNTS,
+                  "trace_rows + result.fates + result.deliveries + stop_time_s",
+                  note="censored packets whose observed window is shorter than D",
+                  missing_field=(None
+                                 if (deadline_primary_loss.get("miss_pp")
+                                     or {}).get("status") == "COMPUTED"
+                                 else "deadline_s")),
+        _value_at("deadline_binding.late_delivered",
+                  (deadline_primary_loss.get("binding") or {}).get(
+                      "late_delivered"),
+                  COUNTS,
+                  "trace_rows + result.fates + result.deliveries + stop_time_s",
+                  note=("packets delivered AFTER D.  Zero here together with "
+                        "zero expired means D never bound, so the miss rate "
+                        "equals (100 - delivery ratio)")),
+        _value_at("deadline_binding.binding",
+                  (deadline_primary_loss.get("binding") or {}).get("binding"),
+                  "bool",
+                  "trace_rows + result.fates + result.deliveries + stop_time_s",
+                  note="does the frozen D actually reject any packet?"),
+        _value_at("deadline_binding.max_delivered_delay_s",
+                  (deadline_primary_loss.get("binding") or {}).get(
+                      "max_delivered_delay_s"),
+                  SECONDS,
+                  "trace_rows + result.deliveries",
+                  note="slowest delivered packet; D >= this makes D inert"),
     ]
     if window_block.get("status") == "COMPUTED":
         rows += [

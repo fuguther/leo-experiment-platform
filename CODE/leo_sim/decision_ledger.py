@@ -82,6 +82,9 @@ DECISION_ROW_KEYS = frozenset({
     "dst", "sat", "kind", "policy", "candidates", "chosen", "own_queue_bits",
     "obs", "info_audit", "obs_mode", "observation_at_start",
     "four_direction_audit", "estimate_at_start", "truth_at_commit",
+    # T1-CROSS-ARM-KEY: decision_id is a per-run counter, so the cross-arm
+    # join key is (pid, hop_index).  Additive output-only field.
+    "hop_index",
 })
 
 #: Stream-contract identifier a V6 receipt binds the decision log under.

@@ -776,23 +776,149 @@ def _arm_action_log(sink, *, limit=DEFAULT_ACTION_LOG_LIMIT):
             "rule": "one record per forward decision, in decision order"}
 
 
-def _routing_audit_log(sink, timeline):
-    """Retain each committed route mask and each hold/fail attempt."""
-    decisions = []
-    for row in sink:
-        audit = row.get("four_direction_audit")
-        if not isinstance(audit, dict):
+
+
+def _audit_cap(name, default):
+    """Read a per-record cap from the environment; 0 disables the cap."""
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise TaskError(f"{name} must be a positive integer, got {raw!r}")
+    if value < 1:
+        raise TaskError(f"{name} must be a positive integer, got {raw!r}")
+    return value
+
+
+def _sample_indices(total, cap):
+    """Deterministic whole-run even sampling, both endpoints included.
+
+    Kept for callers that have no stable cross-record key.  Audit detail rows
+    use :func:`_sample_by_key` instead, because positional sampling is decided
+    per arm and therefore destroys cross-arm pair-ability.
+    """
+    if total <= 0:
+        return [], "empty"
+    if not cap or total <= cap:
+        return list(range(total)), "all_records"
+    if cap == 1:
+        return [0], "even_stride_endpoints"
+    return (sorted({int(round(i * (total - 1) / (cap - 1)))
+                    for i in range(cap)}),
+            "even_stride_endpoints")
+
+
+#: Rule label written into the artifact for key-consistent audit sampling.
+KEY_SAMPLE_RULE = "blake2b_16_of_(pid,hop_index)_lowest/v1"
+
+
+def _key_sample_score(pid, hop_index):
+    """Stable 16-hex-digit score for one (pid, hop_index) record key.
+
+    Positional sampling picks DIFFERENT records in each arm (the arms have
+    different decision totals), so the four arms' retained rows barely
+    intersect and no cross-arm rate can be recomputed from the artifact.  A
+    score derived ONLY from the record's own stable key is identical in every
+    arm: the retained subset is then the same set of decisions, and any pair of
+    arms can be compared on their intersection without outside information.
+    """
+    payload = ("%s:%s" % (pid, hop_index)).encode("utf-8")
+    return hashlib.blake2b(payload, digest_size=8).hexdigest()
+
+
+def _sample_by_key(rows, cap, key_fn):
+    """Deterministically retain ``cap`` rows, preferring each row's own key.
+
+    Returns (indices_in_original_order, rule, n_missing_key).  Rows that carry a
+    usable ``(pid, hop_index)`` key are ranked by a score derived ONLY from that
+    key, so the same decisions survive in every arm.  Rows WITHOUT a key (legacy
+    sinks) cannot be paired anyway, so they get a positional fallback under a
+    proportional share of the cap: they are still bounded (the memory defect
+    this cap exists for) and their count is reported, so a missing key can never
+    silently look like a complete sample.
+    """
+    total = len(rows)
+    if total <= 0:
+        return [], "empty", 0
+    keyed, unkeyed = [], []
+    for index, row in enumerate(rows):
+        key = key_fn(row)
+        if key is None:
+            unkeyed.append(index)
             continue
+        keyed.append((_key_sample_score(*key), index))
+    if not cap or total <= cap:
+        return list(range(total)), "all_records", len(unkeyed)
+    if not keyed:
+        idx, _rule = _sample_indices(total, cap)
+        # the historical rule name is preserved for consumers that switch on
+        # it; the degradation is carried by
+        # `*_records_without_cross_arm_key` instead of by renaming the rule
+        return idx, "even_stride_endpoints", len(unkeyed)
+    share = int(round(cap * len(unkeyed) / total))
+    share = max(0, min(share, cap))
+    unkeyed_keep = set()
+    if unkeyed and share:
+        local, _rule = _sample_indices(len(unkeyed), share)
+        unkeyed_keep = {unkeyed[i] for i in local}
+    remaining = cap - len(unkeyed_keep)
+    if remaining < len(keyed):
+        keyed.sort()
+        keyed_keep = {index for _score, index in keyed[:remaining]}
+        rule = KEY_SAMPLE_RULE
+    else:
+        keyed_keep = {index for _score, index in keyed}
+        rule = ("all_keyed_records_plus_sampled_unkeyed"
+                if unkeyed_keep else "all_records")
+    keep = keyed_keep | unkeyed_keep
+    return sorted(keep), rule, len(unkeyed)
+
+
+def _decision_key(row):
+    """(pid, hop_index) for one committed decision row, or None if absent."""
+    pid, hop_index = row.get("pid"), row.get("hop_index")
+    if isinstance(pid, bool) or not isinstance(pid, int):
+        return None
+    if isinstance(hop_index, bool) or not isinstance(hop_index, int):
+        return None
+    return (pid, hop_index)
+
+
+def _routing_audit_log(sink, timeline):
+    """Retain each committed route mask and each hold/fail attempt.
+
+    Sampling is deterministic, covers the WHOLE run, and is decided by each
+    record's own stable ``(pid, hop_index)`` key -- never by its position.
+    Positional sampling retained a different subset in every arm (the arms have
+    different decision totals), so the arms' retained rows barely intersected
+    and no between-arm decision rate could be recomputed from the artifact.
+    Every record is still counted (*_count); only detail rows are sampled, and
+    the rule, the retained count, the covered time range and the number of rows
+    without a stable key are written into the output.
+    """
+    max_dec = _audit_cap("T1_AUDIT_MAX_DECISIONS", 5000)
+    max_att = _audit_cap("T1_AUDIT_MAX_ATTEMPTS", 5000)
+    eligible = [row for row in sink
+                if isinstance(row.get("four_direction_audit"), dict)]
+    n_dec_total = len(eligible)
+    dec_idx, dec_rule, dec_unkeyed = _sample_by_key(
+        eligible, max_dec, _decision_key)
+    decisions = []
+    for i in dec_idx:
+        row = eligible[i]
         observation = row.get("observation_at_start") or {}
         decisions.append({
             "t_decision_start": row.get("t_decision_start"),
             "t_decision_commit": row.get("t"),
             "decision_id": row.get("decision_id"),
+            "hop_index": row.get("hop_index"),
             "pid": row.get("pid"), "src": row.get("src"),
             "dst": row.get("dst"), "sat": row.get("sat"),
             "kind": row.get("kind"), "candidates": row.get("candidates"),
             "chosen": row.get("chosen"),
-            "four_direction_audit": audit,
+            "four_direction_audit": row.get("four_direction_audit"),
             "observation_at_start": {
                 key: observation.get(key) for key in (
                     "mode", "source", "t_observed", "sat", "neighbours",
@@ -802,17 +928,27 @@ def _routing_audit_log(sink, timeline):
             },
             "estimate_at_start": row.get("estimate_at_start"),
         })
+    dec_times = [row["t_decision_start"] for row in decisions
+                 if row.get("t_decision_start") is not None]
+    # the FULL set's bounds, computed before sampling ever applied, so a
+    # sampled subset can never be mistaken for a short run
+    full_dec_times = [row.get("t_decision_start") for row in eligible
+                      if row.get("t_decision_start") is not None]
     attempt_aliases = {
         "decision_attempt": "decision_attempt",
         "frozen_inferred_hold": "decision_attempt",
         "commit_rejected": "decision_attempt",
     }
+    eligible_att = [row for row in timeline
+                    if row.get("milestone") in attempt_aliases]
+    n_att_total = len(eligible_att)
+    att_idx, att_rule, att_unkeyed = _sample_by_key(
+        eligible_att, max_att, _decision_key)
     attempts = []
-    for row in timeline:
+    for i in att_idx:
+        row = eligible_att[i]
         source = row.get("milestone")
-        canonical = attempt_aliases.get(source)
-        if canonical is None:
-            continue
+        canonical = attempt_aliases.get(source, "decision_attempt")
         attempt = dict(row)
         attempt["milestone"] = canonical
         attempt["source_milestone"] = row.get("source_milestone", source)
@@ -838,10 +974,46 @@ def _routing_audit_log(sink, timeline):
     return {
         "schema": "t1-routing-audit-log/v1",
         "decision_records": decisions,
+        # decision_record_count must match the sidecar index / retained rows
+        # (t1_suite and t1_admission compare it to len(records) and to the
+        # sidecar count).  The full count is a separate field.
         "decision_record_count": len(decisions),
+        "decision_records_total": n_dec_total,
+        "decision_records_retained": len(decisions),
+        "decision_records_cap": max_dec,
+        "decision_records_truncated": len(decisions) < n_dec_total,
+        "decision_sampling_rule": dec_rule,
+        "decision_records_without_cross_arm_key": dec_unkeyed,
+        "decision_coverage_fraction": (len(decisions) / n_dec_total
+                                       if n_dec_total else 0.0),
+        "decision_time_range_s": ([min(dec_times), max(dec_times)]
+                                  if dec_times else None),
+        # exact time bounds of the FULL record set, so a reader can tell a
+        # sampled subset from an actually short run without outside data
+        "decision_time_range_full_s": ([min(full_dec_times),
+                                        max(full_dec_times)]
+                                       if full_dec_times else None),
         "attempt_records": attempts,
         "attempt_record_count": len(attempts),
-        "coverage_note": "committed records include each four-direction candidate mask, received-history provenance, estimates, scores and action; hold/fail attempts include masks and reasons",
+        "attempt_records_total": n_att_total,
+        "attempt_records_retained": len(attempts),
+        "attempt_records_cap": max_att,
+        "attempt_records_truncated": len(attempts) < n_att_total,
+        "attempt_sampling_rule": att_rule,
+        "attempt_records_without_cross_arm_key": att_unkeyed,
+        "cross_arm_key": "pid,hop_index",
+        "coverage_note": ("committed records include each four-direction "
+                          "candidate mask, received-history provenance, "
+                          "estimates, scores and action; hold/fail attempts "
+                          "include masks and reasons. Detail rows are sampled "
+                          "deterministically by each record's own stable "
+                          "(pid, hop_index) key -- NOT by position, because "
+                          "positional sampling picks a different subset in "
+                          "every arm and destroys cross-arm pair-ability. "
+                          "*_count fields are exact totals, *_retained is how "
+                          "many rows were kept, *_time_range_s is the covered "
+                          "interval (sampled), *_time_range_full_s the full "
+                          "one."),
     }
 
 
@@ -1346,6 +1518,21 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
             "e2e_p95_s": _percentile(e2e, 0.95),
             "e2e_p99_s": _percentile(e2e, 0.99),
             "queue_area_bits_s": dict(result["queue_area_bits_s"]),
+            "delivery_ratio": dict(network_outcome["delivery_ratio"]),
+            "censoring": {
+                "packets": network_outcome["censoring"]["packets"],
+                "bits": network_outcome["censoring"]["bits"],
+                "still_in_system_at_stop":
+                    network_outcome["censoring"]["still_in_system_at_stop"],
+            },
+            "terminal_loss": {
+                "packets": network_outcome["terminal_loss"]["packets"],
+                "bits": network_outcome["terminal_loss"]["bits"],
+                "by_fate": dict(network_outcome["terminal_loss"]["by_fate"]),
+            },
+            "deadline_miss_pp": (
+                network_outcome.get("deadline_primary_loss") or {}
+            ).get("miss_pp"),
             "events_processed": result["events_processed"],
         },
         "measurement_window": network_outcome["window"],
@@ -1571,7 +1758,8 @@ def _release_arm_memory():
 def network_alignment(resolved, rows, geometry, source,
                      arms=NETWORK_ARMS, overrides=None, *, deadline_s=None,
                      window=None, capture_replay=False,
-                     simulator_call_guard=None):
+                     simulator_call_guard=None,
+                     allow_non_binding_deadline=False):
     """The FOUR online arms, each running the WHOLE network to the horizon."""
     if overrides:
         cfg = copy.deepcopy(resolved["config"])
@@ -1604,12 +1792,36 @@ def network_alignment(resolved, rows, geometry, source,
         except Exception as exc:      # noqa: BLE001 - recorded, not lost
             failures.append({"arm": arm,
                              "reason": f"{type(exc).__name__}: {exc}"})
+    deadline_statuses = [
+        (((row.get("outcome") or {}).get("deadline_primary_loss") or {})
+         .get("status")) for row in arm_rows]
+    deadline_ok = bool(arm_rows) and all(
+        status == "COMPUTED" for status in deadline_statuses)
+    # DEADLINE BINDING.  A COMPUTED primary endpoint is not enough: if the
+    # frozen D is not smaller than the slowest delay, no packet can be late and
+    # the miss rate silently degenerates into (100 - delivery ratio).  That is
+    # a defect in the pre-registered endpoint, not a result, so it degrades the
+    # run unless the operator explicitly accepts an inert deadline.
+    binding_flags = [
+        (((row.get("outcome") or {}).get("deadline_primary_loss") or {})
+         .get("binding") or {}).get("binding") for row in arm_rows]
+    binding_known = [flag for flag in binding_flags if isinstance(flag, bool)]
+    deadline_binding = bool(binding_known) and all(binding_known)
+    status_reasons = []
+    if len(arm_rows) != len(arms):
+        status_reasons.append("arm_failures")
+    if not deadline_ok:
+        status_reasons.append("primary_endpoint_not_computed")
+    elif binding_known and not deadline_binding \
+            and not allow_non_binding_deadline:
+        status_reasons.append("primary_endpoint_deadline_not_binding")
     document = {
         "schema": SCHEMA_NETWORK,
         "identity": artifact_identity.build_identity(
             config=resolved, trace_digest=source.get("trace_sha256"),
             driver_paths=artifact_identity.execution_chain_paths(),
-            extra={"task": "network_alignment", "arms": list(arms)}),
+            extra={"task": "network_alignment", "arms": list(arms),
+                   "argv": list(sys.argv[1:])}),
         "source": dict(source, rows_digest=rows_digest,
                        config_sha256=resolved["sha256"]),
         "replay_capture": {
@@ -1637,8 +1849,21 @@ def network_alignment(resolved, rows, geometry, source,
         },
         "arms": arm_rows,
         "failures": failures,
-        "status": ("ok" if len(arm_rows) == len(arms) else "DEGRADED" if arm_rows
-                   else "ALL_ARMS_FAILED"),
+        "deadline_status": deadline_statuses,
+        # DEADLINE BINDING evidence, per arm, so a reader can see that an
+        # inert D turned the primary endpoint into a delivery ratio.
+        "deadline_binding": {
+            "binding": (None if not binding_known else deadline_binding),
+            "per_arm": {row.get("arm"): (
+                ((row.get("outcome") or {}).get("deadline_primary_loss")
+                 or {}).get("binding")) for row in arm_rows},
+            "accepted_inert_deadline": bool(allow_non_binding_deadline),
+            "rule": ("binding=false means at least one arm's D rejected no "
+                     "packet, so `miss_pp` carries no lateness information"),
+        },
+        "status_reasons": status_reasons,
+        "status": ("ok" if not status_reasons else "DEGRADED"
+                   if arm_rows else "ALL_ARMS_FAILED"),
         "units": {"e2e": "seconds", "goodput": "bits per second",
                   "queue_area": "bit-seconds"},
         "limits": [
@@ -1658,7 +1883,8 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
              max_branches=DEFAULT_MAX_BRANCHES, window=None, modes=None,
              overrides=None, arms=NETWORK_ARMS, capture_replay=False,
              calibrate_common_horizon=False,
-             simulator_call_guard=None):
+             simulator_call_guard=None,
+             allow_non_binding_deadline=False):
     """One entry point for the three task types.
 
     The suite only ever calls this, so budget enforcement, failure
@@ -1667,6 +1893,10 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
     """
     if task not in TASK_TYPES:
         raise TaskError(f"unknown task {task!r}; have {list(TASK_TYPES)}")
+    if task == "network_alignment" and deadline_s is None:
+        raise TaskError(
+            "network_alignment requires deadline_s (D); the pre-registered "
+            "primary endpoint is otherwise NOT_COMPUTABLE")
     if task == "branch_alignment":
         driver = branch_alignment_block(
             resolved, rows, geometry, deadline_s=deadline_s, source=source,
@@ -1678,7 +1908,9 @@ def run_task(task, resolved, rows, geometry, source, *, deadline_s=None,
                                    arms=arms, overrides=overrides,
                                    deadline_s=deadline_s, window=window,
                                    capture_replay=capture_replay,
-                                   simulator_call_guard=simulator_call_guard)
+                                   simulator_call_guard=simulator_call_guard,
+                                   allow_non_binding_deadline=(
+                                       allow_non_binding_deadline))
     else:
         driver = execution_compare.compare(
             resolved, rows, geometry, source,
@@ -1891,7 +2123,16 @@ def network_summary_document(document):
         if routing_log:
             summarized["routing_audit_log"] = {
                 key: routing_log[key] for key in (
-                    "schema", "decision_record_count", "attempt_record_count",
+                    "schema", "decision_record_count", "decision_records_total",
+                    "attempt_record_count", "attempt_records_total",
+                    "decision_records_retained", "decision_records_cap",
+                    "decision_records_truncated", "decision_sampling_rule",
+                    "decision_coverage_fraction", "decision_time_range_s",
+                    "decision_time_range_full_s", "cross_arm_key",
+                    "decision_records_without_cross_arm_key",
+                    "attempt_records_retained", "attempt_records_cap",
+                    "attempt_records_truncated", "attempt_sampling_rule",
+                    "attempt_records_without_cross_arm_key",
                     "coverage_note") if key in routing_log}
         replay = arm.get("replay") or {}
         summarized["replay_summary"] = {
@@ -1901,10 +2142,26 @@ def network_summary_document(document):
         }
         arms.append(summarized)
 
+    replay_capture = driver.get("replay_capture") or {}
+    replay_required = bool(replay_capture.get("requested"))
+    captured_arms = list(replay_capture.get("captured_arms") or [])
+    cell_success = (driver.get("status") == "ok"
+                    and (not replay_required or bool(captured_arms)))
     return {
         "schema": "t1-network-summary/v1",
         "completeness": "aggregate_metrics_only; full replay is separate",
-        "full_replay_required_for_cell_success": True,
+        "cell_success": cell_success,
+        "cell_success_requirements": {
+            "primary_endpoint": ("deadline_primary_loss.status == COMPUTED "
+                                 "for every arm"),
+            "primary_endpoint_binding": (
+                "deadline_primary_loss.binding.binding == true for every arm "
+                "unless --allow-non-binding-deadline was passed; an inert D "
+                "makes miss_pp equal (100 - delivery ratio)"),
+            "replay": ("required only when --capture-replay was requested"
+                       if not replay_required else "captured"),
+        },
+        "full_replay_required_for_cell_success": bool(replay_required),
         "task": document.get("task"),
         "task_status": document.get("status"),
         "failed_units": document.get("failed_units"),
@@ -1914,10 +2171,13 @@ def network_summary_document(document):
         "driver_identity": driver.get("identity"),
         "replay_capture": driver.get("replay_capture"),
         "deadline": driver.get("deadline"),
+        "deadline_binding": driver.get("deadline_binding"),
         "fairness": driver.get("fairness"),
         "arms": arms,
         "failures": driver.get("failures"),
         "driver_status": driver.get("status"),
+        "status_reasons": driver.get("status_reasons"),
+        "deadline_status": driver.get("deadline_status"),
         "units": driver.get("units"),
         "limits": {"task": document.get("limits"),
                    "driver": driver.get("limits")},
@@ -2080,6 +2340,11 @@ def publish_network_result(document, out):
     (about 13.6x the file size), so the gate and the analysis read it row by row
     instead of materializing the object graph.  The primary result keeps the
     sidecar name, its sha256, the per-stream counts and the byte-offset index.
+
+    A document that has no top-level arm list (branch_alignment publishes the
+    t1-branch-block/v1 block, execution_modes publishes the mode comparison)
+    is written unchanged: the graph codec, like this scan, is defined for the
+    network document only, so its absence is not an error.
     """
     from CODE.experiment_platform import replay_sidecar
     # Only a network result carries per-arm rows.  branch_alignment and
@@ -2142,6 +2407,43 @@ def _deadline_s(args):
     return args.deadline_s
 
 
+def _check_deadline_horizon(rows, resolved, deadline_s, window=None):
+    """Refuse a deadline the POPULATION cannot observe.
+
+    A deadline longer than (stop_time - last emission in the measurement
+    window) can only produce INTERVAL_CENSORED rows and value=None, i.e. a
+    report that says "run ok" while the primary endpoint is absent.
+
+    The latest trace emission is NOT the right boundary: a profile can carry
+    emissions after the population window (e.g. a 70 s trace read through a
+    5-40 s window).  The boundary is the window end when one is given.
+    """
+    if deadline_s is None:
+        raise TaskError("network_alignment requires a deadline (D)")
+    value = float(deadline_s)
+    if not math.isfinite(value) or value <= 0:
+        raise TaskError(
+            f"deadline must be a finite positive number, got {deadline_s!r}")
+    scenario = ((resolved or {}).get("config") or {}).get("scenario") or {}
+    if "duration_s" not in scenario:
+        return value  # unit-test double without a resolved scenario
+    horizon = float(scenario["duration_s"])
+    emissions = [float(row["emit_time_s"]) for row in rows
+                 if row.get("emit_time_s") is not None]
+    if not emissions:
+        raise TaskError("trace has no emission times; cannot validate deadline")
+    latest = max(emissions)
+    if isinstance(window, tuple) and len(window) == 2 and window[1] is not None:
+        latest = min(latest, float(window[1]))
+    observable = horizon - latest
+    if observable + 1e-9 < value:
+        raise TaskError(
+            f"deadline {value}s exceeds the observable horizon "
+            f"{observable:.6f}s (stop {horizon}s - latest population emission "
+            f"{latest}s); the primary endpoint would be censored, not computed")
+    return value
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="T1 experiment task driver (A2): three task types")
@@ -2152,6 +2454,12 @@ def main(argv=None) -> int:
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--deadline-s", type=float, default=None)
     parser.add_argument("--deadline-from", type=Path, default=None)
+    parser.add_argument(
+        "--allow-non-binding-deadline", action="store_true",
+        help="explicitly accept a frozen D that rejects no packet.  Without "
+             "this flag such a run is DEGRADED (rc=3), because the "
+             "pre-registered per-packet miss rate then carries no lateness "
+             "information and silently equals (100 - delivery ratio)")
     parser.add_argument("--max-branches", type=int, default=DEFAULT_MAX_BRANCHES)
     parser.add_argument("--window-start", type=float, default=None)
     parser.add_argument("--window-end", type=float, default=None)
@@ -2159,6 +2467,11 @@ def main(argv=None) -> int:
     parser.add_argument("--arms", default=None)
     parser.add_argument("--capture-replay", action="store_true",
                         help="retain real event streams for an offline replay")
+    parser.add_argument("--launch-manifest", action="store_true",
+                        help="write a pre-run launch-manifest.json next to --out")
+    parser.add_argument("--require-pinned-code", action="store_true",
+                        help="refuse to launch when the code identity is not a "
+                             "commit or a verified immutable release")
     parser.add_argument("--compute-servers", type=int, default=None)
     parser.add_argument("--service-s", type=float, default=None)
     parser.add_argument("--packet-bits", type=int, default=None)
@@ -2271,9 +2584,51 @@ def main(argv=None) -> int:
 
         resolved, rows, geometry, source = design(
             args.config, args.scenario, args.root, overrides)
+        if (args.task == "network_alignment"
+                and args.deadline_s is None and args.deadline_from is None):
+            print("T1TASKS REFUSED: network_alignment requires --deadline-s "
+                  "or --deadline-from; the pre-registered D must be frozen "
+                  "before launch (the primary endpoint is otherwise "
+                  "NOT_COMPUTABLE)")
+            return 2
+        if args.task == "network_alignment" and (
+                args.out.exists() or args.out.is_symlink()):
+            # Fail BEFORE compiling the trace or running any arm: a 4-minute
+            # simulation must not be spent to discover a path collision.
+            print(f"T1TASKS REFUSED: output destination exists: {args.out}")
+            return 2
+        deadline_value = _deadline_s(args)
+        if args.launch_manifest:
+            from CODE.experiment_platform import launch_manifest as _lm
+            inputs = []
+            if args.config:
+                inputs.append(("config", args.config))
+            if args.deadline_from:
+                inputs.append(("deadline_from", args.deadline_from))
+            if args.scenario and Path(args.scenario).is_file():
+                inputs.append(("scenario", args.scenario))
+            try:
+                _lm.build_launch_manifest(
+                    root=args.root,
+                    out=args.out.with_name(
+                        args.out.stem + ".launch-manifest.json"),
+                    run_id=args.out.stem,
+                    task=args.task,
+                    argv=raw_args,
+                    inputs=inputs,
+                    arms=([a.strip() for a in str(args.arms).split(",")
+                           if a.strip()] if args.arms else list(NETWORK_ARMS)),
+                    deadline_s=deadline_value,
+                    require_pinned=args.require_pinned_code)
+            except _lm.ManifestError as exc:
+                print(f"T1TASKS REFUSED: launch manifest: {exc}")
+                return 2
+        if args.task == "network_alignment":
+            _check_deadline_horizon(rows, resolved, deadline_value,
+                                    window=window)
         document = run_task(
             args.task, resolved, rows, geometry, source,
-            deadline_s=_deadline_s(args), max_branches=args.max_branches,
+            deadline_s=deadline_value, max_branches=args.max_branches,
             window=window,
             modes=([m.strip() for m in str(args.modes).split(",") if m.strip()]
                    if args.modes else None),
@@ -2281,6 +2636,7 @@ def main(argv=None) -> int:
                   if args.arms else NETWORK_ARMS),
             capture_replay=args.capture_replay,
             calibrate_common_horizon=args.calibrate_common_horizon,
+            allow_non_binding_deadline=args.allow_non_binding_deadline,
             simulator_call_guard=call_guard)
         if diagnostic is not None:
             if diagnostic_state["stop_fired"]:
@@ -2319,9 +2675,17 @@ def main(argv=None) -> int:
                 exit_code = 2
     if exit_code:
         return exit_code
+    binding = ((document.get("document") or {}).get("deadline_binding")
+               or {}) if isinstance(document.get("document"), dict) else {}
+    if binding.get("binding") is False:
+        print("T1TASKS WARNING: the frozen D rejected no packet in at least "
+              "one arm, so the per-packet miss rate equals "
+              "(100 - delivery ratio) and carries no lateness information; "
+              "pass --allow-non-binding-deadline to accept this deliberately")
     print(json.dumps({"status": document["status"], "task": document["task"],
                       "out": str(args.out),
-                      "failed_units": document["failed_units"]},
+                      "failed_units": document["failed_units"],
+                      "deadline_binding": binding.get("binding")},
                      ensure_ascii=False))
     return 0 if document["status"] == "ok" else 3
 

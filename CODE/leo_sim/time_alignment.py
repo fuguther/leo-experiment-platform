@@ -48,7 +48,41 @@ ARMS = ("stale", "now", "common", "candidate")
 #   analytic_drain  the last measured backlog drains at the observed rate and
 #                   nothing new arrives -- arrival-blind, so it can only ever
 #                   predict a DECREASING queue, and it says so by name.
-PREDICTORS = ("hold_last", "bounded_linear", "zero", "analytic_drain")
+PREDICTORS = ("hold_last", "bounded_linear", "zero", "analytic_drain",
+              "ou_shrink")
+
+# Mean-reversion time constant for ou_shrink.  The HISTORICAL value was
+# derived from beta=0.271 at h=27 ms (tau=-h/ln(beta) = 0.0207 s); the current
+# default is 0.100 s, chosen by the offline tau sweep.  Both tau and the
+# optional queue weight are read from the ENVIRONMENT, so they are recorded in
+# the artifact identity: the same config_sha256 with a different tau is a
+# different experiment.
+import os as _os_ou
+
+
+def _positive_env_float(name, default):
+    """Read a strictly positive finite float from the environment.
+
+    Fails loud instead of silently changing the estimator semantics: tau=0,
+    a negative value or NaN used to degenerate to "shrink fully to the mean",
+    and tau=inf degenerated to hold_last, both without an error.
+    """
+    raw = _os_ou.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(
+            f"{name} must be a finite positive number, got {raw!r}") from None
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError(
+            f"{name} must be a finite positive number, got {raw!r}")
+    return value
+
+
+OU_TAU_DEFAULT_S = _positive_env_float("T1_OU_TAU_S", 0.100)
+_QUEUE_WEIGHT = _positive_env_float("T1_QUEUE_WEIGHT", 1.0)
 ETA_METHOD_EXACT = "exact_terms"
 ETA_METHOD_DEFAULT_PEER = "default_peer_process"
 ETA_METHOD_MISSING = "missing"
@@ -256,6 +290,13 @@ class ObservationSnapshot:
     # reachable.  None leaves the sort key byte-identical to the historical path.
     tie_sig_digits: int | None
     query_delay_s: float
+    # ESTIMATOR PARAMETERS, carried INSIDE the frozen snapshot instead of being
+    # read from module-level environment globals.  They therefore travel with
+    # the config that produced them (config_sha256) and a reader of one
+    # snapshot can see which estimator it was scored with.  None = the
+    # historical constant, so every pre-existing config is unchanged.
+    ou_tau_s: float | None = None
+    queue_weight: float | None = None
     provenance: tuple = ()
     resource_service_rate_bps: tuple = ()
     terminal_propagation_s: tuple = ()
@@ -393,7 +434,8 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
                   resource_service_rate_bps=None,
                   terminal_propagation_s=None,
                   resource_available=None,
-                  local_egress_in_service_s=None) -> ObservationSnapshot:
+                  local_egress_in_service_s=None,
+                  ou_tau_s=None, queue_weight=None) -> ObservationSnapshot:
     """Build the frozen snapshot from kernel-selected fields only.
 
     Every accepted keyword is a field the kernel explicitly decided to expose;
@@ -453,6 +495,9 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
         common_rule=common_rule,
         tie_sig_digits=_tie_digits("tie_sig_digits", tie_sig_digits),
         query_delay_s=_finite("query_delay_s", query_delay_s),
+        ou_tau_s=(None if ou_tau_s is None else _finite("ou_tau_s", ou_tau_s)),
+        queue_weight=(None if queue_weight is None
+                      else _finite("queue_weight", queue_weight)),
         provenance=tuple(str(p) for p in provenance),
         resource_service_rate_bps=_pairs(
             "resource_service_rate_bps", resource_service_rate_bps),
@@ -500,7 +545,8 @@ def _latest_by_resource(history) -> dict:
 def predict_resource(history, snapshot_at: float, target_at: float,
                      method: str = "bounded_linear", history_limit: int = 8,
                      max_queue_bits=None, resource=None,
-                     allow_past: bool = False) -> ResourcePrediction:
+                     allow_past: bool = False,
+                     ou_tau_s: float | None = None) -> ResourcePrediction:
     """Predict the work queued at one resource at target_at.
 
     Pure: it reads only the received history it is given.  Invalid data is an
@@ -554,6 +600,22 @@ def predict_resource(history, snapshot_at: float, target_at: float,
                                   missing_reason="non_positive_rate")
     if method == "hold_last":
         value = last.queue_bits
+    elif method == "ou_shrink":
+        # Shrink the last sample toward the recent mean; the weight decays with
+        # the time span to the query instant.  Never extrapolates a slope.
+        recent = series[-min(len(series), max(2, history_limit)):]
+        mean_q = sum(float(s.queue_bits) for s in recent) / float(len(recent))
+        # Precedence: explicit config value > T1_OU_TAU_S environment override >
+        # historical constant.  The config value is part of config_sha256, so a
+        # tau-only change can no longer hide behind an identical config hash.
+        tau = OU_TAU_DEFAULT_S if ou_tau_s is None else _finite(
+            "ou_tau_s", ou_tau_s)
+        if tau <= 0:
+            raise TimeAlignmentError(
+                f"ou_tau_s must be > 0, got {ou_tau_s!r}")
+        span = max(0.0, target - last.measured_at)
+        weight = math.exp(-span / tau) if tau > 0 else 0.0
+        value = mean_q + (float(last.queue_bits) - mean_q) * weight
     elif method == "analytic_drain":
         rate = last.rate_bps
         if rate is None or rate <= 0:
@@ -820,6 +882,7 @@ def resource_service_bps(snapshot: ObservationSnapshot, direction: str):
     return snapshot.resource_rate_for(direction)
 
 
+
 def score_candidates(snapshot: ObservationSnapshot, predictions, etas) -> ScoredCandidates:
     """One scorer for all four arms; only the query instant differs.
 
@@ -929,6 +992,20 @@ def score_candidates(snapshot: ObservationSnapshot, predictions, etas) -> Scored
                                              else prediction.predicted_bits),
                                          service_rate_bps=service_rate))
             continue
+        # OPTIONAL queue weight.  Default 1.0 reproduces the historical scorer
+        # exactly.  Values >1 make queueing the primary criterion, which is the
+        # LQF / backpressure design point: those methods rank on congestion, not
+        # on path length.  No link parameter is touched.  Precedence: explicit
+        # config value (part of config_sha256) > T1_QUEUE_WEIGHT env override >
+        # historical 1.0.
+        queue_weight = (_QUEUE_WEIGHT if snapshot.queue_weight is None
+                        else _finite("queue_weight", snapshot.queue_weight))
+        if queue_weight <= 0:
+            raise TimeAlignmentError(
+                f"queue_weight must be > 0, got {queue_weight!r}")
+        if queue_weight != 1.0 and "resource_work_s" in terms:
+            terms = dict(terms)
+            terms["resource_work_s"] = terms["resource_work_s"] * queue_weight
         total = float(sum(terms.values()))
         scores.append(CandidateScore(direction, resource, total, terms, (),
                                      False,
@@ -1113,7 +1190,8 @@ def build_predictions(snapshot: ObservationSnapshot,
             snapshot_at=snapshot.snapshot_at, target_at=target,
             method=snapshot.predictor, history_limit=snapshot.history_limit,
             max_queue_bits=snapshot.max_resource_queue_bits, resource=resource,
-            allow_past=(snapshot.arm == "stale"))
+            allow_past=(snapshot.arm == "stale"),
+            ou_tau_s=snapshot.ou_tau_s)
     return predictions, etas, targets
 
 

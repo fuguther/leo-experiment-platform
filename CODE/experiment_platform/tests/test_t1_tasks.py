@@ -192,6 +192,7 @@ def test_cli_publishes_network_summary_before_full_result(tmp_path, monkeypatch)
     monkeypatch.setattr(t1_tasks, "publish", record_publish)
     status = t1_tasks.main([
         "--task", "network_alignment", "--scenario", "fixture",
+        "--deadline-s", "20.0",
         "--out", str(output),
     ])
 
@@ -230,6 +231,7 @@ def test_network_summary_cannot_replace_missing_primary_result(tmp_path,
     monkeypatch.setattr(t1_tasks, "publish", fail_primary)
     status = t1_tasks.main([
         "--task", "network_alignment", "--scenario", "fixture",
+        "--deadline-s", "20.0",
         "--out", str(output),
     ])
 
@@ -414,6 +416,7 @@ def test_authorized_cprofile_stops_first_call_and_keeps_partial_ledger_non_green
 
     status = t1_tasks.main([
         "--task", "network_alignment", "--config", "profile.yaml",
+        "--deadline-s", "20.0",
         "--out", str(output), "--arms", ",".join(t1_tasks.NETWORK_ARMS),
     ])
 
@@ -460,6 +463,7 @@ def test_authorized_cprofile_stops_first_call_and_keeps_partial_ledger_non_green
                          "failed_units": 0, "document": {"arms": []}})
     normal_status = t1_tasks.main([
         "--task", "network_alignment", "--config", "profile.yaml",
+        "--deadline-s", "20.0",
         "--out", str(normal_output), "--arms", ",".join(t1_tasks.NETWORK_ARMS),
     ])
     assert normal_status == 0
@@ -832,7 +836,9 @@ def test_a_block_needs_one_deadline_for_every_branch():
 # --------------------------------------------------------- the four arms
 def test_all_four_arms_really_run_the_network():
     resolved, rows, geometry, source = _scenario()
-    document = t1_tasks.network_alignment(resolved, rows, geometry, source)
+    document = t1_tasks.network_alignment(
+        resolved, rows, geometry, source, deadline_s=20.0,
+        allow_non_binding_deadline=True)
     assert document["status"] == "ok" and document["failures"] == []
     assert [row["arm"] for row in document["arms"]] == list(t1_tasks.NETWORK_ARMS)
     for row in document["arms"]:
@@ -878,14 +884,18 @@ def test_four_arm_deadline_metric_keeps_each_packet_fate_and_censor_bounds():
 def test_the_arm_is_switched_on_even_when_the_base_config_had_it_off():
     resolved, rows, geometry, source = _scenario()
     assert resolved["config"]["time_alignment"]["enabled"] is False
-    document = t1_tasks.network_alignment(resolved, rows, geometry, source)
+    document = t1_tasks.network_alignment(
+        resolved, rows, geometry, source, deadline_s=20.0,
+        allow_non_binding_deadline=True)
     for row in document["arms"]:
         assert row["time_alignment_audit"]["decisions_with_query_targets"] > 0
 
 
 def test_each_arm_reports_its_own_scope_and_request_distribution():
     resolved, rows, geometry, source = _scenario()
-    document = t1_tasks.network_alignment(resolved, rows, geometry, source)
+    document = t1_tasks.network_alignment(
+        resolved, rows, geometry, source, deadline_s=20.0,
+        allow_non_binding_deadline=True)
     for row in document["arms"]:
         rates = row["request_rate_per_satellite"]
         assert rates["max"] is not None and rates["mean"] is not None
@@ -996,9 +1006,10 @@ def test_trace_build_uses_writable_temp_storage_outside_readonly_release(
 def test_one_driver_serves_all_three_task_types(task):
     resolved, rows, geometry, source = _scenario()
     kwargs = ({"deadline_s": 20.0, "window": (5.0, 20.0)}
-              if task == "branch_alignment" else {})
+              if task == "branch_alignment"
+              else ({"deadline_s": 20.0} if task == "network_alignment" else {}))
     document = t1_tasks.run_task(task, resolved, rows, geometry, source,
-                                 **kwargs)
+                                 allow_non_binding_deadline=True, **kwargs)
     assert document["task"] == task
     assert document["status"] == "ok"
     assert document["failed_units"] == 0
@@ -1034,3 +1045,15 @@ def test_an_unknown_task_is_refused():
     resolved, rows, geometry, source = _scenario()
     with pytest.raises(t1_tasks.TaskError):
         t1_tasks.run_task("nonsense", resolved, rows, geometry, source)
+
+
+def test_non_binding_deadline_degrades_and_flag_accepts():
+    resolved, rows, geometry, source = _scenario()
+    strict = t1_tasks.network_alignment(
+        resolved, rows, geometry, source, deadline_s=20.0)
+    assert strict["status"] == "DEGRADED"
+    assert "primary_endpoint_deadline_not_binding" in strict["status_reasons"]
+    accepted = t1_tasks.network_alignment(
+        resolved, rows, geometry, source, deadline_s=20.0,
+        allow_non_binding_deadline=True)
+    assert accepted["status"] == "ok"

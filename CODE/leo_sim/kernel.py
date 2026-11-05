@@ -40,7 +40,6 @@ configured quantum. ISL queues are per-direction with a single capacity
 shared by data and control; control has non-preemptive priority.
 """
 from __future__ import annotations
-
 import math
 import hashlib
 import json
@@ -175,7 +174,7 @@ class DataPacket:
                  "learning_reward", "learning_episode_closed",
                  "research_deadline_at", "isl_enqueued_at", "holding_until",
                  "metric_queue_id", "metric_prop_id", "metric_ingress_at",
-                 "decision_id")
+                 "decision_id", "decision_ordinal", "current_hop_index")
 
     def __init__(self, pid, src, dst, bits, deadline, emitted_at,
                  research_deadline_at=None):
@@ -204,6 +203,13 @@ class DataPacket:
         # downstream milestones can be attributed to the decision that
         # caused them without touching packet_events
         self.decision_id = None
+        # T1-CROSS-ARM-KEY: this packet's decision ordinal.  decision_id is a
+        # per-run counter (meaningless across arms); (pid, decision_ordinal)
+        # is the ONLY stable cross-arm join key.  Output-only.
+        self.decision_ordinal = 0
+        # the hop_index of the decision currently being committed, so timeline
+        # milestones written during that decision carry the same key
+        self.current_hop_index = None
 
 
 class QueueArea:
@@ -1970,6 +1976,22 @@ class Kernel:
         self._decision_seq += 1
         return decision_id
 
+    def _allocate_decision(self, pkt: DataPacket) -> tuple[int | None, int]:
+        """Allocate the per-decision id AND this packet's decision ordinal.
+
+        ``decision_id`` is a PER-RUN auto-increment counter, so it denotes
+        different decisions in each arm of a multi-arm comparison and is
+        therefore NOT usable as a cross-arm join key.  ``hop_index`` counts
+        THIS packet's decision allocations in commit order, so ``(pid,
+        hop_index)`` denotes the same decision point of the same packet in
+        every arm.  Both are output-only: they never influence routing,
+        learning, timing or fates.
+        """
+        hop_index = pkt.decision_ordinal
+        pkt.decision_ordinal += 1
+        pkt.current_hop_index = hop_index
+        return self._next_decision_id(), hop_index
+
     def _timeline(self, milestone: str, pkt: DataPacket,
                   decision_id: int | None, **extra) -> None:
         """Append one decision-lifecycle milestone to the optional sink.
@@ -1987,6 +2009,9 @@ class Kernel:
             "at": float(self.env.now),
             "pid": pkt.pid,
             "decision_id": decision_id,
+            # T1-CROSS-ARM-KEY: the decision ordinal of this packet, so an
+            # attempt can be paired across arms even though decision_id cannot.
+            "hop_index": getattr(pkt, "current_hop_index", None),
         }
         row.update(extra)
         self.timeline_sink.append(row)
@@ -5082,6 +5107,10 @@ class Kernel:
             # byte-identical to every historical run.
             tie_sig_digits=self.cfg_ta.get("tie_sig_digits"),
             query_delay_s=float(self.cfg_ta["query_delay_s"]),
+            # ESTIMATOR PARAMETERS from the CONFIG, so they are part of
+            # config_sha256.  None keeps the historical env/default behaviour.
+            ou_tau_s=self.cfg_ta.get("ou_tau_s"),
+            queue_weight=self.cfg_ta.get("queue_weight"),
             provenance=(scope,))
 
     def _ta_common_horizon(self, probe, rule):
@@ -5849,6 +5878,11 @@ class Kernel:
                                  if decision_started_at is None
                                  else float(decision_started_at)),
             "decision_id": decision_id,
+            # T1-CROSS-ARM-KEY: this packet's decision ordinal.  decision_id is
+            # a per-run counter and denotes DIFFERENT decisions in each arm of
+            # a multi-arm comparison; (pid, hop_index) is the stable cross-arm
+            # key.  Additive output-only field: the simulation reads neither.
+            "hop_index": getattr(pkt, "current_hop_index", None),
             "state_version": self._state_version,
             "pid": pkt.pid,
             "src": pkt.src,
@@ -5912,6 +5946,7 @@ class Kernel:
             rows.append({
                 "schema": "leo-sim-target-probe-decision/v1",
                 "decision_id": decision_id,
+                "hop_index": getattr(pkt, "current_hop_index", None),
                 "pid": pkt.pid,
                 "sat": int(sat),
                 "kind": str(kind),
@@ -6684,6 +6719,9 @@ class Kernel:
             "at": float(self.env.now),
             "pid": int(pkt.pid),
             "decision_id": decision_id,
+            # T1-CROSS-ARM-KEY: attempts are pair-able across arms on the same
+            # (pid, hop_index) key as committed decisions.
+            "hop_index": getattr(pkt, "current_hop_index", None),
             "sat": int(sat),
             "dst": str(pkt.dst),
             "action": action,
@@ -6786,7 +6824,7 @@ class Kernel:
         mechanism counter, which would change the receipt key set.
         """
         now = self.env.now
-        decision_id = self._next_decision_id()
+        decision_id, hop_index = self._allocate_decision(pkt)
         if self.timeline_sink is not None and pkt.decision_id is not None:
             self._timeline("redecision", pkt, decision_id,
                            prev_decision_id=pkt.decision_id, sat=int(sat),
@@ -6880,7 +6918,7 @@ class Kernel:
                 pkt, sat, observation, decision_started_at)
             return
         now = self.env.now
-        decision_id = self._next_decision_id()
+        decision_id, hop_index = self._allocate_decision(pkt)
         if self.timeline_sink is not None and pkt.decision_id is not None:
             # the packet was COMMITTED at least once before (pkt.decision_id
             # is written only by the two commit sites), possibly at another
