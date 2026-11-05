@@ -388,3 +388,114 @@ def test_single_arm_cell_still_reports_one_arm(tmp_path):
     rows, _, _ = index_runs.build_index([tmp_path])
     assert by_id(rows)["run-single"]["arm"] == "candidate"
 
+
+
+def test_summary_bundle_with_null_receipt_is_not_completed(tmp_path):
+    """A trace hash match is not a receipt: interrupted bundles must not be
+    promoted to completed_self_verified (2026-10-24 review)."""
+    analysis = tmp_path / "analysis"
+    write_json(analysis / "SCN-1" / "runs" / "run-interrupted" / "summary.json", {
+        "run": "run-interrupted",
+        "source_dir": "/tmp/run-interrupted",
+        "receipt": None,
+        "note": "incomplete: no receipt.json in this run dir (interrupted / pre-receipt run)",
+        "trace_sha256_matches_manifest": True,
+    })
+    rows, _, _ = index_runs.build_index([analysis])
+    row = by_id(rows)["run-interrupted"]
+    assert row["status"] == "summary_bundle_incomplete"
+    assert "receipt=null" in row["status_basis"] or "incomplete" in row["status_basis"]
+
+def test_summary_bundle_with_normal_note_is_completed(tmp_path):
+    """Positive sample: a finished bundle with a trace match and no
+    receipt=null/incomplete marker stays completed_self_verified."""
+    analysis = tmp_path / "analysis"
+    write_json(analysis / "SCN-1" / "runs" / "run-completed" / "summary.json", {
+        "run": "run-completed",
+        "source_dir": "/tmp/run-completed",
+        "note": "complete: trace consistent with manifest",
+        "trace_sha256_matches_manifest": True,
+    })
+    rows, _, _ = index_runs.build_index([analysis])
+    row = by_id(rows)["run-completed"]
+    assert row["status"] == "completed_self_verified"
+    assert "trace_sha256_matches_manifest" in row["status_basis"]
+
+def test_summary_bundle_explicit_failure_markers_beat_trace_match(tmp_path):
+    """An explicit failure/early-stop marker must never be promoted by a
+    trace-hash match, whether it sits in the embedded receipt or the summary."""
+    analysis = tmp_path / "analysis"
+    cases = {
+        "with-interrupted": {"receipt": {"interrupted": True}},
+        "with-natural-end-false": {"receipt": {"natural_end": False}},
+        "with-error": {"receipt": {"error": "boom"}},
+        "with-conservation-failed": {"receipt": {"natural_end": True,
+                                                 "conservation_ok": False}},
+        "top-interrupted": {"interrupted": True},
+        "top-natural-end-false": {"natural_end": False},
+    }
+    for run_id, extra in cases.items():
+        doc = {"run": run_id, "source_dir": "/tmp/" + run_id,
+               "trace_sha256_matches_manifest": True}
+        doc.update(extra)
+        write_json(analysis / "SCN-1" / "runs" / run_id / "summary.json", doc)
+    rows, _, _ = index_runs.build_index([analysis])
+    by = by_id(rows)
+    assert by["with-interrupted"]["status"] == "interrupted"
+    assert by["with-natural-end-false"]["status"] == "not_natural_end"
+    assert by["with-error"]["status"] == "error"
+    assert by["with-conservation-failed"]["status"] == "completed_conservation_failed"
+    assert by["top-interrupted"]["status"] == "interrupted"
+    assert by["top-natural-end-false"]["status"] == "not_natural_end"
+    for run_id in cases:
+        assert by[run_id]["status"] != "completed_self_verified", run_id
+
+    # positive control: an embedded receipt WITH natural_end=True and a trace
+    # match is still a completed self-verified bundle.
+    write_json(analysis / "SCN-1" / "runs" / "receipt-complete" / "summary.json", {
+        "run": "receipt-complete", "source_dir": "/tmp/receipt-complete",
+        "receipt": {"natural_end": True, "conservation_ok": True},
+        "trace_sha256_matches_manifest": True,
+    })
+    rows, _, _ = index_runs.build_index([analysis])
+    assert by_id(rows)["receipt-complete"]["status"] == "completed_self_verified"
+
+def test_summary_bundle_failure_markers_checked_in_both_layers(tmp_path):
+    """A partial/empty embedded receipt must not hide top-level markers, and
+    conservation failure is a failure signal even without natural_end."""
+    analysis = tmp_path / "analysis"
+    cases = {
+        "empty-receipt-top-interrupted": {
+            "receipt": {}, "interrupted": True},
+        "top-error-only": {"error": {"code": "boom"}},
+        "receipt-conservation-false": {"receipt": {"conservation_ok": False}},
+        "top-conservation-false": {"conservation_ok": False},
+        "both-layers-natural-end-false": {
+            "receipt": {"natural_end": None, "error": None},
+            "natural_end": False},
+    }
+    for run_id, extra in cases.items():
+        doc = {"run": run_id, "source_dir": "/tmp/" + run_id,
+               "trace_sha256_matches_manifest": True}
+        doc.update(extra)
+        write_json(analysis / "SCN-1" / "runs" / run_id / "summary.json", doc)
+    rows, _, _ = index_runs.build_index([analysis])
+    by = by_id(rows)
+    assert by["empty-receipt-top-interrupted"]["status"] == "interrupted"
+    assert by["top-error-only"]["status"] == "error"
+    assert by["receipt-conservation-false"]["status"] == "completed_conservation_failed"
+    assert by["top-conservation-false"]["status"] == "completed_conservation_failed"
+    assert by["both-layers-natural-end-false"]["status"] == "not_natural_end"
+    for run_id in cases:
+        assert by[run_id]["status"] != "completed_self_verified", run_id
+
+
+def test_summary_bundle_incomplete_note_alone_is_not_completed(tmp_path):
+    analysis = tmp_path / "analysis"
+    write_json(analysis / "SCN-1" / "runs" / "note-only" / "summary.json", {
+        "run": "note-only", "source_dir": "/tmp/note-only",
+        "note": "  Incomplete: pre-receipt run",
+        "trace_sha256_matches_manifest": True,
+    })
+    rows, _, _ = index_runs.build_index([analysis])
+    assert by_id(rows)["note-only"]["status"] == "summary_bundle_incomplete"
