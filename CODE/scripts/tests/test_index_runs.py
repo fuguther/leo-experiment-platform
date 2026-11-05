@@ -459,3 +459,43 @@ def test_summary_bundle_explicit_failure_markers_beat_trace_match(tmp_path):
     })
     rows, _, _ = index_runs.build_index([analysis])
     assert by_id(rows)["receipt-complete"]["status"] == "completed_self_verified"
+
+def test_summary_bundle_failure_markers_checked_in_both_layers(tmp_path):
+    """A partial/empty embedded receipt must not hide top-level markers, and
+    conservation failure is a failure signal even without natural_end."""
+    analysis = tmp_path / "analysis"
+    cases = {
+        "empty-receipt-top-interrupted": {
+            "receipt": {}, "interrupted": True},
+        "top-error-only": {"error": {"code": "boom"}},
+        "receipt-conservation-false": {"receipt": {"conservation_ok": False}},
+        "top-conservation-false": {"conservation_ok": False},
+        "both-layers-natural-end-false": {
+            "receipt": {"natural_end": None, "error": None},
+            "natural_end": False},
+    }
+    for run_id, extra in cases.items():
+        doc = {"run": run_id, "source_dir": "/tmp/" + run_id,
+               "trace_sha256_matches_manifest": True}
+        doc.update(extra)
+        write_json(analysis / "SCN-1" / "runs" / run_id / "summary.json", doc)
+    rows, _, _ = index_runs.build_index([analysis])
+    by = by_id(rows)
+    assert by["empty-receipt-top-interrupted"]["status"] == "interrupted"
+    assert by["top-error-only"]["status"] == "error"
+    assert by["receipt-conservation-false"]["status"] == "completed_conservation_failed"
+    assert by["top-conservation-false"]["status"] == "completed_conservation_failed"
+    assert by["both-layers-natural-end-false"]["status"] == "not_natural_end"
+    for run_id in cases:
+        assert by[run_id]["status"] != "completed_self_verified", run_id
+
+
+def test_summary_bundle_incomplete_note_alone_is_not_completed(tmp_path):
+    analysis = tmp_path / "analysis"
+    write_json(analysis / "SCN-1" / "runs" / "note-only" / "summary.json", {
+        "run": "note-only", "source_dir": "/tmp/note-only",
+        "note": "  Incomplete: pre-receipt run",
+        "trace_sha256_matches_manifest": True,
+    })
+    rows, _, _ = index_runs.build_index([analysis])
+    assert by_id(rows)["note-only"]["status"] == "summary_bundle_incomplete"
