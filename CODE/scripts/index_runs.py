@@ -238,13 +238,35 @@ def derive_status(receipt, artifacts, summary=None):
     bundle_only = ("summary.json" in artifacts) and ("receipt.json" not in artifacts)
     if bundle_only:
         # A summary bundle without receipt.json is NOT complete merely because
-        # its trace hash matches: the run may have been interrupted before the
-        # receipt was written (the bundle declares receipt=null / an
-        # "incomplete" note).  Do not turn "trace consistent" into "completed".
-        if isinstance(summary, dict) and "receipt" in summary \
-                and summary.get("receipt") is None:
-            return "summary_bundle_incomplete", (
-                "独立 summary bundle 但 receipt=null（未收尾/中断）")
+        # its trace hash matches.  Explicit failure/interruption markers always
+        # win, and an embedded receipt object must carry a terminal verdict:
+        # otherwise a trace-consistent pre-receipt run would be promoted.
+        explicit_receipt = None
+        if isinstance(summary, dict) and "receipt" in summary:
+            explicit_receipt = summary.get("receipt")
+            if explicit_receipt is None:
+                return "summary_bundle_incomplete", (
+                    "独立 summary bundle 但 receipt=null（未收尾/中断）")
+            if not isinstance(explicit_receipt, dict):
+                return "summary_bundle_incomplete", (
+                    "独立 summary bundle 但 receipt 字段类型异常")
+        # A bundle family summary may embed a PARTIAL receipt (no terminal
+        # field); trace self-verification is the declared closing evidence for
+        # that family.  But an explicit failure/early-stop marker - in the
+        # embedded receipt or at the summary top level - always wins.
+        marker = explicit_receipt if isinstance(explicit_receipt, dict) else summary
+        marker = marker if isinstance(marker, dict) else {}
+        error = marker.get("error")
+        if isinstance(error, str) and error.strip():
+            return "error", "独立 summary bundle 但 receipt.error=%s" % fmt(error)[:40]
+        if marker.get("interrupted") is True:
+            return "interrupted", "独立 summary bundle 但 receipt.interrupted=True"
+        natural_end = marker.get("natural_end")
+        if natural_end is False:
+            return "not_natural_end", "独立 summary bundle 但 receipt.natural_end=False"
+        if natural_end is True and marker.get("conservation_ok") is False:
+            return "completed_conservation_failed", (
+                "独立 summary bundle 但 receipt.natural_end=True 且 conservation_ok=False")
         note = (summary or {}).get("note") if isinstance(summary, dict) else None
         if isinstance(note, str) and note.strip().lower().startswith("incomplete"):
             return "summary_bundle_incomplete", "独立 summary bundle 且 note=incomplete"
