@@ -405,3 +405,18 @@ def test_summary_bundle_with_null_receipt_is_not_completed(tmp_path):
     row = by_id(rows)["run-interrupted"]
     assert row["status"] == "summary_bundle_incomplete"
     assert "receipt=null" in row["status_basis"] or "incomplete" in row["status_basis"]
+
+def test_summary_bundle_with_normal_note_is_completed(tmp_path):
+    """Positive sample: a finished bundle with a trace match and no
+    receipt=null/incomplete marker stays completed_self_verified."""
+    analysis = tmp_path / "analysis"
+    write_json(analysis / "SCN-1" / "runs" / "run-completed" / "summary.json", {
+        "run": "run-completed",
+        "source_dir": "/tmp/run-completed",
+        "note": "complete: trace consistent with manifest",
+        "trace_sha256_matches_manifest": True,
+    })
+    rows, _, _ = index_runs.build_index([analysis])
+    row = by_id(rows)["run-completed"]
+    assert row["status"] == "completed_self_verified"
+    assert "trace_sha256_matches_manifest" in row["status_basis"]
