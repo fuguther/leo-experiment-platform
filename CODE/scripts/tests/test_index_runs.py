@@ -420,3 +420,42 @@ def test_summary_bundle_with_normal_note_is_completed(tmp_path):
     row = by_id(rows)["run-completed"]
     assert row["status"] == "completed_self_verified"
     assert "trace_sha256_matches_manifest" in row["status_basis"]
+
+def test_summary_bundle_explicit_failure_markers_beat_trace_match(tmp_path):
+    """An explicit failure/early-stop marker must never be promoted by a
+    trace-hash match, whether it sits in the embedded receipt or the summary."""
+    analysis = tmp_path / "analysis"
+    cases = {
+        "with-interrupted": {"receipt": {"interrupted": True}},
+        "with-natural-end-false": {"receipt": {"natural_end": False}},
+        "with-error": {"receipt": {"error": "boom"}},
+        "with-conservation-failed": {"receipt": {"natural_end": True,
+                                                 "conservation_ok": False}},
+        "top-interrupted": {"interrupted": True},
+        "top-natural-end-false": {"natural_end": False},
+    }
+    for run_id, extra in cases.items():
+        doc = {"run": run_id, "source_dir": "/tmp/" + run_id,
+               "trace_sha256_matches_manifest": True}
+        doc.update(extra)
+        write_json(analysis / "SCN-1" / "runs" / run_id / "summary.json", doc)
+    rows, _, _ = index_runs.build_index([analysis])
+    by = by_id(rows)
+    assert by["with-interrupted"]["status"] == "interrupted"
+    assert by["with-natural-end-false"]["status"] == "not_natural_end"
+    assert by["with-error"]["status"] == "error"
+    assert by["with-conservation-failed"]["status"] == "completed_conservation_failed"
+    assert by["top-interrupted"]["status"] == "interrupted"
+    assert by["top-natural-end-false"]["status"] == "not_natural_end"
+    for run_id in cases:
+        assert by[run_id]["status"] != "completed_self_verified", run_id
+
+    # positive control: an embedded receipt WITH natural_end=True and a trace
+    # match is still a completed self-verified bundle.
+    write_json(analysis / "SCN-1" / "runs" / "receipt-complete" / "summary.json", {
+        "run": "receipt-complete", "source_dir": "/tmp/receipt-complete",
+        "receipt": {"natural_end": True, "conservation_ok": True},
+        "trace_sha256_matches_manifest": True,
+    })
+    rows, _, _ = index_runs.build_index([analysis])
+    assert by_id(rows)["receipt-complete"]["status"] == "completed_self_verified"
