@@ -112,31 +112,49 @@ def _is_forced(row):
     return bool(row.get("forced"))
 
 
-def _identity(rows):
-    """Check optional run/config identity; incompatible inputs fail closed.
+CONFIG_SHA_RE = __import__("re").compile(r"^[0-9a-f]{64}$")
 
-    Probe rows are produced per arm/run.  When they carry run_id or
-    config_sha256, mixing different values silently would make the reported
-    accuracy describe no single run.  Rows produced by older probes do not
-    carry these fields; in that case the summary must say so rather than imply
-    identity was verified.
+
+def _identity(rows):
+    """Check run/config identity; mixed or partial identity is NOT verified.
+
+    Rules:
+      * every row that can enter accuracy must carry BOTH run_id and
+        config_sha256 (otherwise the summary covers rows of unknown
+        provenance);
+      * all present values must agree;
+      * config_sha256 must be a real 64-char lowercase hex digest, so a
+        placeholder cannot be reported as verified.
     """
-    def values(field):
-        return sorted({str(row[field]) for row in rows
-                       if row.get(field) not in (None, "")})
-    configs = values("config_sha256")
-    runs = values("run_id")
-    if len(configs) > 1 or len(runs) > 1:
+    checked = [row for row in rows
+               if not _is_forced(row) and not _is_extra_horizon(row)]
+    runs = sorted({str(row["run_id"]) for row in checked
+                   if row.get("run_id") not in (None, "")})
+    configs = sorted({str(row["config_sha256"]) for row in checked
+                      if row.get("config_sha256") not in (None, "")})
+    if len(runs) > 1 or len(configs) > 1:
         raise ValueError(
             "probe identity mismatch: config_sha256=%r run_id=%r"
             % (configs, runs))
+    missing = sum(1 for row in checked
+                  if not row.get("run_id") or not row.get("config_sha256"))
+    invalid = [c for c in configs if not CONFIG_SHA_RE.match(c)]
+    verified = (bool(checked) and missing == 0 and not invalid
+                and len(runs) == 1 and len(configs) == 1)
+    if invalid:
+        raise ValueError(
+            "probe identity invalid: config_sha256 is not a 64-char hex digest")
     return {
         "config_sha256": configs[0] if configs else None,
         "run_id": runs[0] if runs else None,
-        "verified": bool(configs or runs),
-        "note": ("rows do not carry run/config identity; do not treat this as "
-                 "a single-run accuracy claim" if not (configs or runs) else
-                 "identity fields are consistent across inputs"),
+        "rows_checked": len(checked),
+        "rows_missing_identity": missing,
+        "verified": verified,
+        "note": ("all accuracy rows carry a consistent run/config identity"
+                 if verified else
+                 "identity NOT verified: %d/%d base rows lack run_id or "
+                 "config_sha256; do not treat this as a single-run claim"
+                 % (missing, len(checked))),
     }
 
 
