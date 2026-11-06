@@ -18,9 +18,9 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: b44f36a8042732d74fac8f964ae2e3058a01fd267ff867bd656f032b91beccb6
+    execution_chain_sha256: b91f58ac12fb6e158c113c3b293ddc0f29ba6eceffcfc9a327aa38306b3e68ba
     cell_input_sha256:
-      b-bounded_population_cost_smoke-network-seed-7: 9f2b5ccbf4a16920da8795c0f7688a2ce6788ef39180ad9adceea869d416321c
+      b-bounded_population_cost_smoke-network-seed-7: 3b5438c63157b43b6a0c6d13008aab3999335a2337451cb8ab291772ef08036f
   release_ready: false
   reason: User authorized platform preparation and continuation. The candidate repair
     preserves complete replay and shares immutable arrived advertisement history in
@@ -46,7 +46,7 @@ design_readiness:
     this pin; the diff was recomputed from the branch, not copied from a run.
     ROUND12 (2026-11-06) re-binds this cost-probe authorization to the tree
     PR18 compiles. Two pins move and nothing else is claimed.
-    execution_chain_sha256 ccb7b20a -> b44f36a8. Recomputed member-by-member
+    execution_chain_sha256 ccb7b20a -> b91f58ac. Recomputed member-by-member
     against main 0f4a1ee -- four files are ADDED to the chain by PR18
     (experiment_platform/decision_consequence.py, experiment_autopsy.py,
     prediction_accuracy.py, leo_sim/resource_journal.py) and four are CHANGED
@@ -56,7 +56,7 @@ design_readiness:
     by the PR18 diff; this note re-binds identity, it does not assert that the
     PR18 behaviour change passed replay-vs-race review (that is ROUND9's
     separate claim and must be re-established per PR, not inherited).
-    cell_input_sha256 9595d6ba -> 9f2b5ccb. Recomputing the full per-cell
+    cell_input_sha256 9595d6ba -> 3b5438c6. Recomputing the full per-cell
     binding on both trees shows every bound file hash (profile, population
     raster, advertisement protocol, trace, statistics, deadline/scope) is
     byte-identical; the only differing member is driver_sha256, because the
@@ -71,11 +71,11 @@ input_identity:
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: b44f36a8042732d74fac8f964ae2e3058a01fd267ff867bd656f032b91beccb6
+  source_execution_chain_sha256: b91f58ac12fb6e158c113c3b293ddc0f29ba6eceffcfc9a327aa38306b3e68ba
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
-    b-bounded_population_cost_smoke-network-seed-7: 9f2b5ccbf4a16920da8795c0f7688a2ce6788ef39180ad9adceea869d416321c
+    b-bounded_population_cost_smoke-network-seed-7: 3b5438c63157b43b6a0c6d13008aab3999335a2337451cb8ab291772ef08036f
 scenario:
   reference_geometry: selected 96-satellite, 12-plane small-study engineering geometry
   reference_is_global_platform_freeze: false

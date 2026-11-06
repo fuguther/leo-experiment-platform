@@ -956,6 +956,10 @@ def _routing_audit_log(sink, timeline):
             "dst": row.get("dst"), "sat": row.get("sat"),
             "kind": row.get("kind"), "candidates": row.get("candidates"),
             "chosen": row.get("chosen"),
+            # Provenance for downstream analysis: a forced decision is an
+            # intervention, and dropping this flag here would silently make
+            # decision_consequence count it as an online-policy sample.
+            "forced": row.get("forced"),
             "four_direction_audit": row.get("four_direction_audit"),
             "observation_at_start": {
                 key: observation.get(key) for key in (
@@ -2843,19 +2847,20 @@ def main(argv=None) -> int:
                     arm_names = [str(a.get("arm")) for a in
                                  (summary_document.get("arms") or [])]
                     probes, probe_arm = [], None
+                    wanted = arm_names[0] if arm_names else None
                     for path in sorted(args.out.parent.glob(
                             f"{args.out.stem}-target-probe-*.jsonl")):
                         name = path.stem.rsplit("-target-probe-", 1)[-1]
-                        if arm_names and name not in arm_names:
+                        if wanted is not None and name != wanted:
                             continue
                         if probe_arm is not None and name != probe_arm:
                             continue
                         probe_arm = name
                         probes.append(_autopsy.probe_block(str(path)))
-                    if arm_names and probe_arm != arm_names[0]:
+                    if wanted is not None and probe_arm != wanted:
                         raise TaskError(
-                            "autopsy probe/arm mismatch: expected probe for "
-                            f"arm {arm_names[0]!r}, got {probe_arm!r}")
+                            "autopsy probe missing for summary arm "
+                            f"{wanted!r}; refusing to pair another arm's probe")
                     journals = []
                     for path in sorted(args.out.parent.glob(
                             f"{args.out.stem}-journal-*.jsonl")):

@@ -121,6 +121,7 @@ def _extract_arm(arm):
             "decision_id": rec.get("decision_id"),
             "chosen": rec.get("chosen"),
             "kind": rec.get("kind"),
+            "forced": rec.get("forced"),
             "t_commit_s": rec.get("t_decision_commit"),
             "candidates": rec.get("candidates"),
             "pred": pred,
@@ -570,7 +571,12 @@ def analyse(audit, arm_a, arm_b, probe_a=None, probe_b=None, args=None):
         kind = da[key].get("kind") or "unknown"
         flip_kind[kind] = flip_kind.get(kind, 0) + 1
 
+    forced_a = sum(1 for d in audit[arm_a]["decisions"] if d.get("forced"))
+    forced_b = sum(1 for d in audit[arm_b]["decisions"] if d.get("forced"))
     audit_block = {
+        "alignment_rule": ("cross-arm key (pid, hop_index); forced "
+                           "interventions excluded from pairing/flip/business"),
+        "forced_excluded": {arm_a: forced_a, arm_b: forced_b},
         "n_decisions_a": len(da), "n_decisions_b": len(db),
         "n_paired": n_shared, "n_unalignable_a_only": len(only_a),
         "n_unalignable_b_only": len(only_b),

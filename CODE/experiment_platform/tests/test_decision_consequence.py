@@ -59,3 +59,11 @@ def test_forced_decisions_are_excluded_from_flips_and_business():
     assert "observable_subset" in result["flip_business"]["flipped"]
     assert "deadline_loss_delta_frac" in result["flip_business"]["flipped"]
     assert "not population" in result["estimand_note"]
+
+
+def test_extract_arm_keeps_forced_flag():
+    audit = {"arm": "stale", "routing_audit_log": {"decision_records": [{
+        "pid": 1, "hop_index": 0, "chosen": "N", "kind": "forward",
+        "forced": True}]}, "network_outcome": {"packet_outcomes": []}}
+    extracted = dc._extract_arm(audit)
+    assert extracted["decisions"][0]["forced"] is True
