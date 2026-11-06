@@ -25,8 +25,9 @@
   （该方向是否恰好是两臂 chosen 之一）与误差来源臂，不隐藏覆盖偏差。
 * 业务差：`common − stale`（B − A）。
   - `delay_delta_s`：仅在两臂都 `DELIVERED` 时定义（否则为 survivors 偏差，不外推）；
-  - `pp_delta`：`deadline_loss.value` 之差（连续损失，0..1 的 min(delay,D)/D 口径）；
-  - `miss_delta`：deadline miss 指示变量之差（有 D 用 delay<=D，无 D 退回 fate==DELIVERED）。
+  - `pp_delta`：deadline **miss 指示变量**之差乘 100，单位百分点（pp）；它是预注册的达标/未达标口径，不是连续损失差；
+  - `deadline_loss_delta_frac`：`deadline_loss.value` 之差（连续损失，0..1 的 min(delay,D)/D 口径），仅作辅助；
+  - `miss_delta`：deadline miss 指示变量之差（0/1）。censored/截尾包返回 None，不当作 miss。
 * 桶：`|error|=0` 单独一桶（本数据里占 39%，若按秩四分位会把大量 0 拆进不同桶，
   是假分桶）；其余按**正值误差**的 p50/p75 切三档，等价于"零桶 + 正值四分位"。
   同时输出按秩等分的四分位桶 `rank_quartiles` 供对照。
@@ -223,6 +224,14 @@ def load_probe(path):
             if not line:
                 continue
             row = json.loads(line)
+            # Accuracy/business layers use only the BASE prediction->truth
+            # pair.  +horizon rows score the same prediction against a later
+            # truth (drift, not accuracy); forced rows are interventions.
+            if row.get("forced"):
+                continue
+            offset = row.get("horizon_offset_s")
+            if isinstance(offset, (int, float)) and not isinstance(offset, bool) and float(offset) != 0.0:
+                continue
             rows[(row.get("pid"), row.get("hop_index"))] = row
     return rows
 
@@ -279,7 +288,8 @@ def packet_business(pid, packets, arm_a, arm_b):
     """common−stale deltas for one packet; None where undefined."""
     pa = packets[arm_a].get(pid)
     pb = packets[arm_b].get(pid)
-    out = {"delay_delta_s": None, "pp_delta": None, "miss_delta": None,
+    out = {"delay_delta_s": None, "pp_delta": None,
+           "deadline_loss_delta_frac": None, "miss_delta": None,
            "fate_a": None if pa is None else pa["fate"],
            "fate_b": None if pb is None else pb["fate"]}
     if pa is None or pb is None:
@@ -293,16 +303,25 @@ def packet_business(pid, packets, arm_a, arm_b):
         if da is not None and db_ is not None:
             out["delay_delta_s"] = db_ - da
     if pa["deadline_loss"] is not None and pb["deadline_loss"] is not None:
-        out["pp_delta"] = pb["deadline_loss"] - pa["deadline_loss"]
+        out["deadline_loss_delta_frac"] = (pb["deadline_loss"]
+                                           - pa["deadline_loss"])
     ma = packet_miss(pa)
     mb = packet_miss(pb)
     if ma is not None and mb is not None:
         out["miss_delta"] = mb - ma
+        # Pre-registered unit: percentage points of deadline miss, not the
+        # continuous min(delay,D)/D loss whose scale is not a percentage.
+        out["pp_delta"] = 100.0 * (mb - ma)
     return out
 
 
 def packet_miss(packet):
     if packet is None:
+        return None
+    if packet.get("censor_reason") is not None or packet.get("fate") == "IN_SYSTEM_AT_STOP":
+        # Administrative censoring at the observation stop: the packet never
+        # had the full deadline window, so calling it a miss would invent a
+        # timeout.  It is unobserved, not a failure.
         return None
     if packet["fate"] != "DELIVERED":
         return 1
@@ -338,10 +357,20 @@ def summarize_values(values):
 
 
 def aggregate_business(decision_keys, flip_of, packets, arm_a, arm_b):
+    # Decisions are keyed by (pid, hop); business outcomes are packet-level.
+    # Counting one packet once per hop would pseudo-replicate the bootstrap
+    # and over-weight multi-hop packets.  Deduplicate by pid before resampling.
+    pids, seen = [], set()
+    for key in decision_keys:
+        pid = key[0]
+        if pid in seen:
+            continue
+        seen.add(pid)
+        pids.append(pid)
     delay, pp, miss = [], [], []
     unpaired = 0
-    for key in decision_keys:
-        biz = packet_business(key[0], packets, arm_a, arm_b)
+    for pid in pids:
+        biz = packet_business(pid, packets, arm_a, arm_b)
         if biz["delay_delta_s"] is not None:
             delay.append(biz["delay_delta_s"])
         else:
@@ -352,8 +381,10 @@ def aggregate_business(decision_keys, flip_of, packets, arm_a, arm_b):
             miss.append(biz["miss_delta"])
     return {
         "n_decisions": len(decision_keys),
+        "n_packets": len(pids),
         "n_delay_pairs": len(delay),
         "n_not_both_delivered": unpaired,
+        "unit": "packet (deduplicated by pid); delay in s, pp_delta in percentage points",
         "delay_delta_s": summarize_values(delay),
         "pp_delta": summarize_values(pp),
         "miss_delta": summarize_values(miss),
@@ -537,6 +568,20 @@ def analyse(audit, arm_a, arm_b, probe_a=None, probe_b=None, args=None):
 
     result = {"schema": SCHEMA, "audit": audit_block,
               "inputs": {"arm_a": arm_a, "arm_b": arm_b}}
+
+    # Direct callers may pass already-loaded dicts; apply the same base-row
+    # filter as load_probe so +horizon/forced rows cannot leak into accuracy.
+    def _base_probe(probe):
+        out = {}
+        for key, row in (probe or {}).items():
+            if row.get("forced"):
+                continue
+            offset = row.get("horizon_offset_s")
+            if isinstance(offset, (int, float)) and not isinstance(offset, bool) and float(offset) != 0.0:
+                continue
+            out[key] = row
+        return out
+    probe_a, probe_b = _base_probe(probe_a), _base_probe(probe_b)
 
     if not (probe_a and probe_b):
         result["probe"] = {"available": False,

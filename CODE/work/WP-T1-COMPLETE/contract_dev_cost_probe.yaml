@@ -18,9 +18,9 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 096a8e3d2d1e36fdb4f881d11a73a0a076c42732ac8dcd399a806d27d34f3e70
+    execution_chain_sha256: b44f36a8042732d74fac8f964ae2e3058a01fd267ff867bd656f032b91beccb6
     cell_input_sha256:
-      b-bounded_population_cost_smoke-network-seed-7: f70251c852a060386b01616a6a0fc1eb64907972be702805d4f27443c0bdf9fd
+      b-bounded_population_cost_smoke-network-seed-7: 9f2b5ccbf4a16920da8795c0f7688a2ce6788ef39180ad9adceea869d416321c
   release_ready: false
   reason: User authorized platform preparation and continuation. The candidate repair
     preserves complete replay and shares immutable arrived advertisement history in
@@ -34,17 +34,48 @@ design_readiness:
     the chain after ROUND9, and a stale pin must not be presented as a live
     authorization. Scope is unchanged -- ONE cost-probe cell, four simulator
     calls, release_ready=false.
+    ROUND11 (2026-11-05) re-binds the same scope to the execution chain this
+    branch compiles, 096a8e3d -> ccb7b20a. The change is fully explained by
+    the sprint-recovery commit plus the dev-cell deadline fix (t1_suite.py now takes the declared development D from the contract and applies it to every dev cell); the source chain gained
+    code_pointer.py + launch_manifest.py and changed artifact_identity.py,
+    outcome_metrics.py, t1_tasks.py, config.py, decision_ledger.py, kernel.py
+    and time_alignment.py. Profile, population raster, advertisement protocol,
+    trace and cell scope are byte-identical; the cell-input digest moves
+    f70251c8 -> 9595d6ba only because the driver (t1_tasks.py) is part of the
+    compiled input identity. No configuration or identity drift is hidden by
+    this pin; the diff was recomputed from the branch, not copied from a run.
+    ROUND12 (2026-11-06) re-binds this cost-probe authorization to the tree
+    PR18 compiles. Two pins move and nothing else is claimed.
+    execution_chain_sha256 ccb7b20a -> b44f36a8. Recomputed member-by-member
+    against main 0f4a1ee -- four files are ADDED to the chain by PR18
+    (experiment_platform/decision_consequence.py, experiment_autopsy.py,
+    prediction_accuracy.py, leo_sim/resource_journal.py) and four are CHANGED
+    (experiment_platform/t1_tasks.py, time_alignment_compare.py,
+    leo_sim/kernel.py, leo_sim/target_probe.py). Every other chain member is
+    byte-identical to main. The chain change is therefore fully accounted for
+    by the PR18 diff; this note re-binds identity, it does not assert that the
+    PR18 behaviour change passed replay-vs-race review (that is ROUND9's
+    separate claim and must be re-established per PR, not inherited).
+    cell_input_sha256 9595d6ba -> 9f2b5ccb. Recomputing the full per-cell
+    binding on both trees shows every bound file hash (profile, population
+    raster, advertisement protocol, trace, statistics, deadline/scope) is
+    byte-identical; the only differing member is driver_sha256, because the
+    driver experiment_platform/t1_tasks.py is itself part of the compiled input
+    identity. No configuration or identity drift is hidden by this pin.
+    The retired cell_allowlist.exact_bundle_cell_input_hash_after_compile value
+    had no verifier and no recorded recipe, so it is set to null rather than
+    replaced by an invented hash; the enforced pin is the per-cell map above.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 096a8e3d2d1e36fdb4f881d11a73a0a076c42732ac8dcd399a806d27d34f3e70
+  source_execution_chain_sha256: b44f36a8042732d74fac8f964ae2e3058a01fd267ff867bd656f032b91beccb6
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
-    b-bounded_population_cost_smoke-network-seed-7: f70251c852a060386b01616a6a0fc1eb64907972be702805d4f27443c0bdf9fd
+    b-bounded_population_cost_smoke-network-seed-7: 9f2b5ccbf4a16920da8795c0f7688a2ce6788ef39180ad9adceea869d416321c
 scenario:
   reference_geometry: selected 96-satellite, 12-plane small-study engineering geometry
   reference_is_global_platform_freeze: false
@@ -183,7 +214,11 @@ cell_allowlist:
   - --arms
   - stale,now,common,candidate
   - --capture-replay
-  exact_bundle_cell_input_hash_after_compile: 27240f8c5fd581582b1e6b4659c4c7cd61e084a03dd4df435d3987f8f1aa1ef7
+  # ROUND12: this aggregate had no implemented verifier and its recipe was never
+  # recorded, so it silently went stale when the driver hash changed.  The
+  # ENFORCED pin is design_readiness.runtime_authorization.cell_input_sha256
+  # (checked by t1_suite.enforce_runtime_stage); no aggregate value is claimed.
+  exact_bundle_cell_input_hash_after_compile: null
 budget:
   authorization_status: USER_APPROVED_CONTINUATION_20261009
   supplement_calls: 4

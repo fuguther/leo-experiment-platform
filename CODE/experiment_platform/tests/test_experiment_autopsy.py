@@ -83,3 +83,28 @@ def test_probe_block(tmp_path):
     assert block["labeled"] == 2
     assert block["bias_bits"] == -15
     assert block["pred_zero_truth_positive_pct"] == 50.0
+
+
+def test_verdict_bias_direction_follows_sign(monkeypatch):
+    block = {}
+    positive = ea.verdicts(block, None, {"mae_bits": 10, "bias_bits": 100,
+                                         "rmse_bits": 10,
+                                         "pred_zero_truth_positive_pct": 0})
+    assert "整体偏高估" in "\n".join(positive)
+    assert "系统性低估" not in "\n".join(positive)
+
+
+def test_probe_block_ignores_forced_and_extra_horizons(tmp_path):
+    path = tmp_path / "probe.jsonl"
+    rows = [
+        {"predicted_bits": 100, "truth": {"work_ahead_bits": 80},
+         "horizon_offset_s": 0.0},
+        {"predicted_bits": 100, "truth": {"work_ahead_bits": 80},
+         "horizon_offset_s": 0.05},
+        {"predicted_bits": 0, "truth": {"work_ahead_bits": 80}, "forced": True},
+    ]
+    path.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    block = ea.probe_block(str(path))
+    assert block["rows"] == 1
+    assert block["labeled"] == 1
+    assert block["bias_bits"] == 20

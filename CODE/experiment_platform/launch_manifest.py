@@ -72,10 +72,15 @@ def build_launch_manifest(
             "execution chain is incomplete: at least one CODE file is missing "
             "or unreadable, so no combined_sha256 exists")
     git = code.get("git") or {}
-    if not git.get("available") and require_pinned:
-        raise ManifestError(
-            f"code identity unavailable: {git.get('reason', 'unknown')}; "
-            "refusing to launch a pinned run")
+    if require_pinned:
+        if not git.get("available"):
+            raise ManifestError(
+                f"code identity unavailable: {git.get('reason', 'unknown')}; "
+                "refusing to launch a pinned run")
+        if git.get("dirty"):
+            raise ManifestError(
+                "code identity is dirty; refusing a pinned run "
+                "(commit/stash the worktree first)")
 
     resolved_inputs = []
     for role, raw in inputs or []:
@@ -138,6 +143,13 @@ def verify_launch_manifest(path: Path | str, *, require_pinned: bool = False) ->
         digest = item.get("sha256") or ""
         if len(digest) != 64:
             raise ManifestError(f"input without sha256: {item!r}")
+        path = Path(item.get("path") or "")
+        if not path.is_file():
+            raise ManifestError(f"input file is missing: {path}")
+        if path.stat().st_size != item.get("size"):
+            raise ManifestError(f"input size changed: {path}")
+        if sha256_file(path) != digest:
+            raise ManifestError(f"input sha256 changed: {path}")
     recorded = manifest.get("manifest_sha256")
     actual = _canonical_sha256(manifest)
     if recorded != actual:

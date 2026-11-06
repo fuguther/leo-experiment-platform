@@ -1012,7 +1012,9 @@ def _routing_audit_log(sink, timeline):
     return {
         "schema": "t1-routing-audit-log/v1",
         "decision_records": decisions,
-        "decision_record_count": n_dec_total,
+        # decision_record_count must match the sidecar index / retained rows.
+        "decision_record_count": len(decisions),
+        "decision_records_total": n_dec_total,
         "decision_records_retained": len(decisions),
         "decision_records_cap": max_dec,
         "decision_records_truncated": len(decisions) < n_dec_total,
@@ -1028,7 +1030,8 @@ def _routing_audit_log(sink, timeline):
                                         max(full_dec_times)]
                                        if full_dec_times else None),
         "attempt_records": attempts,
-        "attempt_record_count": n_att_total,
+        "attempt_record_count": len(attempts),
+        "attempt_records_total": n_att_total,
         "attempt_records_retained": len(attempts),
         "attempt_records_cap": max_att,
         "attempt_records_truncated": len(attempts) < n_att_total,
@@ -1482,6 +1485,11 @@ def _arm_row(resolved, rows, geometry, arm, *, deadline_s=None, window=None,
             "target_probe_max": target_probe.get("max"),
             "target_probe_stride": target_probe.get("stride"),
             "target_probe_horizons": target_probe_horizons,
+            "target_probe_identity": {
+                "run_id": (target_probe.get("run_id")
+                           or target_probe.get("prefix")),
+                "config_sha256": local.get("sha256"),
+            },
         }
     if resource_journal:
         probe_kwargs.update({
@@ -2230,7 +2238,8 @@ def network_summary_document(document):
         if routing_log:
             summarized["routing_audit_log"] = {
                 key: routing_log[key] for key in (
-                    "schema", "decision_record_count", "attempt_record_count",
+                    "schema", "decision_record_count", "decision_records_total",
+                    "attempt_record_count", "attempt_records_total",
                     "decision_records_retained", "decision_records_cap",
                     "decision_records_truncated", "decision_sampling_rule",
                     "decision_coverage_fraction", "decision_time_range_s",

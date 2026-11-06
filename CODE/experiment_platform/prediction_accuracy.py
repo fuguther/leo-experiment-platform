@@ -101,11 +101,71 @@ def _stats(errors, predicted_values, truths):
     }
 
 
+def _is_extra_horizon(row):
+    offset = row.get("horizon_offset_s")
+    return (isinstance(offset, (int, float))
+            and not isinstance(offset, bool)
+            and float(offset) != 0.0)
+
+
+def _is_forced(row):
+    return bool(row.get("forced"))
+
+
+def _identity(rows):
+    """Check optional run/config identity; incompatible inputs fail closed.
+
+    Probe rows are produced per arm/run.  When they carry run_id or
+    config_sha256, mixing different values silently would make the reported
+    accuracy describe no single run.  Rows produced by older probes do not
+    carry these fields; in that case the summary must say so rather than imply
+    identity was verified.
+    """
+    def values(field):
+        return sorted({str(row[field]) for row in rows
+                       if row.get(field) not in (None, "")})
+    configs = values("config_sha256")
+    runs = values("run_id")
+    if len(configs) > 1 or len(runs) > 1:
+        raise ValueError(
+            "probe identity mismatch: config_sha256=%r run_id=%r"
+            % (configs, runs))
+    return {
+        "config_sha256": configs[0] if configs else None,
+        "run_id": runs[0] if runs else None,
+        "verified": bool(configs or runs),
+        "note": ("rows do not carry run/config identity; do not treat this as "
+                 "a single-run accuracy claim" if not (configs or runs) else
+                 "identity fields are consistent across inputs"),
+    }
+
+
+def _labeled(row):
+    return (isinstance(row.get("truth"), dict)
+            and _finite(row["truth"].get("work_ahead_bits"))
+            and _finite(row.get("predicted_bits")))
+
+
 def summarize(rows):
-    """Aggregate probe rows into coverage + accuracy cuts."""
-    labeled = [r for r in rows if isinstance(r.get("truth"), dict)
-               and _finite(r["truth"].get("work_ahead_bits"))
-               and _finite(r.get("predicted_bits"))]
+    """Aggregate probe rows into coverage + accuracy cuts.
+
+    Only the BASE probe rows (the prediction made for the original eval
+    target) enter the accuracy estimates.  Rows at +horizon are the same
+    prediction scored against a later truth; they measure drift, not forecast
+    accuracy, and mixing them into ``overall`` would let truth drift be
+    reported as predictor error.  Forced/debug decisions are excluded from
+    accuracy and coverage; they are interventions, not samples of the online
+    policy.  ``coverage`` is the labeled share of eligible BASE rows; skipped
+    or overflow rows are not in the JSONL and must be read from the probe
+    summary.
+    """
+    forced = [r for r in rows if _is_forced(r)]
+    nonforced = [r for r in rows if not _is_forced(r)]
+    base = [r for r in nonforced if not _is_extra_horizon(r)]
+    extra = [r for r in nonforced if _is_extra_horizon(r)]
+    labeled_base = [r for r in base if _labeled(r)]
+    labeled_extra = [r for r in extra if _labeled(r)]
+    labeled = labeled_base
     reasons = {}
     for r in rows:
         reason = r.get("missing_reason")
@@ -114,12 +174,25 @@ def summarize(rows):
     document = {
         "schema": SCHEMA,
         "rows": len(rows),
-        "labeled": len(labeled),
-        "coverage": (len(labeled) / len(rows)) if rows else None,
+        "base_rows": len(base),
+        "extra_horizon_rows": len(extra),
+        "forced_rows": len(forced),
+        "labeled": len(labeled_base),
+        "labeled_extra_horizon": len(labeled_extra),
+        "coverage": (len(labeled_base) / len(base)) if base else None,
+        "coverage_scope": (
+            "labeled share of eligible BASE rows; forced rows and +horizon "
+            "rows are excluded; skipped/overflow rows are only in the probe "
+            "summary and are not part of this denominator"),
+        "identity": _identity(rows),
         "missing_reasons": dict(sorted(reasons.items())),
-        "overall": _stats([_error(r) for r in labeled],
-                          [r["predicted_bits"] for r in labeled],
-                          [float(r["truth"]["work_ahead_bits"]) for r in labeled]),
+        "horizon_note": (
+            "+horizon rows reuse the prediction made for the base eval target "
+            "and compare it with a later truth; they are drift diagnostics, "
+            "not forecast accuracy"),
+        "overall": _stats([_error(r) for r in labeled_base],
+                          [r["predicted_bits"] for r in labeled_base],
+                          [float(r["truth"]["work_ahead_bits"]) for r in labeled_base]),
         "by_arm": {},
         "by_direction": {},
         "by_age_bucket": {},
@@ -127,14 +200,14 @@ def summarize(rows):
         "by_selection": {},
         "by_horizon_offset": {},
     }
-    for arm in sorted({str(r.get("arm")) for r in labeled}):
-        subset = [r for r in labeled if str(r.get("arm")) == arm]
+    for arm in sorted({str(r.get("arm")) for r in labeled_base}):
+        subset = [r for r in labeled_base if str(r.get("arm")) == arm]
         document["by_arm"][arm] = _stats(
             [_error(r) for r in subset],
             [r["predicted_bits"] for r in subset],
             [float(r["truth"]["work_ahead_bits"]) for r in subset])
-    for direction in sorted({str(r.get("direction")) for r in labeled}):
-        subset = [r for r in labeled if str(r.get("direction")) == direction]
+    for direction in sorted({str(r.get("direction")) for r in labeled_base}):
+        subset = [r for r in labeled_base if str(r.get("direction")) == direction]
         document["by_direction"][direction] = _stats(
             [_error(r) for r in subset],
             [r["predicted_bits"] for r in subset],
@@ -143,7 +216,7 @@ def summarize(rows):
             ("by_age_bucket", lambda r: _timing(r)[0], AGE_EDGES),
             ("by_horizon_bucket", lambda r: _timing(r)[1], HORIZON_EDGES)):
         groups = {}
-        for row in labeled:
+        for row in labeled_base:
             key = _bucket(selector(row), edges)
             groups.setdefault(key, []).append(row)
         for key in sorted(groups):
@@ -152,17 +225,20 @@ def summarize(rows):
                 [_error(r) for r in subset],
                 [r["predicted_bits"] for r in subset],
                 [float(r["truth"]["work_ahead_bits"]) for r in subset])
-    offsets = sorted({r.get("horizon_offset_s") for r in labeled
+    # Drift diagnostic only: base + extra rows, keyed by offset.  A consumer
+    # must not compare offset+ entries with overall as if both were accuracy.
+    all_labeled = labeled_base + labeled_extra
+    offsets = sorted({r.get("horizon_offset_s") for r in all_labeled
                       if isinstance(r.get("horizon_offset_s"), (int, float))})
     for offset in offsets:
-        subset = [r for r in labeled
+        subset = [r for r in all_labeled
                   if r.get("horizon_offset_s") == offset]
         document["by_horizon_offset"]["+%.3fs" % offset] = _stats(
             [_error(r) for r in subset],
             [r["predicted_bits"] for r in subset],
             [float(r["truth"]["work_ahead_bits"]) for r in subset])
     for key, flag in (("chosen", True), ("not_chosen", False)):
-        subset = [r for r in labeled if bool(r.get("selected")) is flag]
+        subset = [r for r in labeled_base if bool(r.get("selected")) is flag]
         if subset:
             document["by_selection"][key] = _stats(
                 [_error(r) for r in subset],
@@ -170,15 +246,18 @@ def summarize(rows):
                 [float(r["truth"]["work_ahead_bits"]) for r in subset])
     return document
 
-
 def _print(document, stream=sys.stdout):
     def line(*parts):
         stream.write("  ".join(str(p) for p in parts) + "\n")
 
-    line("rows=%d labeled=%d coverage=%s" % (
-        document["rows"], document["labeled"],
+    line("rows=%d base=%d extra_horizon=%d forced_excluded=%d labeled_base=%d coverage=%s" % (
+        document["rows"], document["base_rows"], document["extra_horizon_rows"],
+        document["forced_rows"], document["labeled"],
         "n/a" if document["coverage"] is None
         else "%.2f%%" % (100 * document["coverage"])))
+    line("coverage_scope:", document["coverage_scope"])
+    if not document["identity"]["verified"]:
+        line("identity: UNVERIFIED (rows carry no run/config identity)")
     if document["missing_reasons"]:
         line("missing:", document["missing_reasons"])
     line("")

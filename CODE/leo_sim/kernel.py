@@ -1239,7 +1239,7 @@ class Kernel:
                  forced_actions=None, control_audit=False,
                  inference_policy=None, target_probe_path=None,
                  target_probe_max=None, target_probe_stride=None,
-                 target_probe_horizons=None,
+                 target_probe_horizons=None, target_probe_identity=None,
                  resource_journal_path=None, resource_journal_stride=None):
         cfg = resolved["config"]
         self.resolved = resolved
@@ -1459,6 +1459,7 @@ class Kernel:
                 self, target_probe_path, max_samples=target_probe_max,
                 stride=(target_probe_stride or 1),
                 horizons=self.target_probe_horizons,
+                identity=target_probe_identity,
                 note="same-run probe; truth read at the decision's eval target")
         # T1-RESOURCE-JOURNAL: opt-in per-link queue time series + loss
         # attribution.  Write-only audit; never read by routing.
@@ -1840,7 +1841,10 @@ class Kernel:
     def _record_isl_queue_state(self, link: ISLLink, event: str, *,
                                 pid=None, control_iid=None, outcome=None):
         """Exact post-transition queue/in-service state for offline replay."""
-        if self.timeline_sink is None and self.resource_journal is None:
+        # Unit tests build Kernel via object.__new__ to exercise this helper
+        # without a full simulation; treat a missing journal as "not recording".
+        journal = getattr(self, "resource_journal", None)
+        if self.timeline_sink is None and journal is None:
             return
         current = link.current
         current_is_control = isinstance(current, ControlPacket)
@@ -1877,8 +1881,8 @@ class Kernel:
         }
         if self.timeline_sink is not None:
             self.timeline_sink.append(row)
-        if self.resource_journal is not None:
-            self.resource_journal.append_queue_state(row)
+        if journal is not None:
+            journal.append_queue_state(row)
 
     def _link_rate(self, kind: str, t: float, sat: int,
                    peer: int | None = None, ep=None) -> float:
@@ -5969,6 +5973,11 @@ class Kernel:
                 "pid": pkt.pid,
                 "sat": int(sat),
                 "kind": str(kind),
+                # An intervention, not an online-policy sample.  Aggregators
+                # must exclude these from accuracy/coverage; keeping the flag
+                # on the row makes the exclusion auditable.
+                "forced": bool(self.forced_actions
+                               and decision_id in self.forced_actions),
                 "chosen": str(chosen),
                 "selected": bool(direction == chosen),
                 "direction": str(direction),
@@ -7643,7 +7652,7 @@ def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
                          control_audit=False, inference_policy=None,
                          target_probe_path=None, target_probe_max=None,
                          target_probe_stride=None,
-                         target_probe_horizons=None,
+                         target_probe_horizons=None, target_probe_identity=None,
                          resource_journal_path=None,
                          resource_journal_stride=None) -> dict:
     kern = Kernel(resolved, rows, geometry=geometry,
@@ -7655,6 +7664,7 @@ def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
                   target_probe_max=target_probe_max,
                   target_probe_stride=target_probe_stride,
                   target_probe_horizons=target_probe_horizons,
+                  target_probe_identity=target_probe_identity,
                   resource_journal_path=resource_journal_path,
                   resource_journal_stride=resource_journal_stride)
     result = kern.run()
@@ -7688,6 +7698,7 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
                    control_audit=False, inference_policy=None,
                    target_probe_path=None, target_probe_max=None,
                    target_probe_stride=None, target_probe_horizons=None,
+                   target_probe_identity=None,
                    resource_journal_path=None,
                    resource_journal_stride=None) -> dict:
     """Run the kernel and, inside a metered T1 cell, record real call edges.
@@ -7710,6 +7721,7 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
             target_probe_max=target_probe_max,
             target_probe_stride=target_probe_stride,
             target_probe_horizons=target_probe_horizons,
+            target_probe_identity=target_probe_identity,
             resource_journal_path=resource_journal_path,
             resource_journal_stride=resource_journal_stride)
 
@@ -7734,6 +7746,7 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
             target_probe_max=target_probe_max,
             target_probe_stride=target_probe_stride,
             target_probe_horizons=target_probe_horizons,
+            target_probe_identity=target_probe_identity,
             resource_journal_path=resource_journal_path,
             resource_journal_stride=resource_journal_stride)
     except BaseException as exc:

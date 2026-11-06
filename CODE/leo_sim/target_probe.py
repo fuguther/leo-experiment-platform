@@ -98,7 +98,7 @@ class TargetProbe:
     """Audit-only recorder. One instance per kernel run (or None)."""
 
     def __init__(self, kernel, path, *, max_samples=None, note=None,
-                 stride=1, horizons=None):
+                 stride=1, horizons=None, identity=None):
         self.kernel = kernel
         self.path = str(path)
         self.note = note
@@ -112,6 +112,7 @@ class TargetProbe:
         # a stride divisible by the horizon count select only one offset (the
         # f58 run with stride=50 kept only +50 ms), which is a sampling bug.
         self.horizons = tuple(float(h) for h in (horizons or ()))
+        self.identity = dict(identity or {})
         self._seq = 0
         # Largest number of DIRECTION records the probe will schedule.  The
         # cap is on records, not on decisions, and every dropped record is
@@ -144,6 +145,9 @@ class TargetProbe:
         if not rows:
             return
         for row in rows:
+            for key, value in self.identity.items():
+                if value is not None:
+                    row.setdefault(key, value)
             if row.get("eval_target_s") is None:
                 # No evaluation instant => no label can ever be taken.  Record
                 # the reason instead of inventing an instant.
@@ -328,6 +332,7 @@ class TargetProbe:
             "finished": bool(self._cursor >= len(self.pending)),
             "sampler_exited": bool(self._exited),
             "sampler_parked_at_stop": bool(self._parked),
+            "identity": dict(self.identity),
             "enqueued": self.counters["enqueued"],
             "stride": int(self.stride),
             "skipped_by_stride": self.counters["skipped_by_stride"],

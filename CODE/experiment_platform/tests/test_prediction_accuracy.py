@@ -55,3 +55,50 @@ def test_missing_truth_is_not_scored():
     assert doc["labeled"] == 0
     assert doc["overall"]["n"] == 0
     assert doc["missing_reasons"] == {"resource_missing": 1}
+
+
+def test_extra_horizon_does_not_pollute_overall():
+    base = _row(predicted=100, truth=80)
+    base["horizon_offset_s"] = 0.0
+    later = _row(predicted=100, truth=300, target=0.07)
+    later["base_eval_target_s"] = 0.02
+    later["horizon_offset_s"] = 0.05
+    doc = pa.summarize([base, later])
+    assert doc["base_rows"] == 1
+    assert doc["extra_horizon_rows"] == 1
+    assert doc["overall"]["n"] == 1
+    assert abs(doc["overall"]["bias_mean_bits"] - 20.0) < 1e-12
+    assert doc["by_horizon_offset"]["+0.050s"]["n"] == 1
+    assert doc["by_horizon_offset"]["+0.050s"]["bias_mean_bits"] == -200.0
+
+
+def test_forced_rows_excluded_from_accuracy_and_coverage():
+    ok = _row(predicted=100, truth=80)
+    forced = _row(predicted=0, truth=100, measured=0.0, used=0.01, target=0.02)
+    forced["forced"] = True
+    doc = pa.summarize([ok, forced])
+    assert doc["forced_rows"] == 1
+    assert doc["base_rows"] == 1
+    assert doc["labeled"] == 1
+    assert doc["overall"]["n"] == 1
+    assert abs(doc["overall"]["bias_mean_bits"] - 20.0) < 1e-12
+    assert abs(doc["coverage"] - 1.0) < 1e-12
+
+
+def test_identity_mismatch_fails_closed():
+    one = _row(); one["run_id"] = "r1"; one["config_sha256"] = "a" * 64
+    two = _row(); two["run_id"] = "r1"; two["config_sha256"] = "b" * 64
+    try:
+        pa.summarize([one, two])
+    except ValueError as exc:
+        assert "identity" in str(exc)
+    else:
+        raise AssertionError("mixed config identity was accepted")
+
+
+def test_identity_consistent_is_reported():
+    one = _row(); one["run_id"] = "r1"; one["config_sha256"] = "a" * 64
+    two = _row(); two["run_id"] = "r1"; two["config_sha256"] = "a" * 64
+    doc = pa.summarize([one, two])
+    assert doc["identity"]["verified"] is True
+    assert doc["identity"]["run_id"] == "r1"

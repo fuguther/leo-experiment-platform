@@ -230,6 +230,13 @@ def probe_block(path):
     with open(path, "r", encoding="utf-8") as fh:
         for line in fh:
             row = json.loads(line)
+            # Keep only the base prediction->truth pair; forced rows are
+            # interventions and +horizon rows are drift diagnostics.
+            if row.get("forced"):
+                continue
+            offset = row.get("horizon_offset_s")
+            if isinstance(offset, (int, float)) and not isinstance(offset, bool) and float(offset) != 0.0:
+                continue
             rows.append(row)
             truth = row.get("truth") or {}
             pred = row.get("predicted_bits")
@@ -274,10 +281,24 @@ def verdicts(block, raw, probe, journal=None):
         lines.append("机制健康：fallback %.1f%%（>20%% 表示机制未充分触发）"
                      % block["fallback_pct"])
     if probe and probe.get("mae_bits") is not None:
+        bias = probe.get("bias_bits")
+        # bias = predicted - truth.  Positive means over-estimation; negative
+        # under-estimation.  Never print "systematic underestimation" from a
+        # zero/positive bias.
+        if bias is None:
+            direction = "偏差方向未知"
+        elif bias > 0:
+            direction = "整体偏高估"
+        elif bias < 0:
+            direction = "整体偏低估计"
+        else:
+            direction = "无系统性符号偏差"
         lines.append(
-            "预测器：bias=%d bit、MAE=%d bit、RMSE=%d bit、pred=0 且 truth>0 %.1f%% ⇒ 目标时刻积压被系统性低估"
-            % (probe["bias_bits"], probe["mae_bits"], probe["rmse_bits"],
-               probe.get("pred_zero_truth_positive_pct") or 0))
+            "预测器：bias=%d bit（predicted-truth；%s）、MAE=%d bit、RMSE=%d bit、pred=0 且 truth>0 %.1f%%；覆盖=%s"
+            % (probe["bias_bits"], direction, probe["mae_bits"],
+               probe["rmse_bits"],
+               probe.get("pred_zero_truth_positive_pct") or 0,
+               probe.get("coverage")))
     loss = block.get("terminal_loss") or {}
     if loss:
         total = sum(loss.values())

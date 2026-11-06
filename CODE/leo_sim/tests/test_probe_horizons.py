@@ -20,3 +20,13 @@ def test_stride_is_applied_before_horizon_expansion(tmp_path):
     assert targets == [2.0, 2.01, 2.05, 4.0, 4.01, 4.05]
     offsets = sorted({row["horizon_offset_s"] for row in probe.pending})
     assert offsets == [0.0, 0.01, 0.05]
+
+
+def test_probe_identity_is_attached_to_base_rows(tmp_path):
+    probe = TargetProbe(None, tmp_path / "probe.jsonl",
+                        identity={"run_id": "run-1",
+                                  "config_sha256": "a" * 64})
+    probe.enqueue([{"eval_target_s": 1.0, "pid": 0,
+                    "predicted_bits": 1}])
+    assert probe.pending[0]["run_id"] == "run-1"
+    assert probe.pending[0]["config_sha256"] == "a" * 64
