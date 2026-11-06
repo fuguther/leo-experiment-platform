@@ -328,3 +328,24 @@ def test_invalid_utf8_deployment_index_is_reported_without_crashing(tmp_path: Pa
     report = _report(result)
     assert any("utf-8" in error.lower() for error in report["errors"])
     assert "Traceback" not in result.stderr
+
+
+def test_failed_verification_is_not_reported_as_complete_coverage(tmp_path: Path) -> None:
+    """A run whose receipt cannot be verified must not read as COMPLETE.
+
+    The state was derived from "was anything missing", so an evidence directory
+    that existed but failed verification produced
+    local_receipts_verified=0 together with evidence_verification=COMPLETE.
+    """
+    repo = _repo(tmp_path)
+    evidence_parent = tmp_path / "evidence"
+    broken = evidence_parent / "run-001"
+    broken.mkdir(parents=True)          # directory exists, receipt does not
+    row = _index_row(receipt_sha256="0" * 64)
+    index = repo / "ANALYSIS" / "DEPLOYMENT-INDEX.jsonl"
+    index.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    report = _report(_run(repo, "--verify-evidence",
+                          "--evidence-root", str(evidence_parent)))
+    assert report["summary"]["evidence_verification"] != "COMPLETE"
+    assert report["checked"]["local_receipts_verified"] == 0

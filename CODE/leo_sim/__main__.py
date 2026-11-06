@@ -660,27 +660,41 @@ def _cmd_run(args) -> int:
 
 
 def _cmd_receipt_verify(args) -> int:
+    """Verify a run directory, resolving each bound stream INDEPENDENTLY.
+
+    A V6 receipt names two evidence streams but records only their digests, not
+    their paths.  Each stream is therefore resolved on its own: an explicit
+    --decision-log / --timeline-log wins, otherwise the documented in-directory
+    file is used when present.  Deciding this per stream matters -- gating the
+    whole auto-resolution on "neither flag was given" meant that passing one
+    flag silently left the other binding unchecked, and one absent file meant
+    the present one was never verified either.
+    """
+    try:
+        rcp = json.loads(
+            (Path(args.dir) / "receipt.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        rcp = {}
+    is_v6 = isinstance(rcp, dict) and rcp.get("schema") == receipt_mod.RECEIPT_SCHEMA_V6
+
+    resolved: dict[str, str | None] = {
+        "decision_log_sha256": args.decision_log,
+        "timeline_log_sha256": args.timeline_log,
+    }
+    if is_v6:
+        for key, name in receipt_mod.STREAM_FILES.items():
+            if resolved[key] is None:
+                candidate = Path(args.dir) / name
+                if candidate.is_file():
+                    resolved[key] = str(candidate)
+
     errors = receipt_mod.verify_receipt_dir(
-        args.dir, decision_log=args.decision_log,
-        timeline_log=args.timeline_log)
-    # A v6 receipt NAMES two evidence streams.  When those files sit in the run
-    # directory (the documented layout) their digests can be recomputed here;
-    # when the caller streamed them elsewhere the receipt does not record the
-    # paths, so this side genuinely cannot check them.  Either way the CLI must
-    # not report a bare "verified" for a binding it never looked at.
-    unverified: list[str] = []
-    if args.decision_log is None and args.timeline_log is None:
-        try:
-            _rcp = json.loads(
-                (Path(args.dir) / "receipt.json").read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            _rcp = {}
-        if isinstance(_rcp, dict) and _rcp.get("schema") == receipt_mod.RECEIPT_SCHEMA_V6:
-            for key, name in sorted(receipt_mod.STREAM_FILES.items()):
-                if not (Path(args.dir) / name).is_file():
-                    unverified.append(key)
-            if not unverified:
-                errors += receipt_mod.verify_receipt_streams(args.dir)
+        args.dir, decision_log=resolved["decision_log_sha256"],
+        timeline_log=resolved["timeline_log_sha256"])
+
+    # Only a V6 receipt binds streams; for older schemas nothing is unverified.
+    unverified = ([key for key, path in sorted(resolved.items()) if path is None]
+                  if is_v6 else [])
     if errors:
         print(json.dumps({"status": "FAILED", "errors": errors}, indent=2))
         return 2
@@ -689,9 +703,8 @@ def _cmd_receipt_verify(args) -> int:
             "status": "PARTIAL",
             "dir": args.dir,
             "unverified_stream_bindings": unverified,
-            "note": ("the receipt binds these streams but their files are not "
-                     "in the run directory; pass --decision-log / "
-                     "--timeline-log to check them"),
+            "note": ("the receipt binds these streams but no file was found for "
+                     "them; pass --decision-log / --timeline-log to check them"),
         }, indent=2))
         return 0
     print(json.dumps({"status": "verified", "dir": args.dir}, indent=2))

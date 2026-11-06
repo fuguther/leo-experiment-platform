@@ -190,6 +190,23 @@ def test_trace_csv_mode(tmp_path):
     assert rows[1]["deadline_at_s"] == ""
 
 
+def test_csv_provenance_accepts_historical_labels_and_rejects_malformed_values(tmp_path):
+    source = tmp_path / "input.csv"
+    source.write_text(
+        "packet_id,emit_time_s,src_lat,src_lon,dst_lat,dst_lon,bits\n"
+        "1,0.1,31.0,121.0,40.0,116.0,100\n"
+    )
+    cfg = _cfg(demand={"mode": "csv", "csv_path": str(source)})
+    manifest = trace.compile_trace(cfg, str(tmp_path / "compiled"))
+    for label in ("external_input", "synthetic"):
+        candidate = {**manifest, "provenance": label}
+        assert receipt._validate_manifest(candidate, cfg["config"], cfg["version"]) == []
+    for label in (None, [], {}, 1, "measurement_proxy"):
+        candidate = {**manifest, "provenance": label}
+        errors = receipt._validate_manifest(candidate, cfg["config"], cfg["version"])
+        assert "manifest provenance mismatch" in errors
+
+
 def test_csv_row_after_emission_end_fails_loud(tmp_path):
     src_csv = tmp_path / "late.csv"
     src_csv.write_text(

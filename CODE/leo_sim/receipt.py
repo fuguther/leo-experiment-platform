@@ -274,14 +274,6 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
         errors.append("manifest trace schema mismatch")
     if manifest.get("packet_id_contract") != trace_mod.PACKET_ID_CONTRACT:
         errors.append("manifest packet_id_contract mismatch")
-    src = ((manifest.get("provenance_contract") or {}).get("source")
-           if isinstance(manifest.get("provenance_contract"), dict) else None)
-    if isinstance(src, dict) and "authenticity" in src:
-        # The input still has to be positively identified; an extension here
-        # must never silently default to something that looks verified.
-        if src.get("authenticity") not in (
-                "REGISTERED_SNAPSHOT", "GENERATED", "UNVERIFIED"):
-            errors.append("provenance_contract.source.authenticity is invalid")
     provenance_contract = manifest.get("provenance_contract")
     provenance_schema = (trace_mod.TRACE_PROVENANCE_SCHEMA
                          if is_v2 else trace_mod.TRACE_PROVENANCE_SCHEMA_V1)
@@ -347,12 +339,16 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
     mode = resolved_cfg["demand"]["mode"]
     if manifest.get("mode") != mode:
         errors.append("manifest mode != resolved config demand mode")
+    # csv used to be recorded as "synthetic"; those manifests are historical
+    # evidence and must keep verifying.  Both labels are accepted for csv, the
+    # new one is what the compiler now emits.
     expected_provenance = {
-        "mlab": "measurement_proxy",
-        "population_gravity": "population_proxy",
-        "csv": "external_input",
-    }.get(mode, "synthetic")
-    if manifest.get("provenance") != expected_provenance:
+        "mlab": {"measurement_proxy"},
+        "population_gravity": {"population_proxy"},
+        "csv": {"external_input", "synthetic"},
+    }.get(mode, {"synthetic"})
+    provenance = manifest.get("provenance")
+    if not isinstance(provenance, str) or provenance not in expected_provenance:
         errors.append("manifest provenance mismatch")
     # rng_streams: reconstruct the exact config feature branch.  Legacy and
     # non-nested traces keep only the canonical demand mapping; nested

@@ -3,8 +3,10 @@ name: test
 on:
   push:
     branches: [main]
+  # No branch filter: a stacked PR targets another feature branch, and with
+  # `branches: [main]` those never got a CI run at all, so the merge gate
+  # ("CI green on the exact head SHA") could not be satisfied for them.
   pull_request:
-    branches: [main]
 
 # 故意不取消进行中的运行。
 # WORKING-MODEL 第三节:合并门要求「CI 对 exact head SHA 真实跑完且 success」。
