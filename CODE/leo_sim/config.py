@@ -198,6 +198,15 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # scores them.  Unknown distances never become a number: if any
         # candidate's distance is unknown the restriction is not applied.
         "min_remaining_hop_only": bool,
+        # EXTERNAL INFERENCE-ONLY POLICY PLUGIN (generic capability, default
+        # off).  A manifest path ("env:NAME" resolves the path from the
+        # process environment, which is how the T1 runner hands a snapshotted
+        # input to a run) or an absolute path for local diagnostics.  The
+        # plugin must satisfy leo_sim/policy_plugin.py's contract; the kernel
+        # then asks it for the next hop on the frozen snapshot instead of
+        # scoring the configured policy.  This is a seam for research
+        # algorithms; it does not implement any algorithm itself.
+        "policy_plugin": (str, type(None)),
         "learning_enabled": bool,
         "contract": str,  # C1|C3|C4|C5|C6|C7 (observation contracts)
     },
@@ -503,6 +512,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "routing": {"policy": "hop", "max_hops": 16, "learning_enabled": False,
                 "min_remaining_hop_only": False,
+                "policy_plugin": None,
                 "contract": "C3"},
     "learning": {
         "algorithm": "none",
@@ -995,6 +1005,26 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             f"got {staged!r}")
     if rt["max_hops"] < 1:
         raise ConfigError("routing.max_hops must be >= 1")
+    plugin = rt.get("policy_plugin")
+    if plugin is not None:
+        if not isinstance(plugin, str) or not plugin.strip():
+            raise ConfigError(
+                "routing.policy_plugin must be a non-empty manifest path or None")
+        if not ta["enabled"]:
+            # Without time alignment there is no frozen snapshot for the
+            # plugin to act on: it would be silently ignored, which is the
+            # same failure the kernel refuses for a supplied inference policy.
+            raise ConfigError(
+                "routing.policy_plugin requires time_alignment.enabled=true: "
+                "the plugin acts on the frozen decision snapshot")
+        if lr["algorithm"] != "none":
+            raise ConfigError(
+                "routing.policy_plugin may not be combined with a training "
+                "learner (learning.algorithm != none)")
+        if rt["policy"] == "oracle":
+            raise ConfigError(
+                "routing.policy_plugin may not be combined with "
+                "routing.policy=oracle")
     if rt["contract"] not in VALID_CONTRACTS:
         raise ConfigError(f"routing.contract must be one of {sorted(VALID_CONTRACTS)}")
     if rt["learning_enabled"] and lr["algorithm"] == "none":

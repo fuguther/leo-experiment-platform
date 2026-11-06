@@ -56,6 +56,7 @@ from . import (control, fates, grid as gridmod, learning as _learning, metrics,
 from . import deadline_objective as _deadline_objective
 from . import async_routing as _async
 from . import inference as _inference
+from . import policy_plugin as _policy_plugin
 from . import outage, rng as rngmod, routing
 from . import time_alignment as _ta
 from . import trace as tracemod
@@ -1307,6 +1308,30 @@ class Kernel:
         # frozen snapshot (branch tooling).  A training learner is refused here
         # and the frozen+learner combination stays refused below; this hook is
         # deliberately not an unlock of the learner boundary.
+        # CONFIG-DRIVEN EXTERNAL POLICY (generic seam, default off).  When a
+        # plugin manifest is declared, the loaded object IS the inference
+        # policy; the kernel never imports the algorithm's internals.  Two
+        # sources are accepted: "env:NAME" (the T1 runner snapshots a declared
+        # input and exports its path under NAME) or an absolute path for local
+        # diagnostics.  Loading and manifest verification happen here so a
+        # mismatch fails before any simulated time passes.
+        plugin_ref = self.cfg_rt.get("policy_plugin")
+        if plugin_ref is not None:
+            import os as _os_plugin
+            if inference_policy is not None:
+                raise KernelError(
+                    "both an inference_policy object and "
+                    "routing.policy_plugin were supplied; declare one")
+            if plugin_ref.startswith("env:"):
+                env_name = plugin_ref[4:]
+                manifest_path = _os_plugin.environ.get(env_name, "")
+                if not manifest_path:
+                    raise KernelError(
+                        f"routing.policy_plugin refers to environment variable "
+                        f"{env_name!r} but it is not set")
+            else:
+                manifest_path = plugin_ref
+            inference_policy = _policy_plugin.load_policy_plugin(manifest_path)
         self.inference_policy = inference_policy
         if inference_policy is not None:
             _inference.assert_inference_only(inference_policy)

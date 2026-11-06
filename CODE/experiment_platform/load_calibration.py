@@ -89,7 +89,10 @@ OVERRIDE_FIELDS = {
     # DEFINED as C_e * tau_buffer, so the 5 / 20 / 100 ms sensitivity sweep is
     # an override of exactly this field and nothing else.
     "links": {"rf_isl", "rate_model", "isl_rate_mbps", "isl_queue_bits"},
-    "routing": {"policy", "staged_policy", "staged_policy_at_s"},
+    "routing": {"policy", "staged_policy", "staged_policy_at_s",
+                # external inference-only policy plugin manifest (generic
+                # seam; the algorithm lives outside the platform)
+                "policy_plugin", "min_remaining_hop_only"},
     "scenario": {"duration_s", "seed"},
     # Queue-state-age comparisons vary admissible measurement age
     # (min_observation_age_s) alongside time-alignment query behavior.  Keep
