@@ -251,6 +251,9 @@ def probe_block(path):
         "rows": len(rows),
         "labeled": labeled,
         "coverage": round(labeled / len(rows), 4) if rows else None,
+        "coverage_scope": ("labeled share of BASE non-forced probe rows; "
+                           "skipped/overflow rows are not in the JSONL and "
+                           "+horizon/forced rows are excluded"),
         "bias_bits": round(statistics.fmean(errors)) if errors else None,
         "mae_bits": round(statistics.fmean(abs_errors)) if errors else None,
         "rmse_bits": (round((statistics.fmean([e * e for e in errors])) ** 0.5)
@@ -299,6 +302,7 @@ def verdicts(block, raw, probe, journal=None):
                probe["rmse_bits"],
                probe.get("pred_zero_truth_positive_pct") or 0,
                probe.get("coverage")))
+        lines.append("  覆盖口径：仅 BASE 非 forced 行；不含跳采/溢出，也不含 +horizon 漂移行")
     loss = block.get("terminal_loss") or {}
     if loss:
         total = sum(loss.values())

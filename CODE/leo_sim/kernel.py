@@ -5901,6 +5901,11 @@ class Kernel:
                                  if decision_started_at is None
                                  else float(decision_started_at)),
             "decision_id": decision_id,
+            # An intervened decision is not an online-policy sample; downstream
+            # flip/business analysis must exclude it rather than treat the
+            # forced choice as evidence about the policy.
+            "forced": bool(self.forced_actions
+                           and decision_id in self.forced_actions),
             # T1-CROSS-ARM-KEY: this packet's decision ordinal.  decision_id is
             # a per-run counter and denotes DIFFERENT decisions in each arm of
             # a multi-arm comparison; (pid, hop_index) is the stable cross-arm
