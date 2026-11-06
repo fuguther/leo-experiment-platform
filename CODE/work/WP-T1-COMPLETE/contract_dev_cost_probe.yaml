@@ -18,7 +18,7 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: ccb7b20a0d0e97f2d55e575f01ac1caea8bded999dcc808cf273064f481f21af
+    execution_chain_sha256: 89b9a10cf30c583f6f3dcbb8fe3a912c91b2edebfde390841568bcfc6bb1dd79
     cell_input_sha256:
       b-bounded_population_cost_smoke-network-seed-7: 9595d6babaade0c6f3841825b14af70ab16bf85b9f965102444fe1fedc438b12
   release_ready: false
@@ -44,13 +44,24 @@ design_readiness:
     f70251c8 -> 9595d6ba only because the driver (t1_tasks.py) is part of the
     compiled input identity. No configuration or identity drift is hidden by
     this pin; the diff was recomputed from the branch, not copied from a run.
+    ROUND12 (2026-11-07) re-binds the same scope to the execution chain this
+    branch compiles, ccb7b20a -> 89b9a10c. The change is fully explained by the
+    G0 baseline-suite metrics commit (CODE/experiment_platform/primary_metrics.py
+    and v2_analysis.py) which added E2E p50/p95/p99/CVaR5 primary metrics (vocabulary
+    + dispatcher + new tests), a generic analyzer capability that does not touch
+    this cost-probe cell's execution path. Profile, population raster,
+    advertisement protocol, trace, cell scope and the cell-input digest are
+    byte-identical (9595d6ba unchanged); only the source-chain digest moves.
+    No configuration or identity drift is hidden by this pin; the digest was
+    recomputed from the branch (governance.execution_chain_sha256 and
+    t1_suite.compile_bundle), not copied from a run.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: ccb7b20a0d0e97f2d55e575f01ac1caea8bded999dcc808cf273064f481f21af
+  source_execution_chain_sha256: 89b9a10cf30c583f6f3dcbb8fe3a912c91b2edebfde390841568bcfc6bb1dd79
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:
