@@ -632,6 +632,21 @@ def test_routing_audit_log_keeps_four_way_decisions_and_attempts():
     assert log["attempt_records"][0]["reason"] == "temporarily_unavailable"
 
 
+def test_routing_audit_log_keeps_forced_provenance():
+    # A forced decision must remain identifiable after projection; otherwise
+    # decision_consequence would count an intervention as a policy sample.
+    mask = {"schema": "leo-sim-four-direction-mask/v1",
+            "direction_order": ["N", "E", "S", "W"],
+            "final_legal_mask": {d: True for d in ("N", "E", "S", "W")}}
+    row = {"t": 1.3, "t_decision_start": 1.0, "decision_id": 4,
+           "pid": 9, "sat": 2, "kind": "forward", "candidates": ["E"],
+           "chosen": "E", "forced": True,
+           "four_direction_audit": mask,
+           "observation_at_start": {"mode": "frozen"}}
+    log = t1_tasks._routing_audit_log([row], [])
+    assert log["decision_records"][0]["forced"] is True
+
+
 def test_routing_audit_normalizes_real_frozen_no_info_holds_and_reads_legacy():
     mask = {
         "schema": "leo-sim-four-direction-mask/v1",
