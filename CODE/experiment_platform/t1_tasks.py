@@ -2861,9 +2861,18 @@ def main(argv=None) -> int:
                         raise TaskError(
                             "autopsy probe missing for summary arm "
                             f"{wanted!r}; refusing to pair another arm's probe")
-                    journals = []
+                    # Journals are per-arm too.  Pairing the first
+                    # filename-sorted journal with the first summary arm mixes
+                    # another arm's queue/loss attribution into the verdict.
+                    journals, journal_arm = [], None
                     for path in sorted(args.out.parent.glob(
                             f"{args.out.stem}-journal-*.jsonl")):
+                        name = path.stem.rsplit("-journal-", 1)[-1]
+                        if wanted is not None and name != wanted:
+                            continue
+                        if journal_arm is not None and name != journal_arm:
+                            continue
+                        journal_arm = name
                         journals.append(_autopsy.journal_block(str(path)))
                     verdicts = _autopsy.verdicts(
                         block, None, probes[0] if probes else None,
@@ -2871,6 +2880,7 @@ def main(argv=None) -> int:
                     autopsy = {"schema": "experiment-autopsy/v1",
                                "summary": block, "probe": probes,
                                "probe_arm": probe_arm,
+                               "journal_arm": journal_arm,
                                "journal": journals,
                                "verdicts": verdicts}
                     sidecar = args.out.with_name(
