@@ -47,6 +47,7 @@ from typing import Any
 
 from CODE.experiment_platform import authorize_experiment
 from CODE.experiment_platform import isl_pressure
+from CODE.experiment_platform import t1_stats
 from CODE.experiment_platform.primary_metrics import (
     SUPPORTED_PRIMARY_METRICS,
     UTILIZATION_PRIMARY_METRICS,
@@ -228,6 +229,43 @@ def _verify_external_witness(
     return witness
 
 
+def _e2e_quantile(primary: str, values: list[float]) -> float:
+    """Percentile or CVaR5 of one run's delivered-packet ``e2e_s`` sample.
+
+    The sample is the SAME delivered-packet population ``e2e_delay_mean_s``
+    averages (every packet in ledgers.congestion_metrics.packets carrying an
+    ``e2e_s``); units are seconds.  Exact published definitions:
+
+    * ``e2e_delay_p50_s`` / ``_p95_s`` / ``_p99_s``: linear-interpolation
+      percentiles over the sorted sample.  For ``v[0..n-1]`` the rank is
+      ``q*(n-1)``, interpolated between the two neighbouring order statistics;
+      nearest-rank rounding is deliberately not used.  The arithmetic is
+      ``t1_stats._percentile`` (reused, not reimplemented: it is the one
+      linear-interpolation percentile definition the T1 protocol fixes for
+      E2E p95, so the repo has a single definition of p95).
+    * ``e2e_delay_cvar5_s``: mean of the worst 5 percent of samples by COUNT,
+      i.e. with ``k = max(1, ceil(0.05*n))`` the arithmetic mean of the ``k``
+      largest ``e2e_s`` values (``k`` computed in integer arithmetic so
+      n=20 gives k=1, not a float-rounded 2).  It averages actual tail
+      samples, whereas a percentile only interpolates order statistics.
+
+    Sample-size contract matches the mean branch: an empty sample is an error
+    (there is nothing to summarize); n = 1..19 still computes, but CVaR5 then
+    averages one or two packets, so it is a coarse tail summary and not a
+    stable tail estimate.  ``values`` must be non-empty and finite (enforced
+    by the caller); this helper performs no validation of its own.
+    """
+    n = len(values)
+    if primary == "e2e_delay_cvar5_s":
+        k = max(1, (5 * n + 99) // 100)  # ceil(0.05*n) in integer arithmetic
+        tail = sorted(values)[-k:]
+        return sum(tail) / len(tail)
+    q = {"e2e_delay_p50_s": 0.50,
+         "e2e_delay_p95_s": 0.95,
+         "e2e_delay_p99_s": 0.99}[primary]
+    return t1_stats._percentile(sorted(values), q)
+
+
 def _metric_from_result(receipt: dict[str, Any], ledgers: dict[str, Any],
                         primary: str) -> float:
     # The compiler reads this same set (matrix._validate_analysis), so an
@@ -274,6 +312,15 @@ def _metric_from_result(receipt: dict[str, Any], ledgers: dict[str, Any],
         if not values:
             raise V2AnalysisError(f"primary metric {primary} has no delivered packets")
         return sum(values) / len(values)
+    if primary in {"e2e_delay_p50_s", "e2e_delay_p95_s", "e2e_delay_p99_s",
+                   "e2e_delay_cvar5_s"}:
+        # Same delivered-packet e2e_s sample as e2e_delay_mean_s; the exact
+        # percentile / CVaR5 definitions live in _e2e_quantile's docstring.
+        values = [_finite(item.get("e2e_s"), "packet metric e2e_s")
+                  for item in delivered_packets]
+        if not values:
+            raise V2AnalysisError(f"primary metric {primary} has no delivered packets")
+        return _e2e_quantile(primary, values)
     if primary in {"link_utilization_mean", "service_window_utilization_mean"}:
         values = [_finite(item.get("utilization"), "link utilization")
                   for item in links.values()]
