@@ -274,9 +274,15 @@ def quartiles(values):
 
 # -------------------------------------------------------------------- analysis
 def build_decisions(audit, arm_a, arm_b):
-    da = {(d["pid"], d["hop_index"]): d for d in audit[arm_a]["decisions"]}
-    db = {(d["pid"], d["hop_index"]): d for d in audit[arm_b]["decisions"]}
-    return da, db
+    """Cross-arm aligned decisions, excluding forced interventions.
+
+    A forced action is not an online-policy sample; including it would make a
+    controlled probe look like evidence about the policy's own choices.
+    """
+    def keep(arm):
+        return {(d["pid"], d["hop_index"]): d
+                for d in audit[arm]["decisions"] if not d.get("forced")}
+    return keep(arm_a), keep(arm_b)
 
 
 def build_packets(audit):
@@ -367,7 +373,7 @@ def aggregate_business(decision_keys, flip_of, packets, arm_a, arm_b):
             continue
         seen.add(pid)
         pids.append(pid)
-    delay, pp, miss = [], [], []
+    delay, pp, miss, loss_frac = [], [], [], []
     unpaired = 0
     for pid in pids:
         biz = packet_business(pid, packets, arm_a, arm_b)
@@ -379,6 +385,8 @@ def aggregate_business(decision_keys, flip_of, packets, arm_a, arm_b):
             pp.append(biz["pp_delta"])
         if biz["miss_delta"] is not None:
             miss.append(biz["miss_delta"])
+        if biz["deadline_loss_delta_frac"] is not None:
+            loss_frac.append(biz["deadline_loss_delta_frac"])
     return {
         "n_decisions": len(decision_keys),
         "n_packets": len(pids),
@@ -388,6 +396,17 @@ def aggregate_business(decision_keys, flip_of, packets, arm_a, arm_b):
         "delay_delta_s": summarize_values(delay),
         "pp_delta": summarize_values(pp),
         "miss_delta": summarize_values(miss),
+        "deadline_loss_delta_frac": summarize_values(loss_frac),
+        "observable_subset": {
+            "n_packets": len(pids),
+            "n_delay_pairs": len(delay),
+            "n_not_both_delivered": unpaired,
+            "note": ("business deltas condition on packets observable in BOTH "
+                     "arms (delay needs both delivered; pp/miss need both "
+                     "deadline-known). Censored/unobserved packets are "
+                     "excluded, so this is a subset estimate, not a "
+                     "population average treatment effect."),
+        },
     }
 
 
@@ -567,7 +586,11 @@ def analyse(audit, arm_a, arm_b, probe_a=None, probe_b=None, args=None):
     }
 
     result = {"schema": SCHEMA, "audit": audit_block,
-              "inputs": {"arm_a": arm_a, "arm_b": arm_b}}
+              "inputs": {"arm_a": arm_a, "arm_b": arm_b},
+              "estimand_note": ("flip and business layers exclude forced "
+                                "interventions; business deltas are conditional "
+                                "on both-arm observability (see "
+                                "observable_subset), not population ATEs")}
 
     # Direct callers may pass already-loaded dicts; apply the same base-row
     # filter as load_probe so +horizon/forced rows cannot leak into accuracy.

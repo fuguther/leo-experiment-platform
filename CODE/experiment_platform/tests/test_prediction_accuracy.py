@@ -102,3 +102,21 @@ def test_identity_consistent_is_reported():
     doc = pa.summarize([one, two])
     assert doc["identity"]["verified"] is True
     assert doc["identity"]["run_id"] == "r1"
+
+
+def test_partial_identity_is_not_verified():
+    one = _row(); one["run_id"] = "r1"; one["config_sha256"] = "a" * 64
+    two = _row()  # no identity
+    doc = pa.summarize([one, two])
+    assert doc["identity"]["verified"] is False
+    assert doc["identity"]["rows_missing_identity"] == 1
+
+
+def test_placeholder_config_sha_is_rejected():
+    one = _row(); one["run_id"] = "r1"; one["config_sha256"] = "fake"
+    try:
+        pa.summarize([one])
+    except ValueError as exc:
+        assert "64-char hex" in str(exc)
+    else:
+        raise AssertionError("placeholder config_sha256 was accepted")

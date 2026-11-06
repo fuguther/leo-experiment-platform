@@ -2836,10 +2836,26 @@ def main(argv=None) -> int:
                         as _autopsy
                     block = _autopsy.summary_block_from_document(
                         summary_document)
-                    probes = []
+                    # Probes are per-arm.  Pairing the first filename-sorted
+                    # probe with the first summary arm silently attaches a
+                    # stale/candidate probe to the wrong arm.  Resolve by arm
+                    # name and refuse to guess.
+                    arm_names = [str(a.get("arm")) for a in
+                                 (summary_document.get("arms") or [])]
+                    probes, probe_arm = [], None
                     for path in sorted(args.out.parent.glob(
                             f"{args.out.stem}-target-probe-*.jsonl")):
+                        name = path.stem.rsplit("-target-probe-", 1)[-1]
+                        if arm_names and name not in arm_names:
+                            continue
+                        if probe_arm is not None and name != probe_arm:
+                            continue
+                        probe_arm = name
                         probes.append(_autopsy.probe_block(str(path)))
+                    if arm_names and probe_arm != arm_names[0]:
+                        raise TaskError(
+                            "autopsy probe/arm mismatch: expected probe for "
+                            f"arm {arm_names[0]!r}, got {probe_arm!r}")
                     journals = []
                     for path in sorted(args.out.parent.glob(
                             f"{args.out.stem}-journal-*.jsonl")):
@@ -2849,6 +2865,7 @@ def main(argv=None) -> int:
                         journals[0] if journals else None)
                     autopsy = {"schema": "experiment-autopsy/v1",
                                "summary": block, "probe": probes,
+                               "probe_arm": probe_arm,
                                "journal": journals,
                                "verdicts": verdicts}
                     sidecar = args.out.with_name(
