@@ -135,10 +135,19 @@ def summarize(
                           if index >= used and item["at"] == at
                           and item["satellite"] == satellite]
             if not candidates:
-                raise MetricsError(
-                    f"satellite_ingress for {pid} has no completed uplink propagation "
-                    "arrival at the same time and satellite")
-            consumed_uplink_arrivals[pid] += 1
+                # INTER-SATELLITE BACKGROUND FLOW: a packet whose source is a
+                # satellite has no uplink leg at all, so there is no uplink
+                # propagation arrival to consume.  It is admissible only when
+                # the emitted source is that same satellite; a ground-sourced
+                # packet still requires its uplink arrival.
+                born_here = (str(endpoint).startswith("sat:")
+                             and str(endpoint) == f"sat:{satellite}")
+                if not born_here:
+                    raise MetricsError(
+                        f"satellite_ingress for {pid} has no completed uplink "
+                        "propagation arrival at the same time and satellite")
+            else:
+                consumed_uplink_arrivals[pid] += 1
             ingress[pid] = {"at": at, "endpoint": endpoint,
                             "satellite": satellite, "bits": bits}
         elif kind == "service_start":

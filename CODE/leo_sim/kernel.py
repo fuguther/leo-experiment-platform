@@ -1620,15 +1620,20 @@ class Kernel:
         self.endpoints: dict[str, TrafficEndpoint] = {}
         per_ep_rows: dict[str, list[dict]] = {}
         for r in rows:
+            if str(r["src_grid_id"]).startswith("sat:"):
+                continue  # satellite-sourced: no emitter endpoint
             per_ep_rows.setdefault(r["src_grid_id"], []).append(r)
         # Measurement-only endpoint universe.  These coordinates are kept
         # separate from lazy TrafficEndpoint activation so the physical
         # capacity denominator cannot depend on whether a demand packet has
         # arrived yet (and cannot leak that universe into routing/learning).
+        # Satellite-sourced rows ("sat:<id>") carry no grid cell: they are the
+        # inter-satellite background flow and contribute no ground endpoint.
         self._metric_endpoint_specs = {
             cell: gridmod.grid_center(cell)
             for r in rows
             for cell in (r["src_grid_id"], r["dst_grid_id"])
+            if not str(cell).startswith("sat:")
         }
 
         self.topo = routing.build_topology(
@@ -1771,6 +1776,13 @@ class Kernel:
                 self.env.process(self._control_advertiser(s))
         for cell in sorted(per_ep_rows):
             self.env.process(self._emitter(cell, per_ep_rows[cell]))
+        # satellite-sourced background rows are injected by their own emitter
+        # (one process, deterministic emission order) so they never create a
+        # ground endpoint.
+        sat_rows = [r for r in rows
+                    if str(r["src_grid_id"]).startswith("sat:")]
+        if sat_rows:
+            self.env.process(self._sat_emitter(sat_rows))
         if self.cfg_topo["recompute_interval_s"] is not None:
             self.env.process(self._topology_ticker())
         for s in range(self.num_sats):
@@ -3272,6 +3284,15 @@ class Kernel:
             # activate at the actual emission instant, never earlier: an
             # emitter for a future row must not create its endpoint at t=0
             # (that would re-open the A3 preposition/ads/obs leak)
+            # SATELLITE-SOURCE DEMAND (background inter-satellite traffic).
+            # A row whose src_cell is "sat:<id>" is injected directly at that
+            # satellite's ingress: no uplink, no ground endpoint.  This is the
+            # generic capability the baseline suite needs to make ISL queues
+            # non-empty (the paper's traffic is ground test flow + random
+            # satellite-to-satellite background).  It carries no policy.
+            if str(r["src_grid_id"]).startswith("sat:"):
+                yield from self._emit_from_satellite(r)
+                continue
             ep = self._ensure_endpoint(cell)
             self._count_data_packet()
             research_deadline_at = r.get("research_deadline_at_s")
@@ -3323,6 +3344,44 @@ class Kernel:
             # let link servers dequeue at the same instant before the next
             # emission; this keeps same-time ordering deterministic.
             yield self.env.timeout(0.0)
+
+    def _sat_emitter(self, rows: list[dict]):
+        """Emit the declared satellite-sourced background flow in order."""
+        for r in rows:
+            delay = r["emit_time_s"] - self.env.now
+            if delay > 0:
+                yield self.env.timeout(delay)
+            yield from self._emit_from_satellite(r)
+            yield self.env.timeout(0.0)
+
+    def _emit_from_satellite(self, row: dict):
+        """Inject one satellite-sourced packet at its source satellite.
+
+        Emitted packets enter the same forwarding path as any other data
+        packet (they are ordinary DataPacket objects in the same ledger), so
+        every fate/metric definition is unchanged.  The destination is a
+        satellite id as well: the packet is delivered when it reaches that
+        satellite, which is the inter-satellite background flow the paper
+        mixes into its ground test traffic.
+        """
+        self._count_data_packet()
+        src = int(str(row["src_grid_id"]).split(":", 1)[1])
+        dst = str(row["dst_grid_id"])
+        pkt = DataPacket(
+            row["packet_id"], row["src_grid_id"], dst, row["bits"],
+            row["deadline_at_s"], self.env.now,
+            research_deadline_at=row.get("research_deadline_at_s"))
+        self._metric_packet_emitted(pkt)
+        self.ledger.register(pkt.pid, pkt.bits)
+        # enter the ordinary ingress path with zero uplink propagation: the
+        # packet is born inside the constellation, so it has no ground leg.
+        self._metric_satellite_ingress(pkt, src)
+        pkt.path.append(src)
+        yield self.env.timeout(0.0)
+        if self._deferred_enabled():
+            yield from self.decide_deferred(pkt, src)
+        else:
+            self._decide(pkt, src)
 
     def _endpoint_ticker(self, ep: TrafficEndpoint):
         while True:
@@ -4108,10 +4167,29 @@ class Kernel:
         routing on one serving set and scoring on another.  The switch is on
         the EFFECTIVE policy, which a staged switch may change mid-run.
         """
+        # A satellite destination is a single known node, not a ground cell:
+        # every policy targets that satellite directly.  This is the
+        # inter-satellite background flow's routing target and it needs no
+        # advertisement (the constellation map is a-priori knowledge).
+        if str(dst).startswith("sat:"):
+            target = int(str(dst).split(":", 1)[1])
+            return [] if target == sat else [target]
         if self._effective_routing_policy() in ("oracle", "known_serving"):
             return [s for s in self._serving_sats(dst) if s != sat]
         return routing.destinations_in_cache(self.caches[sat], dst, now,
                                              max_cache_hops=cache_hops)
+
+    def _route_targets(self, sat: int, dst: str) -> list[int]:
+        """Targets for policies that consume a known serving set.
+
+        A ground cell resolves through the kernel's true serving set; a
+        satellite destination is a single node (inter-satellite background
+        flow) and needs no endpoint lookup at all.
+        """
+        if str(dst).startswith("sat:"):
+            target = int(str(dst).split(":", 1)[1])
+            return [] if target == sat else [target]
+        return [s for s in self._serving_sats(dst) if s != sat]
 
     def _effective_routing_policy(self) -> str:
         """Configured policy, or the staged one once its switch time passes."""
@@ -6517,6 +6595,10 @@ class Kernel:
         """Is the deliver action legal at instant now?  Shared by the frozen
         observer (as part of the observation) and by the frozen commit check
         (as a legality gate)."""
+        if str(pkt.dst).startswith("sat:"):
+            # inter-satellite flow: delivery is "reached the target satellite",
+            # which _decide handles directly; there is no downlink action.
+            return False
         ep = self._ensure_endpoint(pkt.dst)
         link = ep.links.get(sat)
         if not (link is not None and link.state == "active"
@@ -6849,6 +6931,18 @@ class Kernel:
         mechanism counter, which would change the receipt key set.
         """
         now = self.env.now
+        # INTER-SATELLITE BACKGROUND FLOW: a packet whose destination is a
+        # satellite ("sat:<id>") is delivered when it reaches that satellite.
+        # It uses the same fate/ledger/metric definitions as any data packet;
+        # only the delivery test differs (satellite reached instead of a
+        # ground cell served).
+        if str(pkt.dst).startswith("sat:"):
+            dst_sat = int(str(pkt.dst).split(":", 1)[1])
+            if sat == dst_sat:
+                decision_id, _hop = self._allocate_decision(pkt)
+                pkt.decision_id = decision_id
+                self._metric_delivered(pkt)
+                return
         decision_id, hop_index = self._allocate_decision(pkt)
         if self.timeline_sink is not None and pkt.decision_id is not None:
             self._timeline("redecision", pkt, decision_id,
@@ -6968,8 +7062,11 @@ class Kernel:
                 "maximum_hops_exceeded")
             self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             return
-        ep = self._ensure_endpoint(pkt.dst)
-        link = ep.links.get(sat)
+        if str(pkt.dst).startswith("sat:"):
+            ep, link = None, None
+        else:
+            ep = self._ensure_endpoint(pkt.dst)
+            link = ep.links.get(sat)
         if (link is not None and link.state == "active"
                 and self.geometry.gsl_available(sat, ep.lat, ep.lon, now)):
             if (self.rate_model == "mcs"
@@ -7051,9 +7148,10 @@ class Kernel:
             self.caches[sat], own_q, self.isl_rate_bps, model.propagation_delay_s,
             # oracle_targets is consumed only by the oracle policy; compute it
             # only there instead of scanning serving satellites every decision
-            oracle_targets=([s for s in self._serving_sats(pkt.dst) if s != sat]
+            oracle_targets=(self._route_targets(sat, pkt.dst)
                             if self._effective_routing_policy() in
-                            ("oracle", "known_serving") else None),
+                            ("oracle", "known_serving", "hop",
+                             "hop_known_serving") else None),
             # learning must choose among ALL local legal directions: the
             # heuristic only orders candidates, it never pre-clips the
             # learner's action set (otherwise DDQN is a tie-breaker over the

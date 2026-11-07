@@ -124,6 +124,17 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "population_destination_sampler": str,  # scan | alias_rejection
         "destination_rejection_max_draws": int,
         "nested_master_offered_mbps": (int, float, type(None)),
+        # SATELLITE-TO-SATELLITE BACKGROUND FLOW (generic capability).
+        # The paper's traffic is ground test flow PLUS random satellite-to-
+        # satellite background flow; without the second term inter-satellite
+        # queues stay empty and no queue-prediction mechanism can matter
+        # (measured: 10,424/10,424 candidate scores propagation-dominated).
+        # This block adds `sat_background_mbps` of background demand between
+        # random satellite pairs, over the same emission window.  It is added
+        # ON TOP of the ground demand and is independent of any policy.
+        "sat_background_mbps": (int, float, type(None)),
+        "sat_background_packet_bits": (int, type(None)),
+        "sat_background_seed": (int, type(None)),
     },
     "access": {
         "unavailable_policy": str,  # reject | queue
@@ -443,6 +454,13 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "population_destination_sampler": "scan",
         "destination_rejection_max_draws": 10_000,
         "nested_master_offered_mbps": None,
+        # NOTE: sat_background_* are accepted by the SCHEMA but deliberately
+        # carry NO default here, exactly like ou_tau_s / queue_weight: a
+        # default would add the key to every resolved config and change
+        # config_sha256 / trace_identity for every existing profile, silently
+        # invalidating the identity of all archived evidence.  Absent means
+        # "no background flow"; every reader uses .get(), so an unset profile
+        # hashes exactly as before.
     },
     "access": {
         "unavailable_policy": "reject",
