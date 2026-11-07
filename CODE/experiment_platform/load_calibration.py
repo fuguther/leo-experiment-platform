@@ -75,7 +75,17 @@ OVERRIDE_FIELDS = {
                "downlink_rate_mbps"},
     "control_plane": {"advertise_interval_s", "vis_k",
                       "initial_sync_burst_s", "event_advert_enabled",
-                      "event_advert_min_interval_s"},
+                      "event_advert_min_interval_s",
+                      # PROTOCOL PAYLOAD SIZE.  The advertisement's size is a
+                      # property of the protocol every scheme shares, not of a
+                      # scheme: it sets the control-overhead axis (the paper
+                      # reports 0.195%), so a comparison that fixes it for one
+                      # arm and not the others measures the payload.  8000 bit
+                      # = 1 kB per advert is a defensible upper bound for a
+                      # full neighbour table; the sweep declares it explicitly
+                      # so the overhead is a measured quantity, not a leftover
+                      # of the profile.
+                      "packet_bits"},
     # mode and csv_path are injected ONLY by the declared trace_program path
     # below, never typed by a cell: a cell that names its own CSV could smuggle
     # in a trace the calibration never saw.
