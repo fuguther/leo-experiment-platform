@@ -623,3 +623,39 @@ def test_observation_age_audit_survives_an_unmapped_direction():
         key = None if res is None else res.as_tuple()
         assert key is None or isinstance(key, tuple)
 
+
+
+def test_satellite_node_destination_is_resolved_without_an_advertisement():
+    """A ``sat:<id>`` destination is a NODE: no service advertisement exists.
+
+    The resolution must come from the node id itself (the constellation table),
+    not from the control-plane cache, and a packet already at the destination
+    has no egress target.
+    """
+    geo = StaticGeometry(4, neighbors_map=DIVERGE)
+    topo = _topo(geo)
+    empty = control.LocalCache()
+    prop = lambda km: km / 299_792.458
+    dirs, status = routing.choose_next_hop(
+        "hop", 0, "sat:3", 1.0, geo, topo, empty, {}, 1e9, prop)
+    assert status == "ok" and dirs and set(dirs) <= {"E", "N"}
+    at_dst, at_dst_status = routing.choose_next_hop(
+        "hop", 3, "sat:3", 1.0, geo, topo, empty, {}, 1e9, prop)
+    assert (at_dst, at_dst_status) == ([], "unreachable")
+
+
+def test_known_targets_override_the_advertised_service_lookup():
+    """routing.destination_source="known": addressing is static, not advertised."""
+    geo = StaticGeometry(4, neighbors_map=DIVERGE)
+    topo = _topo(geo)
+    empty = control.LocalCache()
+    prop = lambda km: km / 299_792.458
+    # no advertisement exists for B anywhere: the advertised path says no_info
+    dirs, status = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo, empty, {}, 1e9, prop)
+    assert (dirs, status) == ([], "no_info")
+    # the same query with known destination knowledge resolves and routes
+    dirs, status = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo, empty, {}, 1e9, prop,
+        known_targets=[3])
+    assert status == "ok" and set(dirs) <= {"E", "N"}

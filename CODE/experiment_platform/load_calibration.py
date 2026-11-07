@@ -95,7 +95,11 @@ OVERRIDE_FIELDS = {
     "routing": {"policy", "staged_policy", "staged_policy_at_s",
                 # external inference-only policy plugin manifest (generic
                 # seam; the algorithm lives outside the platform)
-                "policy_plugin", "min_remaining_hop_only"},
+                "policy_plugin", "min_remaining_hop_only",
+                # destination knowledge source (advertised vs known static
+                # table): an ADDRESSING knob, not a congestion-information one,
+                # so the four schemes can be compared with the same addresses.
+                "destination_source"},
     "scenario": {"duration_s", "seed"},
     # Queue-state-age comparisons vary admissible measurement age
     # (min_observation_age_s) alongside time-alignment query behavior.  Keep

@@ -1297,6 +1297,8 @@ class Kernel:
         # post-switch difference free of inherited queue history.
         staged = self.cfg_rt.get("staged_policy")
         self._staged_policy = str(staged) if staged else None
+        self._destination_source = str(
+            self.cfg_rt.get("destination_source") or "advertised")
         self._staged_policy_at = float(
             self.cfg_rt.get("staged_policy_at_s") or 0.0)
         if self._staged_policy is not None \
@@ -1695,6 +1697,12 @@ class Kernel:
         self.ledger = fates.DataFateLedger()
         self.ctrl_ledger = fates.ControlFateLedger()
         self.deliveries: dict[int, dict] = {}
+        # INTER-SATELLITE BACKGROUND FLOW: the ids of packets that are the
+        # environment's load rather than the measured test traffic.  The paper
+        # reports its metrics on the ground test flow only, so the analysis
+        # layer must be able to separate the two without re-deriving it from
+        # endpoints (a background packet has no ground endpoint at all).
+        self._background_pids: set[int] = set()
         self.occupied = {"gsl_uplink_s": 0.0, "gsl_downlink_s": 0.0,
                          "isl_s": 0.0, "ctrl_isl_s": 0.0}
         self.service_log = {"uplink": [], "downlink": [], "isl": [],
@@ -3372,6 +3380,7 @@ class Kernel:
             row["deadline_at_s"], self.env.now,
             research_deadline_at=row.get("research_deadline_at_s"))
         self._metric_packet_emitted(pkt)
+        self._background_pids.add(int(pkt.pid))
         self.ledger.register(pkt.pid, pkt.bits)
         # enter the ordinary ingress path with zero uplink propagation: the
         # packet is born inside the constellation, so it has no ground leg.
@@ -4154,7 +4163,14 @@ class Kernel:
     # --------------------------------------------------------------- routing
     def _serving_sats(self, cell: str) -> list[int]:
         """Satellites whose association with the endpoint is active right now
-        (direct kernel truth; used ONLY by the labeled oracle)."""
+        (direct kernel truth; used ONLY by the labeled oracle).
+
+        A satellite destination (inter-satellite background flow) has no ground
+        endpoint: its "serving set" is the target satellite itself.
+        """
+        if str(cell).startswith("sat:"):
+            target = int(str(cell).split(":", 1)[1])
+            return [target]
         ep = self.endpoints[cell]
         return sorted(s for s, l in ep.links.items() if l.state == "active")
 
@@ -4190,6 +4206,21 @@ class Kernel:
             target = int(str(dst).split(":", 1)[1])
             return [] if target == sat else [target]
         return [s for s in self._serving_sats(dst) if s != sat]
+
+    def _known_targets(self, sat: int, dst: str) -> list[int] | None:
+        """Destination resolution for routing.destination_source="known".
+
+        Returns None (so routing keeps its advertised path) unless the config
+        declares known destination knowledge.  The returned value is the TRUE
+        attaching node of the destination, which is the static constellation +
+        fixed-ground-station table every scheme in the literature takes as
+        given; the queue/edge state used to CHOOSE among the candidates still
+        comes only from the arm's own information source, so this knob cannot
+        leak congestion information.
+        """
+        if self._destination_source != "known":
+            return None
+        return self._route_targets(sat, dst)
 
     def _effective_routing_policy(self) -> str:
         """Configured policy, or the staged one once its switch time passes."""
@@ -6156,6 +6187,22 @@ class Kernel:
         the decision-sink path, so normal runs pay nothing.
         """
         is_destination = peer in self._serving_sats(pkt.dst)
+        if str(pkt.dst).startswith("sat:"):
+            # inter-satellite flow: no ground egress resource to describe
+            return {
+                "prediction_method": "satellite_destination_no_downstream_resource",
+                "peer_is_destination": bool(is_destination),
+                "peer_egress_direction": None,
+                "peer_egress_link_id": None,
+                "peer_egress_data_bits": 0,
+                "peer_egress_ctrl_bits": 0,
+                "peer_egress_ctrl_packets": 0,
+                "peer_in_service_bits": 0,
+                "peer_in_service_phase": None,
+                "peer_in_service_is_control": False,
+                "peer_in_service_remaining_bits": None,
+                "peer_in_service_remaining_method": "satellite_destination",
+            }
         egress = None
         if not is_destination and self.isls[peer]:
             own_q = {d: lnk.data_bits + lnk.ctrl_bits
@@ -6868,6 +6915,7 @@ class Kernel:
                                  if s != sat]
                                 if self._effective_routing_policy() in
                                 ("oracle", "known_serving") else None),
+                known_targets=(self._known_targets(sat, pkt.dst)),
                 best_only=False,
                 reverse_adj=self._routing_reverse_adj,
                 sorted_adj=self._routing_sorted_rev_adj,
@@ -6941,7 +6989,7 @@ class Kernel:
             if sat == dst_sat:
                 decision_id, _hop = self._allocate_decision(pkt)
                 pkt.decision_id = decision_id
-                self._metric_delivered(pkt)
+                self._finish_satellite_delivery(pkt, sat)
                 return
         decision_id, hop_index = self._allocate_decision(pkt)
         if self.timeline_sink is not None and pkt.decision_id is not None:
@@ -7038,6 +7086,16 @@ class Kernel:
             return
         now = self.env.now
         decision_id, hop_index = self._allocate_decision(pkt)
+        if str(pkt.dst).startswith("sat:") and \
+                int(sat) == int(str(pkt.dst).split(":", 1)[1]):
+            # INTER-SATELLITE BACKGROUND FLOW: delivery is "reached the target
+            # satellite".  There is no downlink action to take, so this test
+            # must come before the usual endpoint/downlink branch (which is
+            # skipped entirely for a satellite destination) or the packet
+            # would keep forwarding past its destination until max_hops.
+            pkt.decision_id = decision_id
+            self._finish_satellite_delivery(pkt, sat)
+            return
         if self.timeline_sink is not None and pkt.decision_id is not None:
             # the packet was COMMITTED at least once before (pkt.decision_id
             # is written only by the two commit sites), possibly at another
@@ -7152,6 +7210,7 @@ class Kernel:
                             if self._effective_routing_policy() in
                             ("oracle", "known_serving", "hop",
                              "hop_known_serving") else None),
+            known_targets=(self._known_targets(sat, pkt.dst)),
             # learning must choose among ALL local legal directions: the
             # heuristic only orders candidates, it never pre-clips the
             # learner's action set (otherwise DDQN is a tie-breaker over the
@@ -7437,6 +7496,29 @@ class Kernel:
         self._metric_delivered(pkt)
         self._log("delivered", pid=pkt.pid, sat=sat)
 
+    def _finish_satellite_delivery(self, pkt: DataPacket, sat: int) -> None:
+        """DELIVER an inter-satellite background packet at its destination.
+
+        A satellite destination consumes no downlink, so there is no
+        propagation-arrival event: the packet has already paid for and recorded
+        every ISL hop on the ordinary path.  Everything that defines a
+        delivered packet for the ledger / deliveries / metric views is written
+        here, so a background packet is NOT a special case downstream of this
+        call (only its delivery test differs: reaching the target satellite
+        instead of a downlink service opportunity).
+
+        No learning transition fires: the background flow is the environment's
+        load, not an action of the agent under test, so it must not move the
+        value function or the replay buffer.
+        """
+        now = float(self.env.now)
+        self.ledger.record(pkt.pid, "DELIVERED", pkt.bits)
+        self.deliveries[pkt.pid] = {"delivered_at": now, "path": list(pkt.path),
+                                    "satellite_destination": int(sat)}
+        self._metric_delivered(pkt)
+        self._log("delivered", pid=pkt.pid, sat=sat, dst=str(pkt.dst),
+                  satellite_destination=True)
+
     # ----------------------------------------------------------------- fates
     def _fail(self, pkt, fate: str, decision_id: int | None = None,
               observation: dict | None = None):
@@ -7672,11 +7754,13 @@ class Kernel:
             "error": error,
             "events_processed": events,
             "horizon_s": self.horizon,
+            "num_satellites": int(self.num_sats),
             "stop_time_s": stop_time,
             "fates": dict(self.ledger._fates),
             "fate_counts": self.ledger.fate_counts(),
             "totals": totals,
             "deliveries": self.deliveries,
+            "background_pids": sorted(self._background_pids),
             "occupied": dict(self.occupied),
             "queue_area_bits_s": queue_area,
             "access": dict(self.access_stats),

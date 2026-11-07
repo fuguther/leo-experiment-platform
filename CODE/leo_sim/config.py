@@ -218,6 +218,20 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # scoring the configured policy.  This is a seam for research
         # algorithms; it does not implement any algorithm itself.
         "policy_plugin": (str, type(None)),
+        # DESTINATION KNOWLEDGE SOURCE (schema-only, optional; absent means
+        # "advertised", the historical behaviour).  This is NOT a queue-state
+        # knob: it only says HOW a satellite resolves which node currently
+        # attaches a destination, never how congested a resource is.
+        #   advertised - resolve the destination from control-plane service
+        #                advertisements (the historical behaviour; an arm with
+        #                no control plane then holds packets it cannot address)
+        #   known      - resolve it from the static constellation/endpoint
+        #                table (ephemeris + fixed ground stations), which every
+        #                scheme in the literature takes as given.  Queue-state
+        #                information is still whatever the arm is configured
+        #                with, so an arm without any queue sharing (IDQN-like)
+        #                stays addressable without being given congestion data.
+        "destination_source": str,  # advertised | known
         "learning_enabled": bool,
         "contract": str,  # C1|C3|C4|C5|C6|C7 (observation contracts)
     },
@@ -1023,6 +1037,11 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             f"got {staged!r}")
     if rt["max_hops"] < 1:
         raise ConfigError("routing.max_hops must be >= 1")
+    destination_source = rt.get("destination_source")
+    if destination_source not in (None, "", "advertised", "known"):
+        raise ConfigError(
+            "routing.destination_source must be 'advertised' or 'known', "
+            f"got {destination_source!r}")
     plugin = rt.get("policy_plugin")
     if plugin is not None:
         if not isinstance(plugin, str) or not plugin.strip():
