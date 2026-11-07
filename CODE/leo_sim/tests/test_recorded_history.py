@@ -47,6 +47,7 @@ def _kernel_with_entries(entries, *, decision_sink=None, topology=None):
     instance.caches = {1: LocalCache()}
     instance.topo = {0: {"E": 7} if topology is None else topology}
     instance._recorded_advertisement_history_cache = {}
+    instance._advertisement_rows_cache = {}
     for entry in entries:
         instance.caches[1].put(entry)
     return instance
