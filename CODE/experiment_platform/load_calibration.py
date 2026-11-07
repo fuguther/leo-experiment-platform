@@ -53,6 +53,17 @@ ALLOWED_PROFILES = (
     # 1 Gbps ISL to a target utilisation.  In the 10x10 degree regional
     # population scene max_e b_e = 0.0398 and no affordable rate can.
     "CODE/leo_sim/profiles/t1_scene_trunk_v1.yaml",
+    # TAP-DAR PAPER CONSTELLATIONS.  The paper evaluates three constellations
+    # (66 / 140 / 351 satellites) with its own physical parameters (8 KB
+    # packets, 500 MHz, 50-packet buffer, 16-byte one-hop queue-state
+    # exchange).  A reproduction that ran a fourth, self-chosen constellation
+    # could not be compared with the paper at all, so these three are first
+    # class scenes rather than per-cell overrides -- the constellation is a
+    # PROPERTY OF THE SCENE, and load_calibration deliberately does not let a
+    # cell rewrite it.
+    "CODE/leo_sim/profiles/tapdar_iridium_66.yaml",
+    "CODE/leo_sim/profiles/tapdar_kepler_140.yaml",
+    "CODE/leo_sim/profiles/tapdar_telesat_351.yaml",
 )
 ALLOWED_ARMS = ("stale", "now", "common", "candidate")
 #: Bounded envelope for a contract's declared simulation horizon.  12 s is the
