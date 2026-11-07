@@ -1989,7 +1989,17 @@ class Kernel:
         return (min(ups) if ups else None), saw_zero_rate
 
     def _note_busy(self, cell: str):
-        """Last-activity stamp for fair-access idle measurement."""
+        """Last-activity stamp for fair-access idle measurement.
+
+        Only GROUND CELLS have an access queue.  A satellite destination
+        ("sat:<id>", the inter-satellite background flow) has no endpoint and no
+        access tick, so its key would never be read by the idle check while
+        still being written once per hop per packet -- an unbounded map that
+        grows with background traffic and dresses non-cell keys up as access
+        state in the exported snapshot.
+        """
+        if str(cell).startswith("sat:"):
+            return
         self.access_last_busy[cell] = self.env.now
 
     def _hold_packet(self, sat: int, pkt: DataPacket,
@@ -5869,8 +5879,17 @@ class Kernel:
         if str((self.cfg_ta or {}).get("remaining_path_scale")
                or "local_first_hop") != "candidate_mean":
             return
+        # THE MEAN IS OVER THE CANDIDATES THAT WILL ACTUALLY BE SCORED.  Using
+        # every entry of `out` silently mixed in candidates that are excluded
+        # for other reasons: a "missing" entry still carries propagation_s, and
+        # a delivered_downlink entry carries the DOWNLINK propagation (seconds,
+        # not the ~10 ms ISL hop), so one such entry moved the shared scale by a
+        # measured 49x (0.01022 -> 0.50511).  Only ok / delivered_downlink
+        # entries become resources and get a remaining_prop_s at all, so only
+        # they may set the price of a remaining hop.
         props = [v["propagation_s"] for v in out.values()
                  if isinstance(v, dict)
+                 and v.get("status") in ("ok", "delivered_downlink")
                  and isinstance(v.get("propagation_s"), (int, float))
                  and not isinstance(v.get("propagation_s"), bool)]
         if not props:
