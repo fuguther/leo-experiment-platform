@@ -115,7 +115,9 @@ OVERRIDE_FIELDS = {
                        # Diagnostics-only score quantisation, used by the
                        # tie-break A/B intervention.  Absent keeps the
                        # historical sort key exactly.
-                       "tie_sig_digits"},
+                       "tie_sig_digits",
+                       # path-cost scale of the remaining-path term
+                       "remaining_path_scale"},
 }
 
 

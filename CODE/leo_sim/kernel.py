@@ -5841,7 +5841,42 @@ class Kernel:
                     "peer to its nearest received serving advertisement, times "
                     "the known per-hop link propagation"),
             }
+        self._apply_remaining_path_scale(out)
         return out
+
+    def _apply_remaining_path_scale(self, out: dict) -> None:
+        """Re-price the remaining-path term with ONE scale for all candidates.
+
+        See time_alignment.remaining_path_scale.  The historical scale is the
+        candidate's own first-hop propagation, which prices the SAME remaining
+        path differently depending on which edge it is entered from; that makes
+        the scorer prefer the cheapest FIRST hop rather than the cheapest
+        REMAINING path and produces self-inflicted detours (measured: 3.4x the
+        BFS optimum, 45-hop paths on a diameter-10 constellation).
+
+        In place, and only when configured: the default does nothing at all, so
+        every existing run stays byte-identical.
+        """
+        if str((self.cfg_ta or {}).get("remaining_path_scale")
+               or "local_first_hop") != "candidate_mean":
+            return
+        props = [v["propagation_s"] for v in out.values()
+                 if isinstance(v, dict)
+                 and isinstance(v.get("propagation_s"), (int, float))
+                 and not isinstance(v.get("propagation_s"), bool)]
+        if not props:
+            return
+        representative = sum(props) / len(props)
+        for value in out.values():
+            if not isinstance(value, dict):
+                continue
+            hops = value.get("remaining_hops")
+            if isinstance(hops, bool) or not isinstance(hops, int):
+                continue
+            value["remaining_prop_s"] = float(hops) * float(representative)
+            value["remaining_prop_basis"] = (
+                "path-constrained remaining hop count times the candidate-set "
+                "mean first-hop propagation (one scale for every candidate)")
 
     def _estimate_at_start(self, pkt: DataPacket, sat: int, now: float,
                            chosen: str | None, kind: str
