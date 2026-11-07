@@ -4697,6 +4697,15 @@ class Kernel:
         map and the receiver's arrival boundary only, so caching it cannot
         change what a decision sees.  A new arrival or a topology rematch
         invalidates the slot; an unchanged sample keeps its row object.
+
+        This is the SCORING path's accessor, so it always asks for the rows
+        (force=True).  :meth:`_advertisement_history` returns [] when no
+        decision sink is attached, because it also serves as an output channel;
+        inheriting that guard here made the rows disappear from the state-time
+        snapshot whenever diagnostics were off, every candidate then reported
+        ``no_received_history``, and the ranking silently collapsed back to the
+        bare candidate order.  A run with ``decisions=false`` would have been a
+        DIFFERENT experiment while still being labelled a state-time arm.
         """
         sat = int(sat)
         origin = int(origin)
@@ -4710,7 +4719,7 @@ class Kernel:
         cached = self._advertisement_rows_cache.get(slot)
         if cached is not None and cached[0] == key:
             return cached[1]
-        converted = self._advertisement_history(sat, origin, now)
+        converted = self._advertisement_history(sat, origin, now, force=True)
         if cached is not None and cached[0][1] == origin_topology:
             # only new arrivals converted; unchanged samples keep their rows
             old_rows = dict(zip(cached[0][0], cached[1]))
