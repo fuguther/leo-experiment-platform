@@ -1462,6 +1462,16 @@ class Kernel:
         # One most-recent converted advertisement history per receiver and
         # origin. This is output-only and never participates in routing.
         self._recorded_advertisement_history_cache = {}
+        # ONLINE conversion memo, deliberately separate from the output-only
+        # cache above: the state-time snapshot asks for the SAME arrived
+        # advertisements on every decision of every packet, and the conversion
+        # (nested queue/generation/rate/downlink records per sample) cost more
+        # than the simulation itself -- 674 of 1819 profiled seconds on a 4 s
+        # scene, because it was redone per decision instead of per arrival.
+        # Keyed by (receiver, origin) and invalidated by the arrived-entry
+        # tuple and the origin's peer map, so it can neither read a sample that
+        # had not arrived nor survive a topology rematch.
+        self._advertisement_rows_cache = {}
         # optional output-only decision lifecycle stream (a list of dicts).
         # Deliberately a SEPARATE sink: the per-hop decision rows are asserted
         # by shape and count in existing tests, so lifecycle milestones must
@@ -4679,6 +4689,37 @@ class Kernel:
             })
         return out
 
+    def _advertisement_rows(self, sat: int, origin: int, now: float) -> tuple:
+        """Arrived advertisement rows from one origin, memoised.
+
+        Pure memoisation of :meth:`_advertisement_history`: the conversion is a
+        function of the arrived CacheEntry objects, the origin's current peer
+        map and the receiver's arrival boundary only, so caching it cannot
+        change what a decision sees.  A new arrival or a topology rematch
+        invalidates the slot; an unchanged sample keeps its row object.
+        """
+        sat = int(sat)
+        origin = int(origin)
+        arrived = tuple(
+            entry for entry in self.caches[sat].history_for(origin)
+            if entry.received_at <= now
+        )
+        origin_topology = tuple(sorted(self.topo.get(origin, {}).items()))
+        key = (arrived, origin_topology)
+        slot = (sat, origin)
+        cached = self._advertisement_rows_cache.get(slot)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        converted = self._advertisement_history(sat, origin, now)
+        if cached is not None and cached[0][1] == origin_topology:
+            # only new arrivals converted; unchanged samples keep their rows
+            old_rows = dict(zip(cached[0][0], cached[1]))
+            converted = [old_rows.get(entry, row)
+                         for entry, row in zip(arrived, converted)]
+        rows = tuple(converted)
+        self._advertisement_rows_cache[slot] = (key, rows)
+        return rows
+
     def _recorded_advertisement_history(self, sat: int, origin: int,
                                         now: float) -> list:
         """Reuse output-only history expansion while its inputs are unchanged.
@@ -5106,8 +5147,7 @@ class Kernel:
                         "queued_bits": int(res_link.data_bits + res_link.ctrl_bits),
                     }
                 continue
-            for rec in self._advertisement_history(sat, int(cr["peer"]), now,
-                                                   force=True):
+            for rec in self._advertisement_rows(sat, int(cr["peer"]), now):
                 if key.kind == _ta.KIND_DOWNLINK:
                     terminal = (rec.get("advertised_downlink_resources")
                                 or {}).get(str(target_dst))
@@ -5204,8 +5244,7 @@ class Kernel:
             peer_arrival_at = (float(now) + source_compute_query + local_wait
                                + target_bits / float(rate_local)
                                + float(prop_local))
-            rows = self._advertisement_history(
-                int(sat), int(cr["peer"]), float(now), force=True)
+            rows = self._advertisement_rows(int(sat), int(cr["peer"]), now)
             if not rows:
                 peer_process[direction] = None
                 continue
