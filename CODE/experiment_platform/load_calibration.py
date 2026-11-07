@@ -82,7 +82,10 @@ OVERRIDE_FIELDS = {
     "demand": {"mode", "csv_path", "offered_mbps", "packet_bits",
                "emission_start_s",
                "emission_end_s", "burst_start_s", "burst_duration_s",
-               "burst_multiplier"},
+               "burst_multiplier",
+               # inter-satellite background flow (generic capability)
+               "sat_background_mbps", "sat_background_packet_bits",
+               "sat_background_seed"},
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
                   "max_packets"},
     # isl_queue_bits is the drain-time buffer axis: the calibrated buffer is
