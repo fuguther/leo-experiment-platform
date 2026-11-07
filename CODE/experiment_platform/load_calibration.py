@@ -64,6 +64,17 @@ ALLOWED_PROFILES = (
     "CODE/leo_sim/profiles/tapdar_iridium_66.yaml",
     "CODE/leo_sim/profiles/tapdar_kepler_140.yaml",
     "CODE/leo_sim/profiles/tapdar_telesat_351.yaml",
+    # GATEWAY-DENSITY AXIS.  The paper never says how many ground stations it
+    # uses, and that number decides how much of the queueing sits in the access
+    # network versus the ISLs.  With the inherited 3 gateways the ISL path is
+    # essentially forced over this 66-satellite constellation (measured: only
+    # 20-28 distinct paths in a whole run and 0.000% path divergence between
+    # arms), so gateway density has to be an explicit scene axis rather than a
+    # silent inherited value.
+    "CODE/leo_sim/profiles/tapdar_iridium_66_gs6.yaml",
+    "CODE/leo_sim/profiles/tapdar_iridium_66_gs12.yaml",
+    "CODE/leo_sim/profiles/tapdar_iridium_66_gs24.yaml",
+    "CODE/leo_sim/profiles/tapdar_iridium_66_gs48.yaml",
 )
 ALLOWED_ARMS = ("stale", "now", "common", "candidate")
 #: Bounded envelope for a contract's declared simulation horizon.  12 s is the
