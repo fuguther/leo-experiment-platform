@@ -623,3 +623,91 @@ def test_observation_age_audit_survives_an_unmapped_direction():
         key = None if res is None else res.as_tuple()
         assert key is None or isinstance(key, tuple)
 
+
+
+def test_satellite_node_destination_is_resolved_without_an_advertisement():
+    """A ``sat:<id>`` destination is a NODE: no service advertisement exists.
+
+    The resolution must come from the node id itself (the constellation table),
+    not from the control-plane cache, and a packet already at the destination
+    has no egress target.
+    """
+    geo = StaticGeometry(4, neighbors_map=DIVERGE)
+    topo = _topo(geo)
+    empty = control.LocalCache()
+    prop = lambda km: km / 299_792.458
+    dirs, status = routing.choose_next_hop(
+        "hop", 0, "sat:3", 1.0, geo, topo, empty, {}, 1e9, prop)
+    assert status == "ok" and dirs and set(dirs) <= {"E", "N"}
+    at_dst, at_dst_status = routing.choose_next_hop(
+        "hop", 3, "sat:3", 1.0, geo, topo, empty, {}, 1e9, prop)
+    assert (at_dst, at_dst_status) == ([], "unreachable")
+
+
+def test_known_targets_override_the_advertised_service_lookup():
+    """routing.destination_source="known": addressing is static, not advertised."""
+    geo = StaticGeometry(4, neighbors_map=DIVERGE)
+    topo = _topo(geo)
+    empty = control.LocalCache()
+    prop = lambda km: km / 299_792.458
+    # no advertisement exists for B anywhere: the advertised path says no_info
+    dirs, status = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo, empty, {}, 1e9, prop)
+    assert (dirs, status) == ([], "no_info")
+    # the same query with known destination knowledge resolves and routes
+    dirs, status = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo, empty, {}, 1e9, prop,
+        known_targets=[3])
+    assert status == "ok" and set(dirs) <= {"E", "N"}
+
+
+def test_remaining_path_scale_is_arm_independent_and_one_value_for_all():
+    """The remaining-path term must not depend on WHICH edge enters it.
+
+    Historical behaviour prices the remaining hops at the candidate's own
+    first-hop propagation, so the same downstream path costs 1.8x more when
+    entered from a cross-plane edge (18.31 ms) than from an in-plane one
+    (10.22 ms).  That makes the scorer prefer the cheapest FIRST hop instead of
+    the cheapest remaining path and produces self-inflicted detours.  The
+    "candidate_mean" scale must give every candidate the same per-hop price.
+    """
+    from CODE.leo_sim import kernel as kernel_mod
+    instance = kernel_mod.Kernel.__new__(kernel_mod.Kernel)
+    instance.cfg_ta = {"remaining_path_scale": "candidate_mean"}
+    out = {
+        "E": {"propagation_s": 0.01022, "remaining_hops": 3,
+              "remaining_prop_s": 3 * 0.01022},
+        "N": {"propagation_s": 0.01831, "remaining_hops": 3,
+              "remaining_prop_s": 3 * 0.01831},
+        "S": {"propagation_s": None, "remaining_hops": 3,
+              "remaining_prop_s": None},
+    }
+    instance._apply_remaining_path_scale(out)
+    mean = (0.01022 + 0.01831) / 2
+    assert out["E"]["remaining_prop_s"] == out["N"]["remaining_prop_s"]
+    assert abs(out["E"]["remaining_prop_s"] - 3 * mean) < 1e-15
+
+
+def test_remaining_path_scale_default_does_nothing():
+    from CODE.leo_sim import kernel as kernel_mod
+    instance = kernel_mod.Kernel.__new__(kernel_mod.Kernel)
+    instance.cfg_ta = {"remaining_path_scale": None}
+    out = {"E": {"propagation_s": 0.01022, "remaining_hops": 3,
+                 "remaining_prop_s": 3 * 0.01022},
+           "N": {"propagation_s": 0.01831, "remaining_hops": 3,
+                 "remaining_prop_s": 3 * 0.01831}}
+    before = {k: dict(v) for k, v in out.items()}
+    instance._apply_remaining_path_scale(out)
+    assert out == before
+
+
+def test_remaining_path_scale_is_a_config_field():
+    from CODE.leo_sim import config as config_mod
+    cfg = config_mod.resolve_config(
+        {"time_alignment": {"remaining_path_scale": "candidate_mean"}})
+    assert cfg["config"]["time_alignment"]["remaining_path_scale"] == \
+        "candidate_mean"
+    plain = config_mod.resolve_config({})
+    assert plain["config"]["time_alignment"].get("remaining_path_scale") is None
+    # the two must not share a config identity
+    assert cfg["sha256"] != plain["sha256"]

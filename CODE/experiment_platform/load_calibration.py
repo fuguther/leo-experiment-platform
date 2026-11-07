@@ -53,6 +53,28 @@ ALLOWED_PROFILES = (
     # 1 Gbps ISL to a target utilisation.  In the 10x10 degree regional
     # population scene max_e b_e = 0.0398 and no affordable rate can.
     "CODE/leo_sim/profiles/t1_scene_trunk_v1.yaml",
+    # TAP-DAR PAPER CONSTELLATIONS.  The paper evaluates three constellations
+    # (66 / 140 / 351 satellites) with its own physical parameters (8 KB
+    # packets, 500 MHz, 50-packet buffer, 16-byte one-hop queue-state
+    # exchange).  A reproduction that ran a fourth, self-chosen constellation
+    # could not be compared with the paper at all, so these three are first
+    # class scenes rather than per-cell overrides -- the constellation is a
+    # PROPERTY OF THE SCENE, and load_calibration deliberately does not let a
+    # cell rewrite it.
+    "CODE/leo_sim/profiles/tapdar_iridium_66.yaml",
+    "CODE/leo_sim/profiles/tapdar_kepler_140.yaml",
+    "CODE/leo_sim/profiles/tapdar_telesat_351.yaml",
+    # GATEWAY-DENSITY AXIS.  The paper never says how many ground stations it
+    # uses, and that number decides how much of the queueing sits in the access
+    # network versus the ISLs.  With the inherited 3 gateways the ISL path is
+    # essentially forced over this 66-satellite constellation (measured: only
+    # 20-28 distinct paths in a whole run and 0.000% path divergence between
+    # arms), so gateway density has to be an explicit scene axis rather than a
+    # silent inherited value.
+    "CODE/leo_sim/profiles/tapdar_iridium_66_gs6.yaml",
+    "CODE/leo_sim/profiles/tapdar_iridium_66_gs12.yaml",
+    "CODE/leo_sim/profiles/tapdar_iridium_66_gs24.yaml",
+    "CODE/leo_sim/profiles/tapdar_iridium_66_gs48.yaml",
 )
 ALLOWED_ARMS = ("stale", "now", "common", "candidate")
 #: Bounded envelope for a contract's declared simulation horizon.  12 s is the
@@ -75,21 +97,41 @@ OVERRIDE_FIELDS = {
                "downlink_rate_mbps"},
     "control_plane": {"advertise_interval_s", "vis_k",
                       "initial_sync_burst_s", "event_advert_enabled",
-                      "event_advert_min_interval_s"},
+                      "event_advert_min_interval_s",
+                      # PROTOCOL PAYLOAD SIZE.  The advertisement's size is a
+                      # property of the protocol every scheme shares, not of a
+                      # scheme: it sets the control-overhead axis (the paper
+                      # reports 0.195%), so a comparison that fixes it for one
+                      # arm and not the others measures the payload.  8000 bit
+                      # = 1 kB per advert is a defensible upper bound for a
+                      # full neighbour table; the sweep declares it explicitly
+                      # so the overhead is a measured quantity, not a leftover
+                      # of the profile.
+                      "packet_bits"},
     # mode and csv_path are injected ONLY by the declared trace_program path
     # below, never typed by a cell: a cell that names its own CSV could smuggle
     # in a trace the calibration never saw.
     "demand": {"mode", "csv_path", "offered_mbps", "packet_bits",
                "emission_start_s",
                "emission_end_s", "burst_start_s", "burst_duration_s",
-               "burst_multiplier"},
+               "burst_multiplier",
+               # inter-satellite background flow (generic capability)
+               "sat_background_mbps", "sat_background_packet_bits",
+               "sat_background_seed"},
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
                   "max_packets"},
     # isl_queue_bits is the drain-time buffer axis: the calibrated buffer is
     # DEFINED as C_e * tau_buffer, so the 5 / 20 / 100 ms sensitivity sweep is
     # an override of exactly this field and nothing else.
     "links": {"rf_isl", "rate_model", "isl_rate_mbps", "isl_queue_bits"},
-    "routing": {"policy", "staged_policy", "staged_policy_at_s"},
+    "routing": {"policy", "staged_policy", "staged_policy_at_s",
+                # external inference-only policy plugin manifest (generic
+                # seam; the algorithm lives outside the platform)
+                "policy_plugin", "min_remaining_hop_only",
+                # destination knowledge source (advertised vs known static
+                # table): an ADDRESSING knob, not a congestion-information one,
+                # so the four schemes can be compared with the same addresses.
+                "destination_source"},
     "scenario": {"duration_s", "seed"},
     # Queue-state-age comparisons vary admissible measurement age
     # (min_observation_age_s) alongside time-alignment query behavior.  Keep
@@ -105,7 +147,9 @@ OVERRIDE_FIELDS = {
                        # Diagnostics-only score quantisation, used by the
                        # tie-break A/B intervention.  Absent keeps the
                        # historical sort key exactly.
-                       "tie_sig_digits"},
+                       "tie_sig_digits",
+                       # path-cost scale of the remaining-path term
+                       "remaining_path_scale"},
 }
 
 

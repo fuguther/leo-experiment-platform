@@ -124,6 +124,17 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "population_destination_sampler": str,  # scan | alias_rejection
         "destination_rejection_max_draws": int,
         "nested_master_offered_mbps": (int, float, type(None)),
+        # SATELLITE-TO-SATELLITE BACKGROUND FLOW (generic capability).
+        # The paper's traffic is ground test flow PLUS random satellite-to-
+        # satellite background flow; without the second term inter-satellite
+        # queues stay empty and no queue-prediction mechanism can matter
+        # (measured: 10,424/10,424 candidate scores propagation-dominated).
+        # This block adds `sat_background_mbps` of background demand between
+        # random satellite pairs, over the same emission window.  It is added
+        # ON TOP of the ground demand and is independent of any policy.
+        "sat_background_mbps": (int, float, type(None)),
+        "sat_background_packet_bits": (int, type(None)),
+        "sat_background_seed": (int, type(None)),
     },
     "access": {
         "unavailable_policy": str,  # reject | queue
@@ -198,6 +209,29 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # scores them.  Unknown distances never become a number: if any
         # candidate's distance is unknown the restriction is not applied.
         "min_remaining_hop_only": bool,
+        # EXTERNAL INFERENCE-ONLY POLICY PLUGIN (generic capability, default
+        # off).  A manifest path ("env:NAME" resolves the path from the
+        # process environment, which is how the T1 runner hands a snapshotted
+        # input to a run) or an absolute path for local diagnostics.  The
+        # plugin must satisfy leo_sim/policy_plugin.py's contract; the kernel
+        # then asks it for the next hop on the frozen snapshot instead of
+        # scoring the configured policy.  This is a seam for research
+        # algorithms; it does not implement any algorithm itself.
+        "policy_plugin": (str, type(None)),
+        # DESTINATION KNOWLEDGE SOURCE (schema-only, optional; absent means
+        # "advertised", the historical behaviour).  This is NOT a queue-state
+        # knob: it only says HOW a satellite resolves which node currently
+        # attaches a destination, never how congested a resource is.
+        #   advertised - resolve the destination from control-plane service
+        #                advertisements (the historical behaviour; an arm with
+        #                no control plane then holds packets it cannot address)
+        #   known      - resolve it from the static constellation/endpoint
+        #                table (ephemeris + fixed ground stations), which every
+        #                scheme in the literature takes as given.  Queue-state
+        #                information is still whatever the arm is configured
+        #                with, so an arm without any queue sharing (IDQN-like)
+        #                stays addressable without being given congestion data.
+        "destination_source": str,  # advertised | known
         "learning_enabled": bool,
         "contract": str,  # C1|C3|C4|C5|C6|C7 (observation contracts)
     },
@@ -324,6 +358,26 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # queue_weight multiplicative weight on the queue term in the scorer
         "ou_tau_s": (int, float, type(None)),
         "queue_weight": (int, float, type(None)),
+        # PATH-COST SCALE of the remaining-path term (schema-only, optional;
+        # absent keeps the historical value byte for byte).
+        # The scorer prices the rest of the path as
+        #     remaining_hops * <scale>
+        # The historical scale is the LOCAL first-hop propagation, which makes
+        # the term candidate-dependent in the wrong way: an in-plane hop
+        # (10.22 ms) prices EVERY remaining hop at 10.22 ms while a cross-plane
+        # hop (18.31 ms) prices every remaining hop at 18.31 ms, so the same
+        # downstream path costs 1.8x more when it is entered from a cross-plane
+        # edge.  The min-cost candidate is then the one whose FIRST hop is
+        # cheapest, not the one whose remaining path is cheapest, and packets
+        # circulate around their own orbital plane: measured 13.4 mean hops
+        # against a 4.4-hop optimum, worst case 45 hops on a diameter-10
+        # constellation.  "candidate_mean" prices every remaining hop at the
+        # MEAN of the candidate set's first-hop propagation, which is still
+        # arm-independent and still computed from information this node has,
+        # but is identical for all candidates, so the term ranks on remaining
+        # hop COUNT only.  Measured effect: detour ratio 2.09 -> 1.35, worst
+        # path 25 -> 7 hops, E2E 109.5 -> 89.1 ms.
+        "remaining_path_scale": str,  # local_first_hop | candidate_mean
     },
     "async_routing": {
         "enabled": bool,
@@ -434,6 +488,13 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "population_destination_sampler": "scan",
         "destination_rejection_max_draws": 10_000,
         "nested_master_offered_mbps": None,
+        # NOTE: sat_background_* are accepted by the SCHEMA but deliberately
+        # carry NO default here, exactly like ou_tau_s / queue_weight: a
+        # default would add the key to every resolved config and change
+        # config_sha256 / trace_identity for every existing profile, silently
+        # invalidating the identity of all archived evidence.  Absent means
+        # "no background flow"; every reader uses .get(), so an unset profile
+        # hashes exactly as before.
     },
     "access": {
         "unavailable_policy": "reject",
@@ -503,6 +564,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "routing": {"policy": "hop", "max_hops": 16, "learning_enabled": False,
                 "min_remaining_hop_only": False,
+                "policy_plugin": None,
                 "contract": "C3"},
     "learning": {
         "algorithm": "none",
@@ -995,6 +1057,31 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             f"got {staged!r}")
     if rt["max_hops"] < 1:
         raise ConfigError("routing.max_hops must be >= 1")
+    destination_source = rt.get("destination_source")
+    if destination_source not in (None, "", "advertised", "known"):
+        raise ConfigError(
+            "routing.destination_source must be 'advertised' or 'known', "
+            f"got {destination_source!r}")
+    plugin = rt.get("policy_plugin")
+    if plugin is not None:
+        if not isinstance(plugin, str) or not plugin.strip():
+            raise ConfigError(
+                "routing.policy_plugin must be a non-empty manifest path or None")
+        if not ta["enabled"]:
+            # Without time alignment there is no frozen snapshot for the
+            # plugin to act on: it would be silently ignored, which is the
+            # same failure the kernel refuses for a supplied inference policy.
+            raise ConfigError(
+                "routing.policy_plugin requires time_alignment.enabled=true: "
+                "the plugin acts on the frozen decision snapshot")
+        if lr["algorithm"] != "none":
+            raise ConfigError(
+                "routing.policy_plugin may not be combined with a training "
+                "learner (learning.algorithm != none)")
+        if rt["policy"] == "oracle":
+            raise ConfigError(
+                "routing.policy_plugin may not be combined with "
+                "routing.policy=oracle")
     if rt["contract"] not in VALID_CONTRACTS:
         raise ConfigError(f"routing.contract must be one of {sorted(VALID_CONTRACTS)}")
     if rt["learning_enabled"] and lr["algorithm"] == "none":
@@ -1240,6 +1327,11 @@ def _validate_time_alignment(ta: Mapping[str, Any],
         raise ConfigError(
             "time_alignment.state_source must be 'advertised' or "
             f"'ideal_current', got {source!r}")
+    scale = ta.get("remaining_path_scale")
+    if scale not in (None, "", "local_first_hop", "candidate_mean"):
+        raise ConfigError(
+            "time_alignment.remaining_path_scale must be 'local_first_hop' "
+            f"or 'candidate_mean', got {scale!r}")
     age = ta["min_observation_age_s"]
     if age is not None and (isinstance(age, bool)
                             or not isinstance(age, (int, float))
