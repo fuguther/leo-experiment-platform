@@ -61,13 +61,13 @@ The e90 term is an empirical leave-one-world-out error statistic, not a confiden
 ## 2. Code and commands
 
 - policy.py: online feature extraction, frozen-model inference and guarded lexicographic action selection.
-- pcvr0_collect.py: same-world, same-cohort single-action fork collection.
+- collect.py: same-world, same-cohort single-action fork collection.
 - train.py: paired-data validation, leave-one-world-out ridge fitting, and frozen plugin-bundle generation.
 - manifest.json: generated with exact SHA-256 bindings for the policy module and model checkpoint.
 
 From the platform repository root:
 
-    python -m CODE.experiment_platform.pcvr0_collect --config path/to/world_seed_1.yaml --out out/pcvr0_seed_1.jsonl --max-decisions 8
+    python -m CODE.algorithms.pcvr0.collect --config path/to/world_seed_1.yaml --out out/pcvr0_seed_1.jsonl --max-decisions 8
     python -m CODE.experiment_platform.pcvr0_collect --config path/to/world_seed_2.yaml --out out/pcvr0_seed_2.jsonl --max-decisions 8
     python -m CODE.experiment_platform.pcvr0_collect --config path/to/world_seed_3.yaml --out out/pcvr0_seed_3.jsonl --max-decisions 8
     cat out/pcvr0_seed_*.jsonl > out/pcvr0_paired.jsonl
