@@ -258,7 +258,15 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "batch_size": int,
         "replay_size": int,
         "target_update_interval": int,
-        "reward": str,  # legacy queue | deadline_loss_v1
+        # "queue" is the legacy M1 diagnostic; "deadline_loss_v1" is the
+        # contractual deadline objective; "paper_eq9" is TAP-DAR Eq.(9):
+        # rho1*r^queue + rho2*r^dist + rho3*r^reach with (0.4, 0.4, 0.2).
+        "reward": str,
+        # Eq.(9) weights.  The paper states rho1+rho2+rho3=1 and gives
+        # (0.4, 0.4, 0.2) in Table I; the sum is validated.
+        "reward_rho1": (int, float),
+        "reward_rho2": (int, float),
+        "reward_rho3": (int, float),
         "reward_w1": (int, float),  # M1 queue reward weight (legacy w1=20)
         "reward_beta": (int, float),  # M1 decay rate s^-1 (legacy _M1_BETA=200)
         "forward_step_penalty": (int, float),  # non-positive hop cost; must dominate reward_w1
@@ -590,10 +598,13 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "resume_sha256": None,
         "gamma": 0.99,
         "lr": 0.001,
-        "batch_size": 64,
-        "replay_size": 50_000,
-        "target_update_interval": 500,
+        "batch_size": 32,
+        "replay_size": 1000,
+        "target_update_interval": 1000,
         "reward": "queue",
+        "reward_rho1": 0.4,
+        "reward_rho2": 0.4,
+        "reward_rho3": 0.2,
         # corrected (M1) queue reward parameters, absorbed as the v1 baseline
         # (legacy w1/_M1_BETA defaults, SimulationRL.py:270/345) plus the
         # legacy ArriveReward (SimulationRL.py:579)
@@ -1201,8 +1212,9 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
                                     or lr["checkpoint_sha256"] is not None
                                     or lr["checkpoint_metadata_sha256"] is not None):
         raise ConfigError("learning.mode=train does not load a checkpoint")
-    if lr["reward"] not in {"queue", "deadline_loss_v1"}:
-        raise ConfigError("learning.reward must be 'queue' or 'deadline_loss_v1'")
+    if lr["reward"] not in {"queue", "deadline_loss_v1", "paper_eq9"}:
+        raise ConfigError(
+            "learning.reward must be 'queue', 'deadline_loss_v1' or 'paper_eq9'")
     if lr["reward"] == "deadline_loss_v1":
         if dm["research_deadline_s"] is None:
             raise ConfigError(
@@ -1211,6 +1223,19 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         if lr["gamma"] != 1.0:
             raise ConfigError(
                 "learning.reward=deadline_loss_v1 requires learning.gamma=1.0")
+    if lr["reward"] == "paper_eq9":
+        total_rho = (float(lr["reward_rho1"]) + float(lr["reward_rho2"])
+                     + float(lr["reward_rho3"]))
+        if abs(total_rho - 1.0) > 1e-9:
+            raise ConfigError(
+                "learning.reward_rho1+rho2+rho3 must equal 1 for paper_eq9 "
+                f"(TAP-DAR Eq.9), got {total_rho!r}")
+        for name in ("reward_rho1", "reward_rho2", "reward_rho3"):
+            value = lr[name]
+            if not math.isfinite(float(value)) or float(value) < 0.0:
+                raise ConfigError(
+                    f"learning.{name} must be a finite non-negative number, "
+                    f"got {value!r}")
     if lr["reward_w1"] <= 0:
         raise ConfigError("learning.reward_w1 must be > 0")
     if lr["reward_beta"] <= 0:

@@ -175,7 +175,11 @@ class DataPacket:
                  "learning_reward", "learning_episode_closed",
                  "research_deadline_at", "isl_enqueued_at", "holding_until",
                  "metric_queue_id", "metric_prop_id", "metric_ingress_at",
-                 "decision_id", "decision_ordinal", "current_hop_index")
+                 "decision_id", "decision_ordinal", "current_hop_index",
+                 # TAP-DAR Eq.(9) queue context + the hop peer, recorded at the
+                 # decision and read when the forward reward settles
+                 "learning_chosen_queue_bits", "learning_alt_queue_bits",
+                 "learning_peer_sat")
 
     def __init__(self, pid, src, dst, bits, deadline, emitted_at,
                  research_deadline_at=None):
@@ -189,6 +193,13 @@ class DataPacket:
         self.assigned_sat: int | None = None
         self.learning_state = None
         self.learning_action = None
+        # TAP-DAR Eq.(9) needs the queue occupancy of the direction TAKEN and of
+        # the alternatives REJECTED, so the reward can price "did this hop pick
+        # the emptier side".  Both are filled at the decision and consumed at
+        # the forward-reward settle instant; None means "not recorded".
+        self.learning_chosen_queue_bits = None
+        self.learning_alt_queue_bits = None
+        self.learning_peer_sat = -1
         self.learning_reward = None
         self.learning_episode_closed = False
         self.research_deadline_at = research_deadline_at
@@ -3244,6 +3255,36 @@ class Kernel:
                         self.cfg_learning["reward_w1"],
                         self.cfg_learning["reward_beta"],
                         self.cfg_learning["forward_step_penalty"])
+                elif self.cfg_learning["reward"] == "paper_eq9":
+                    # TAP-DAR Eq.(9): rho1*r^queue + rho2*r^dist + rho3*r^reach.
+                    # The QUEUE term is the change in downstream queue
+                    # occupancy between the direction actually taken and the
+                    # mean of the alternatives, in buffer units: negative delta
+                    # (took the emptier side) is the good case, matching the
+                    # paper's "steer traffic away from heavily loaded nodes".
+                    _deltas = pkt.learning_alt_queue_bits or ()
+                    _chosen = float(pkt.learning_chosen_queue_bits or 0.0)
+                    if _deltas:
+                        _alt_mean = sum(float(v) for v in _deltas) / len(_deltas)
+                        _queue_delta = _chosen - _alt_mean
+                    else:
+                        _queue_delta = 0.0
+                    # The DISTANCE term uses the hop-count progress the kernel
+                    # already tracks for this packet (1 hop = 1 unit), scaled by
+                    # the longest legal ISL so one full-range hop scores 1.0.
+                    # The paper gives no normalisation, so this choice is
+                    # recorded as a deviation.
+                    _terms = _learning.paper_reward_terms(
+                        _queue_delta,
+                        float(self._learning_dist_gain_km(pkt, int(sat), t0)),
+                        False,
+                        queue_cap_bits=float(self.cfg_links["isl_queue_bits"]),
+                        max_isl_km=float(self.cfg_model["max_isl_km"]))
+                    pkt.learning_reward = _learning.paper_reward(
+                        _terms,
+                        self.cfg_learning["reward_rho1"],
+                        self.cfg_learning["reward_rho2"],
+                        self.cfg_learning["reward_rho3"])
                 pkt.isl_enqueued_at = None
             fail_t, fail_kind = end, None
             if self.cfg_links["geometry_loss"]:
@@ -4348,6 +4389,65 @@ class Kernel:
             obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos,
         )
 
+    def _record_learning_queue_context(self, pkt: DataPacket, sat: int,
+                                       now: float, legal, action: str) -> None:
+        """Remember the egress queue of the chosen direction and of the others.
+
+        Eq.(9)'s load-balancing term asks whether the chosen direction was the
+        EMPTIER one, which is only knowable at decision time.  Nothing about the
+        future is read: every value is the node's own current egress occupancy.
+        """
+        try:
+            dirs = list(legal or ())
+        except TypeError:
+            return
+        if not dirs:
+            return
+        occupancy = {}
+        for direction in dirs:
+            try:
+                link = self.isls[int(sat)].get(str(direction))
+                occupancy[str(direction)] = (
+                    0.0 if link is None
+                    else float(link.data_bits + link.ctrl_bits))
+            except Exception:  # noqa: BLE001 - absence means unknown, not zero
+                continue
+        if action not in occupancy:
+            return
+        pkt.learning_chosen_queue_bits = occupancy[action]
+        pkt.learning_alt_queue_bits = tuple(
+            v for k, v in occupancy.items() if k != action)
+        # the peer of the hop, so the distance term can measure it later
+        try:
+            pkt.learning_peer_sat = int(
+                self.topo.neighbour(int(sat), str(action), now))
+        except Exception:  # noqa: BLE001 - deliver has no ISL peer
+            pkt.learning_peer_sat = -1
+
+    def _learning_dist_gain_km(self, pkt: DataPacket, sat: int,
+                               now: float) -> float:
+        """Distance reduction toward the destination for this hop, in km.
+
+        The paper rewards "distance reduction" but never states how the agent
+        knows the geodesic distance to a destination satellite.  Without the
+        paper's own distance model the only defensible, leak-free substitute is
+        the LENGTH OF THE HOP TAKEN: a longer ISL is real progress in range, and
+        it needs no future information.  This is a stated deviation, not a
+        reconstruction of the paper's term.  Returns 0.0 when the peer or the
+        range is unavailable, so the term degrades to "no distance signal"
+        rather than to a fabricated value.
+        """
+        try:
+            peer = int(pkt.learning_peer_sat)
+        except (AttributeError, TypeError, ValueError):
+            return 0.0
+        if peer < 0:
+            return 0.0
+        try:
+            return float(self.geometry.isl_range_km(int(sat), int(peer), now))
+        except Exception:  # noqa: BLE001 - geometry gap must not fabricate
+            return 0.0
+
     def _finish_learning_transition(self, pkt: DataPacket, next_state,
                                     next_mask: dict, done: bool,
                                     terminal_reward: float | None = None) -> None:
@@ -4489,6 +4589,7 @@ class Kernel:
             pkt.learning_state = state
             pkt.learning_action = action
             pkt.learning_reward = None
+            self._record_learning_queue_context(pkt, sat, now, legal, action)
             self._learning_open.add(pkt)
             return action
         if pkt.learning_state is not None and pkt.learning_reward is None:
@@ -4513,6 +4614,7 @@ class Kernel:
         pkt.learning_state = state
         pkt.learning_action = action
         pkt.learning_reward = None
+        self._record_learning_queue_context(pkt, sat, now, legal, action)
         self._learning_open.add(pkt)
         return action
 

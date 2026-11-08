@@ -1388,6 +1388,50 @@ def queue_reward(wait_s: float, w1: float, beta: float) -> float:
     return float(w1) * math.exp(-float(beta) * max(float(wait_s), 0.0))
 
 
+def paper_reward_terms(queue_delta_bits: float, dist_delta_km: float,
+                       reached: bool, *, queue_cap_bits: float,
+                       max_isl_km: float) -> dict:
+    """The three reward components of TAP-DAR Eq.(9), each in [-1, 1].
+
+    The paper defines
+        r_t = rho1 * r_t^queue + rho2 * r_t^dist + rho3 * r_t^reach,
+        rho1 + rho2 + rho3 = 1,  (rho1, rho2, rho3) = (0.4, 0.4, 0.2)
+    and describes the three terms as load balancing (steer traffic away from
+    heavily loaded nodes), distance reduction, and a fixed completion reward.
+
+    The paper does not state the per-term normalisation, so each term is scaled
+    into [-1, 1] against a physically meaningful bound and the SCALING is
+    recorded as a deviation:
+      * queue : -delta_cap, the change in total downstream queue occupancy in
+                units of one full buffer, clipped.  Negative delta (the chosen
+                direction is emptier than the alternative we left) is good.
+      * dist  : progress toward the destination normalised by the longest ISL,
+                so one hop across a full-range link scores 1.0.
+      * reach : 1.0 only on the hop that delivers the packet, else 0.
+
+    Returned as a dict so the caller can log each component separately; the
+    caller applies the rho weights from config.
+    """
+    cap = float(queue_cap_bits) if queue_cap_bits else 0.0
+    if cap > 0.0:
+        q = max(-1.0, min(1.0, -float(queue_delta_bits) / cap))
+    else:
+        q = 0.0
+    span = float(max_isl_km) if max_isl_km else 0.0
+    if span > 0.0:
+        d = max(-1.0, min(1.0, float(dist_delta_km) / span))
+    else:
+        d = 0.0
+    return {"queue": q, "dist": d, "reach": 1.0 if reached else 0.0}
+
+
+def paper_reward(terms: dict, rho1: float, rho2: float, rho3: float) -> float:
+    """Weighted sum of the Eq.(9) terms with the paper's rho weights."""
+    return (float(rho1) * float(terms["queue"])
+            + float(rho2) * float(terms["dist"])
+            + float(rho3) * float(terms["reach"]))
+
+
 def forward_reward(wait_s: float, w1: float, beta: float,
                    step_penalty: float) -> float:
     """Learning reward for one forward hop.
