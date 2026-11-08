@@ -3862,6 +3862,52 @@ class Kernel:
             "work_ahead_bits_proxy": work_ahead,
         }
 
+    def _arm_query_instant(self, sat: int, now: float) -> float:
+        """The instant the enabled arm asks about, for the oracle projection.
+
+        arm=candidate asks about the packet's projected arrival; the other arms
+        ask about now or the last measurement.  The oracle only needs a bounded
+        projection, so a candidate-style look-ahead is used and the value is
+        clamped to the run horizon.
+        """
+        arm = str((self.cfg_ta or {}).get("arm") or "candidate")
+        if arm != "candidate":
+            return float(now)
+        # one representative hop of look-ahead is enough to make the oracle
+        # answer the arrival question rather than the current question
+        try:
+            peer = None
+            step = float(model.propagation_delay_s(self.geometry.isl_range_km(
+                int(sat), int(sat) + 1, now)))
+        except Exception:
+            step = 0.01
+        return min(float(now) + step, float(self.horizon))
+
+    def _isl_state_at_instant(self, link, now: float, target: float) -> dict:
+        """TRUE queue state of one directed ISL projected to ``target``.
+
+        Reads the simulator (future included), so this exists ONLY to bound the
+        policies; it must never be reachable from a deployed arm.  The queued
+        bits drain at the link rate until ``target``, floored at zero, and the
+        currently serialising packet keeps its remaining service.
+        """
+        state = self._isl_resource_state_advertisement(link, now)
+        work = state.get("work_ahead_bits_proxy")
+        rate = state.get("rate_bps")
+        horizon = max(0.0, float(target) - float(now))
+        if work is None:
+            return {**state, "projected_to_s": float(target),
+                    "projection_method": "unknown_work"}
+        if not isinstance(rate, (int, float)) or rate <= 0.0:
+            projected = float(work)
+            method = "no_rate_held_constant"
+        else:
+            projected = max(0.0, float(work) - float(rate) * horizon)
+            method = "drained_at_link_rate"
+        return {**state, "work_ahead_bits_proxy": projected,
+                "projected_to_s": float(target),
+                "projection_method": method}
+
     @staticmethod
     def _processing_pool_advertisement(pool, service_s: float, now: float,
                                        service_by_request: dict,
@@ -5135,17 +5181,36 @@ class Kernel:
                 local_in_service[str(direction)] = self._isl_in_service_s(
                     link, now)
             src = str((self.cfg_ta or {}).get("state_source") or "advertised")
-            if src not in ("advertised", "ideal_current"):
+            if src not in ("advertised", "ideal_current", "ideal_at_target"):
                 raise ValueError(
-                    'time_alignment.state_source must be advertised or ideal_current, got %r' % (src,))
-            if src == "ideal_current" and key.kind == _ta.KIND_ISL:
+                    'time_alignment.state_source must be advertised, '
+                    'ideal_current or ideal_at_target, got %r' % (src,))
+            # TRUE VALUE AT THE INSTANT THE ARM ASKS ABOUT.  Both advertised and
+            # ideal_current answer "what is the resource NOW", but arm=candidate
+            # asks "what will it be when the packet ARRIVES".  Answering the
+            # first question cannot bound a policy that answers the second, and
+            # the measurement showed exactly that: the oracle arm traded 0.6
+            # extra hops for a shorter per-hop queue and thereby became a
+            # different operating point instead of an upper bound.  This source
+            # asks the SAME question as the arm and answers it with simulator
+            # truth, which is what the paper's "Oracle-Comm" is meant to be.
+            # It reads the future, so it is legitimate ONLY as a bound.
+            if src in ("ideal_current", "ideal_at_target") \
+                    and key.kind == _ta.KIND_ISL:
                 res_link = self.isls[int(cr["peer"])].get(
                     str(cr["egress_direction"]))
                 ideal_state = None
                 if (res_link is not None
                         and int(res_link.gen) == int(key.generation)):
-                    ideal_state = self._isl_resource_state_advertisement(
-                        res_link, now)
+                    if src == "ideal_at_target":
+                        # project the queue to the arrival instant using the
+                        # resource's own rate: what will still be queued then
+                        _target = self._arm_query_instant(int(sat), now)
+                        ideal_state = self._isl_state_at_instant(
+                            res_link, now, _target)
+                    else:
+                        ideal_state = self._isl_resource_state_advertisement(
+                            res_link, now)
                 ideal_bits = (None if ideal_state is None
                               else ideal_state.get("work_ahead_bits_proxy"))
                 if ideal_bits is not None:

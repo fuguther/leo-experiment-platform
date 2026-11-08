@@ -1,7 +1,7 @@
-# IRIDIUM 66 with a DISTRIBUTED ground-station network: K=48
-# The paper never states K; this isolates its effect.  All other
-# parameters are the paper's (780 km, 86.4 deg, 8 KB, 500 MHz,
-# 50-packet buffer, 128-bit one-hop state exchange).
+# IRIDIUM 66 with K=48 ground stations on a NO-DUPLICATE-POLE grid
+# Previous version emitted lat=90 six times (same physical point), so
+# 1/6 of the traffic entered at a location that does not exist.
+# All constellation/physics parameters are the paper's.
 # TAP-DAR PAPER CONSTELLATION (generated; do not hand-edit)
 # Parameters are the PAPER's: N in {66,140,351}, 8 KB packets, 500 MHz,
 # 50-packet buffer, 16-byte one-hop queue-state exchange (0.1953% of a
@@ -65,70 +65,54 @@ endpoints:
   grid_deg: 0.25
   aggregation_deg: 1.0
   sites:
-    - {name: gs00, lat: 0.0, lon: 0.0, demand_weight: 1.0}
-    - {name: gs01, lat: 0.0, lon: 45.0, demand_weight: 1.0}
-    - {name: gs02, lat: 0.0, lon: 90.0, demand_weight: 1.0}
-    - {name: gs03, lat: 0.0, lon: 135.0, demand_weight: 1.0}
-    - {name: gs04, lat: 0.0, lon: 180.0, demand_weight: 1.0}
-    - {name: gs05, lat: 0.0, lon: -45.0, demand_weight: 1.0}
-    - {name: gs06, lat: 0.0, lon: -90.0, demand_weight: 1.0}
-    - {name: gs07, lat: 0.0, lon: -135.0, demand_weight: 1.0}
-    - {name: gs08, lat: 20.0, lon: 0.0, demand_weight: 1.0}
-    - {name: gs09, lat: 20.0, lon: 45.0, demand_weight: 1.0}
-    - {name: gs10, lat: 20.0, lon: 90.0, demand_weight: 1.0}
-    - {name: gs11, lat: 20.0, lon: 135.0, demand_weight: 1.0}
-    - {name: gs12, lat: 20.0, lon: 180.0, demand_weight: 1.0}
-    - {name: gs13, lat: 20.0, lon: -45.0, demand_weight: 1.0}
-    - {name: gs14, lat: 20.0, lon: -90.0, demand_weight: 1.0}
-    - {name: gs15, lat: 20.0, lon: -135.0, demand_weight: 1.0}
-    - {name: gs16, lat: 40.0, lon: 0.0, demand_weight: 1.0}
-    - {name: gs17, lat: 40.0, lon: 45.0, demand_weight: 1.0}
-    - {name: gs18, lat: 40.0, lon: 90.0, demand_weight: 1.0}
-    - {name: gs19, lat: 40.0, lon: 135.0, demand_weight: 1.0}
-    - {name: gs20, lat: 40.0, lon: 180.0, demand_weight: 1.0}
-    - {name: gs21, lat: 40.0, lon: -45.0, demand_weight: 1.0}
-    - {name: gs22, lat: 40.0, lon: -90.0, demand_weight: 1.0}
-    - {name: gs23, lat: 40.0, lon: -135.0, demand_weight: 1.0}
-    - {name: gs24, lat: 60.0, lon: 0.0, demand_weight: 1.0}
-    - {name: gs25, lat: 60.0, lon: 45.0, demand_weight: 1.0}
-    - {name: gs26, lat: 60.0, lon: 90.0, demand_weight: 1.0}
-    - {name: gs27, lat: 60.0, lon: 135.0, demand_weight: 1.0}
-    - {name: gs28, lat: 60.0, lon: 180.0, demand_weight: 1.0}
-    - {name: gs29, lat: 60.0, lon: -45.0, demand_weight: 1.0}
-    - {name: gs30, lat: 60.0, lon: -90.0, demand_weight: 1.0}
-    - {name: gs31, lat: 60.0, lon: -135.0, demand_weight: 1.0}
-    - {name: gs32, lat: -20.0, lon: 0.0, demand_weight: 1.0}
-    - {name: gs33, lat: -20.0, lon: 45.0, demand_weight: 1.0}
-    - {name: gs34, lat: -20.0, lon: 90.0, demand_weight: 1.0}
-    - {name: gs35, lat: -20.0, lon: 135.0, demand_weight: 1.0}
-    - {name: gs36, lat: -20.0, lon: 180.0, demand_weight: 1.0}
-    - {name: gs37, lat: -20.0, lon: -45.0, demand_weight: 1.0}
-    - {name: gs38, lat: -20.0, lon: -90.0, demand_weight: 1.0}
-    - {name: gs39, lat: -20.0, lon: -135.0, demand_weight: 1.0}
-    - {name: gs40, lat: -40.0, lon: 0.0, demand_weight: 1.0}
-    - {name: gs41, lat: -40.0, lon: 45.0, demand_weight: 1.0}
-    - {name: gs42, lat: -40.0, lon: 90.0, demand_weight: 1.0}
-    - {name: gs43, lat: -40.0, lon: 135.0, demand_weight: 1.0}
-    - {name: gs44, lat: -40.0, lon: 180.0, demand_weight: 1.0}
-    - {name: gs45, lat: -40.0, lon: -45.0, demand_weight: 1.0}
-    - {name: gs46, lat: -40.0, lon: -90.0, demand_weight: 1.0}
-    - {name: gs47, lat: -40.0, lon: -135.0, demand_weight: 1.0}
-    - {name: gs48, lat: -60.0, lon: 0.0, demand_weight: 1.0}
-    - {name: gs49, lat: -60.0, lon: 45.0, demand_weight: 1.0}
-    - {name: gs50, lat: -60.0, lon: 90.0, demand_weight: 1.0}
-    - {name: gs51, lat: -60.0, lon: 135.0, demand_weight: 1.0}
-    - {name: gs52, lat: -60.0, lon: 180.0, demand_weight: 1.0}
-    - {name: gs53, lat: -60.0, lon: -45.0, demand_weight: 1.0}
-    - {name: gs54, lat: -60.0, lon: -90.0, demand_weight: 1.0}
-    - {name: gs55, lat: -60.0, lon: -135.0, demand_weight: 1.0}
-    - {name: gs56, lat: 80.0, lon: 0.0, demand_weight: 1.0}
-    - {name: gs57, lat: 80.0, lon: 45.0, demand_weight: 1.0}
-    - {name: gs58, lat: 80.0, lon: 90.0, demand_weight: 1.0}
-    - {name: gs59, lat: 80.0, lon: 135.0, demand_weight: 1.0}
-    - {name: gs60, lat: 80.0, lon: 180.0, demand_weight: 1.0}
-    - {name: gs61, lat: 80.0, lon: -45.0, demand_weight: 1.0}
-    - {name: gs62, lat: 80.0, lon: -90.0, demand_weight: 1.0}
-    - {name: gs63, lat: 80.0, lon: -135.0, demand_weight: 1.0}
+    - {name: gs00, lat: 0.0, lon: -180.0, demand_weight: 1.0}
+    - {name: gs01, lat: 0.0, lon: -162.0, demand_weight: 1.0}
+    - {name: gs02, lat: 0.0, lon: -144.0, demand_weight: 1.0}
+    - {name: gs03, lat: 0.0, lon: -126.0, demand_weight: 1.0}
+    - {name: gs04, lat: 0.0, lon: -108.0, demand_weight: 1.0}
+    - {name: gs05, lat: 0.0, lon: -90.0, demand_weight: 1.0}
+    - {name: gs06, lat: 0.0, lon: -72.0, demand_weight: 1.0}
+    - {name: gs07, lat: 0.0, lon: -54.0, demand_weight: 1.0}
+    - {name: gs08, lat: 0.0, lon: -36.0, demand_weight: 1.0}
+    - {name: gs09, lat: 0.0, lon: -18.0, demand_weight: 1.0}
+    - {name: gs10, lat: 0.0, lon: 0.0, demand_weight: 1.0}
+    - {name: gs11, lat: 0.0, lon: 18.0, demand_weight: 1.0}
+    - {name: gs12, lat: 0.0, lon: 36.0, demand_weight: 1.0}
+    - {name: gs13, lat: 0.0, lon: 54.0, demand_weight: 1.0}
+    - {name: gs14, lat: 0.0, lon: 72.0, demand_weight: 1.0}
+    - {name: gs15, lat: 0.0, lon: 90.0, demand_weight: 1.0}
+    - {name: gs16, lat: 0.0, lon: 108.0, demand_weight: 1.0}
+    - {name: gs17, lat: 0.0, lon: 126.0, demand_weight: 1.0}
+    - {name: gs18, lat: 0.0, lon: 144.0, demand_weight: 1.0}
+    - {name: gs19, lat: 0.0, lon: 162.0, demand_weight: 1.0}
+    - {name: gs20, lat: 45.0, lon: -180.0, demand_weight: 1.0}
+    - {name: gs21, lat: 45.0, lon: -154.29, demand_weight: 1.0}
+    - {name: gs22, lat: 45.0, lon: -128.57, demand_weight: 1.0}
+    - {name: gs23, lat: 45.0, lon: -102.86, demand_weight: 1.0}
+    - {name: gs24, lat: 45.0, lon: -77.14, demand_weight: 1.0}
+    - {name: gs25, lat: 45.0, lon: -51.43, demand_weight: 1.0}
+    - {name: gs26, lat: 45.0, lon: -25.71, demand_weight: 1.0}
+    - {name: gs27, lat: 45.0, lon: 0.0, demand_weight: 1.0}
+    - {name: gs28, lat: 45.0, lon: 25.71, demand_weight: 1.0}
+    - {name: gs29, lat: 45.0, lon: 51.43, demand_weight: 1.0}
+    - {name: gs30, lat: 45.0, lon: 77.14, demand_weight: 1.0}
+    - {name: gs31, lat: 45.0, lon: 102.86, demand_weight: 1.0}
+    - {name: gs32, lat: 45.0, lon: 128.57, demand_weight: 1.0}
+    - {name: gs33, lat: 45.0, lon: 154.29, demand_weight: 1.0}
+    - {name: gs34, lat: -45.0, lon: -180.0, demand_weight: 1.0}
+    - {name: gs35, lat: -45.0, lon: -154.29, demand_weight: 1.0}
+    - {name: gs36, lat: -45.0, lon: -128.57, demand_weight: 1.0}
+    - {name: gs37, lat: -45.0, lon: -102.86, demand_weight: 1.0}
+    - {name: gs38, lat: -45.0, lon: -77.14, demand_weight: 1.0}
+    - {name: gs39, lat: -45.0, lon: -51.43, demand_weight: 1.0}
+    - {name: gs40, lat: -45.0, lon: -25.71, demand_weight: 1.0}
+    - {name: gs41, lat: -45.0, lon: 0.0, demand_weight: 1.0}
+    - {name: gs42, lat: -45.0, lon: 25.71, demand_weight: 1.0}
+    - {name: gs43, lat: -45.0, lon: 51.43, demand_weight: 1.0}
+    - {name: gs44, lat: -45.0, lon: 77.14, demand_weight: 1.0}
+    - {name: gs45, lat: -45.0, lon: 102.86, demand_weight: 1.0}
+    - {name: gs46, lat: -45.0, lon: 128.57, demand_weight: 1.0}
+    - {name: gs47, lat: -45.0, lon: 154.29, demand_weight: 1.0}
 # Stationary base.  The burst variant is t1_scene_trunk_burst_v1.yaml, which
 # is generated from this file by changing exactly the four demand lines marked
 # "BURST-VARIANT" below (a test asserts the two files stay identical

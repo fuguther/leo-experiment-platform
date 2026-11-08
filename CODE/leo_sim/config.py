@@ -341,7 +341,18 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # the kernel own TRUE current state of the SAME resource at the
         # decision instant.  Identity, generation filter, candidate set,
         # scorer, control schedule and physical model are untouched.
-        "state_source": str,  # advertised | ideal_current
+        # A THIRD value, "ideal_at_target", makes the oracle a real upper bound.
+        # The two existing values query DIFFERENT instants: advertised/current
+        # describe the resource NOW, while the candidate arm needs the resource
+        # at the packet's ARRIVAL.  An oracle that answers the "now" question
+        # cannot bound a policy that answers the "arrival" question -- measured:
+        # the oracle arm ran 5.32 hops vs 4.70 for the blind arm and still won,
+        # purely because it traded hops for per-hop queue, i.e. it was a
+        # different operating point rather than an upper bound.  With
+        # ideal_at_target the oracle is asked the SAME question as arm=candidate
+        # and answered with the true value at that instant (read from the
+        # simulator, so it is only usable as a bound, never as a policy).
+        "state_source": str,  # advertised | ideal_current | ideal_at_target
         # Diagnostics only.  When set, candidate scores are quantised to this
         # many SIGNIFICANT digits before the visible_order tie-break sees them,
         # so mirror-symmetric candidates (whose scores differ only by float
@@ -1323,7 +1334,7 @@ def _validate_time_alignment(ta: Mapping[str, Any],
             "time_alignment.tie_sig_digits must be None or an integer within "
             f"1..15, got {tie!r}")
     source = ta["state_source"]
-    if source not in ("advertised", "ideal_current"):
+    if source not in ("advertised", "ideal_current", "ideal_at_target"):
         raise ConfigError(
             "time_alignment.state_source must be 'advertised' or "
             f"'ideal_current', got {source!r}")
