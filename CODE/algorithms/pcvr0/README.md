@@ -16,7 +16,7 @@ For each legal action a, PCVR-0 builds an action-specific feature vector:
 
     x_i,a = Phi(o_i, a)
 
-The current feature contract contains 29 fields: local compute/query delay; first-hop queue wait, serialization and propagation; peer processing; predicted downstream resource work and packet serialization; remaining-path propagation; age, queue level, service rate and sample count of the actually received resource history; local egress work; action identity; candidate rank/count; common horizon; and explicit missing/fallback indicators.
+The current feature contract contains 37 fields: local compute/query delay; first-hop queue wait, serialization and propagation; peer processing; predicted downstream resource work and packet serialization; remaining-path propagation; age, queue level, service rate and sample count of the actually received resource history; local egress work; action identity; candidate rank/count; common horizon; and explicit missing/fallback indicators.
 
 The feature extractor is shared by data collection and inference. It accepts only ObservationSnapshot, calls the existing causal time-alignment planner, and rejects future-truth objects.
 
