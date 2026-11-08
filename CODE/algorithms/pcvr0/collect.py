@@ -80,35 +80,42 @@ def _nearest_rank(values, q=0.99):
     return ordered[index]
 
 
-def cohort_outcome(result: dict, offered_packets: int) -> dict:
-    """Compute fixed-offered-cohort metrics; never condition PDR on ingress."""
+def cohort_outcome(result: dict, offered_pids) -> dict:
+    """Compute metrics on the offered trace cohort, excluding background PIDs."""
     if result.get("natural_end") is not True or result.get("interrupted") is True:
         raise CollectionError(
             "counterfactual run did not reach natural_end; interrupted runs are not labels")
-    fates = result.get("fates")
-    if not isinstance(fates, dict) or len(fates) != offered_packets:
+    offered = {int(pid) for pid in offered_pids}
+    if not offered:
+        raise CollectionError("offered cohort must not be empty")
+    fates_raw = result.get("fates")
+    if not isinstance(fates_raw, dict):
+        raise CollectionError("fate ledger is unavailable")
+    fates = {int(pid): fate for pid, fate in fates_raw.items()}
+    missing = offered - set(fates)
+    if missing:
         raise CollectionError(
-            "fate ledger does not cover the complete offered cohort")
-    fate_counts = result.get("fate_counts") or {}
-    delivered = int(fate_counts.get("DELIVERED", 0))
+            f"fate ledger misses offered cohort packet ids: {sorted(missing)}")
+    delivered_pids = {pid for pid in offered if fates[pid] == "DELIVERED"}
+    delivered = len(delivered_pids)
     if delivered < 1:
-        raise CollectionError("at least one delivered packet is required for p99/mean labels")
+        raise CollectionError("at least one offered packet must be delivered for p99/mean labels")
     packet_rows = (result.get("congestion_metrics") or {}).get("packets") or {}
-    delays = [
-        float(packet["e2e_s"])
-        for packet in packet_rows.values()
-        if isinstance(packet, dict) and packet.get("e2e_s") is not None
-    ]
-    if len(delays) != delivered:
-        raise CollectionError(
-            f"delivered fate count {delivered} != reconstructed E2E count {len(delays)}")
+    packet_rows = {int(pid): packet for pid, packet in packet_rows.items()}
+    delays = []
+    for pid in sorted(delivered_pids):
+        packet = packet_rows.get(pid)
+        if not isinstance(packet, dict) or packet.get("e2e_s") is None:
+            raise CollectionError(
+                f"delivered offered packet {pid} has no reconstructed E2E")
+        delays.append(float(packet["e2e_s"]))
     control = result.get("control") or {}
     counters = control.get("counters") or {}
     control_packets = counters.get("entered_queue")
     if isinstance(control_packets, bool) or not isinstance(control_packets, int):
         raise CollectionError("control entered_queue counter is unavailable")
     return {
-        "delivery_loss": 1.0 - delivered / float(offered_packets),
+        "delivery_loss": 1.0 - delivered / float(len(offered)),
         "p99_e2e_s": _nearest_rank(delays, 0.99),
         "mean_e2e_s": sum(delays) / len(delays),
         "control_packets": float(control_packets),
@@ -211,7 +218,8 @@ def collect(config_path: Path, out_path: Path, *, max_decisions: int = 8,
             resolved, rows, decision_sink=baseline_sink,
             inference_policy=capture,
         )
-        baseline_outcome = cohort_outcome(baseline_result, len(rows))
+        offered_pids = {int(row["packet_id"]) for row in rows}
+        baseline_outcome = cohort_outcome(baseline_result, offered_pids)
         matched = _match_capture_records(baseline_sink, capture.records)
         if not matched:
             raise CollectionError(
@@ -255,7 +263,7 @@ def collect(config_path: Path, out_path: Path, *, max_decisions: int = 8,
                 if cf_row is None or cf_row.get("chosen") != action:
                     raise CollectionError(
                         f"decision {decision_id} action {action}: forced action was not committed")
-                action_outcomes[action] = cohort_outcome(cf_result, len(rows))
+                action_outcomes[action] = cohort_outcome(cf_result, offered_pids)
 
             # All candidate labels must exist before a sample is published.
             if set(action_outcomes) != set(candidates):
@@ -279,7 +287,7 @@ def collect(config_path: Path, out_path: Path, *, max_decisions: int = 8,
                     "action": action,
                     "features": capture_row["features"][action],
                     "outcome": action_outcomes[action],
-                    "offered_packets": len(rows),
+                    "offered_packets": len(offered_pids),
                     "natural_end": True,
                 })
             accepted += 1
@@ -300,7 +308,7 @@ def collect(config_path: Path, out_path: Path, *, max_decisions: int = 8,
         "out": str(out_path),
         "rows": len(output_rows),
         "paired_decision_samples": accepted,
-        "offered_packets": len(rows),
+        "offered_packets": len(offered_pids),
         "baseline_outcome": baseline_outcome,
         "world_id": world_id,
         "cohort_id": cohort_id,
