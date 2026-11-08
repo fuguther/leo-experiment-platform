@@ -1,3 +1,8 @@
+# ACCESS LEASE: slot_lease_s is 0.5 s, not the inherited 10 s.  A 10 s
+# lease against a 4 s emission window lets each ground station obtain
+# ONE lease for the whole burst, so the uplink stayed 99.5% idle and
+# every high-load tier silently measured an access stall (PDR 0.553)
+# instead of routing.  The paper states no lease value.
 # IRIDIUM 66 with K=6 ground stations on a NO-DUPLICATE-POLE grid
 # Previous version emitted lat=90 six times (same physical point), so
 # 1/6 of the traffic entered at a location that does not exist.
@@ -101,7 +106,7 @@ access:
   min_dwell_s: 0.0
   acquisition_delay_s: 0.1
   idle_release_s: 1.0
-  slot_lease_s: 10.0
+  slot_lease_s: 0.5
   drr_quantum_bits: 1000000
 links:
   rate_model: constant
