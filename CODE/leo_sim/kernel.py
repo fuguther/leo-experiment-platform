@@ -3862,25 +3862,35 @@ class Kernel:
             "work_ahead_bits_proxy": work_ahead,
         }
 
-    def _arm_query_instant(self, sat: int, now: float) -> float:
+    def _arm_query_instant(self, sat: int, now: float,
+                           remaining_prop_s: float | None = None) -> float:
         """The instant the enabled arm asks about, for the oracle projection.
 
-        arm=candidate asks about the packet's projected arrival; the other arms
-        ask about now or the last measurement.  The oracle only needs a bounded
-        projection, so a candidate-style look-ahead is used and the value is
-        clamped to the run horizon.
+        arm=candidate asks about the packet's projected arrival, so the oracle
+        projection must span the whole REMAINING path, not one hop.  An earlier
+        version projected by a single ISL hop (sat -> sat+1), which is ~13 ms
+        against a ~60 ms path: the oracle then saw a queue that had barely
+        drained, believed every direction was congested, and detoured.  That is
+        why it measured SLOWER than the blind arm (40 Mbps: oracle 123.57 ms /
+        4.76 hops vs idqn 110.03 ms / 4.24 hops) -- an upper bound cannot lose
+        to the policy it bounds.  The projection now uses the candidate's own
+        remaining propagation when the caller supplies it.
         """
         arm = str((self.cfg_ta or {}).get("arm") or "candidate")
         if arm != "candidate":
             return float(now)
-        # one representative hop of look-ahead is enough to make the oracle
-        # answer the arrival question rather than the current question
-        try:
-            peer = None
-            step = float(model.propagation_delay_s(self.geometry.isl_range_km(
-                int(sat), int(sat) + 1, now)))
-        except Exception:
-            step = 0.01
+        if isinstance(remaining_prop_s, (int, float)) \
+                and not isinstance(remaining_prop_s, bool) \
+                and math.isfinite(float(remaining_prop_s)) \
+                and float(remaining_prop_s) >= 0.0:
+            step = float(remaining_prop_s)
+        else:
+            # no usable path term: fall back to one hop, and say so by shape
+            try:
+                step = float(model.propagation_delay_s(
+                    self.geometry.isl_range_km(int(sat), int(sat) + 1, now)))
+            except Exception:
+                step = 0.01
         return min(float(now) + step, float(self.horizon))
 
     def _isl_state_at_instant(self, link, now: float, target: float) -> dict:
@@ -5204,8 +5214,11 @@ class Kernel:
                         and int(res_link.gen) == int(key.generation)):
                     if src == "ideal_at_target":
                         # project the queue to the arrival instant using the
-                        # resource's own rate: what will still be queued then
-                        _target = self._arm_query_instant(int(sat), now)
+                        # resource's own rate: what will still be queued then.
+                        # The span is the CANDIDATE's remaining propagation, so
+                        # the oracle answers the same question the arm asks.
+                        _target = self._arm_query_instant(
+                            int(sat), now, cr.get("remaining_prop_s"))
                         ideal_state = self._isl_state_at_instant(
                             res_link, now, _target)
                     else:
