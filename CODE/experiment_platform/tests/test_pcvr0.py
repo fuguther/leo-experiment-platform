@@ -8,7 +8,7 @@ from CODE.algorithms.pcvr0.policy import (
     FEATURE_NAMES, OBJECTIVES, PCVRPolicy, extract_snapshot_features,
 )
 from CODE.algorithms.pcvr0.train import TrainingError, train_rows, validate_rows
-from CODE.experiment_platform.pcvr0_collect import CollectionError, cohort_outcome
+from CODE.algorithms.pcvr0.collect import CollectionError, cohort_outcome
 from CODE.leo_sim import time_alignment as ta
 
 
