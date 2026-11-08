@@ -3280,7 +3280,7 @@ class Kernel:
                             pkt, int(link_ref[1]), t0)),
                         False,
                         queue_cap_bits=float(self.cfg_links["isl_queue_bits"]),
-                        max_isl_km=float(self.cfg_model["max_isl_km"]))
+                        max_isl_km=float(self.cfg_links["max_isl_km"]))
                     pkt.learning_reward = _learning.paper_reward(
                         _terms,
                         self.cfg_learning["reward_rho1"],
