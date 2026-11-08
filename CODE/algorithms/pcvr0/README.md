@@ -28,7 +28,7 @@ The label is the fixed offered cohort's outcome vector:
 
     y_i,a = (1 - PDR_cohort, p99_cohort, mean_E2E_cohort, control_packets)
 
-- PDR denominator is the full offered cohort, not only packets admitted to satellite ingress.
+- PDR denominator is the offered trace cohort (packet IDs from the immutable trace), not only packets admitted to satellite ingress. Background packets remain in the simulated world and affect service, but are excluded from the evaluated offered cohort.
 - p99 is nearest-rank p99 over delivered packets; delivery loss is a higher-priority objective, so a lower p99 cannot compensate for lower delivery.
 - Mean E2E is over delivered packets.
 - Control overhead is the number of control packets that actually entered a queue.
