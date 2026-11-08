@@ -3276,7 +3276,8 @@ class Kernel:
                     # recorded as a deviation.
                     _terms = _learning.paper_reward_terms(
                         _queue_delta,
-                        float(self._learning_dist_gain_km(pkt, int(sat), t0)),
+                        float(self._learning_dist_gain_km(
+                            pkt, int(link_ref[1]), t0)),
                         False,
                         queue_cap_bits=float(self.cfg_links["isl_queue_bits"]),
                         max_isl_km=float(self.cfg_model["max_isl_km"]))
