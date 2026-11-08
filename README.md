@@ -33,7 +33,7 @@ CODE/                     # 导入根,不可改名
 ├── experiment_platform/  # 编译 / 授权 / 指标重算
 ├── scripts/remote/       # 部署与受控执行(仅 .template,无凭据)
 ├── tests/                # 顶层测试
-├── work/                 # 工具模块(被测试导入)
+├── work/                 # 工具模块(被测试导入)\n├── algorithms/           # 外部推理算法插件(不进入 leo_sim 仿真核心)
 ├── data/                 # geoip / traffic
 └── population_map/       # 场景生成数据
 
