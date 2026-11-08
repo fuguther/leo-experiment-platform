@@ -164,7 +164,7 @@ def test_cohort_outcome_uses_offered_denominator_and_nearest_rank_p99():
         },
         "control": {"counters": {"entered_queue": 3}},
     }
-    outcome = cohort_outcome(result, offered_packets=2)
+    outcome = cohort_outcome(result, offered_pids={1, 2})
     assert outcome == {
         "delivery_loss": 0.5,
         "p99_e2e_s": 0.125,
