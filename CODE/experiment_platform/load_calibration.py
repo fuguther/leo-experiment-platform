@@ -134,7 +134,14 @@ OVERRIDE_FIELDS = {
                  # a different reward answers a different question, so the
                  # reward selector and the Eq.(9) weights must be declarable
                  # (and are bound into config_sha256 by doing so).
-                 "reward", "reward_rho1", "reward_rho2", "reward_rho3"},
+                 "reward", "reward_rho1", "reward_rho2", "reward_rho3",
+                 # An EVAL cell must name the exact frozen weights it runs.
+                 # Without these the only options are "use whatever is on disk"
+                 # (unverifiable) or "never evaluate a trained model at all".
+                 # The hashes are part of the resolved config, so the run can
+                 # prove WHICH weights produced its numbers.
+                 "checkpoint_path", "checkpoint_sha256",
+                 "checkpoint_metadata_sha256"},
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
                   # A DDQN training cell MUST be able to declare this: the
                   # kernel refuses a learning arm under
