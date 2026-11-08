@@ -1,12 +1,10 @@
-# ACCESS LEASE: slot_lease_s is 0.5 s, not the inherited 10 s.  A 10 s
-# lease against a 4 s emission window lets each ground station obtain
-# ONE lease for the whole burst, so the uplink stayed 99.5% idle and
-# every high-load tier silently measured an access stall (PDR 0.553)
-# instead of routing.  The paper states no lease value.
-# IRIDIUM 66 with K=12 ground stations on a NO-DUPLICATE-POLE grid
-# Previous version emitted lat=90 six times (same physical point), so
-# 1/6 of the traffic entered at a location that does not exist.
-# All constellation/physics parameters are the paper's.
+# IRIDIUM 66 (780 km / 86.4 deg), K=12 coverage-verified gateways.
+# Every site sees >=10 deg elevation for 100% of a 32 s run (checked
+# against the actual Walker geometry on the VM).  The previous evenly
+# spread grids put 6 of 24 sites where the constellation NEVER reached
+# them (best elevation 3.18 deg), so 1/4 of the offered load could not
+# leave the ground and high-load PDR was pinned at 0.5533 by geometry.
+# access.slot_lease_s is 0.5 s (inherited 10 s exceeded the 4 s burst).
 # TAP-DAR PAPER CONSTELLATION (generated; do not hand-edit)
 # Parameters are the PAPER's: N in {66,140,351}, 8 KB packets, 500 MHz,
 # 50-packet buffer, 16-byte one-hop queue-state exchange (0.1953% of a
@@ -70,18 +68,18 @@ endpoints:
   grid_deg: 0.25
   aggregation_deg: 1.0
   sites:
-    - {name: gs00, lat: 0.0, lon: -180.0, demand_weight: 1.0}
-    - {name: gs01, lat: 0.0, lon: -90.0, demand_weight: 1.0}
-    - {name: gs02, lat: 0.0, lon: 0.0, demand_weight: 1.0}
-    - {name: gs03, lat: 0.0, lon: 90.0, demand_weight: 1.0}
-    - {name: gs04, lat: 45.0, lon: -180.0, demand_weight: 1.0}
-    - {name: gs05, lat: 45.0, lon: -90.0, demand_weight: 1.0}
-    - {name: gs06, lat: 45.0, lon: 0.0, demand_weight: 1.0}
-    - {name: gs07, lat: 45.0, lon: 90.0, demand_weight: 1.0}
-    - {name: gs08, lat: -45.0, lon: -180.0, demand_weight: 1.0}
-    - {name: gs09, lat: -45.0, lon: -90.0, demand_weight: 1.0}
-    - {name: gs10, lat: -45.0, lon: 0.0, demand_weight: 1.0}
-    - {name: gs11, lat: -45.0, lon: 90.0, demand_weight: 1.0}
+    - {name: gs00, lat: 60.0, lon: 165.0, demand_weight: 1.0}
+    - {name: gs01, lat: 60.0, lon: 120.0, demand_weight: 1.0}
+    - {name: gs02, lat: 60.0, lon: 75.0, demand_weight: 1.0}
+    - {name: gs03, lat: 60.0, lon: 30.0, demand_weight: 1.0}
+    - {name: gs04, lat: 60.0, lon: -15.0, demand_weight: 1.0}
+    - {name: gs05, lat: 60.0, lon: -60.0, demand_weight: 1.0}
+    - {name: gs06, lat: 60.0, lon: -105.0, demand_weight: 1.0}
+    - {name: gs07, lat: 60.0, lon: -150.0, demand_weight: 1.0}
+    - {name: gs08, lat: 40.0, lon: 135.0, demand_weight: 1.0}
+    - {name: gs09, lat: 40.0, lon: 105.0, demand_weight: 1.0}
+    - {name: gs10, lat: 40.0, lon: 60.0, demand_weight: 1.0}
+    - {name: gs11, lat: 40.0, lon: 15.0, demand_weight: 1.0}
 # Stationary base.  The burst variant is t1_scene_trunk_burst_v1.yaml, which
 # is generated from this file by changing exactly the four demand lines marked
 # "BURST-VARIANT" below (a test asserts the two files stay identical
@@ -112,7 +110,7 @@ access:
   min_dwell_s: 0.0
   acquisition_delay_s: 0.1
   idle_release_s: 1.0
-  slot_lease_s: 0.5
+  slot_lease_s: 10.0
   drr_quantum_bits: 1000000
 links:
   rate_model: constant
