@@ -1079,8 +1079,22 @@ def run_calibration(contract_path: Path, cell_id: str, out_dir: Path,
                         "target_probe_stride": diagnostics.get(
                             "truth_probe_stride"),
                     }
+                # A TRAINING arm must be able to persist what it learned.
+                # run_simulation takes learning_out_dir and save_and_verify()
+                # writes checkpoint + resume bundle into it, but the driver
+                # never passed one, so every training episode finished with
+                # 700k train steps and NO artifact: `loaded_checkpoint: null`
+                # and nothing on disk to continue from.  An eval arm gets None
+                # so it can never write weights.
+                _learning_out = None
+                if str(arm_resolved["config"]["learning"]["mode"]) == "train" \
+                        and str(arm_resolved["config"]["learning"]["algorithm"]) \
+                        in ("ddqn", "qlearning"):
+                    _learning_out = str(arm_dir / "learning")
+                    os.makedirs(_learning_out, exist_ok=True)
                 result = kernel.run_simulation(
                     arm_resolved, rows, geometry=geometry,
+                    learning_out_dir=_learning_out,
                     decision_sink=decision_sink, timeline_sink=timeline_sink,
                     control_audit=diagnostics["control_audit"],
                     **probe_kwargs)
