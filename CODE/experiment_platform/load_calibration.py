@@ -131,6 +131,13 @@ OVERRIDE_FIELDS = {
                  "epsilon_start", "epsilon_end", "epsilon_decay_s",
                  "lr", "gamma"},
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
+                  # A DDQN training cell MUST be able to declare this: the
+                  # kernel refuses a learning arm under
+                  # decision_observation_mode=frozen, and every scene profile
+                  # defaults to frozen.  It is a declared execution property,
+                  # not tuning -- it decides whether the action is chosen from
+                  # a frozen snapshot or from re-read state.
+                  "decision_observation_mode",
                   "max_packets"},
     # isl_queue_bits is the drain-time buffer axis: the calibrated buffer is
     # DEFINED as C_e * tau_buffer, so the 5 / 20 / 100 ms sensitivity sweep is
