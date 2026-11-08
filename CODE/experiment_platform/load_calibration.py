@@ -136,7 +136,10 @@ OVERRIDE_FIELDS = {
     # DEFINED as C_e * tau_buffer, so the 5 / 20 / 100 ms sensitivity sweep is
     # an override of exactly this field and nothing else.
     "links": {"rf_isl", "rate_model", "isl_rate_mbps", "isl_queue_bits"},
+    # learning_enabled / contract are the two switches that pair a routing
+    # policy with the learner: a DDQN arm cannot be declared without them.
     "routing": {"policy", "staged_policy", "staged_policy_at_s",
+                "learning_enabled", "contract",
                 # external inference-only policy plugin manifest (generic
                 # seam; the algorithm lives outside the platform)
                 "policy_plugin", "min_remaining_hop_only",
