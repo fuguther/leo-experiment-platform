@@ -4398,7 +4398,11 @@ class Kernel:
         future is read: every value is the node's own current egress occupancy.
         """
         try:
-            dirs = list(legal or ())
+            # accepts a legal-direction sequence OR a mask dict ({dir: bool})
+            if isinstance(legal, dict):
+                dirs = [d for d, ok in legal.items() if ok]
+            else:
+                dirs = list(legal or ())
         except TypeError:
             return
         if not dirs:
@@ -4589,7 +4593,10 @@ class Kernel:
             pkt.learning_state = state
             pkt.learning_action = action
             pkt.learning_reward = None
-            self._record_learning_queue_context(pkt, sat, now, legal, action)
+            # this scope has no `now`/`legal`: the clock is self.env.now and
+            # the legal set is the keys of the mask it was given
+            self._record_learning_queue_context(
+                pkt, sat, self.env.now, tuple(mask), action)
             self._learning_open.add(pkt)
             return action
         if pkt.learning_state is not None and pkt.learning_reward is None:
@@ -4614,7 +4621,10 @@ class Kernel:
         pkt.learning_state = state
         pkt.learning_action = action
         pkt.learning_reward = None
-        self._record_learning_queue_context(pkt, sat, now, legal, action)
+        # this scope has no `now`/`legal`: the clock is self.env.now and the
+        # legal set is the keys of the mask it was given
+        self._record_learning_queue_context(
+            pkt, sat, self.env.now, tuple(mask), action)
         self._learning_open.add(pkt)
         return action
 
