@@ -47,7 +47,15 @@ FEATURE_NAMES = (
     "resource_rate_bps",
     "resource_history_count",
     "local_queue_bits",
+    "local_rate_bps",
     "local_in_service_s",
+    "terminal_tx_s",
+    "terminal_prop_s",
+    "resource_is_isl",
+    "resource_is_downlink",
+    "resource_available_known",
+    "resource_available",
+    "packet_bits",
     "direction_N",
     "direction_E",
     "direction_S",
@@ -89,7 +97,10 @@ def _feature_row(snapshot, direction: str, score, rank: int) -> dict[str, float]
     if resource_rate is None and latest is not None:
         resource_rate = latest.rate_bps
     local_queue = snapshot.egress_bits(direction)
+    local_rate = snapshot.rate_for(direction)
     local_in_service = snapshot.local_egress_in_service_for(direction)
+    availability = snapshot.resource_available_for(direction)
+    resource_kind = None if resource is None else resource.kind
     total = score.total_s if math.isfinite(float(score.total_s)) else 0.0
 
     values = {
@@ -112,7 +123,15 @@ def _feature_row(snapshot, direction: str, score, rank: int) -> dict[str, float]
         "resource_rate_bps": resource_rate,
         "resource_history_count": len(history),
         "local_queue_bits": local_queue,
+        "local_rate_bps": local_rate,
         "local_in_service_s": local_in_service,
+        "terminal_tx_s": terms.get("terminal_tx_s"),
+        "terminal_prop_s": terms.get("terminal_prop_s", snapshot.terminal_prop_for(direction)),
+        "resource_is_isl": int(resource_kind == ta.KIND_ISL),
+        "resource_is_downlink": int(resource_kind == ta.KIND_DOWNLINK),
+        "resource_available_known": int(availability is not None),
+        "resource_available": int(availability is True),
+        "packet_bits": snapshot.pkt_bits,
         "direction_N": int(direction == "N"),
         "direction_E": int(direction == "E"),
         "direction_S": int(direction == "S"),
