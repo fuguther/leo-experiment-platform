@@ -7782,7 +7782,19 @@ class Kernel:
                 pkt, np.zeros(_learning.CONTRACT_DIMS[self.cfg_rt["contract"]]),
                 {a: False for a in _learning.ACTIONS}, True,
                 # The legacy arrival reward exists only at real delivery.
-                terminal_reward=float(self.cfg_learning["arrive_reward"]),
+                # Eq.(9)'s completion term is rho3*r^reach with r^reach in
+                # [-1,1], so it CANNOT be the legacy 50.0: a 50 next to a
+                # [-1,1] queue/distance term makes every other signal
+                # negligible, and the network learns to farm the terminal
+                # reward by never delivering.  Measured on the trained DDQN:
+                # action distribution was N/S/E/W only, ZERO delivers, mean
+                # 12.2 hops and PDR 0.43.  Under paper_eq9 the delivery reward
+                # is exactly rho3, matching the same scale the forward terms
+                # use.
+                terminal_reward=(
+                    float(self.cfg_learning["reward_rho3"])
+                    if self.cfg_learning["reward"] == "paper_eq9"
+                    else float(self.cfg_learning["arrive_reward"])),
             )
         self.ledger.record(pkt.pid, "DELIVERED", pkt.bits)
         self.deliveries[pkt.pid] = {"delivered_at": now, "path": list(pkt.path)}
