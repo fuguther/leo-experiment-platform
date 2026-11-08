@@ -7,7 +7,7 @@ import pytest
 from CODE.algorithms.pcvr0.policy import (
     FEATURE_NAMES, OBJECTIVES, PCVRPolicy, extract_snapshot_features,
 )
-from CODE.algorithms.pcvr0.train import TrainingError, train_rows, validate_rows
+from CODE.algorithms.pcvr0.train import (\n    TrainingError, publish_model, train_rows, validate_rows,\n)\nfrom CODE.algorithms.pcvr0.collect import FeatureCapturePolicy\nfrom CODE.leo_sim import policy_plugin
 from CODE.algorithms.pcvr0.collect import CollectionError, cohort_outcome
 from CODE.leo_sim import time_alignment as ta
 
@@ -184,3 +184,24 @@ def test_interrupted_run_is_not_a_training_label():
     }
     with pytest.raises(CollectionError, match="natural_end"):
         cohort_outcome(result, offered_packets=0)
+
+
+
+def test_feature_capture_policy_preserves_time_alignment_baseline():
+    snapshot = _snapshot()
+    _, baseline = extract_snapshot_features(snapshot)
+    policy = FeatureCapturePolicy()
+    assert policy.act(snapshot) == baseline
+    assert policy.records[0]["baseline_action"] == baseline
+    assert policy.counters()["training"] is False
+
+
+def test_trained_bundle_loads_through_platform_plugin_boundary(tmp_path):
+    model = train_rows(_training_rows(), "b" * 64, ridge_alpha=1.0)
+    bundle = tmp_path / "bundle"
+    publish_model(model, bundle)
+    policy = policy_plugin.load_policy_plugin(bundle / "manifest.json")
+    action = policy.act(_snapshot())
+    assert action in {"N", "E"}
+    assert policy.counters()["training"] is False
+    assert policy.counters()["calls"] == 1
