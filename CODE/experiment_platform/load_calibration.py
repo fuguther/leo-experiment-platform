@@ -129,7 +129,12 @@ OVERRIDE_FIELDS = {
     "learning": {"algorithm", "mode", "seed", "resume_path", "resume_sha256",
                  "batch_size", "replay_size", "target_update_interval",
                  "epsilon_start", "epsilon_end", "epsilon_decay_s",
-                 "lr", "gamma"},
+                 "lr", "gamma",
+                 # The objective IS part of the experiment: training a DDQN on
+                 # a different reward answers a different question, so the
+                 # reward selector and the Eq.(9) weights must be declarable
+                 # (and are bound into config_sha256 by doing so).
+                 "reward", "reward_rho1", "reward_rho2", "reward_rho3"},
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
                   # A DDQN training cell MUST be able to declare this: the
                   # kernel refuses a learning arm under
