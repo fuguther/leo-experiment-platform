@@ -118,6 +118,18 @@ OVERRIDE_FIELDS = {
                # inter-satellite background flow (generic capability)
                "sat_background_mbps", "sat_background_packet_bits",
                "sat_background_seed"},
+    # LEARNING (training) AXIS.  The four-scheme comparison runs frozen policies,
+    # but a DDQN arm has to be TRAINED first, and training is a platform
+    # capability, not an algorithm change: algorithm/mode/resume plus the
+    # hyper-parameters the paper does not state.  Listing them here means a
+    # training episode is a declared, snapshot-identified contract cell rather
+    # than an unrecorded side experiment.  A cell still cannot smuggle in a
+    # checkpoint it did not declare: resume_path/resume_sha256 are bound into
+    # the resolved config and therefore into config_sha256.
+    "learning": {"algorithm", "mode", "seed", "resume_path", "resume_sha256",
+                 "batch_size", "replay_size", "target_update_interval",
+                 "epsilon_start", "epsilon_end", "epsilon_decay_s",
+                 "lr", "gamma"},
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
                   "max_packets"},
     # isl_queue_bits is the drain-time buffer axis: the calibrated buffer is
