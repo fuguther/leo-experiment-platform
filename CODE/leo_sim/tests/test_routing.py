@@ -674,12 +674,16 @@ def test_remaining_path_scale_is_arm_independent_and_one_value_for_all():
     from CODE.leo_sim import kernel as kernel_mod
     instance = kernel_mod.Kernel.__new__(kernel_mod.Kernel)
     instance.cfg_ta = {"remaining_path_scale": "candidate_mean"}
+    # `status` is REQUIRED: the scale is averaged only over candidates that
+    # actually become resources (ok / delivered_downlink).  Averaging in a
+    # "missing" entry moved the shared scale by a measured 49x, so the filter is
+    # part of the contract and this fixture has to carry the field.
     out = {
-        "E": {"propagation_s": 0.01022, "remaining_hops": 3,
+        "E": {"status": "ok", "propagation_s": 0.01022, "remaining_hops": 3,
               "remaining_prop_s": 3 * 0.01022},
-        "N": {"propagation_s": 0.01831, "remaining_hops": 3,
+        "N": {"status": "ok", "propagation_s": 0.01831, "remaining_hops": 3,
               "remaining_prop_s": 3 * 0.01831},
-        "S": {"propagation_s": None, "remaining_hops": 3,
+        "S": {"status": "missing", "propagation_s": None, "remaining_hops": 3,
               "remaining_prop_s": None},
     }
     instance._apply_remaining_path_scale(out)
