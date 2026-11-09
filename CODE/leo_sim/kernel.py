@@ -4450,10 +4450,16 @@ class Kernel:
         pkt.learning_chosen_queue_bits = occupancy[action]
         pkt.learning_alt_queue_bits = tuple(
             v for k, v in occupancy.items() if k != action)
-        # the peer of the hop, so the distance term can measure it later
+        # the peer of the hop, so the distance term can measure it later.
+        # self.topo is a plain {sat: {dir: peer}} dict -- it has no
+        # .neighbour() method, and calling one raised AttributeError that the
+        # blanket except swallowed, so learning_peer_sat stayed -1 for EVERY
+        # hop and _learning_dist_gain_km returned 0.0 unconditionally.  That is
+        # why rho2*r^dist carried no signal in any run and why the distance-term
+        # "fix" changed nothing: the term was never once evaluated with a peer.
         try:
             pkt.learning_peer_sat = int(
-                self.topo.neighbour(int(sat), str(action), now))
+                self.topo.get(int(sat), {}).get(str(action), -1))
         except Exception:  # noqa: BLE001 - deliver has no ISL peer
             pkt.learning_peer_sat = -1
 
