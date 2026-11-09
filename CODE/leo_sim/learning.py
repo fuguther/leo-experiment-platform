@@ -33,6 +33,15 @@ CONTRACTS = ("C1", "C3", "C4", "C5", "C6", "C7", "GAT", "MPNN")
 
 # per-origin feature block layout (all normalized):
 #   [isl_queue_ratio, access_load_ratio, n_visible_cells_norm, aoi_norm]
+#: Per-direction progress toward the destination.  This block is the ONE thing
+#: that tells the agent WHICH WAY the destination lies: the existing observation
+#: carries the destination bearing at the satellite's own subpoint, but the
+#: agent cannot map a bearing to N/S/E/W without knowing its own orbital
+#: orientation, which the state never contained.  Without it a trained DDQN
+#: measured 11.6-12.0 mean hops on a 4.2-5.4 hop network, lost 37% of packets to
+#: ISL queue overflow and 22% to max_hops, and landed at PDR 0.29-0.59 against
+#: 1.0000 for every deterministic baseline.
+DIRECTION_PROGRESS_FEATURES = 4
 ORIGIN_FEATURES = 4
 # own-state feature block layout (all normalized):
 #   [access_slots_ratio, qN, qS, qE, qW, visible_cells_ratio, bias_flag]
@@ -61,8 +70,8 @@ C1_DIM = OWN_FEATURES + C1_MAX_NEIGHBORS * ORIGIN_FEATURES
 
 # Every contract appends the 3 destination-conditioning features.
 CONTRACT_DIMS = {
-    "C1": C1_DIM + DEST_FEATURES,
-    "C3": C3_DIM + DEST_FEATURES,
+    "C1": C1_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C3": C3_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "C4": C4_DIM + DEST_FEATURES,
     "C5": C5_DIM + DEST_FEATURES,
     "C6": C6_DIM + DEST_FEATURES,
@@ -1701,7 +1710,8 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                       own: np.ndarray, isl_queue_cap: int = 256_000_000,
                       obs_hops: int | None = None,
                       dst_feats: np.ndarray | None = None,
-                      root_pos: tuple | None = None) -> np.ndarray:
+                      root_pos: tuple | None = None,
+                      dir_progress: np.ndarray | None = None) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
             contract, sat, cache, now, topo, own, isl_queue_cap,
@@ -1716,8 +1726,16 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
     if df.shape[0] != DEST_FEATURES:
         raise ValueError(f"dst_feats must have {DEST_FEATURES} dims, got {df.shape}")
 
+    dp = (np.asarray(dir_progress, dtype=np.float64).reshape(-1)
+          if dir_progress is not None
+          else np.zeros(DIRECTION_PROGRESS_FEATURES))
+    if dp.shape[0] != DIRECTION_PROGRESS_FEATURES:
+        raise ValueError(
+            f"dir_progress must have {DIRECTION_PROGRESS_FEATURES} dims, "
+            f"got {dp.shape[0]}")
+
     def _finish(base: np.ndarray) -> np.ndarray:
-        return np.concatenate([base, df])
+        return np.concatenate([base, df, dp])
 
     if contract == "C1":
         neighbors = sorted(set(topo.get(sat, {}).values()))

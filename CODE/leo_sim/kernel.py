@@ -4377,6 +4377,33 @@ class Kernel:
             sat_lat, sat_lon, _ = self.geometry.subpoint(sat, self.env.now)
             dst_feats = _learning.destination_features(
                 sat_lat, sat_lon, ep.lat, ep.lon)
+        # PER-DIRECTION PROGRESS.  Normalised so 1.0 means "this direction
+        # reduces the distance to the destination by one full ISL range" and
+        # -1.0 the opposite; a missing link scores -1.0 (fully unattractive).
+        # This is what lets the agent choose a DIRECTION rather than guess.
+        dir_progress = None
+        if ep is not None and self.cfg_rt["contract"] in ("C1", "C3"):
+            try:
+                targets = [t for t in self._serving_sats(str(dst_cell))]
+                span = float(self.cfg_links["max_isl_km"]) or 1.0
+                here = min(float(self.geometry.isl_range_km(int(sat), int(t),
+                                                           self.env.now))
+                           for t in targets) if targets else 0.0
+                vals = []
+                for d in _learning.GRAPH_DIRS:
+                    lnk = self.isls[int(sat)].get(d)
+                    peer = getattr(lnk, "peer", None) if lnk is not None else None
+                    if peer is None or not targets:
+                        vals.append(-1.0)
+                        continue
+                    peer_d = min(
+                        float(self.geometry.isl_range_km(int(peer), int(t),
+                                                         self.env.now))
+                        for t in targets)
+                    vals.append(max(-1.0, min(1.0, (here - peer_d) / span)))
+                dir_progress = np.asarray(vals, dtype=np.float64)
+            except Exception:  # noqa: BLE001 - no geometry => no signal
+                dir_progress = None
         root_pos = None
         if self.cfg_rt["contract"] in _learning.GRAPH_CONTRACTS:
             # The root satellite's own position is directly measured local
@@ -4388,6 +4415,7 @@ class Kernel:
             self.cfg_rt["contract"], sat, self.caches[sat], self.env.now,
             self.topo, own, self.cfg_links["isl_queue_bits"],
             obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos,
+            dir_progress=dir_progress,
         )
 
     def _record_learning_queue_context(self, pkt: DataPacket, sat: int,
