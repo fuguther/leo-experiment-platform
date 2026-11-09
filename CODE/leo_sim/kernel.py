@@ -4448,10 +4448,38 @@ class Kernel:
             return 0.0
         if peer < 0:
             return 0.0
+        # TRUE PROGRESS TOWARD THE DESTINATION.
+        #
+        # The first version returned the LENGTH OF THE HOP TAKEN, which is
+        # almost identical for every direction on a Walker constellation --
+        # so rho2*r^dist was a constant and the agent received no signal about
+        # WHICH direction approaches the destination.  Measured consequence: the
+        # trained policy walked 11.6-12.0 hops on a 4-5 hop network, PDR fell to
+        # 0.29-0.59 and ~10.5k packets per run died on max_hops.
+        #
+        # The quantity the paper calls "distance reduction" is the change in
+        # distance to the delivery point.  The delivery point is the nearest
+        # satellite serving the destination cell, which the kernel already
+        # resolves for every packet, so this needs no future information beyond
+        # the current geometry -- and it is genuinely directional.
         try:
-            return float(self.geometry.isl_range_km(int(sat), int(peer), now))
+            targets = [s for s in self._serving_sats(str(pkt.dst))
+                       if int(s) != int(peer)]
+        except Exception:  # noqa: BLE001 - no serving set => no signal
+            targets = []
+        if not targets:
+            return 0.0
+        try:
+            near = min(targets, key=lambda t: float(
+                self.geometry.isl_range_km(int(peer), int(t), now)))
+            here_to_dst = min(
+                float(self.geometry.isl_range_km(int(sat), int(t), now))
+                for t in targets)
+            peer_to_dst = float(self.geometry.isl_range_km(int(peer), int(near), now))
         except Exception:  # noqa: BLE001 - geometry gap must not fabricate
             return 0.0
+        # positive when the hop moves us closer to the destination
+        return float(here_to_dst) - float(peer_to_dst)
 
     def _finish_learning_transition(self, pkt: DataPacket, next_state,
                                     next_mask: dict, done: bool,
