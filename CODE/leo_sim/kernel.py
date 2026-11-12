@@ -4358,7 +4358,8 @@ class Kernel:
         path = Path(str(self.cfg_learning["checkpoint_path"]))
         return str(path.with_name("metadata.json"))
 
-    def _learning_observation(self, sat: int, dst_cell: str) -> np.ndarray:
+    def _learning_observation(self, sat: int, dst_cell: str,
+                              pkt: DataPacket | None = None) -> np.ndarray:
         queues = {d: lnk.data_bits + lnk.ctrl_bits
                   for d, lnk in self.isls[sat].items()}
         visible = sum(
@@ -4402,8 +4403,13 @@ class Kernel:
                     }
                     for _cs in (getattr(_plan.scored, "scores", ()) or ())
                 }
-            except Exception:  # noqa: BLE001 - diagnostics must not break a run
+            except Exception as exc:  # noqa: BLE001
+                # NEVER swallow this: a blanket except here made every C9
+                # observation come out with 24 empty ETA dims, and nothing in
+                # the run said so -- the feature simply looked uninformative.
+                # Record it so the failure is visible instead of silent.
                 eta_by_dir = None
+                self._c9_eta_error = f"{type(exc).__name__}: {exc}"
         dir_progress = None
         if ep is not None and self.cfg_rt["contract"] in ("C1", "C3"):
             try:
@@ -4657,7 +4663,7 @@ class Kernel:
         return action
 
     def _learning_action(self, pkt: DataPacket, sat: int, mask: dict) -> str:
-        state = self._learning_observation(sat, pkt.dst)
+        state = self._learning_observation(sat, pkt.dst, pkt)
         if self.fixed_policy is not None:
             # A1 fixed-inference path.  The observation contract, the mask and
             # the tie-break are the SAME as the learner path; what is absent is
