@@ -240,6 +240,12 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "mode": str,  # train | eval
         "seed": (int, type(None)),  # train/eval RNG seed; None -> scenario.seed
         "obs_hops": (int, type(None)),  # observation aggregation hops; None -> control_plane.vis_k
+        # Behaviour-cloning warm start: an OPTIONAL artifact that initialises
+        # the online network instead of the random init.  Distinct from
+        # checkpoint_path (which is a frozen EVAL artifact): init_from is a
+        # training starting point and its hash is bound into config_sha256.
+        "init_from": (str, type(None)),
+        "init_from_sha256": (str, type(None)),
         "checkpoint_path": (str, type(None)),
         "checkpoint_sha256": (str, type(None)),
         "checkpoint_metadata_sha256": (str, type(None)),
@@ -590,6 +596,8 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "mode": "train",
         "seed": None,
         "obs_hops": None,
+        "init_from": None,
+        "init_from_sha256": None,
         "checkpoint_path": None,
         "checkpoint_sha256": None,
         "checkpoint_metadata_sha256": None,

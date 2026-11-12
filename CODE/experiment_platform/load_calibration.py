@@ -141,7 +141,9 @@ OVERRIDE_FIELDS = {
                  # The hashes are part of the resolved config, so the run can
                  # prove WHICH weights produced its numbers.
                  "checkpoint_path", "checkpoint_sha256",
-                 "checkpoint_metadata_sha256"},
+                 "checkpoint_metadata_sha256",
+                 # BC warm start: which artifact the online net starts from
+                 "init_from", "init_from_sha256"},
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
                   # A DDQN training cell MUST be able to declare this: the
                   # kernel refuses a learning arm under

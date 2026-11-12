@@ -582,6 +582,33 @@ class TensorflowDDQN:
             self.loaded_checkpoint = None
             self.loaded_checkpoint_sha256 = None
             self.loaded_checkpoint_metadata_sha256 = None
+            # BEHAVIOUR-CLONING WARM START.  A from-scratch DDQN needs the
+            # paper's ~500 episodes before its policy is usable; measured here,
+            # 11 episodes produced 12.76 mean hops against 4.03 for the
+            # deterministic baseline.  `init_from` lets the online network START
+            # at a policy that already routes (imitation of that baseline) so
+            # DDQN only has to IMPROVE it, not discover routing from scratch.
+            init = cfg.get("init_from")
+            if init:
+                ipath = Path(str(init))
+                if not ipath.is_file():
+                    raise LearningUnavailable(
+                        f"learning.init_from not found: {ipath}")
+                want = hashlib.sha256(ipath.read_bytes()).hexdigest()
+                expect = cfg.get("init_from_sha256")
+                if expect is not None and want != str(expect):
+                    raise LearningUnavailable(
+                        "learning.init_from SHA-256 differs from resolved config")
+                warm = self.tf.keras.models.load_model(str(ipath), compile=False)
+                if warm.output_shape[-1] != len(ACTIONS) \
+                        or warm.input_shape[-1] != self.online.input_shape[-1]:
+                    raise LearningUnavailable(
+                        "learning.init_from shape does not match "
+                        f"contract/actions (got {warm.input_shape} -> "
+                        f"{warm.output_shape})")
+                self.online.set_weights(warm.get_weights())
+                self.loaded_init_from = str(ipath.resolve())
+                self.loaded_init_from_sha256 = want
         self.target = self._network()
         self.target.set_weights(self.online.get_weights())
         self.optimizer = self.tf.keras.optimizers.Adam(
