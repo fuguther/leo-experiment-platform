@@ -1626,7 +1626,7 @@ def information_set(contract: str, sat: int, cache, now: float,
         allowed = {sat} | set(topo.get(sat, {}).values())
         return {o: e for o, e in entries.items()
                 if o in allowed and e.hops <= 1}
-    if contract in ("C3", "C4", "C5", "C6", "C7", "GAT", "MPNN"):
+    if contract in ("C3", "C4", "C5", "C6", "C7", "C8", "GAT", "MPNN"):
         if obs_hops is None:
             return dict(entries)
         return {o: e for o, e in entries.items() if e.hops <= obs_hops}
