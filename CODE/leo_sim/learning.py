@@ -59,6 +59,13 @@ DEST_FEATURES = 3
 _DEST_DIST_NORM_KM = 20000.0
 _EARTH_R_KM = 6371.0
 C3_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own state + mean aggregate
+#: C8 keeps the four neighbour states SEPARATE instead of averaging them.  The
+#: averaging is what made the scorer's choice unlearnable: measured over 86,984
+#: real decisions, the best single-feature |corr| with the chosen direction was
+#: 0.098 and supervised imitation reached 29.6% against a 25% chance floor --
+#: because "the mean neighbour queue is 400" cannot distinguish "N is 10, E is
+#: 790" from "N is 400, E is 400".  C8 fixes exactly that.
+C8_DIM = OWN_FEATURES + 4 * ORIGIN_FEATURES
 C4_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own + AoI-weighted aggregate
 C5_DIM = OWN_FEATURES + ORIGIN_FEATURES + 1        # own + freshest entry + staleness flag
 C6_MAX_HOPS = 4
@@ -72,6 +79,7 @@ C1_DIM = OWN_FEATURES + C1_MAX_NEIGHBORS * ORIGIN_FEATURES
 CONTRACT_DIMS = {
     "C1": C1_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "C3": C3_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C8": C8_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "C4": C4_DIM + DEST_FEATURES,
     "C5": C5_DIM + DEST_FEATURES,
     "C6": C6_DIM + DEST_FEATURES,
@@ -1799,6 +1807,22 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
         agg = (np.mean(list(feats.values()), axis=0) if feats
                else np.zeros(ORIGIN_FEATURES))
         return _finish(np.concatenate([own, agg]))
+
+    if contract == "C8":
+        # one block PER DIRECTION, in the same order as the action vector, so
+        # the network can compare "what is next door this way" directly instead
+        # of reading an aggregate that erased the distinction.
+        blocks = []
+        for d in GRAPH_DIRS:
+            peer = (topo.get(sat, {}) or {}).get(d)
+            if peer is not None and peer in feats:
+                blocks.append(feats[peer])
+            else:
+                # no advertisement from that direction yet: full congestion is
+                # the same pessimistic convention own_state uses for a missing
+                # link, and it must not read as "empty and attractive"
+                blocks.append(np.ones(ORIGIN_FEATURES))
+        return _finish(np.concatenate([own] + blocks))
 
     if contract == "C4":
         if not entries:
