@@ -535,6 +535,8 @@ class TensorflowDDQN:
         self.mode = cfg["mode"]
         self.loaded_resume_path = None
         self.loaded_resume_sha256 = None
+        self.loaded_init_from = None
+        self.loaded_init_from_sha256 = None
         self.resume_manifest_sha256 = None
         self.resume_verified = False
         checkpoint = cfg.get("checkpoint_path")
