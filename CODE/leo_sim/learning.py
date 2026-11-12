@@ -66,6 +66,16 @@ C3_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own state + mean aggregate
 #: because "the mean neighbour queue is 400" cannot distinguish "N is 10, E is
 #: 790" from "N is 400, E is 400".  C8 fixes exactly that.
 C8_DIM = OWN_FEATURES + 4 * ORIGIN_FEATURES
+#: C9 adds, for each direction, the ETA DECOMPOSITION the scorer itself ranks
+#: on.  This is the missing piece: C3/C8 describe neighbours by QUEUE OCCUPANCY,
+#: while score_candidates orders candidates by prop_s + local_egress_wait_s +
+#: tx_s + resource_work_s + peer_process_s.  Those are different quantities, so
+#: a network reading occupancy cannot reproduce the ranking -- measured, BC
+#: reached 29.6% (C3) and 30.1% (C8) against a 25% chance floor.  All six values
+#: are known AT DECISION TIME (the scorer computes them), so this adds no
+#: future information.
+ETA_FEATURES = 6
+C9_DIM = C8_DIM + 4 * ETA_FEATURES
 C4_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own + AoI-weighted aggregate
 C5_DIM = OWN_FEATURES + ORIGIN_FEATURES + 1        # own + freshest entry + staleness flag
 C6_MAX_HOPS = 4
@@ -80,6 +90,7 @@ CONTRACT_DIMS = {
     "C1": C1_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "C3": C3_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "C8": C8_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C9": C9_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "C4": C4_DIM + DEST_FEATURES,
     "C5": C5_DIM + DEST_FEATURES,
     "C6": C6_DIM + DEST_FEATURES,
@@ -1626,7 +1637,7 @@ def information_set(contract: str, sat: int, cache, now: float,
         allowed = {sat} | set(topo.get(sat, {}).values())
         return {o: e for o, e in entries.items()
                 if o in allowed and e.hops <= 1}
-    if contract in ("C3", "C4", "C5", "C6", "C7", "C8", "GAT", "MPNN"):
+    if contract in ("C3", "C4", "C5", "C6", "C7", "C8", "C9", "GAT", "MPNN"):
         if obs_hops is None:
             return dict(entries)
         return {o: e for o, e in entries.items() if e.hops <= obs_hops}
@@ -1771,7 +1782,8 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                       obs_hops: int | None = None,
                       dst_feats: np.ndarray | None = None,
                       root_pos: tuple | None = None,
-                      dir_progress: np.ndarray | None = None) -> np.ndarray:
+                      dir_progress: np.ndarray | None = None,
+                      eta_by_dir: dict | None = None) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
             contract, sat, cache, now, topo, own, isl_queue_cap,
@@ -1808,7 +1820,7 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                else np.zeros(ORIGIN_FEATURES))
         return _finish(np.concatenate([own, agg]))
 
-    if contract == "C8":
+    if contract in ("C8", "C9"):
         # one block PER DIRECTION, in the same order as the action vector, so
         # the network can compare "what is next door this way" directly instead
         # of reading an aggregate that erased the distinction.
@@ -1822,6 +1834,24 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                 # the same pessimistic convention own_state uses for a missing
                 # link, and it must not read as "empty and attractive"
                 blocks.append(np.ones(ORIGIN_FEATURES))
+        if contract == "C9":
+            # the SAME terms score_candidates sums, per direction, in seconds
+            # normalised by one ISL propagation so the scale is O(1)
+            unit = 0.012
+            eb = []
+            for d in GRAPH_DIRS:
+                e = (eta_by_dir or {}).get(d) or {}
+                tt = e.get("terms") if isinstance(e, dict) else None
+                tt = tt or {}
+                eb.extend([
+                    min(1.0, float(tt.get("prop_s") or 0.0) / unit / 10.0),
+                    min(1.0, float(tt.get("local_egress_wait_s") or 0.0) / unit),
+                    min(1.0, float(tt.get("tx_s") or 0.0) / unit),
+                    min(1.0, float(tt.get("resource_work_s") or 0.0) / unit),
+                    min(1.0, float(tt.get("peer_process_s") or 0.0) / unit),
+                    0.0 if not e.get("missing") else 1.0,
+                ])
+            return _finish(np.concatenate([own] + blocks + [np.asarray(eb)]))
         return _finish(np.concatenate([own] + blocks))
 
     if contract == "C4":

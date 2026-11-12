@@ -440,7 +440,7 @@ VALID_POLICIES = {
     # runs keep their identity.
     "known_serving",
 }
-VALID_CONTRACTS = {"C1", "C3", "C4", "C5", "C6", "C7", "C8", "GAT", "MPNN"}
+VALID_CONTRACTS = {"C1", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "GAT", "MPNN"}
 VALID_ALGORITHMS = {"none", "ddqn", "qlearning"}
 VALID_ISL_DIRS = {"N", "S", "E", "W"}
 VALID_RATE_MODELS = {"constant", "mcs"}

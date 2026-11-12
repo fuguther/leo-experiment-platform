@@ -4381,6 +4381,29 @@ class Kernel:
         # reduces the distance to the destination by one full ISL range" and
         # -1.0 the opposite; a missing link scores -1.0 (fully unattractive).
         # This is what lets the agent choose a DIRECTION rather than guess.
+        # C9 needs the scorer's own ETA decomposition, which is only available
+        # from a snapshot.  Built here so the observation contains the very
+        # quantities the ranking uses.
+        eta_by_dir = None
+        if self.cfg_rt["contract"] == "C9":
+            try:
+                _cands = list(self.isls[sat].keys())
+                _own_q = {d: int(l.data_bits + l.ctrl_bits)
+                          for d, l in self.isls[sat].items()}
+                _probe = self._build_ta_snapshot(
+                    pkt, sat, self.env.now, _cands, _own_q,
+                    str(self.cfg_ta["arm"]), None)
+                _plan = _ta.plan_decision(_probe)
+                # CandidateScore carries exactly the terms the ranking summed
+                eta_by_dir = {
+                    str(getattr(_cs, "direction", "")): {
+                        "terms": dict(getattr(_cs, "terms", {}) or {}),
+                        "missing": tuple(getattr(_cs, "missing", ()) or ()),
+                    }
+                    for _cs in (getattr(_plan.scored, "scores", ()) or ())
+                }
+            except Exception:  # noqa: BLE001 - diagnostics must not break a run
+                eta_by_dir = None
         dir_progress = None
         if ep is not None and self.cfg_rt["contract"] in ("C1", "C3"):
             try:
@@ -4415,7 +4438,7 @@ class Kernel:
             self.cfg_rt["contract"], sat, self.caches[sat], self.env.now,
             self.topo, own, self.cfg_links["isl_queue_bits"],
             obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos,
-            dir_progress=dir_progress,
+            dir_progress=dir_progress, eta_by_dir=eta_by_dir,
         )
 
     def _record_learning_queue_context(self, pkt: DataPacket, sat: int,
