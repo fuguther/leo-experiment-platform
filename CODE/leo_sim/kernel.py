@@ -4411,7 +4411,7 @@ class Kernel:
                 eta_by_dir = None
                 self._c9_eta_error = f"{type(exc).__name__}: {exc}"
         dir_progress = None
-        if ep is not None and self.cfg_rt["contract"] in ("C1", "C3"):
+        if ep is not None and self.cfg_rt["contract"] in ("C1", "C3", "C8", "C9"):
             try:
                 targets = [t for t in self._serving_sats(str(dst_cell))]
                 span = float(self.cfg_links["max_isl_km"]) or 1.0
