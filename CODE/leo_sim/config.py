@@ -1238,6 +1238,11 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             raise ConfigError(
                 "learning.reward_rho1+rho2+rho3 must equal 1 for paper_eq9 "
                 f"(TAP-DAR Eq.9), got {total_rho!r}")
+        # a hop cost is legitimate here as long as it is a penalty
+        if float(lr["forward_step_penalty"]) > 0.0:
+            raise ConfigError(
+                "learning.forward_step_penalty must be <= 0 with paper_eq9, "
+                f"got {lr['forward_step_penalty']!r}")
         for name in ("reward_rho1", "reward_rho2", "reward_rho3"):
             value = lr[name]
             if not math.isfinite(float(value)) or float(value) < 0.0:
@@ -1248,7 +1253,14 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError("learning.reward_w1 must be > 0")
     if lr["reward_beta"] <= 0:
         raise ConfigError("learning.reward_beta must be > 0")
-    if lr["forward_step_penalty"] > -lr["reward_w1"]:
+    # The "must dominate reward_w1" rule exists because the LEGACY rewards scale
+    # in tens (arrive_reward 50, reward_w1 20), so a small negative step cost
+    # could not offset a positive reward.  paper_eq9's terms live in [-1, 1] and
+    # its rho weights sum to 1, so the same threshold would forbid every
+    # meaningful hop cost.  There the requirement is only that the cost is <= 0,
+    # which the finiteness check above already enforces.
+    if lr["reward"] != "paper_eq9" \
+            and lr["forward_step_penalty"] > -lr["reward_w1"]:
         raise ConfigError(
             "learning.forward_step_penalty must be <= -reward_w1 so "
             "an extra forwarding hop cannot have positive reward")
