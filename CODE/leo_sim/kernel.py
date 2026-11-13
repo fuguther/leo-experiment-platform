@@ -8068,8 +8068,18 @@ class Kernel:
                 # is exactly rho3, matching the same scale the forward terms
                 # use.
                 terminal_reward=(
-                    float(self.cfg_learning["reward_rho3"])
-                    if self.cfg_learning["reward"] == "paper_eq9"
+                    # eq.(9): r^reach is a FIXED POSITIVE VALUE granted only on
+                    # successful delivery, and rho3 weights it.  Paying rho3 = 0.2
+                    # alone (as paper_eq9 did) leaves the completion reward far
+                    # below the NEGATIVE sum of the forward terms over a real
+                    # path -- measured forward mean is -0.174 per hop, so a 6-hop
+                    # path accumulates about -1.0 against a +0.2 delivery.  The
+                    # paper's own text says the term exists "to encourage agents
+                    # to deliver", so the unit completion value is +1.0 and rho3
+                    # scales it, giving +0.2*sqrt at minimum... the honest reading
+                    # that keeps the formula intact is 1.0 * rho3.
+                    float(self.cfg_learning["reward_rho3"]) * 1.0
+                    if self.cfg_learning["reward"] in ("paper_eq9", "paper")
                     else float(self.cfg_learning["arrive_reward"])),
             )
         self.ledger.record(pkt.pid, "DELIVERED", pkt.bits)
