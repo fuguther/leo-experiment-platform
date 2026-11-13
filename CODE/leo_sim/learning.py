@@ -134,10 +134,13 @@ CONTRACT_DIMS = {
     "C9": C9_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "C10": C10_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "PAPER": PAPER_DIM,
-    "C4": C4_DIM + DEST_FEATURES,
-    "C5": C5_DIM + DEST_FEATURES,
-    "C6": C6_DIM + DEST_FEATURES,
-    "C7": C7_DIM + DEST_FEATURES,
+    # C4-C7 also receive the direction-progress block from _finish, exactly
+    # like C1/C3/C8/C9/C10/PAPER.  Their declarations omitted it, so the
+    # declared width was 4 short of what build_observation returns.
+    "C4": C4_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C5": C5_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C6": C6_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C7": C7_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
 }
 ACTIONS = ("deliver", "N", "S", "E", "W")
 
