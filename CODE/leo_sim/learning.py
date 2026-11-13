@@ -1915,7 +1915,8 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
         # serves the destination region.
         cap = max(1, int(isl_queue_cap))
         # own: 4 queue lengths + own position, all normalised
-        own_q = np.asarray(own[:PAPER_QUEUE_FEATURES], dtype=np.float64)
+        own_q = np.asarray(
+            np.ravel(own)[:PAPER_QUEUE_FEATURES], dtype=np.float64).reshape(-1)
         own_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
         if root_pos is not None:
             own_pos = np.asarray(root_pos, dtype=np.float64) / 1.0e4
@@ -1937,13 +1938,15 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                         nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
             else:
                 nb_q = 1.0        # unknown reads as fully loaded, never "free"
-            blocks.append(np.concatenate([[nb_q], nb_pos]))
+            blocks.append(np.concatenate(
+                [np.asarray([nb_q], dtype=np.float64),
+                 np.ravel(nb_pos).astype(np.float64)]))
         # distance to the destination-serving satellite, normalised by one ISL
         d_dst = 0.0
         if dst_feats is not None and len(dst_feats) >= 3:
             d_dst = float(dst_feats[2])
         return _finish(np.concatenate(
-            [own_q, own_pos] + blocks + [[d_dst]]))
+            [own_q, own_pos] + blocks + [np.asarray([d_dst], dtype=np.float64)]))
 
     if contract in ("C8", "C9", "C10"):
         # one block PER DIRECTION, in the same order as the action vector, so
