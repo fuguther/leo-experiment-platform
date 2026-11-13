@@ -4513,7 +4513,8 @@ class Kernel:
             except Exception:  # noqa: BLE001 - no geometry => no signal
                 dir_progress = None
         root_pos = None
-        if self.cfg_rt["contract"] in _learning.GRAPH_CONTRACTS:
+        if self.cfg_rt["contract"] in _learning.GRAPH_CONTRACTS \
+                or self.cfg_rt["contract"] == "PAPER":
             # The root satellite's own position is directly measured local
             # state: query geometry, never the control cache — the control
             # plane explicitly refuses to cache a satellite's own looped
