@@ -1871,6 +1871,25 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
     return state
 
 
+def _paper_predict_queue(observed: float, age_s: float,
+                         growth_per_s: float) -> float:
+    """Compensate a stale queue reading to the decision instant.
+
+    The paper calls this the "proactive prediction compensation unit" (S IV-B1).
+    Its full form is time-aware memory decay plus attention (eq. 13-18); with a
+    single most-recent sample and no history window in this observation, the
+    faithful reduction is a linear drain/growth projection over the sample age:
+
+        l_hat(now) = l(t_k) + growth * (now - t_k)
+
+    Growth is calibrated from the run's own offered load, so the term is a stated
+    approximation of the paper's predictor -- recorded as a deviation, not passed
+    off as its T-LSTM.
+    """
+    age = max(0.0, float(age_s))
+    return max(0.0, float(observed) + float(growth_per_s) * age)
+
+
 def build_observation(contract: str, sat: int, cache, now: float, topo,
                       own: np.ndarray, isl_queue_cap: int = 256_000_000,
                       obs_hops: int | None = None,
@@ -1878,7 +1897,10 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                       root_pos: tuple | None = None,
                       dir_progress: np.ndarray | None = None,
                       eta_by_dir: dict | None = None,
-                      cache_position=None) -> np.ndarray:
+                      cache_position=None,
+                      paper_state: str = "advertised",
+                      paper_queue_growth: float = 0.0,
+                      paper_queue_true: dict | None = None) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
             contract, sat, cache, now, topo, own, isl_queue_cap,
@@ -1934,9 +1956,39 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
             nb_q = 0.0
             nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
             if peer is not None and peer in feats:
-                # the neighbour's ADVERTISED queue length, in packets of L_max:
-                # the paper's l^avg, i.e. a length, not an occupancy ratio
-                nb_q = float(np.mean(np.asarray(feats[peer])[:PAPER_QUEUE_FEATURES]))
+                # The neighbour's queue LENGTH, in packets of L_max.
+                #
+                # THIS IS WHERE THE PAPER'S SCHEMES DIFFER.  Scheme 1 has no
+                # communication at all (vis_k = 0 -> the cache is empty, so the
+                # branch below never fires).  Scheme 2 reads the ADVERTISED value
+                # as it arrived -- stale by the propagation delay.  Scheme 3
+                # compensates it to the decision instant.  Scheme 4 reads the true
+                # current value.  `paper_state` carries which one to use, so one
+                # code path serves all four and the comparison cannot accidentally
+                # differ in anything else.
+                # SCHEME DIFFERENTIATION, and the only thing that differs
+                # between the paper's four arms at the observation level:
+                #   paper_state="advertised" -> use the value as received (S2)
+                #   paper_state="predict"    -> extrapolate it to `now` (S3)
+                #   paper_state="ideal"      -> not available here; the kernel
+                #                               substitutes the true value (S4)
+                # Scheme 1 never reaches this branch: vis_k=0 leaves the cache
+                # empty so feats has no peers at all.
+                nb_q = float(np.mean(
+                    np.asarray(feats[peer])[:PAPER_QUEUE_FEATURES]))
+                if paper_state == "ideal" and paper_queue_true is not None:
+                    # Scheme 4: the true current queue, no delay at all.
+                    _t = paper_queue_true.get(int(peer))
+                    if _t is not None:
+                        nb_q = float(_t)
+                elif paper_state == "predict":
+                    _age = 0.0
+                    try:
+                        _age = float(now - entries[peer].generated_at)
+                    except (KeyError, AttributeError):
+                        _age = 0.0
+                    nb_q = _paper_predict_queue(
+                        nb_q, _age, paper_queue_growth)
                 pj = cache_position
                 if pj is not None and root_pos is not None:
                     try:

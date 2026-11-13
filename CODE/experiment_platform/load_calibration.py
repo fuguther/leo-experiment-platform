@@ -152,7 +152,9 @@ OVERRIDE_FIELDS = {
                  # BC warm start: which artifact the online net starts from
                  "init_from", "init_from_sha256",
                  # opt-in hop cost for paper_eq9; non-zero is a deviation
-                 "forward_step_penalty"},
+                 "forward_step_penalty",
+                 # which of the paper's four schemes this cell reproduces
+                 "paper_scheme"},
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
                   # A DDQN training cell MUST be able to declare this: the
                   # kernel refuses a learning arm under

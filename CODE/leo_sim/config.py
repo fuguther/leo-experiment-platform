@@ -244,6 +244,13 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # the online network instead of the random init.  Distinct from
         # checkpoint_path (which is a frozen EVAL artifact): init_from is a
         # training starting point and its hash is bound into config_sha256.
+        # Which of the paper's four schemes this run reproduces.  It selects WHAT
+        # THE OBSERVATION MAY READ: s1 has no communication (vis_k=0 leaves the
+        # cache empty), s2 reads the advertised value as received, s3 compensates
+        # it to the decision instant, s4 reads the true current value.  The
+        # learner, reward and action set are identical across all four, which is
+        # what makes the comparison attributable to the state-lag mechanism.
+        "paper_scheme": (str, type(None)),
         "init_from": (str, type(None)),
         "init_from_sha256": (str, type(None)),
         "checkpoint_path": (str, type(None)),
@@ -596,6 +603,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "mode": "train",
         "seed": None,
         "obs_hops": None,
+        "paper_scheme": None,
         "init_from": None,
         "init_from_sha256": None,
         "checkpoint_path": None,

@@ -4524,12 +4524,42 @@ class Kernel:
             # plane explicitly refuses to cache a satellite's own looped
             # advertisement, so a cache lookup would read (0, 0, 0).
             root_pos = self.geometry.positions(self.env.now)[sat]
+        _paper_state = "advertised"
+        _paper_true = None
+        _paper_growth = 0.0
+        if self.cfg_rt["contract"] == "PAPER":
+            # Which of the paper's four schemes this run is decides what the
+            # observation may read.  S1 (no communication) leaves the cache empty
+            # by construction via control_plane.vis_k = 0, so nothing here has to
+            # special-case it; S4 gets the TRUE current queues, which only a
+            # zero-delay oracle could know.
+            _scheme = str(self.cfg_learning.get("paper_scheme") or "s2")
+            if _scheme == "s3":
+                _paper_state = "predict"
+                # calibrate growth from the run's own offered load: each node is
+                # offered load/66 Mbps and one packet is packet_bits, so a queue
+                # that keeps up with arrivals grows at that many packets/second.
+                _per_node = (float(self.cfg_dm["offered_mbps"])
+                             + float(self.cfg_dm.get("sat_background_mbps") or 0.0)) \
+                    / max(1, self.num_sats)
+                _pkt_bits = max(1.0, float(self.cfg_dm["packet_bits"]))
+                _paper_growth = (_per_node * 1e6 / _pkt_bits) * 1e-3
+            elif _scheme == "s4":
+                _paper_state = "ideal"
+                _paper_true = {
+                    int(j): self._learning_avg_queue_len(int(j))
+                    for j in set((self.topo.get(int(sat), {}) or {}).values())
+                    if j is not None
+                }
         return _learning.build_observation(
             self.cfg_rt["contract"], sat, self.caches[sat], self.env.now,
             self.topo, own, self.cfg_links["isl_queue_bits"],
             obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos,
             dir_progress=dir_progress, eta_by_dir=eta_by_dir,
             cache_position=self.geometry.positions,
+            paper_state=_paper_state,
+            paper_queue_growth=_paper_growth,
+            paper_queue_true=_paper_true,
         )
 
     def _record_learning_queue_context(self, pkt: DataPacket, sat: int,
