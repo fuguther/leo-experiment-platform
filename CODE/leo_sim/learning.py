@@ -76,6 +76,16 @@ C8_DIM = OWN_FEATURES + 4 * ORIGIN_FEATURES
 #: future information.
 ETA_FEATURES = 6
 C9_DIM = C8_DIM + 4 * ETA_FEATURES
+#: C10 adds, per direction, whether that direction is ACTUALLY USABLE right now --
+#: the resource mapping exists and the resource reports itself available.  This is
+#: the one quantity the scorer reads (`resource_available_for`) that no observation
+#: contract exposes.  Measured at 18 Mbps/node, the best reward tuning reached 7.48
+#: hops but lost 10.4% of packets to NO_ROUTE (baseline 0.4%): the policy cannot
+#: tell a direction that leads nowhere from one that is merely congested, so it
+#: keeps committing to dead ends.  Three numbers per direction: mapped, available,
+#: and "usable" (= both).
+AVAIL_FEATURES = 3
+C10_DIM = C9_DIM + 4 * AVAIL_FEATURES
 C4_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own + AoI-weighted aggregate
 C5_DIM = OWN_FEATURES + ORIGIN_FEATURES + 1        # own + freshest entry + staleness flag
 C6_MAX_HOPS = 4
@@ -91,6 +101,7 @@ CONTRACT_DIMS = {
     "C3": C3_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "C8": C8_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "C9": C9_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C10": C10_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "C4": C4_DIM + DEST_FEATURES,
     "C5": C5_DIM + DEST_FEATURES,
     "C6": C6_DIM + DEST_FEATURES,
@@ -1637,7 +1648,7 @@ def information_set(contract: str, sat: int, cache, now: float,
         allowed = {sat} | set(topo.get(sat, {}).values())
         return {o: e for o, e in entries.items()
                 if o in allowed and e.hops <= 1}
-    if contract in ("C3", "C4", "C5", "C6", "C7", "C8", "C9", "GAT", "MPNN"):
+    if contract in ("C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "GAT", "MPNN"):
         if obs_hops is None:
             return dict(entries)
         return {o: e for o, e in entries.items() if e.hops <= obs_hops}
@@ -1820,7 +1831,7 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                else np.zeros(ORIGIN_FEATURES))
         return _finish(np.concatenate([own, agg]))
 
-    if contract in ("C8", "C9"):
+    if contract in ("C8", "C9", "C10"):
         # one block PER DIRECTION, in the same order as the action vector, so
         # the network can compare "what is next door this way" directly instead
         # of reading an aggregate that erased the distinction.
@@ -1834,7 +1845,7 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                 # the same pessimistic convention own_state uses for a missing
                 # link, and it must not read as "empty and attractive"
                 blocks.append(np.ones(ORIGIN_FEATURES))
-        if contract == "C9":
+        if contract in ("C9", "C10"):
             # the SAME terms score_candidates sums, per direction, in seconds
             # normalised by one ISL propagation so the scale is O(1)
             unit = 0.012
@@ -1851,6 +1862,19 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                     min(1.0, float(tt.get("peer_process_s") or 0.0) / unit),
                     0.0 if not e.get("missing") else 1.0,
                 ])
+            if contract == "C10":
+                # the scorer's OWN availability reading, per direction
+                ab = []
+                for d in GRAPH_DIRS:
+                    rec = (eta_by_dir or {}).get(d) or {}
+                    mapped = 1.0 if rec.get("mapped") else 0.0
+                    avail = rec.get("available")
+                    usable = 1.0 if (mapped and avail is True) else 0.0
+                    ab.extend([mapped,
+                               0.0 if avail is None else (1.0 if avail else 0.0),
+                               usable])
+                return _finish(np.concatenate(
+                    [own] + blocks + [np.asarray(eb), np.asarray(ab)]))
             return _finish(np.concatenate([own] + blocks + [np.asarray(eb)]))
         return _finish(np.concatenate([own] + blocks))
 

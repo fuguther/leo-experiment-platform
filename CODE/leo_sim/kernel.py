@@ -4397,7 +4397,7 @@ class Kernel:
         # from a snapshot.  Built here so the observation contains the very
         # quantities the ranking uses.
         eta_by_dir = None
-        if self.cfg_rt["contract"] == "C9":
+        if self.cfg_rt["contract"] in ("C9", "C10"):
             try:
                 _cands = list(self.isls[sat].keys())
                 _own_q = {d: int(l.data_bits + l.ctrl_bits)
@@ -4421,13 +4421,21 @@ class Kernel:
                     pkt, sat, self.env.now, _cands, _own_q, _arm, _hz)
                 _plan = _ta.plan_decision(_probe)
                 # CandidateScore carries exactly the terms the ranking summed
-                eta_by_dir = {
-                    str(getattr(_cs, "direction", "")): {
+                _snap = _plan.snapshot
+                eta_by_dir = {}
+                for _cs in (getattr(_plan.scored, "scores", ()) or ()):
+                    _d = str(getattr(_cs, "direction", ""))
+                    try:
+                        _res = _snap.resource_for(_d)
+                        _av = _snap.resource_available_for(_d)
+                    except Exception:  # noqa: BLE001
+                        _res, _av = None, None
+                    eta_by_dir[_d] = {
                         "terms": dict(getattr(_cs, "terms", {}) or {}),
                         "missing": tuple(getattr(_cs, "missing", ()) or ()),
+                        "mapped": _res is not None,
+                        "available": _av,
                     }
-                    for _cs in (getattr(_plan.scored, "scores", ()) or ())
-                }
             except Exception as exc:  # noqa: BLE001
                 # NEVER swallow this: a blanket except here made every C9
                 # observation come out with 24 empty ETA dims, and nothing in
