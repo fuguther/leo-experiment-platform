@@ -167,7 +167,13 @@ OVERRIDE_FIELDS = {
     # isl_queue_bits is the drain-time buffer axis: the calibrated buffer is
     # DEFINED as C_e * tau_buffer, so the 5 / 20 / 100 ms sensitivity sweep is
     # an override of exactly this field and nothing else.
-    "links": {"rf_isl", "rate_model", "isl_rate_mbps", "isl_queue_bits"},
+    # max_isl_km bounds the ISL geometry.  The Iridium profile inherited 6000 km
+    # from a generic trunk file, but a 780 km shell has intra-plane ISLs of 440 km
+    # and cross-plane ISLs of at most ~4400 km; 6000 km inflated every hop's
+    # propagation and is why E2E sat near 142 ms while the paper reports 72 ms.
+    # Finding the right value is an experiment, so the field is overridable.
+    "links": {"rf_isl", "rate_model", "isl_rate_mbps", "isl_queue_bits",
+              "max_isl_km"},
     # learning_enabled / contract are the two switches that pair a routing
     # policy with the learner: a DDQN arm cannot be declared without them.
     "routing": {"policy", "staged_policy", "staged_policy_at_s",
