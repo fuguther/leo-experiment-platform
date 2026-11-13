@@ -107,9 +107,16 @@ C10_DIM = C9_DIM + 4 * AVAIL_FEATURES
 #:    block below so the network can tell "towards" from "away")
 PAPER_QUEUE_FEATURES = 4
 PAPER_POS_FEATURES = 3
-PAPER_NBR_FEATURES = PAPER_QUEUE_FEATURES + PAPER_POS_FEATURES      # 7
-PAPER_DIM = PAPER_QUEUE_FEATURES + PAPER_POS_FEATURES \
+#: Each neighbour contributes ONE queue length plus its 3 relative-position
+#: components = 4, not 4+3: the neighbour advertises one l^avg per the paper, and
+#: its position is a single 3-vector.
+PAPER_NBR_FEATURES = 1 + PAPER_POS_FEATURES                          # 4
+#: 4 own queue lengths + 3 own position + 4 x (1 neighbour queue + 3 relative
+#: position) + 1 dest-serving distance = 24, and _finish appends the shared
+#: destination_features (3) and direction_progress (4), so the total is 31.
+PAPER_BODY = PAPER_QUEUE_FEATURES + PAPER_POS_FEATURES \
     + 4 * PAPER_NBR_FEATURES + 1
+PAPER_DIM = PAPER_BODY + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES
 C4_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own + AoI-weighted aggregate
 C5_DIM = OWN_FEATURES + ORIGIN_FEATURES + 1        # own + freshest entry + staleness flag
 C6_MAX_HOPS = 4
