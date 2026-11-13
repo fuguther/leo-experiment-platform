@@ -1952,8 +1952,11 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
         d_dst = 0.0
         if dst_feats is not None and len(dst_feats) >= 3:
             d_dst = float(dst_feats[2])
-        return _finish(np.concatenate(
-            [own_q, own_pos] + blocks + [np.asarray([d_dst], dtype=np.float64)]))
+        parts = [np.ravel(own_q).astype(np.float64),
+                 np.ravel(own_pos).astype(np.float64)] + \
+                [np.ravel(b).astype(np.float64) for b in blocks] + \
+                [np.asarray([d_dst], dtype=np.float64)]
+        return _finish(np.concatenate(parts))
 
     if contract in ("C8", "C9", "C10"):
         # one block PER DIRECTION, in the same order as the action vector, so

@@ -4862,9 +4862,19 @@ class Kernel:
             # retired and the packet bounced back to pending) settles at 0 on
             # re-decision — it must NOT collect arrive_reward.
             if pkt.learning_action != "deliver":
-                raise KernelError(
-                    "unsettled non-deliver learning transition at re-decision "
-                    f"(pid={pkt.pid}, action={pkt.learning_action})")
+                if self.cfg_rt["contract"] == "PAPER":
+                    # PAPER has no deliver action (eq. 8 is the four forwarding
+                    # directions), so a packet can legitimately reach this point
+                    # still holding an open forward transition: delivery is
+                    # automatic on arrival, and the reach reward is paid there.
+                    # Settle it at 0 instead of failing the run.
+                    self._finish_learning_transition(
+                        pkt, state, mask, False, terminal_reward=0.0)
+                else:
+                    raise KernelError(
+                        "unsettled non-deliver learning transition at "
+                        f"re-decision (pid={pkt.pid}, "
+                        f"action={pkt.learning_action!r})")
             self._finish_learning_transition(
                 pkt, state, mask, False, terminal_reward=0.0)
         else:
