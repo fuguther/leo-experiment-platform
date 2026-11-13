@@ -3281,11 +3281,22 @@ class Kernel:
                         False,
                         queue_cap_bits=float(self.cfg_links["isl_queue_bits"]),
                         max_isl_km=float(self.cfg_links["max_isl_km"]))
-                    pkt.learning_reward = _learning.paper_reward(
-                        _terms,
-                        self.cfg_learning["reward_rho1"],
-                        self.cfg_learning["reward_rho2"],
-                        self.cfg_learning["reward_rho3"])
+                    # OPTIONAL HOP COST.  Eq.(9) has no term that charges for
+                    # taking a step, and measured at 18 Mbps/node the policy's
+                    # median path is 8 hops against the baseline's 6 while its
+                    # p90 is 23 against 13 -- the loss is concentrated in long
+                    # detours, which no Eq.(9) term penalises.  forward_step_penalty
+                    # already existed for the legacy rewards; applying it here is
+                    # opt-in (default 0.0 keeps the paper's exact objective) and
+                    # recorded as a deviation when non-zero.
+                    _hop_cost = float(self.cfg_learning.get("forward_step_penalty") or 0.0)
+                    pkt.learning_reward = (
+                        _learning.paper_reward(
+                            _terms,
+                            self.cfg_learning["reward_rho1"],
+                            self.cfg_learning["reward_rho2"],
+                            self.cfg_learning["reward_rho3"])
+                        + _hop_cost)
                 pkt.isl_enqueued_at = None
             fail_t, fail_kind = end, None
             if self.cfg_links["geometry_loss"]:
