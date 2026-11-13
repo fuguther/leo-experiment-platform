@@ -93,6 +93,13 @@ MIN_FREE_BYTES = 5 * 1024**3
 SUMMARY_RESERVE_BYTES = 1024 * 1024
 
 OVERRIDE_FIELDS = {
+    # GROUND-STATION COUNT.  The paper describes "ground station -> satellite
+    # network -> target ground station" but never states K, and K decides how much
+    # traffic funnels through access queues versus the ISL mesh -- i.e. whether a
+    # queue-aware router has anything to choose between.  Sweeping it is the
+    # highest-value missing experiment, so the sites list is overridable.
+    "endpoints": {"sites", "grid_deg", "aggregation_deg",
+                  "region_lat_bounds_deg", "region_lon_bounds_deg"},
     "access": {"slots_per_satellite", "uplink_rate_mbps",
                "downlink_rate_mbps"},
     "control_plane": {"advertise_interval_s", "vis_k",
