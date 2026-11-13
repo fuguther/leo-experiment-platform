@@ -4602,7 +4602,8 @@ class Kernel:
             n += 1
         if n == 0:
             return 0.0
-        return (bits / n) / max(1.0, float(self.cfg_demand["packet_bits"]))
+        # the kernel names the demand block cfg_dm (cfg_demand never existed)
+        return (bits / n) / max(1.0, float(self.cfg_dm["packet_bits"]))
 
     def _learning_hop_length_km(self, pkt: DataPacket, sat: int,
                                 peer: int) -> float:
