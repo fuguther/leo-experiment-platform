@@ -86,6 +86,30 @@ C9_DIM = C8_DIM + 4 * ETA_FEATURES
 #: and "usable" (= both).
 AVAIL_FEATURES = 3
 C10_DIM = C9_DIM + 4 * AVAIL_FEATURES
+#: PAPER -- the observation the paper actually defines (S III-A, :148):
+#:
+#:     O_i^t = { L_i^t , P_i^t }
+#:     L_i^t = { l_i^U, l_i^D, l_i^R, l_i^L }      four egress buffer lengths
+#:     P_i^t = { p_i(t), {p_j(t)}_{j in N_i}, p_dist(t) }
+#:
+#: That is 4 queue lengths plus position information for the agent, its one-hop
+#: neighbours, and the satellite serving the destination region.  Everything the
+#: other contracts added (occupancy ratios, ETA decompositions, availability
+#: masks) is NOT in the paper, and C3/C8/C9/C10 were therefore testing quantities
+#: the paper never claimed -- a large part of why two weeks of tuning did not
+#: reproduce anything.
+#:
+#: Layout (22 dims):
+#:   own       : 4 queue lengths (normalised by L_max) + 3 own position  = 7
+#:   neighbours: 4 dirs x (queue length + 3 relative position)            = 16
+#:   dest sat  : normalised distance to the destination-serving satellite = 1
+#:   (destination satellite identity is handled by the direction progress
+#:    block below so the network can tell "towards" from "away")
+PAPER_QUEUE_FEATURES = 4
+PAPER_POS_FEATURES = 3
+PAPER_NBR_FEATURES = PAPER_QUEUE_FEATURES + PAPER_POS_FEATURES      # 7
+PAPER_DIM = PAPER_QUEUE_FEATURES + PAPER_POS_FEATURES \
+    + 4 * PAPER_NBR_FEATURES + 1
 C4_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own + AoI-weighted aggregate
 C5_DIM = OWN_FEATURES + ORIGIN_FEATURES + 1        # own + freshest entry + staleness flag
 C6_MAX_HOPS = 4
@@ -102,6 +126,7 @@ CONTRACT_DIMS = {
     "C8": C8_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "C9": C9_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
     "C10": C10_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "PAPER": PAPER_DIM,
     "C4": C4_DIM + DEST_FEATURES,
     "C5": C5_DIM + DEST_FEATURES,
     "C6": C6_DIM + DEST_FEATURES,
@@ -1516,6 +1541,57 @@ def paper_reward_terms(queue_delta_bits: float, dist_delta_km: float,
     return {"queue": q, "dist": d, "reach": 1.0 if reached else 0.0}
 
 
+#: Eq.(10) exponent and Eq.(11) smoothing constant.  The paper writes beta as "an
+#: adjustable parameter" without a value and kappa as "a very small positive
+#: constant"; beta = 1 makes |dL|^beta the identity (the least surprising reading,
+#: and the one that cannot invent curvature the paper never specified), kappa =
+#: 1e-6 keeps the denominator away from zero without changing any realistic ratio.
+PAPER_REWARD_BETA = 1.0
+PAPER_REWARD_KAPPA = 1e-6
+
+
+def paper_eq10_queue(l_i_avg: float, l_j_avg: float,
+                     beta: float = PAPER_REWARD_BETA,
+                     kappa: float = PAPER_REWARD_KAPPA) -> float:
+    """Eq.(10)+(11): the normalised queue-difference load-balancing reward.
+
+        dL_t = (l_i^avg - l_j^avg) / (l_i^avg + l_j^avg + kappa)
+        r^queue = sign(dL_t) * |dL_t| ^ beta
+
+    Note what this is NOT: it is a signed difference of the CURRENT and NEXT-HOP
+    average queue LENGTHS, not the "chosen vs alternative direction" difference the
+    earlier paper_eq9 implementation used.  When the chosen direction is the longer
+    queue dL_t > 0 and the reward is POSITIVE, i.e. the paper's sign convention is
+    "own queue minus next queue": being stuck behind a longer local queue than the
+    neighbour's is what the term rewards leaving.  The implementation follows the
+    formula verbatim rather than re-deriving the sign.
+    """
+    num = float(l_i_avg) - float(l_j_avg)
+    den = float(l_i_avg) + float(l_j_avg) + float(kappa)
+    if den <= 0.0:
+        return 0.0
+    delta = num / den
+    if delta == 0.0:
+        return 0.0
+    return math.copysign(abs(delta) ** float(beta), delta)
+
+
+def paper_eq12_dist(delta_d_km: float, d_ij_km: float, d_0_km: float) -> float:
+    """Eq.(12): distance reduction minus the distance actually travelled.
+
+        r^dist = (Delta D_t - D_ij) / D_0
+
+    Delta D_t is the reduction in distance-to-destination after forwarding from i
+    to j, D_ij the length actually travelled, D_0 the source-destination distance.
+    A hop that closes the gap by more than it costs scores positive; a hop that
+    detours scores negative.  Dividing by D_0 makes the term scale-free.
+    """
+    d0 = float(d_0_km)
+    if d0 <= 0.0:
+        return 0.0
+    return (float(delta_d_km) - float(d_ij_km)) / d0
+
+
 def paper_reward(terms: dict, rho1: float, rho2: float, rho3: float) -> float:
     """Weighted sum of the Eq.(9) terms with the paper's rho weights."""
     return (float(rho1) * float(terms["queue"])
@@ -1648,7 +1724,7 @@ def information_set(contract: str, sat: int, cache, now: float,
         allowed = {sat} | set(topo.get(sat, {}).values())
         return {o: e for o, e in entries.items()
                 if o in allowed and e.hops <= 1}
-    if contract in ("C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "GAT", "MPNN"):
+    if contract in ("C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "PAPER", "GAT", "MPNN"):
         if obs_hops is None:
             return dict(entries)
         return {o: e for o, e in entries.items() if e.hops <= obs_hops}
@@ -1794,7 +1870,8 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                       dst_feats: np.ndarray | None = None,
                       root_pos: tuple | None = None,
                       dir_progress: np.ndarray | None = None,
-                      eta_by_dir: dict | None = None) -> np.ndarray:
+                      eta_by_dir: dict | None = None,
+                      cache_position=None) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
             contract, sat, cache, now, topo, own, isl_queue_cap,
@@ -1830,6 +1907,43 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
         agg = (np.mean(list(feats.values()), axis=0) if feats
                else np.zeros(ORIGIN_FEATURES))
         return _finish(np.concatenate([own, agg]))
+
+    if contract == "PAPER":
+        # S III-A, :148.  Four egress buffer lengths for the agent itself, then
+        # for each one-hop neighbour its queue length and its RELATIVE position
+        # (from the paper's P_i^t set), then the distance to the satellite that
+        # serves the destination region.
+        cap = max(1, int(isl_queue_cap))
+        # own: 4 queue lengths + own position, all normalised
+        own_q = np.asarray(own[:PAPER_QUEUE_FEATURES], dtype=np.float64)
+        own_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
+        if root_pos is not None:
+            own_pos = np.asarray(root_pos, dtype=np.float64) / 1.0e4
+        blocks = []
+        for d in GRAPH_DIRS:
+            peer = (topo.get(sat, {}) or {}).get(d)
+            nb_q = 0.0
+            nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
+            if peer is not None and peer in feats:
+                # the neighbour's ADVERTISED queue length, in packets of L_max:
+                # the paper's l^avg, i.e. a length, not an occupancy ratio
+                nb_q = float(np.mean(np.asarray(feats[peer])[:PAPER_QUEUE_FEATURES]))
+                pj = cache_position
+                if pj is not None:
+                    try:
+                        nb_pos = (np.asarray(pj(int(peer)), dtype=np.float64)
+                                  - np.asarray(root_pos, dtype=np.float64)) / 1.0e4
+                    except Exception:  # noqa: BLE001
+                        nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
+            else:
+                nb_q = 1.0        # unknown reads as fully loaded, never "free"
+            blocks.append(np.concatenate([[nb_q], nb_pos]))
+        # distance to the destination-serving satellite, normalised by one ISL
+        d_dst = 0.0
+        if dst_feats is not None and len(dst_feats) >= 3:
+            d_dst = float(dst_feats[2])
+        return _finish(np.concatenate(
+            [own_q, own_pos] + blocks + [[d_dst]]))
 
     if contract in ("C8", "C9", "C10"):
         # one block PER DIRECTION, in the same order as the action vector, so

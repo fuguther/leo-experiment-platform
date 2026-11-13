@@ -440,7 +440,7 @@ VALID_POLICIES = {
     # runs keep their identity.
     "known_serving",
 }
-VALID_CONTRACTS = {"C1", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "GAT", "MPNN"}
+VALID_CONTRACTS = {"C1", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "PAPER", "GAT", "MPNN"}
 VALID_ALGORITHMS = {"none", "ddqn", "qlearning"}
 VALID_ISL_DIRS = {"N", "S", "E", "W"}
 VALID_RATE_MODELS = {"constant", "mcs"}
@@ -1220,9 +1220,11 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
                                     or lr["checkpoint_sha256"] is not None
                                     or lr["checkpoint_metadata_sha256"] is not None):
         raise ConfigError("learning.mode=train does not load a checkpoint")
-    if lr["reward"] not in {"queue", "deadline_loss_v1", "paper_eq9"}:
+    if lr["reward"] not in {"queue", "deadline_loss_v1", "paper_eq9",
+                            "paper"}:
         raise ConfigError(
-            "learning.reward must be 'queue', 'deadline_loss_v1' or 'paper_eq9'")
+            "learning.reward must be 'queue', 'deadline_loss_v1', 'paper_eq9' "
+            "or 'paper'")
     if lr["reward"] == "deadline_loss_v1":
         if dm["research_deadline_s"] is None:
             raise ConfigError(
@@ -1231,7 +1233,7 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         if lr["gamma"] != 1.0:
             raise ConfigError(
                 "learning.reward=deadline_loss_v1 requires learning.gamma=1.0")
-    if lr["reward"] == "paper_eq9":
+    if lr["reward"] in ("paper_eq9", "paper"):
         total_rho = (float(lr["reward_rho1"]) + float(lr["reward_rho2"])
                      + float(lr["reward_rho3"]))
         if abs(total_rho - 1.0) > 1e-9:
@@ -1259,7 +1261,7 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
     # its rho weights sum to 1, so the same threshold would forbid every
     # meaningful hop cost.  There the requirement is only that the cost is <= 0,
     # which the finiteness check above already enforces.
-    if lr["reward"] != "paper_eq9" \
+    if lr["reward"] not in ("paper_eq9", "paper") \
             and lr["forward_step_penalty"] > -lr["reward_w1"]:
         raise ConfigError(
             "learning.forward_step_penalty must be <= -reward_w1 so "

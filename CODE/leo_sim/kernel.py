@@ -179,7 +179,13 @@ class DataPacket:
                  # TAP-DAR Eq.(9) queue context + the hop peer, recorded at the
                  # decision and read when the forward reward settles
                  "learning_chosen_queue_bits", "learning_alt_queue_bits",
-                 "learning_peer_sat")
+                 "learning_peer_sat",
+                 # Eq.(12) needs three distances the earlier implementation did
+                 # not keep: D_0 (source->destination), the packet's distance to
+                 # the destination BEFORE this hop, and the length actually
+                 # travelled.  Without them r^dist can only be a hop count.
+                 "learning_d0_km", "learning_prev_dist_km",
+                 "learning_hop_km")
 
     def __init__(self, pid, src, dst, bits, deadline, emitted_at,
                  research_deadline_at=None):
@@ -198,6 +204,9 @@ class DataPacket:
         # the emptier side".  Both are filled at the decision and consumed at
         # the forward-reward settle instant; None means "not recorded".
         self.learning_chosen_queue_bits = None
+        self.learning_d0_km = None
+        self.learning_prev_dist_km = None
+        self.learning_hop_km = None
         self.learning_alt_queue_bits = None
         self.learning_peer_sat = -1
         self.learning_reward = None
@@ -3255,6 +3264,43 @@ class Kernel:
                         self.cfg_learning["reward_w1"],
                         self.cfg_learning["reward_beta"],
                         self.cfg_learning["forward_step_penalty"])
+                elif self.cfg_learning["reward"] == "paper":
+                    # THE PAPER'S OWN REWARD, eq.(9) with (10)(11)(12) verbatim.
+                    #
+                    # Distinct from paper_eq9 above in two ways the paper makes
+                    # explicit and the earlier implementation did not follow:
+                    #   * the queue term compares the CURRENT node's average queue
+                    #     with the NEXT HOP's (eq. 11), not chosen-vs-alternative;
+                    #   * the distance term SUBTRACTS the hop length (eq. 12),
+                    #     so a detour is negative instead of merely small.
+                    _li = self._learning_avg_queue_len(int(sat))
+                    _peer = -1
+                    try:
+                        _peer = int(pkt.learning_peer_sat)
+                    except (AttributeError, TypeError, ValueError):
+                        _peer = -1
+                    _lj = (self._learning_avg_queue_len(_peer)
+                           if _peer >= 0 else 0.0)
+                    _r_q = _learning.paper_eq10_queue(_li, _lj)
+                    _hop_km = self._learning_hop_length_km(
+                        pkt, int(sat), _peer)
+                    _prev_km = (float(pkt.learning_prev_dist_km)
+                                if pkt.learning_prev_dist_km is not None
+                                else self._learning_dist_to_target_km(
+                                    pkt, int(sat)))
+                    _now_km = (self._learning_dist_to_target_km(pkt, _peer)
+                               if _peer >= 0 else _prev_km)
+                    _r_d = _learning.paper_eq12_dist(
+                        _prev_km - _now_km, _hop_km,
+                        float(pkt.learning_d0_km or 0.0))
+                    pkt.learning_prev_dist_km = _now_km
+                    pkt.learning_hop_km = _hop_km
+                    _terms = {"queue": _r_q, "dist": _r_d, "reach": 0.0}
+                    pkt.learning_reward = _learning.paper_reward(
+                        _terms,
+                        self.cfg_learning["reward_rho1"],
+                        self.cfg_learning["reward_rho2"],
+                        self.cfg_learning["reward_rho3"])
                 elif self.cfg_learning["reward"] == "paper_eq9":
                     # TAP-DAR Eq.(9): rho1*r^queue + rho2*r^dist + rho3*r^reach.
                     # The QUEUE term is the change in downstream queue
@@ -4478,6 +4524,7 @@ class Kernel:
             self.topo, own, self.cfg_links["isl_queue_bits"],
             obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos,
             dir_progress=dir_progress, eta_by_dir=eta_by_dir,
+            cache_position=self.geometry.positions,
         )
 
     def _record_learning_queue_context(self, pkt: DataPacket, sat: int,
@@ -4524,6 +4571,73 @@ class Kernel:
                 self.topo.get(int(sat), {}).get(str(action), -1))
         except Exception:  # noqa: BLE001 - deliver has no ISL peer
             pkt.learning_peer_sat = -1
+
+    def _learning_avg_queue_len(self, sat: int) -> float:
+        """l^avg in eq.(11): the node's mean egress queue length, in PACKETS.
+
+        The paper's l^avg is a queue LENGTH (TABLE I caps it at L_max = 50
+        packets), so the four egress sub-queues are averaged and converted from
+        bits to packets.  Averaging is what the paper's superscript says; reading
+        a single port would make the term direction-dependent in a way eq.(11)
+        does not describe.
+        """
+        try:
+            links = self.isls[int(sat)]
+        except (KeyError, IndexError, TypeError):
+            return 0.0
+        if not links:
+            return 0.0
+        bits = 0.0
+        n = 0
+        for link in links.values():
+            try:
+                bits += float(link.data_bits + link.ctrl_bits)
+            except AttributeError:
+                continue
+            n += 1
+        if n == 0:
+            return 0.0
+        return (bits / n) / max(1.0, float(self.cfg_demand["packet_bits"]))
+
+    def _learning_hop_length_km(self, pkt: DataPacket, sat: int,
+                                peer: int) -> float:
+        """D_ij in eq.(12): the ISL length actually traversed, in km."""
+        if peer is None or int(peer) < 0:
+            return 0.0
+        try:
+            return float(self.geometry.isl_range_km(int(sat), int(peer),
+                                                    self.env.now))
+        except (AttributeError, TypeError, ValueError):
+            return 0.0
+
+    def _learning_dist_to_target_km(self, pkt: DataPacket,
+                                    sat: int) -> float:
+        """Distance from `sat` to the satellite serving the packet's target.
+
+        The paper's Delta D_t is the change in distance to the delivery point;
+        the delivery point is the closest satellite covering the destination
+        cell, which the kernel already resolves for ground-visible endpoints.
+        Missing geometry yields 0.0 so the term degrades to "no signal" rather
+        than to a fabricated distance.
+        """
+        if sat is None or int(sat) < 0:
+            return 0.0
+        try:
+            targets = [int(t) for t in self._serving_sats(str(pkt.dst))]
+        except (AttributeError, KeyError, TypeError):
+            return 0.0
+        if not targets:
+            return 0.0
+        best = None
+        for t in targets:
+            try:
+                r = float(self.geometry.isl_range_km(int(sat), t,
+                                                     self.env.now))
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if best is None or r < best:
+                best = r
+        return float(best) if best is not None else 0.0
 
     def _learning_dist_gain_km(self, pkt: DataPacket, sat: int,
                                now: float) -> float:
@@ -4688,6 +4802,11 @@ class Kernel:
         if self.fixed_policy is None:
             return None
         mask = {a: a in legal for a in _learning.ACTIONS}
+        if self.cfg_rt["contract"] == "PAPER":
+            # paper eq.(8): the action set is the four forwarding
+            # directions only. Delivery happens on reaching a
+            # satellite covering the destination, not by choice.
+            mask["deliver"] = False
         action = self._learning_action(pkt, sat, mask)
         if action not in legal:
             raise KernelError(
@@ -4696,6 +4815,18 @@ class Kernel:
         return action
 
     def _learning_action(self, pkt: DataPacket, sat: int, mask: dict) -> str:
+        if (self.cfg_rt["contract"] == "PAPER"
+                and pkt.learning_d0_km is None):
+            # Eq.(12) divides by D_0, the SOURCE-destination distance.  Capture it
+            # once per packet, at its first decision, so every hop of that packet
+            # uses the same denominator without re-deriving geometry each time.
+            try:
+                _d0 = self._learning_dist_to_target_km(pkt, int(sat))
+                if _d0 > 0.0:
+                    pkt.learning_d0_km = float(_d0)
+                    pkt.learning_prev_dist_km = float(_d0)
+            except Exception:  # noqa: BLE001 - a geometry gap must not be fatal
+                pass
         state = self._learning_observation(sat, pkt.dst, pkt)
         if self.fixed_policy is not None:
             # A1 fixed-inference path.  The observation contract, the mask and
@@ -7725,6 +7856,11 @@ class Kernel:
                 route_status=status, kind="forward", ta_audit=ta_audit)
             if self.learner is not None or self.fixed_policy is not None:
                 mask = {a: a in legal for a in _learning.ACTIONS}
+                if self.cfg_rt["contract"] == "PAPER":
+                    # paper eq.(8): the action set is the four forwarding
+                    # directions only. Delivery happens on reaching a
+                    # satellite covering the destination, not by choice.
+                    mask["deliver"] = False
                 action = self._learning_action(pkt, sat, mask)
                 if action not in legal:
                     # fail loud like the deliver-only branch: a learner that
