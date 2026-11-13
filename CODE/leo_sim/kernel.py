@@ -4494,7 +4494,14 @@ class Kernel:
                 eta_by_dir = None
                 self._c9_eta_error = f"{type(exc).__name__}: {exc}"
         dir_progress = None
-        if ep is not None and self.cfg_rt["contract"] in ("C1", "C3", "C8", "C9"):
+        # PAPER and C10 were MISSING from this gate.  Their observation includes the
+        # direction_progress block (the last 4 dims), but the block was never
+        # computed for them, so it was silently all zeros: every PAPER run so far
+        # trained a network that could not see WHICH DIRECTION approaches the
+        # destination.  Measured consequence: 10.4-12.4 mean hops on a 1-2 hop
+        # geometry, against the paper's ~3.6 -- the policy was walking blind.
+        if ep is not None and self.cfg_rt["contract"] in (
+                "C1", "C3", "C8", "C9", "C10", "PAPER"):
             try:
                 targets = [t for t in self._serving_sats(str(dst_cell))]
                 span = float(self.cfg_links["max_isl_km"]) or 1.0
