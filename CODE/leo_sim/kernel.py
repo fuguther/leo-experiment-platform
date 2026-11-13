@@ -4391,9 +4391,23 @@ class Kernel:
                 _cands = list(self.isls[sat].keys())
                 _own_q = {d: int(l.data_bits + l.ctrl_bits)
                           for d, l in self.isls[sat].items()}
+                # MIRROR _score_order EXACTLY.  That path builds the snapshot
+                # twice: first with horizon=None, then resolves the common
+                # horizon and REBUILDS.  The decision the learner is asked to
+                # reproduce is the SECOND one, so the observation must use the
+                # same instants -- an earlier version kept the first snapshot and
+                # described the decision with a different state.
+                _arm = str(self.cfg_ta["arm"])
+                _rule = str(self.cfg_ta["common_rule"])
+                if _rule == "fixed_horizon":
+                    _hz = float(self.cfg_ta["common_horizon_s"])
+                else:
+                    _hz = _ta.resolve_common_horizon(
+                        self._build_ta_snapshot(pkt, sat, self.env.now,
+                                                _cands, _own_q, _arm, None),
+                        _rule)
                 _probe = self._build_ta_snapshot(
-                    pkt, sat, self.env.now, _cands, _own_q,
-                    str(self.cfg_ta["arm"]), None)
+                    pkt, sat, self.env.now, _cands, _own_q, _arm, _hz)
                 _plan = _ta.plan_decision(_probe)
                 # CandidateScore carries exactly the terms the ranking summed
                 eta_by_dir = {
