@@ -1926,7 +1926,8 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
             np.ravel(own)[:PAPER_QUEUE_FEATURES], dtype=np.float64).reshape(-1)
         own_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
         if root_pos is not None:
-            own_pos = np.asarray(root_pos, dtype=np.float64) / 1.0e4
+            own_pos = np.ravel(
+                np.asarray(root_pos, dtype=np.float64)).astype(np.float64) / 1.0e4
         blocks = []
         for d in GRAPH_DIRS:
             peer = (topo.get(sat, {}) or {}).get(d)
@@ -1937,10 +1938,17 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                 # the paper's l^avg, i.e. a length, not an occupancy ratio
                 nb_q = float(np.mean(np.asarray(feats[peer])[:PAPER_QUEUE_FEATURES]))
                 pj = cache_position
-                if pj is not None:
+                if pj is not None and root_pos is not None:
                     try:
-                        nb_pos = (np.asarray(pj(int(peer)), dtype=np.float64)
-                                  - np.asarray(root_pos, dtype=np.float64)) / 1.0e4
+                        # cache_position is geometry.positions(t): it maps a TIME
+                        # to the whole constellation, so it must be indexed by the
+                        # peer satellite id.  Calling it with the satellite id as
+                        # the time argument returned all 66 positions (198 values)
+                        # and blew the row up to 421 dims.
+                        nb_pos = (
+                            np.asarray(pj(now), dtype=np.float64)[int(peer)]
+                            - np.asarray(root_pos, dtype=np.float64)) / 1.0e4
+                        nb_pos = np.ravel(nb_pos).astype(np.float64)
                     except Exception:  # noqa: BLE001
                         nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
             else:
