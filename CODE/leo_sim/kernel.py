@@ -4534,7 +4534,9 @@ class Kernel:
             # special-case it; S4 gets the TRUE current queues, which only a
             # zero-delay oracle could know.
             _scheme = str(self.cfg_learning.get("paper_scheme") or "s2")
-            if _scheme == "s3":
+            if _scheme == "s1":
+                _paper_state = "none"
+            elif _scheme == "s3":
                 _paper_state = "predict"
                 # calibrate growth from the run's own offered load: each node is
                 # offered load/66 Mbps and one packet is packet_bits, so a queue

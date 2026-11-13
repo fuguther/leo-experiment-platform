@@ -1952,7 +1952,13 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                 np.asarray(root_pos, dtype=np.float64)).astype(np.float64) / 1.0e4
         blocks = []
         for d in GRAPH_DIRS:
-            peer = (topo.get(sat, {}) or {}).get(d)
+            # Scheme 1 exchanges NO information: the paper's IDQN decides from
+            # local observation only.  Masking the peer here (rather than
+            # hard-coding vis_k=0) keeps the control plane identical across arms
+            # so the comparison isolates the value of the information, not the
+            # cost of carrying it.
+            peer = (None if paper_state == "none"
+                    else (topo.get(sat, {}) or {}).get(d))
             nb_q = 0.0
             nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
             if peer is not None and peer in feats:
