@@ -3273,7 +3273,11 @@ class Kernel:
                     #     with the NEXT HOP's (eq. 11), not chosen-vs-alternative;
                     #   * the distance term SUBTRACTS the hop length (eq. 12),
                     #     so a detour is negative instead of merely small.
-                    _li = self._learning_avg_queue_len(int(sat))
+                    # _transmit has no `sat` in scope (this is the same trap that
+                    # broke the paper_eq9 path once already): the transmitting
+                    # node is link_ref[1].
+                    _cur_sat = int(link_ref[1])
+                    _li = self._learning_avg_queue_len(_cur_sat)
                     _peer = -1
                     try:
                         _peer = int(pkt.learning_peer_sat)
@@ -3283,11 +3287,11 @@ class Kernel:
                            if _peer >= 0 else 0.0)
                     _r_q = _learning.paper_eq10_queue(_li, _lj)
                     _hop_km = self._learning_hop_length_km(
-                        pkt, int(sat), _peer)
+                        pkt, _cur_sat, _peer)
                     _prev_km = (float(pkt.learning_prev_dist_km)
                                 if pkt.learning_prev_dist_km is not None
                                 else self._learning_dist_to_target_km(
-                                    pkt, int(sat)))
+                                    pkt, _cur_sat))
                     _now_km = (self._learning_dist_to_target_km(pkt, _peer)
                                if _peer >= 0 else _prev_km)
                     _r_d = _learning.paper_eq12_dist(
