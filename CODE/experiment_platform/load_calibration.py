@@ -143,7 +143,9 @@ OVERRIDE_FIELDS = {
                  "checkpoint_path", "checkpoint_sha256",
                  "checkpoint_metadata_sha256",
                  # BC warm start: which artifact the online net starts from
-                 "init_from", "init_from_sha256"},
+                 "init_from", "init_from_sha256",
+                 # opt-in hop cost for paper_eq9; non-zero is a deviation
+                 "forward_step_penalty"},
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
                   # A DDQN training cell MUST be able to declare this: the
                   # kernel refuses a learning arm under
