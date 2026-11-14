@@ -1898,7 +1898,16 @@ def _paper_predict_from_history(history, now: float) -> float | None:
             q = e.payload.get("isl_queue_bits")
             if not q:
                 continue
-            pairs.append((float(e.generated_at), float(sum(q.values()))))
+            # each direction is a RECORD, not a number:
+            #   {"peer": int, "value": queued_bits, "generation": int,
+            #    "rate_bps": float, "work_ahead_bits_proxy": float}
+            # sum(q.values()) raised TypeError on that dict and was swallowed by the
+            # except below, so every call returned None and the predictor never fired.
+            total = 0.0
+            for rec in q.values():
+                total += float(rec.get("value", 0.0)) if isinstance(rec, dict) \
+                    else float(rec)
+            pairs.append((float(e.generated_at), total))
         pairs.sort()
         if len(pairs) < 2:
             return None
