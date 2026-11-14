@@ -2058,7 +2058,29 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                 # queue length with a slot ratio, a visibility ratio and an AoI and
                 # called the result "the neighbour's queue" -- the single most important
                 # input of the entire paper was garbage.
-                nb_q = float(np.asarray(feats[peer])[0])
+                # A peer that is present in the topology but whose advertisement was
+                # measured on a DIFFERENT peer (the ISL was re-matched since) carries no
+                # usable queue information.  _origin_features reports 0 for it via
+                # _peer_bit_value, and 0 in this slot means "the neighbour is EMPTY" --
+                # the opposite of the truth.  An unknown neighbour must read as fully
+                # loaded (1.0), exactly as the `peer is None` branch below already does;
+                # otherwise the agent is told free capacity exists where none was
+                # measured and is steered INTO the direction it should avoid.  This is
+                # the same fail-safe the legacy observation uses (infQueue -> 1.0).
+                # Detect the re-matched case directly from the advertisement the
+                # cache is holding for this origin: if that payload was measured on a
+                # different peer than the one the topology currently maps direction d
+                # to, its queue value describes a link that no longer exists.
+                _ent = (entries or {}).get(int(peer))
+                _adv = None
+                if _ent is not None:
+                    try:
+                        _adv = _ent.payload.get("isl_queue_bits", {}).get(d)
+                    except (AttributeError, TypeError):
+                        _adv = None
+                _adv_peer = (_adv.get("peer") if isinstance(_adv, dict) else None)
+                _matches = (_adv_peer is None) or (_adv_peer == int(peer))
+                nb_q = (float(np.asarray(feats[peer])[0]) if _matches else 1.0)
                 # ONE normalisation for all four arms.  _origin_features reports
                 # q / (isl_queue_cap * 4) -- the sum over four directions divided by
                 # four capacities, i.e. the MEAN occupancy as a fraction of L_max.
