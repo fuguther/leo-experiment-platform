@@ -1874,6 +1874,45 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
     return state
 
 
+def _paper_predict_from_history(history, now: float) -> float | None:
+    """Project a neighbour queue from the LAST TWO samples it advertised.
+
+    The linear-arrival-rate substitute was wrong in principle: it assumed the node is
+    permanently saturated, which projected 20 packets onto neighbours whose measured
+    queue was 0.0004 packets.  The paper's unit is a T-LSTM over the advertised history
+    (eq. 13-18); with two samples the faithful reduction is the SECANT of that history --
+    the neighbour's own observed trend -- extrapolated to `now`:
+
+        l_hat(now) = l_k + (l_k - l_{k-1}) / (t_k - t_{k-1}) * (now - t_k)
+
+    Clamped at 0 (a queue cannot be negative) and at L_max (it cannot exceed the
+    buffer).  If the history holds fewer than two usable samples the caller falls back
+    to the value as received, which is exactly Scheme 2's behaviour -- so a missing
+    history degrades the arm to S2 instead of fabricating a trend.
+
+    Returns None when there is not enough history.
+    """
+    try:
+        pairs = []
+        for e in (history or ()):
+            q = e.payload.get("isl_queue_bits")
+            if not q:
+                continue
+            pairs.append((float(e.generated_at), float(sum(q.values()))))
+        pairs.sort()
+        if len(pairs) < 2:
+            return None
+        (t0, q0), (t1, q1) = pairs[-2], pairs[-1]
+        dt = t1 - t0
+        if dt <= 1e-9:
+            return None
+        slope = (q1 - q0) / dt
+        age = max(0.0, float(now) - t1)
+        return max(0.0, q1 + slope * age)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
 def _paper_predict_queue(observed: float, age_s: float,
                          growth_per_s: float) -> float:
     """Compensate a stale queue reading to the decision instant.
@@ -1998,13 +2037,16 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                     if _t is not None:
                         nb_q = float(_t)
                 elif paper_state == "predict":
-                    _age = 0.0
-                    try:
-                        _age = float(now - entries[peer].generated_at)
-                    except (KeyError, AttributeError):
-                        _age = 0.0
-                    nb_q = _paper_predict_queue(
-                        nb_q, _age, paper_queue_growth)
+                    # SECANT OF THE ADVERTISED HISTORY, not an assumed arrival rate.
+                    # See _paper_predict_from_history: the arrival-rate substitute
+                    # projected 20 packets onto neighbours measured at 0.0004, i.e. it
+                    # assumed permanent saturation.  The secant uses the neighbour's own
+                    # observed trend; with no history it returns None and we keep the
+                    # received value (Scheme 2 behaviour) rather than inventing one.
+                    _proj = _paper_predict_from_history(
+                        getattr(cache, "history", {}).get(int(peer)), now)
+                    if _proj is not None:
+                        nb_q = float(_proj) / max(1.0, float(isl_queue_cap))
                 pj = cache_position
                 if pj is not None and root_pos is not None:
                     try:
