@@ -4545,14 +4545,23 @@ class Kernel:
                 _paper_state = "none"
             elif _scheme == "s3":
                 _paper_state = "predict"
-                # calibrate growth from the run's own offered load: each node is
-                # offered load/66 Mbps and one packet is packet_bits, so a queue
-                # that keeps up with arrivals grows at that many packets/second.
+                # Growth of the neighbour queue, in packets per SECOND, from the
+                # run's own offered load: a node is offered (total)/(num_sats)
+                # Mbps and one packet is packet_bits, so arrivals are
+                #   per_node_mbps * 1e6 / pkt_bits   packets/second.
+                #
+                # A trailing *1e-3 used to be here.  It was a UNIT error: the
+                # quotient above is already per-second, so the factor made the
+                # predictor 1000x too weak.  At a 0.25 s sample age the correct
+                # projection adds ~39 packets and the buggy one added 0.039 --
+                # i.e. Scheme 3's compensation did essentially nothing and the arm
+                # behaved like Scheme 2, which is exactly what the measurements
+                # showed.  Removed.
                 _per_node = (float(self.cfg_dm["offered_mbps"])
                              + float(self.cfg_dm.get("sat_background_mbps") or 0.0)) \
                     / max(1, self.num_sats)
                 _pkt_bits = max(1.0, float(self.cfg_dm["packet_bits"]))
-                _paper_growth = (_per_node * 1e6 / _pkt_bits) * 1e-3
+                _paper_growth = _per_node * 1e6 / _pkt_bits
             elif _scheme == "s4":
                 _paper_state = "ideal"
                 _paper_true = {
