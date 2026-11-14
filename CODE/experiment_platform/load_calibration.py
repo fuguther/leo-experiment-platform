@@ -53,6 +53,28 @@ ALLOWED_PROFILES = (
     # 1 Gbps ISL to a target utilisation.  In the 10x10 degree regional
     # population scene max_e b_e = 0.0398 and no affordable rate can.
     "CODE/leo_sim/profiles/t1_scene_trunk_v1.yaml",
+    # TAP-DAR PAPER CONSTELLATIONS.  The paper evaluates three constellations
+    # (66 / 140 / 351 satellites) with its own physical parameters (8 KB
+    # packets, 500 MHz, 50-packet buffer, 16-byte one-hop queue-state
+    # exchange).  A reproduction that ran a fourth, self-chosen constellation
+    # could not be compared with the paper at all, so these three are first
+    # class scenes rather than per-cell overrides -- the constellation is a
+    # PROPERTY OF THE SCENE, and load_calibration deliberately does not let a
+    # cell rewrite it.
+    "CODE/leo_sim/profiles/tapdar_iridium_66.yaml",
+    "CODE/leo_sim/profiles/tapdar_kepler_140.yaml",
+    "CODE/leo_sim/profiles/tapdar_telesat_351.yaml",
+    # GATEWAY-DENSITY AXIS.  The paper never says how many ground stations it
+    # uses, and that number decides how much of the queueing sits in the access
+    # network versus the ISLs.  With the inherited 3 gateways the ISL path is
+    # essentially forced over this 66-satellite constellation (measured: only
+    # 20-28 distinct paths in a whole run and 0.000% path divergence between
+    # arms), so gateway density has to be an explicit scene axis rather than a
+    # silent inherited value.
+    "CODE/leo_sim/profiles/tapdar_iridium_66_gs6.yaml",
+    "CODE/leo_sim/profiles/tapdar_iridium_66_gs12.yaml",
+    "CODE/leo_sim/profiles/tapdar_iridium_66_gs24.yaml",
+    "CODE/leo_sim/profiles/tapdar_iridium_66_gs48.yaml",
 )
 ALLOWED_ARMS = ("stale", "now", "common", "candidate")
 #: Bounded envelope for a contract's declared simulation horizon.  12 s is the
@@ -71,25 +93,98 @@ MIN_FREE_BYTES = 5 * 1024**3
 SUMMARY_RESERVE_BYTES = 1024 * 1024
 
 OVERRIDE_FIELDS = {
+    # GROUND-STATION COUNT.  The paper describes "ground station -> satellite
+    # network -> target ground station" but never states K, and K decides how much
+    # traffic funnels through access queues versus the ISL mesh -- i.e. whether a
+    # queue-aware router has anything to choose between.  Sweeping it is the
+    # highest-value missing experiment, so the sites list is overridable.
+    "endpoints": {"sites", "grid_deg", "aggregation_deg",
+                  "region_lat_bounds_deg", "region_lon_bounds_deg"},
     "access": {"slots_per_satellite", "uplink_rate_mbps",
                "downlink_rate_mbps"},
     "control_plane": {"advertise_interval_s", "vis_k",
                       "initial_sync_burst_s", "event_advert_enabled",
-                      "event_advert_min_interval_s"},
+                      "event_advert_min_interval_s",
+                      # PROTOCOL PAYLOAD SIZE.  The advertisement's size is a
+                      # property of the protocol every scheme shares, not of a
+                      # scheme: it sets the control-overhead axis (the paper
+                      # reports 0.195%), so a comparison that fixes it for one
+                      # arm and not the others measures the payload.  8000 bit
+                      # = 1 kB per advert is a defensible upper bound for a
+                      # full neighbour table; the sweep declares it explicitly
+                      # so the overhead is a measured quantity, not a leftover
+                      # of the profile.
+                      "packet_bits"},
     # mode and csv_path are injected ONLY by the declared trace_program path
     # below, never typed by a cell: a cell that names its own CSV could smuggle
     # in a trace the calibration never saw.
     "demand": {"mode", "csv_path", "offered_mbps", "packet_bits",
                "emission_start_s",
                "emission_end_s", "burst_start_s", "burst_duration_s",
-               "burst_multiplier"},
+               "burst_multiplier",
+               # inter-satellite background flow (generic capability)
+               "sat_background_mbps", "sat_background_packet_bits",
+               "sat_background_seed"},
+    # LEARNING (training) AXIS.  The four-scheme comparison runs frozen policies,
+    # but a DDQN arm has to be TRAINED first, and training is a platform
+    # capability, not an algorithm change: algorithm/mode/resume plus the
+    # hyper-parameters the paper does not state.  Listing them here means a
+    # training episode is a declared, snapshot-identified contract cell rather
+    # than an unrecorded side experiment.  A cell still cannot smuggle in a
+    # checkpoint it did not declare: resume_path/resume_sha256 are bound into
+    # the resolved config and therefore into config_sha256.
+    "learning": {"algorithm", "mode", "seed", "resume_path", "resume_sha256",
+                 "batch_size", "replay_size", "target_update_interval",
+                 "epsilon_start", "epsilon_end", "epsilon_decay_s",
+                 "lr", "gamma",
+                 # The objective IS part of the experiment: training a DDQN on
+                 # a different reward answers a different question, so the
+                 # reward selector and the Eq.(9) weights must be declarable
+                 # (and are bound into config_sha256 by doing so).
+                 "reward", "reward_rho1", "reward_rho2", "reward_rho3",
+                 # An EVAL cell must name the exact frozen weights it runs.
+                 # Without these the only options are "use whatever is on disk"
+                 # (unverifiable) or "never evaluate a trained model at all".
+                 # The hashes are part of the resolved config, so the run can
+                 # prove WHICH weights produced its numbers.
+                 "checkpoint_path", "checkpoint_sha256",
+                 "checkpoint_metadata_sha256",
+                 # BC warm start: which artifact the online net starts from
+                 "init_from", "init_from_sha256",
+                 # opt-in hop cost for paper_eq9; non-zero is a deviation
+                 "forward_step_penalty",
+                 # which of the paper's four schemes this cell reproduces
+                 "paper_scheme"},
     "execution": {"compute_servers_per_satellite", "compute_delay_s",
+                  # A DDQN training cell MUST be able to declare this: the
+                  # kernel refuses a learning arm under
+                  # decision_observation_mode=frozen, and every scene profile
+                  # defaults to frozen.  It is a declared execution property,
+                  # not tuning -- it decides whether the action is chosen from
+                  # a frozen snapshot or from re-read state.
+                  "decision_observation_mode",
                   "max_packets"},
     # isl_queue_bits is the drain-time buffer axis: the calibrated buffer is
     # DEFINED as C_e * tau_buffer, so the 5 / 20 / 100 ms sensitivity sweep is
     # an override of exactly this field and nothing else.
-    "links": {"rf_isl", "rate_model", "isl_rate_mbps", "isl_queue_bits"},
-    "routing": {"policy", "staged_policy", "staged_policy_at_s"},
+    # max_isl_km bounds the ISL geometry.  The Iridium profile inherited 6000 km
+    # from a generic trunk file, but a 780 km shell has intra-plane ISLs of 440 km
+    # and cross-plane ISLs of at most ~4400 km; 6000 km inflated every hop's
+    # propagation and is why E2E sat near 142 ms while the paper reports 72 ms.
+    # Finding the right value is an experiment, so the field is overridable.
+    "links": {"rf_isl", "rate_model", "isl_rate_mbps", "isl_queue_bits",
+              "max_isl_km"},
+    # learning_enabled / contract are the two switches that pair a routing
+    # policy with the learner: a DDQN arm cannot be declared without them.
+    "routing": {"policy", "staged_policy", "staged_policy_at_s",
+                "learning_enabled", "contract",
+                # external inference-only policy plugin manifest (generic
+                # seam; the algorithm lives outside the platform)
+                "policy_plugin", "min_remaining_hop_only",
+                # destination knowledge source (advertised vs known static
+                # table): an ADDRESSING knob, not a congestion-information one,
+                # so the four schemes can be compared with the same addresses.
+                "destination_source"},
     "scenario": {"duration_s", "seed"},
     # Queue-state-age comparisons vary admissible measurement age
     # (min_observation_age_s) alongside time-alignment query behavior.  Keep
@@ -105,7 +200,9 @@ OVERRIDE_FIELDS = {
                        # Diagnostics-only score quantisation, used by the
                        # tie-break A/B intervention.  Absent keeps the
                        # historical sort key exactly.
-                       "tie_sig_digits"},
+                       "tie_sig_digits",
+                       # path-cost scale of the remaining-path term
+                       "remaining_path_scale"},
 }
 
 
@@ -1008,8 +1105,22 @@ def run_calibration(contract_path: Path, cell_id: str, out_dir: Path,
                         "target_probe_stride": diagnostics.get(
                             "truth_probe_stride"),
                     }
+                # A TRAINING arm must be able to persist what it learned.
+                # run_simulation takes learning_out_dir and save_and_verify()
+                # writes checkpoint + resume bundle into it, but the driver
+                # never passed one, so every training episode finished with
+                # 700k train steps and NO artifact: `loaded_checkpoint: null`
+                # and nothing on disk to continue from.  An eval arm gets None
+                # so it can never write weights.
+                _learning_out = None
+                if str(arm_resolved["config"]["learning"]["mode"]) == "train" \
+                        and str(arm_resolved["config"]["learning"]["algorithm"]) \
+                        in ("ddqn", "qlearning"):
+                    _learning_out = str(arm_dir / "learning")
+                    os.makedirs(_learning_out, exist_ok=True)
                 result = kernel.run_simulation(
                     arm_resolved, rows, geometry=geometry,
+                    learning_out_dir=_learning_out,
                     decision_sink=decision_sink, timeline_sink=timeline_sink,
                     control_audit=diagnostics["control_audit"],
                     **probe_kwargs)

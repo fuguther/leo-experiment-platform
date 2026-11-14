@@ -33,6 +33,15 @@ CONTRACTS = ("C1", "C3", "C4", "C5", "C6", "C7", "GAT", "MPNN")
 
 # per-origin feature block layout (all normalized):
 #   [isl_queue_ratio, access_load_ratio, n_visible_cells_norm, aoi_norm]
+#: Per-direction progress toward the destination.  This block is the ONE thing
+#: that tells the agent WHICH WAY the destination lies: the existing observation
+#: carries the destination bearing at the satellite's own subpoint, but the
+#: agent cannot map a bearing to N/S/E/W without knowing its own orbital
+#: orientation, which the state never contained.  Without it a trained DDQN
+#: measured 11.6-12.0 mean hops on a 4.2-5.4 hop network, lost 37% of packets to
+#: ISL queue overflow and 22% to max_hops, and landed at PDR 0.29-0.59 against
+#: 1.0000 for every deterministic baseline.
+DIRECTION_PROGRESS_FEATURES = 4
 ORIGIN_FEATURES = 4
 # own-state feature block layout (all normalized):
 #   [access_slots_ratio, qN, qS, qE, qW, visible_cells_ratio, bias_flag]
@@ -50,6 +59,64 @@ DEST_FEATURES = 3
 _DEST_DIST_NORM_KM = 20000.0
 _EARTH_R_KM = 6371.0
 C3_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own state + mean aggregate
+#: C8 keeps the four neighbour states SEPARATE instead of averaging them.  The
+#: averaging is what made the scorer's choice unlearnable: measured over 86,984
+#: real decisions, the best single-feature |corr| with the chosen direction was
+#: 0.098 and supervised imitation reached 29.6% against a 25% chance floor --
+#: because "the mean neighbour queue is 400" cannot distinguish "N is 10, E is
+#: 790" from "N is 400, E is 400".  C8 fixes exactly that.
+C8_DIM = OWN_FEATURES + 4 * ORIGIN_FEATURES
+#: C9 adds, for each direction, the ETA DECOMPOSITION the scorer itself ranks
+#: on.  This is the missing piece: C3/C8 describe neighbours by QUEUE OCCUPANCY,
+#: while score_candidates orders candidates by prop_s + local_egress_wait_s +
+#: tx_s + resource_work_s + peer_process_s.  Those are different quantities, so
+#: a network reading occupancy cannot reproduce the ranking -- measured, BC
+#: reached 29.6% (C3) and 30.1% (C8) against a 25% chance floor.  All six values
+#: are known AT DECISION TIME (the scorer computes them), so this adds no
+#: future information.
+ETA_FEATURES = 6
+C9_DIM = C8_DIM + 4 * ETA_FEATURES
+#: C10 adds, per direction, whether that direction is ACTUALLY USABLE right now --
+#: the resource mapping exists and the resource reports itself available.  This is
+#: the one quantity the scorer reads (`resource_available_for`) that no observation
+#: contract exposes.  Measured at 18 Mbps/node, the best reward tuning reached 7.48
+#: hops but lost 10.4% of packets to NO_ROUTE (baseline 0.4%): the policy cannot
+#: tell a direction that leads nowhere from one that is merely congested, so it
+#: keeps committing to dead ends.  Three numbers per direction: mapped, available,
+#: and "usable" (= both).
+AVAIL_FEATURES = 3
+C10_DIM = C9_DIM + 4 * AVAIL_FEATURES
+#: PAPER -- the observation the paper actually defines (S III-A, :148):
+#:
+#:     O_i^t = { L_i^t , P_i^t }
+#:     L_i^t = { l_i^U, l_i^D, l_i^R, l_i^L }      four egress buffer lengths
+#:     P_i^t = { p_i(t), {p_j(t)}_{j in N_i}, p_dist(t) }
+#:
+#: That is 4 queue lengths plus position information for the agent, its one-hop
+#: neighbours, and the satellite serving the destination region.  Everything the
+#: other contracts added (occupancy ratios, ETA decompositions, availability
+#: masks) is NOT in the paper, and C3/C8/C9/C10 were therefore testing quantities
+#: the paper never claimed -- a large part of why two weeks of tuning did not
+#: reproduce anything.
+#:
+#: Layout (22 dims):
+#:   own       : 4 queue lengths (normalised by L_max) + 3 own position  = 7
+#:   neighbours: 4 dirs x (queue length + 3 relative position)            = 16
+#:   dest sat  : normalised distance to the destination-serving satellite = 1
+#:   (destination satellite identity is handled by the direction progress
+#:    block below so the network can tell "towards" from "away")
+PAPER_QUEUE_FEATURES = 4
+PAPER_POS_FEATURES = 3
+#: Each neighbour contributes ONE queue length plus its 3 relative-position
+#: components = 4, not 4+3: the neighbour advertises one l^avg per the paper, and
+#: its position is a single 3-vector.
+PAPER_NBR_FEATURES = 1 + PAPER_POS_FEATURES                          # 4
+#: 4 own queue lengths + 3 own position + 4 x (1 neighbour queue + 3 relative
+#: position) + 1 dest-serving distance = 24, and _finish appends the shared
+#: destination_features (3) and direction_progress (4), so the total is 31.
+PAPER_BODY = PAPER_QUEUE_FEATURES + PAPER_POS_FEATURES \
+    + 4 * PAPER_NBR_FEATURES + 1
+PAPER_DIM = PAPER_BODY + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES
 C4_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own + AoI-weighted aggregate
 C5_DIM = OWN_FEATURES + ORIGIN_FEATURES + 1        # own + freshest entry + staleness flag
 C6_MAX_HOPS = 4
@@ -61,12 +128,19 @@ C1_DIM = OWN_FEATURES + C1_MAX_NEIGHBORS * ORIGIN_FEATURES
 
 # Every contract appends the 3 destination-conditioning features.
 CONTRACT_DIMS = {
-    "C1": C1_DIM + DEST_FEATURES,
-    "C3": C3_DIM + DEST_FEATURES,
-    "C4": C4_DIM + DEST_FEATURES,
-    "C5": C5_DIM + DEST_FEATURES,
-    "C6": C6_DIM + DEST_FEATURES,
-    "C7": C7_DIM + DEST_FEATURES,
+    "C1": C1_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C3": C3_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C8": C8_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C9": C9_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C10": C10_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "PAPER": PAPER_DIM,
+    # C4-C7 also receive the direction-progress block from _finish, exactly
+    # like C1/C3/C8/C9/C10/PAPER.  Their declarations omitted it, so the
+    # declared width was 4 short of what build_observation returns.
+    "C4": C4_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C5": C5_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C6": C6_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
+    "C7": C7_DIM + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES,
 }
 ACTIONS = ("deliver", "N", "S", "E", "W")
 
@@ -526,6 +600,8 @@ class TensorflowDDQN:
         self.mode = cfg["mode"]
         self.loaded_resume_path = None
         self.loaded_resume_sha256 = None
+        self.loaded_init_from = None
+        self.loaded_init_from_sha256 = None
         self.resume_manifest_sha256 = None
         self.resume_verified = False
         checkpoint = cfg.get("checkpoint_path")
@@ -573,6 +649,33 @@ class TensorflowDDQN:
             self.loaded_checkpoint = None
             self.loaded_checkpoint_sha256 = None
             self.loaded_checkpoint_metadata_sha256 = None
+            # BEHAVIOUR-CLONING WARM START.  A from-scratch DDQN needs the
+            # paper's ~500 episodes before its policy is usable; measured here,
+            # 11 episodes produced 12.76 mean hops against 4.03 for the
+            # deterministic baseline.  `init_from` lets the online network START
+            # at a policy that already routes (imitation of that baseline) so
+            # DDQN only has to IMPROVE it, not discover routing from scratch.
+            init = cfg.get("init_from")
+            if init:
+                ipath = Path(str(init))
+                if not ipath.is_file():
+                    raise LearningUnavailable(
+                        f"learning.init_from not found: {ipath}")
+                want = hashlib.sha256(ipath.read_bytes()).hexdigest()
+                expect = cfg.get("init_from_sha256")
+                if expect is not None and want != str(expect):
+                    raise LearningUnavailable(
+                        "learning.init_from SHA-256 differs from resolved config")
+                warm = self.tf.keras.models.load_model(str(ipath), compile=False)
+                if warm.output_shape[-1] != len(ACTIONS) \
+                        or warm.input_shape[-1] != self.online.input_shape[-1]:
+                    raise LearningUnavailable(
+                        "learning.init_from shape does not match "
+                        f"contract/actions (got {warm.input_shape} -> "
+                        f"{warm.output_shape})")
+                self.online.set_weights(warm.get_weights())
+                self.loaded_init_from = str(ipath.resolve())
+                self.loaded_init_from_sha256 = want
         self.target = self._network()
         self.target.set_weights(self.online.get_weights())
         self.optimizer = self.tf.keras.optimizers.Adam(
@@ -1388,6 +1491,133 @@ def queue_reward(wait_s: float, w1: float, beta: float) -> float:
     return float(w1) * math.exp(-float(beta) * max(float(wait_s), 0.0))
 
 
+#: Measured dynamic ranges of the two continuous Eq.(9) terms, as fractions of
+#: their full-scale divisor.  A queue delta is ~1e-3 of one buffer; a distance
+#: delta is ~1e-1 of one ISL range.  Dividing by these makes rho directly
+#: comparable, which is what the paper's equal rho1 = rho2 assumes.
+QUEUE_NATIVE_SCALE = 0.01
+DIST_NATIVE_SCALE = 0.20
+
+
+def paper_reward_terms(queue_delta_bits: float, dist_delta_km: float,
+                       reached: bool, *, queue_cap_bits: float,
+                       max_isl_km: float, use_native_scales: bool = True) -> dict:
+    """The three reward components of TAP-DAR Eq.(9), each in [-1, 1].
+
+    The paper defines
+        r_t = rho1 * r_t^queue + rho2 * r_t^dist + rho3 * r_t^reach,
+        rho1 + rho2 + rho3 = 1,  (rho1, rho2, rho3) = (0.4, 0.4, 0.2)
+    and describes the three terms as load balancing (steer traffic away from
+    heavily loaded nodes), distance reduction, and a fixed completion reward.
+
+    The paper does not state the per-term normalisation, so each term is scaled
+    into [-1, 1] against a physically meaningful bound and the SCALING is
+    recorded as a deviation:
+      * queue : -delta_cap, the change in total downstream queue occupancy in
+                units of one full buffer, clipped.  Negative delta (the chosen
+                direction is emptier than the alternative we left) is good.
+      * dist  : progress toward the destination normalised by the longest ISL,
+                so one hop across a full-range link scores 1.0.
+      * reach : 1.0 only on the hop that delivers the packet, else 0.
+
+    Returned as a dict so the caller can log each component separately; the
+    caller applies the rho weights from config.
+    """
+    # SCALE MATCHING.  Dividing the queue term by the FULL buffer and the
+    # distance term by the FULL ISL range makes the two terms incomparable even
+    # though the paper weights them equally: measured over 17,457 real rewards,
+    # the queue term had sd 0.0328 (99.4% of samples exactly zero) while the
+    # distance term had sd 0.3159 -- a 9.6x mismatch.  With rho1 = rho2 = 0.4
+    # the EFFECTIVE weights were therefore about (0.02, 1.0, 0.0), not the
+    # paper's (0.4, 0.4, 0.2).  Each term is now divided by its own dynamic
+    # range and then clipped, so equal rho means equal influence.
+    cap = float(queue_cap_bits) if queue_cap_bits else 0.0
+    if cap > 0.0:
+        q = max(-1.0, min(1.0, -float(queue_delta_bits) / cap))
+    else:
+        q = 0.0
+    span = float(max_isl_km) if max_isl_km else 0.0
+    if span > 0.0:
+        d = max(-1.0, min(1.0, float(dist_delta_km) / span))
+    else:
+        d = 0.0
+    if use_native_scales:
+        # The measured ranges: a queue DELTA of one buffer is essentially
+        # unreachable (deltas are ~1e-3 of a buffer), while a one-ISL distance
+        # delta is common.  Rescale so the two arrive in the same units before
+        # rho is applied.
+        q = max(-1.0, min(1.0, q / QUEUE_NATIVE_SCALE))
+        d = max(-1.0, min(1.0, d / DIST_NATIVE_SCALE))
+    return {"queue": q, "dist": d, "reach": 1.0 if reached else 0.0}
+
+
+#: Eq.(10) exponent and Eq.(11) smoothing constant.  The paper writes beta as "an
+#: adjustable parameter" without a value and kappa as "a very small positive
+#: constant"; beta = 1 makes |dL|^beta the identity (the least surprising reading,
+#: and the one that cannot invent curvature the paper never specified), kappa =
+#: 1e-6 keeps the denominator away from zero without changing any realistic ratio.
+# Value of r^reach, the completion reward of eq.(9).  The paper states the term is a
+# "fixed positive value" granted only on successful delivery but does not print the
+# number.  It cannot be small: measured forward reward on the calibrated scene is
+# -0.0569 per hop, so a 6-hop path earns -0.341, and any r^reach * rho3 below that makes
+# DELIVERING WORSE THAN WANDERING.  With rho3 = 0.2 the unit must exceed 1.7 for a
+# typical path to net positive; 5.0 leaves a clear margin on a 10-hop path
+# (5.0*0.2 = 1.0 vs -0.57).  This is an explicit deviation.
+PAPER_REACH_UNIT = 5.0
+
+PAPER_REWARD_BETA = 1.0
+PAPER_REWARD_KAPPA = 1e-6
+
+
+def paper_eq10_queue(l_i_avg: float, l_j_avg: float,
+                     beta: float = PAPER_REWARD_BETA,
+                     kappa: float = PAPER_REWARD_KAPPA) -> float:
+    """Eq.(10)+(11): the normalised queue-difference load-balancing reward.
+
+        dL_t = (l_i^avg - l_j^avg) / (l_i^avg + l_j^avg + kappa)
+        r^queue = sign(dL_t) * |dL_t| ^ beta
+
+    Note what this is NOT: it is a signed difference of the CURRENT and NEXT-HOP
+    average queue LENGTHS, not the "chosen vs alternative direction" difference the
+    earlier paper_eq9 implementation used.  When the chosen direction is the longer
+    queue dL_t > 0 and the reward is POSITIVE, i.e. the paper's sign convention is
+    "own queue minus next queue": being stuck behind a longer local queue than the
+    neighbour's is what the term rewards leaving.  The implementation follows the
+    formula verbatim rather than re-deriving the sign.
+    """
+    num = float(l_i_avg) - float(l_j_avg)
+    den = float(l_i_avg) + float(l_j_avg) + float(kappa)
+    if den <= 0.0:
+        return 0.0
+    delta = num / den
+    if delta == 0.0:
+        return 0.0
+    return math.copysign(abs(delta) ** float(beta), delta)
+
+
+def paper_eq12_dist(delta_d_km: float, d_ij_km: float, d_0_km: float) -> float:
+    """Eq.(12): distance reduction minus the distance actually travelled.
+
+        r^dist = (Delta D_t - D_ij) / D_0
+
+    Delta D_t is the reduction in distance-to-destination after forwarding from i
+    to j, D_ij the length actually travelled, D_0 the source-destination distance.
+    A hop that closes the gap by more than it costs scores positive; a hop that
+    detours scores negative.  Dividing by D_0 makes the term scale-free.
+    """
+    d0 = float(d_0_km)
+    if d0 <= 0.0:
+        return 0.0
+    return (float(delta_d_km) - float(d_ij_km)) / d0
+
+
+def paper_reward(terms: dict, rho1: float, rho2: float, rho3: float) -> float:
+    """Weighted sum of the Eq.(9) terms with the paper's rho weights."""
+    return (float(rho1) * float(terms["queue"])
+            + float(rho2) * float(terms["dist"])
+            + float(rho3) * float(terms["reach"]))
+
+
 def forward_reward(wait_s: float, w1: float, beta: float,
                    step_penalty: float) -> float:
     """Learning reward for one forward hop.
@@ -1513,7 +1743,7 @@ def information_set(contract: str, sat: int, cache, now: float,
         allowed = {sat} | set(topo.get(sat, {}).values())
         return {o: e for o, e in entries.items()
                 if o in allowed and e.hops <= 1}
-    if contract in ("C3", "C4", "C5", "C6", "C7", "GAT", "MPNN"):
+    if contract in ("C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "PAPER", "GAT", "MPNN"):
         if obs_hops is None:
             return dict(entries)
         return {o: e for o, e in entries.items() if e.hops <= obs_hops}
@@ -1653,11 +1883,94 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
     return state
 
 
+def _paper_predict_from_history(history, now: float,
+                                origin: int | None = None,
+                                topo: dict | None = None
+                                ) -> float | None:
+    """Project a neighbour queue from the LAST TWO samples it advertised.
+
+    The linear-arrival-rate substitute was wrong in principle: it assumed the node is
+    permanently saturated, which projected 20 packets onto neighbours whose measured
+    queue was 0.0004 packets.  The paper's unit is a T-LSTM over the advertised history
+    (eq. 13-18); with two samples the faithful reduction is the SECANT of that history --
+    the neighbour's own observed trend -- extrapolated to `now`:
+
+        l_hat(now) = l_k + (l_k - l_{k-1}) / (t_k - t_{k-1}) * (now - t_k)
+
+    Clamped at 0 (a queue cannot be negative) and at L_max (it cannot exceed the
+    buffer).  If the history holds fewer than two usable samples the caller falls back
+    to the value as received, which is exactly Scheme 2's behaviour -- so a missing
+    history degrades the arm to S2 instead of fabricating a trend.
+
+    Returns None when there is not enough history.
+    """
+    try:
+        pairs = []
+        for e in (history or ()):
+            q = e.payload.get("isl_queue_bits")
+            if not q:
+                continue
+            # each direction is a RECORD, not a number:
+            #   {"peer": int, "value": queued_bits, "generation": int,
+            #    "rate_bps": float, "work_ahead_bits_proxy": float}
+            # sum(q.values()) raised TypeError on that dict and was swallowed by the
+            # except below, so every call returned None and the predictor never fired.
+            # MUST use the SAME peer-validated metric as _origin_features, otherwise
+            # the prediction and the raw value are not comparable: _peer_bit_value
+            # returns 0 for a direction whose advertisement was measured on a peer the
+            # current topology no longer maps that direction to (a rematched ISL), and
+            # summing raw values here counted those stale directions anyway.  That alone
+            # inflated the projection, before any extrapolation.
+            total = 0.0
+            for direction, rec in q.items():
+                peer_now = (topo.get(int(origin), {}) or {}).get(direction) \
+                    if topo is not None else None
+                total += float(_peer_bit_value(rec, peer_now) or 0.0)
+            pairs.append((float(e.generated_at), total))
+        pairs.sort()
+        if len(pairs) < 2:
+            return None
+        (t0, q0), (t1, q1) = pairs[-2], pairs[-1]
+        dt = t1 - t0
+        if dt <= 1e-9:
+            return None
+        slope = (q1 - q0) / dt
+        age = max(0.0, float(now) - t1)
+        return max(0.0, q1 + slope * age)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def _paper_predict_queue(observed: float, age_s: float,
+                         growth_per_s: float) -> float:
+    """Compensate a stale queue reading to the decision instant.
+
+    The paper calls this the "proactive prediction compensation unit" (S IV-B1).
+    Its full form is time-aware memory decay plus attention (eq. 13-18); with a
+    single most-recent sample and no history window in this observation, the
+    faithful reduction is a linear drain/growth projection over the sample age:
+
+        l_hat(now) = l(t_k) + growth * (now - t_k)
+
+    Growth is calibrated from the run's own offered load, so the term is a stated
+    approximation of the paper's predictor -- recorded as a deviation, not passed
+    off as its T-LSTM.
+    """
+    age = max(0.0, float(age_s))
+    return max(0.0, float(observed) + float(growth_per_s) * age)
+
+
 def build_observation(contract: str, sat: int, cache, now: float, topo,
                       own: np.ndarray, isl_queue_cap: int = 256_000_000,
                       obs_hops: int | None = None,
                       dst_feats: np.ndarray | None = None,
-                      root_pos: tuple | None = None) -> np.ndarray:
+                      root_pos: tuple | None = None,
+                      dir_progress: np.ndarray | None = None,
+                      eta_by_dir: dict | None = None,
+                      cache_position=None,
+                      paper_state: str = "advertised",
+                      paper_queue_growth: float = 0.0,
+                      paper_queue_true: dict | None = None) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
             contract, sat, cache, now, topo, own, isl_queue_cap,
@@ -1672,8 +1985,16 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
     if df.shape[0] != DEST_FEATURES:
         raise ValueError(f"dst_feats must have {DEST_FEATURES} dims, got {df.shape}")
 
+    dp = (np.asarray(dir_progress, dtype=np.float64).reshape(-1)
+          if dir_progress is not None
+          else np.zeros(DIRECTION_PROGRESS_FEATURES))
+    if dp.shape[0] != DIRECTION_PROGRESS_FEATURES:
+        raise ValueError(
+            f"dir_progress must have {DIRECTION_PROGRESS_FEATURES} dims, "
+            f"got {dp.shape[0]}")
+
     def _finish(base: np.ndarray) -> np.ndarray:
-        return np.concatenate([base, df])
+        return np.concatenate([base, df, dp])
 
     if contract == "C1":
         neighbors = sorted(set(topo.get(sat, {}).values()))
@@ -1685,6 +2006,183 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
         agg = (np.mean(list(feats.values()), axis=0) if feats
                else np.zeros(ORIGIN_FEATURES))
         return _finish(np.concatenate([own, agg]))
+
+    if contract == "PAPER":
+        # S III-A, :148.  Four egress buffer lengths for the agent itself, then
+        # for each one-hop neighbour its queue length and its RELATIVE position
+        # (from the paper's P_i^t set), then the distance to the satellite that
+        # serves the destination region.
+        cap = max(1, int(isl_queue_cap))
+        # own_state is [slots_ratio, qN, qS, qE, qW, visible_ratio, bias] -- the four
+        # egress queue occupancies start at index 1, NOT at 0.  Slicing [:4] took the
+        # slot ratio as the first direction's queue and dropped W entirely, so the
+        # agent's own "four queue lengths" were [slots, qN, qS, qE].
+        own_q = np.asarray(
+            np.ravel(own)[1:1 + PAPER_QUEUE_FEATURES], dtype=np.float64).reshape(-1)
+        own_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
+        if root_pos is not None:
+            own_pos = np.ravel(
+                np.asarray(root_pos, dtype=np.float64)).astype(np.float64) / 1.0e4
+        blocks = []
+        for d in GRAPH_DIRS:
+            # Scheme 1 exchanges NO information: the paper's IDQN decides from
+            # local observation only.  Masking the peer here (rather than
+            # hard-coding vis_k=0) keeps the control plane identical across arms
+            # so the comparison isolates the value of the information, not the
+            # cost of carrying it.
+            peer = (None if paper_state == "none"
+                    else (topo.get(sat, {}) or {}).get(d))
+            nb_q = 0.0
+            nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
+            if peer is not None and peer in feats:
+                # The neighbour's queue LENGTH, in packets of L_max.
+                #
+                # THIS IS WHERE THE PAPER'S SCHEMES DIFFER.  Scheme 1 has no
+                # communication at all (vis_k = 0 -> the cache is empty, so the
+                # branch below never fires).  Scheme 2 reads the ADVERTISED value
+                # as it arrived -- stale by the propagation delay.  Scheme 3
+                # compensates it to the decision instant.  Scheme 4 reads the true
+                # current value.  `paper_state` carries which one to use, so one
+                # code path serves all four and the comparison cannot accidentally
+                # differ in anything else.
+                # SCHEME DIFFERENTIATION, and the only thing that differs
+                # between the paper's four arms at the observation level:
+                #   paper_state="advertised" -> use the value as received (S2)
+                #   paper_state="predict"    -> extrapolate it to `now` (S3)
+                #   paper_state="ideal"      -> not available here; the kernel
+                #                               substitutes the true value (S4)
+                # Scheme 1 never reaches this branch: vis_k=0 leaves the cache
+                # empty so feats has no peers at all.
+                # _origin_features returns [queue, slots_ratio, visible_ratio, aoi];
+                # element 0 is the ONLY queue value.  Averaging the first four mixed a
+                # queue length with a slot ratio, a visibility ratio and an AoI and
+                # called the result "the neighbour's queue" -- the single most important
+                # input of the entire paper was garbage.
+                # A peer that is present in the topology but whose advertisement was
+                # measured on a DIFFERENT peer (the ISL was re-matched since) carries no
+                # usable queue information.  _origin_features reports 0 for it via
+                # _peer_bit_value, and 0 in this slot means "the neighbour is EMPTY" --
+                # the opposite of the truth.  An unknown neighbour must read as fully
+                # loaded (1.0), exactly as the `peer is None` branch below already does;
+                # otherwise the agent is told free capacity exists where none was
+                # measured and is steered INTO the direction it should avoid.  This is
+                # the same fail-safe the legacy observation uses (infQueue -> 1.0).
+                # Detect the re-matched case directly from the advertisement the
+                # cache is holding for this origin: if that payload was measured on a
+                # different peer than the one the topology currently maps direction d
+                # to, its queue value describes a link that no longer exists.
+                _ent = (entries or {}).get(int(peer))
+                _adv = None
+                if _ent is not None:
+                    try:
+                        _adv = _ent.payload.get("isl_queue_bits", {}).get(d)
+                    except (AttributeError, TypeError):
+                        _adv = None
+                _adv_peer = (_adv.get("peer") if isinstance(_adv, dict) else None)
+                _matches = (_adv_peer is None) or (_adv_peer == int(peer))
+                nb_q = (float(np.asarray(feats[peer])[0]) if _matches else 1.0)
+                # ONE normalisation for all four arms.  _origin_features reports
+                # q / (isl_queue_cap * 4) -- the sum over four directions divided by
+                # four capacities, i.e. the MEAN occupancy as a fraction of L_max.
+                # Schemes 3 and 4 used to divide by isl_queue_cap alone (4x too large)
+                # and, for Scheme 4, not at all (raw bits, so a neighbour with 10 packets
+                # read as 640000 instead of 0.05).  Each arm therefore saw the SAME
+                # physical queue on a different scale, and the arms that saw it larger
+                # detoured more -- a confound that would masquerade as "information
+                # hurts".  Anything written here must go through _q_scale.
+                _q_scale = float(max(1, int(isl_queue_cap))) * 4.0
+                if paper_state == "ideal" and paper_queue_true is not None:
+                    # Scheme 4: the true current queue, no delay at all.
+                    _t = paper_queue_true.get(int(peer))
+                    if _t is not None:
+                        nb_q = float(_t) / _q_scale
+                elif paper_state == "predict":
+                    # SECANT OF THE ADVERTISED HISTORY, not an assumed arrival rate.
+                    # See _paper_predict_from_history: the arrival-rate substitute
+                    # projected 20 packets onto neighbours measured at 0.0004, i.e. it
+                    # assumed permanent saturation.  The secant uses the neighbour's own
+                    # observed trend; with no history it returns None and we keep the
+                    # received value (Scheme 2 behaviour) rather than inventing one.
+                    _proj = _paper_predict_from_history(
+                        getattr(cache, "history", {}).get(int(peer)), now,
+                        origin=int(peer), topo=topo)
+                    if _proj is not None:
+                        nb_q = float(_proj) / _q_scale
+                pj = cache_position
+                if pj is not None and root_pos is not None:
+                    try:
+                        # cache_position is geometry.positions(t): it maps a TIME
+                        # to the whole constellation, so it must be indexed by the
+                        # peer satellite id.  Calling it with the satellite id as
+                        # the time argument returned all 66 positions (198 values)
+                        # and blew the row up to 421 dims.
+                        nb_pos = (
+                            np.asarray(pj(now), dtype=np.float64)[int(peer)]
+                            - np.asarray(root_pos, dtype=np.float64)) / 1.0e4
+                        nb_pos = np.ravel(nb_pos).astype(np.float64)
+                    except Exception:  # noqa: BLE001
+                        nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
+            else:
+                nb_q = 1.0        # unknown reads as fully loaded, never "free"
+            blocks.append(np.concatenate(
+                [np.asarray([nb_q], dtype=np.float64),
+                 np.ravel(nb_pos).astype(np.float64)]))
+        # distance to the destination-serving satellite, normalised by one ISL
+        d_dst = 0.0
+        if dst_feats is not None and len(dst_feats) >= 3:
+            d_dst = float(dst_feats[2])
+        parts = [np.ravel(own_q).astype(np.float64),
+                 np.ravel(own_pos).astype(np.float64)] + \
+                [np.ravel(b).astype(np.float64) for b in blocks] + \
+                [np.asarray([d_dst], dtype=np.float64)]
+        return _finish(np.concatenate(parts))
+
+    if contract in ("C8", "C9", "C10"):
+        # one block PER DIRECTION, in the same order as the action vector, so
+        # the network can compare "what is next door this way" directly instead
+        # of reading an aggregate that erased the distinction.
+        blocks = []
+        for d in GRAPH_DIRS:
+            peer = (topo.get(sat, {}) or {}).get(d)
+            if peer is not None and peer in feats:
+                blocks.append(feats[peer])
+            else:
+                # no advertisement from that direction yet: full congestion is
+                # the same pessimistic convention own_state uses for a missing
+                # link, and it must not read as "empty and attractive"
+                blocks.append(np.ones(ORIGIN_FEATURES))
+        if contract in ("C9", "C10"):
+            # the SAME terms score_candidates sums, per direction, in seconds
+            # normalised by one ISL propagation so the scale is O(1)
+            unit = 0.012
+            eb = []
+            for d in GRAPH_DIRS:
+                e = (eta_by_dir or {}).get(d) or {}
+                tt = e.get("terms") if isinstance(e, dict) else None
+                tt = tt or {}
+                eb.extend([
+                    min(1.0, float(tt.get("prop_s") or 0.0) / unit / 10.0),
+                    min(1.0, float(tt.get("local_egress_wait_s") or 0.0) / unit),
+                    min(1.0, float(tt.get("tx_s") or 0.0) / unit),
+                    min(1.0, float(tt.get("resource_work_s") or 0.0) / unit),
+                    min(1.0, float(tt.get("peer_process_s") or 0.0) / unit),
+                    0.0 if not e.get("missing") else 1.0,
+                ])
+            if contract == "C10":
+                # the scorer's OWN availability reading, per direction
+                ab = []
+                for d in GRAPH_DIRS:
+                    rec = (eta_by_dir or {}).get(d) or {}
+                    mapped = 1.0 if rec.get("mapped") else 0.0
+                    avail = rec.get("available")
+                    usable = 1.0 if (mapped and avail is True) else 0.0
+                    ab.extend([mapped,
+                               0.0 if avail is None else (1.0 if avail else 0.0),
+                               usable])
+                return _finish(np.concatenate(
+                    [own] + blocks + [np.asarray(eb), np.asarray(ab)]))
+            return _finish(np.concatenate([own] + blocks + [np.asarray(eb)]))
+        return _finish(np.concatenate([own] + blocks))
 
     if contract == "C4":
         if not entries:

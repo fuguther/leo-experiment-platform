@@ -124,6 +124,17 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "population_destination_sampler": str,  # scan | alias_rejection
         "destination_rejection_max_draws": int,
         "nested_master_offered_mbps": (int, float, type(None)),
+        # SATELLITE-TO-SATELLITE BACKGROUND FLOW (generic capability).
+        # The paper's traffic is ground test flow PLUS random satellite-to-
+        # satellite background flow; without the second term inter-satellite
+        # queues stay empty and no queue-prediction mechanism can matter
+        # (measured: 10,424/10,424 candidate scores propagation-dominated).
+        # This block adds `sat_background_mbps` of background demand between
+        # random satellite pairs, over the same emission window.  It is added
+        # ON TOP of the ground demand and is independent of any policy.
+        "sat_background_mbps": (int, float, type(None)),
+        "sat_background_packet_bits": (int, type(None)),
+        "sat_background_seed": (int, type(None)),
     },
     "access": {
         "unavailable_policy": str,  # reject | queue
@@ -198,6 +209,29 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # scores them.  Unknown distances never become a number: if any
         # candidate's distance is unknown the restriction is not applied.
         "min_remaining_hop_only": bool,
+        # EXTERNAL INFERENCE-ONLY POLICY PLUGIN (generic capability, default
+        # off).  A manifest path ("env:NAME" resolves the path from the
+        # process environment, which is how the T1 runner hands a snapshotted
+        # input to a run) or an absolute path for local diagnostics.  The
+        # plugin must satisfy leo_sim/policy_plugin.py's contract; the kernel
+        # then asks it for the next hop on the frozen snapshot instead of
+        # scoring the configured policy.  This is a seam for research
+        # algorithms; it does not implement any algorithm itself.
+        "policy_plugin": (str, type(None)),
+        # DESTINATION KNOWLEDGE SOURCE (schema-only, optional; absent means
+        # "advertised", the historical behaviour).  This is NOT a queue-state
+        # knob: it only says HOW a satellite resolves which node currently
+        # attaches a destination, never how congested a resource is.
+        #   advertised - resolve the destination from control-plane service
+        #                advertisements (the historical behaviour; an arm with
+        #                no control plane then holds packets it cannot address)
+        #   known      - resolve it from the static constellation/endpoint
+        #                table (ephemeris + fixed ground stations), which every
+        #                scheme in the literature takes as given.  Queue-state
+        #                information is still whatever the arm is configured
+        #                with, so an arm without any queue sharing (IDQN-like)
+        #                stays addressable without being given congestion data.
+        "destination_source": str,  # advertised | known
         "learning_enabled": bool,
         "contract": str,  # C1|C3|C4|C5|C6|C7 (observation contracts)
     },
@@ -206,6 +240,19 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "mode": str,  # train | eval
         "seed": (int, type(None)),  # train/eval RNG seed; None -> scenario.seed
         "obs_hops": (int, type(None)),  # observation aggregation hops; None -> control_plane.vis_k
+        # Behaviour-cloning warm start: an OPTIONAL artifact that initialises
+        # the online network instead of the random init.  Distinct from
+        # checkpoint_path (which is a frozen EVAL artifact): init_from is a
+        # training starting point and its hash is bound into config_sha256.
+        # Which of the paper's four schemes this run reproduces.  It selects WHAT
+        # THE OBSERVATION MAY READ: s1 has no communication (vis_k=0 leaves the
+        # cache empty), s2 reads the advertised value as received, s3 compensates
+        # it to the decision instant, s4 reads the true current value.  The
+        # learner, reward and action set are identical across all four, which is
+        # what makes the comparison attributable to the state-lag mechanism.
+        "paper_scheme": (str, type(None)),
+        "init_from": (str, type(None)),
+        "init_from_sha256": (str, type(None)),
         "checkpoint_path": (str, type(None)),
         "checkpoint_sha256": (str, type(None)),
         "checkpoint_metadata_sha256": (str, type(None)),
@@ -224,7 +271,15 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "batch_size": int,
         "replay_size": int,
         "target_update_interval": int,
-        "reward": str,  # legacy queue | deadline_loss_v1
+        # "queue" is the legacy M1 diagnostic; "deadline_loss_v1" is the
+        # contractual deadline objective; "paper_eq9" is TAP-DAR Eq.(9):
+        # rho1*r^queue + rho2*r^dist + rho3*r^reach with (0.4, 0.4, 0.2).
+        "reward": str,
+        # Eq.(9) weights.  The paper states rho1+rho2+rho3=1 and gives
+        # (0.4, 0.4, 0.2) in Table I; the sum is validated.
+        "reward_rho1": (int, float),
+        "reward_rho2": (int, float),
+        "reward_rho3": (int, float),
         "reward_w1": (int, float),  # M1 queue reward weight (legacy w1=20)
         "reward_beta": (int, float),  # M1 decay rate s^-1 (legacy _M1_BETA=200)
         "forward_step_penalty": (int, float),  # non-positive hop cost; must dominate reward_w1
@@ -307,7 +362,18 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # the kernel own TRUE current state of the SAME resource at the
         # decision instant.  Identity, generation filter, candidate set,
         # scorer, control schedule and physical model are untouched.
-        "state_source": str,  # advertised | ideal_current
+        # A THIRD value, "ideal_at_target", makes the oracle a real upper bound.
+        # The two existing values query DIFFERENT instants: advertised/current
+        # describe the resource NOW, while the candidate arm needs the resource
+        # at the packet's ARRIVAL.  An oracle that answers the "now" question
+        # cannot bound a policy that answers the "arrival" question -- measured:
+        # the oracle arm ran 5.32 hops vs 4.70 for the blind arm and still won,
+        # purely because it traded hops for per-hop queue, i.e. it was a
+        # different operating point rather than an upper bound.  With
+        # ideal_at_target the oracle is asked the SAME question as arm=candidate
+        # and answered with the true value at that instant (read from the
+        # simulator, so it is only usable as a bound, never as a policy).
+        "state_source": str,  # advertised | ideal_current | ideal_at_target
         # Diagnostics only.  When set, candidate scores are quantised to this
         # many SIGNIFICANT digits before the visible_order tie-break sees them,
         # so mirror-symmetric candidates (whose scores differ only by float
@@ -324,6 +390,26 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # queue_weight multiplicative weight on the queue term in the scorer
         "ou_tau_s": (int, float, type(None)),
         "queue_weight": (int, float, type(None)),
+        # PATH-COST SCALE of the remaining-path term (schema-only, optional;
+        # absent keeps the historical value byte for byte).
+        # The scorer prices the rest of the path as
+        #     remaining_hops * <scale>
+        # The historical scale is the LOCAL first-hop propagation, which makes
+        # the term candidate-dependent in the wrong way: an in-plane hop
+        # (10.22 ms) prices EVERY remaining hop at 10.22 ms while a cross-plane
+        # hop (18.31 ms) prices every remaining hop at 18.31 ms, so the same
+        # downstream path costs 1.8x more when it is entered from a cross-plane
+        # edge.  The min-cost candidate is then the one whose FIRST hop is
+        # cheapest, not the one whose remaining path is cheapest, and packets
+        # circulate around their own orbital plane: measured 13.4 mean hops
+        # against a 4.4-hop optimum, worst case 45 hops on a diameter-10
+        # constellation.  "candidate_mean" prices every remaining hop at the
+        # MEAN of the candidate set's first-hop propagation, which is still
+        # arm-independent and still computed from information this node has,
+        # but is identical for all candidates, so the term ranks on remaining
+        # hop COUNT only.  Measured effect: detour ratio 2.09 -> 1.35, worst
+        # path 25 -> 7 hops, E2E 109.5 -> 89.1 ms.
+        "remaining_path_scale": str,  # local_first_hop | candidate_mean
     },
     "async_routing": {
         "enabled": bool,
@@ -361,7 +447,7 @@ VALID_POLICIES = {
     # runs keep their identity.
     "known_serving",
 }
-VALID_CONTRACTS = {"C1", "C3", "C4", "C5", "C6", "C7", "GAT", "MPNN"}
+VALID_CONTRACTS = {"C1", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "PAPER", "GAT", "MPNN"}
 VALID_ALGORITHMS = {"none", "ddqn", "qlearning"}
 VALID_ISL_DIRS = {"N", "S", "E", "W"}
 VALID_RATE_MODELS = {"constant", "mcs"}
@@ -434,6 +520,13 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "population_destination_sampler": "scan",
         "destination_rejection_max_draws": 10_000,
         "nested_master_offered_mbps": None,
+        # NOTE: sat_background_* are accepted by the SCHEMA but deliberately
+        # carry NO default here, exactly like ou_tau_s / queue_weight: a
+        # default would add the key to every resolved config and change
+        # config_sha256 / trace_identity for every existing profile, silently
+        # invalidating the identity of all archived evidence.  Absent means
+        # "no background flow"; every reader uses .get(), so an unset profile
+        # hashes exactly as before.
     },
     "access": {
         "unavailable_policy": "reject",
@@ -503,12 +596,16 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "routing": {"policy": "hop", "max_hops": 16, "learning_enabled": False,
                 "min_remaining_hop_only": False,
+                "policy_plugin": None,
                 "contract": "C3"},
     "learning": {
         "algorithm": "none",
         "mode": "train",
         "seed": None,
         "obs_hops": None,
+        "paper_scheme": None,
+        "init_from": None,
+        "init_from_sha256": None,
         "checkpoint_path": None,
         "checkpoint_sha256": None,
         "checkpoint_metadata_sha256": None,
@@ -517,10 +614,13 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "resume_sha256": None,
         "gamma": 0.99,
         "lr": 0.001,
-        "batch_size": 64,
-        "replay_size": 50_000,
-        "target_update_interval": 500,
+        "batch_size": 32,
+        "replay_size": 1000,
+        "target_update_interval": 1000,
         "reward": "queue",
+        "reward_rho1": 0.4,
+        "reward_rho2": 0.4,
+        "reward_rho3": 0.2,
         # corrected (M1) queue reward parameters, absorbed as the v1 baseline
         # (legacy w1/_M1_BETA defaults, SimulationRL.py:270/345) plus the
         # legacy ArriveReward (SimulationRL.py:579)
@@ -995,6 +1095,31 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             f"got {staged!r}")
     if rt["max_hops"] < 1:
         raise ConfigError("routing.max_hops must be >= 1")
+    destination_source = rt.get("destination_source")
+    if destination_source not in (None, "", "advertised", "known"):
+        raise ConfigError(
+            "routing.destination_source must be 'advertised' or 'known', "
+            f"got {destination_source!r}")
+    plugin = rt.get("policy_plugin")
+    if plugin is not None:
+        if not isinstance(plugin, str) or not plugin.strip():
+            raise ConfigError(
+                "routing.policy_plugin must be a non-empty manifest path or None")
+        if not ta["enabled"]:
+            # Without time alignment there is no frozen snapshot for the
+            # plugin to act on: it would be silently ignored, which is the
+            # same failure the kernel refuses for a supplied inference policy.
+            raise ConfigError(
+                "routing.policy_plugin requires time_alignment.enabled=true: "
+                "the plugin acts on the frozen decision snapshot")
+        if lr["algorithm"] != "none":
+            raise ConfigError(
+                "routing.policy_plugin may not be combined with a training "
+                "learner (learning.algorithm != none)")
+        if rt["policy"] == "oracle":
+            raise ConfigError(
+                "routing.policy_plugin may not be combined with "
+                "routing.policy=oracle")
     if rt["contract"] not in VALID_CONTRACTS:
         raise ConfigError(f"routing.contract must be one of {sorted(VALID_CONTRACTS)}")
     if rt["learning_enabled"] and lr["algorithm"] == "none":
@@ -1103,8 +1228,11 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
                                     or lr["checkpoint_sha256"] is not None
                                     or lr["checkpoint_metadata_sha256"] is not None):
         raise ConfigError("learning.mode=train does not load a checkpoint")
-    if lr["reward"] not in {"queue", "deadline_loss_v1"}:
-        raise ConfigError("learning.reward must be 'queue' or 'deadline_loss_v1'")
+    if lr["reward"] not in {"queue", "deadline_loss_v1", "paper_eq9",
+                            "paper"}:
+        raise ConfigError(
+            "learning.reward must be 'queue', 'deadline_loss_v1', 'paper_eq9' "
+            "or 'paper'")
     if lr["reward"] == "deadline_loss_v1":
         if dm["research_deadline_s"] is None:
             raise ConfigError(
@@ -1113,11 +1241,36 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         if lr["gamma"] != 1.0:
             raise ConfigError(
                 "learning.reward=deadline_loss_v1 requires learning.gamma=1.0")
+    if lr["reward"] in ("paper_eq9", "paper"):
+        total_rho = (float(lr["reward_rho1"]) + float(lr["reward_rho2"])
+                     + float(lr["reward_rho3"]))
+        if abs(total_rho - 1.0) > 1e-9:
+            raise ConfigError(
+                "learning.reward_rho1+rho2+rho3 must equal 1 for paper_eq9 "
+                f"(TAP-DAR Eq.9), got {total_rho!r}")
+        # a hop cost is legitimate here as long as it is a penalty
+        if float(lr["forward_step_penalty"]) > 0.0:
+            raise ConfigError(
+                "learning.forward_step_penalty must be <= 0 with paper_eq9, "
+                f"got {lr['forward_step_penalty']!r}")
+        for name in ("reward_rho1", "reward_rho2", "reward_rho3"):
+            value = lr[name]
+            if not math.isfinite(float(value)) or float(value) < 0.0:
+                raise ConfigError(
+                    f"learning.{name} must be a finite non-negative number, "
+                    f"got {value!r}")
     if lr["reward_w1"] <= 0:
         raise ConfigError("learning.reward_w1 must be > 0")
     if lr["reward_beta"] <= 0:
         raise ConfigError("learning.reward_beta must be > 0")
-    if lr["forward_step_penalty"] > -lr["reward_w1"]:
+    # The "must dominate reward_w1" rule exists because the LEGACY rewards scale
+    # in tens (arrive_reward 50, reward_w1 20), so a small negative step cost
+    # could not offset a positive reward.  paper_eq9's terms live in [-1, 1] and
+    # its rho weights sum to 1, so the same threshold would forbid every
+    # meaningful hop cost.  There the requirement is only that the cost is <= 0,
+    # which the finiteness check above already enforces.
+    if lr["reward"] not in ("paper_eq9", "paper") \
+            and lr["forward_step_penalty"] > -lr["reward_w1"]:
         raise ConfigError(
             "learning.forward_step_penalty must be <= -reward_w1 so "
             "an extra forwarding hop cannot have positive reward")
@@ -1236,10 +1389,15 @@ def _validate_time_alignment(ta: Mapping[str, Any],
             "time_alignment.tie_sig_digits must be None or an integer within "
             f"1..15, got {tie!r}")
     source = ta["state_source"]
-    if source not in ("advertised", "ideal_current"):
+    if source not in ("advertised", "ideal_current", "ideal_at_target"):
         raise ConfigError(
             "time_alignment.state_source must be 'advertised' or "
             f"'ideal_current', got {source!r}")
+    scale = ta.get("remaining_path_scale")
+    if scale not in (None, "", "local_first_hop", "candidate_mean"):
+        raise ConfigError(
+            "time_alignment.remaining_path_scale must be 'local_first_hop' "
+            f"or 'candidate_mean', got {scale!r}")
     age = ta["min_observation_age_s"]
     if age is not None and (isinstance(age, bool)
                             or not isinstance(age, (int, float))
