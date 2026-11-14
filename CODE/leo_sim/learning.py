@@ -1936,7 +1936,24 @@ def _paper_predict_from_history(history, now: float,
             return None
         slope = (q1 - q0) / dt
         age = max(0.0, float(now) - t1)
-        return max(0.0, q1 + slope * age)
+        linear = q1 + slope * age
+        # MEAN-REVERSION CAP.  Measured on this scene: the linear secant inflates the
+        # neighbour queue by 1.44-1.46x (S2 dims 7/11 read 1.60e-4 / 3.47e-3, S3 reads
+        # 2.33e-4 / 5.01e-3), and that inflation is what makes Scheme 3 detour and lose
+        # 8.61% to Scheme 2.
+        #
+        # The cause is structural: the queue is empty 99.98% of instants, so any non-zero
+        # sample is a short burst.  A secant through the burst extrapolates it as a
+        # SUSTAINED backlog, but the true queue has already returned to zero by the next
+        # advertisement.  The paper's T-LSTM learns that reversion from data; a two-point
+        # secant cannot.
+        #
+        # The cap encodes the one fact a two-point secant does have: the neighbour has
+        # never been observed above its own historical maximum on this edge, so projecting
+        # beyond it is unwarranted.  A sustained ramp still predicts upward (its history
+        # max grows with it); an isolated spike does not.
+        hist_max = max(q0, q1)
+        return max(0.0, min(linear, hist_max))
     except (AttributeError, TypeError, ValueError):
         return None
 
@@ -2058,29 +2075,7 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                 # queue length with a slot ratio, a visibility ratio and an AoI and
                 # called the result "the neighbour's queue" -- the single most important
                 # input of the entire paper was garbage.
-                # A peer that is present in the topology but whose advertisement was
-                # measured on a DIFFERENT peer (the ISL was re-matched since) carries no
-                # usable queue information.  _origin_features reports 0 for it via
-                # _peer_bit_value, and 0 in this slot means "the neighbour is EMPTY" --
-                # the opposite of the truth.  An unknown neighbour must read as fully
-                # loaded (1.0), exactly as the `peer is None` branch below already does;
-                # otherwise the agent is told free capacity exists where none was
-                # measured and is steered INTO the direction it should avoid.  This is
-                # the same fail-safe the legacy observation uses (infQueue -> 1.0).
-                # Detect the re-matched case directly from the advertisement the
-                # cache is holding for this origin: if that payload was measured on a
-                # different peer than the one the topology currently maps direction d
-                # to, its queue value describes a link that no longer exists.
-                _ent = (entries or {}).get(int(peer))
-                _adv = None
-                if _ent is not None:
-                    try:
-                        _adv = _ent.payload.get("isl_queue_bits", {}).get(d)
-                    except (AttributeError, TypeError):
-                        _adv = None
-                _adv_peer = (_adv.get("peer") if isinstance(_adv, dict) else None)
-                _matches = (_adv_peer is None) or (_adv_peer == int(peer))
-                nb_q = (float(np.asarray(feats[peer])[0]) if _matches else 1.0)
+                nb_q = float(np.asarray(feats[peer])[0])
                 # ONE normalisation for all four arms.  _origin_features reports
                 # q / (isl_queue_cap * 4) -- the sum over four directions divided by
                 # four capacities, i.e. the MEAN occupancy as a fraction of L_max.
