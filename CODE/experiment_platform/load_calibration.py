@@ -151,6 +151,11 @@ OVERRIDE_FIELDS = {
                  "checkpoint_metadata_sha256",
                  # BC warm start: which artifact the online net starts from
                  "init_from", "init_from_sha256",
+                 # Damping of the PAPER predictor's secant.  The paper uses a
+                 # T-LSTM over the advertised sequence; two samples cannot tell a
+                 # ramp from a burst, so the projection is damped.  Overridable so
+                 # the sensitivity of the result to this choice is measurable.
+                 "paper_predict_damping",
                  # opt-in hop cost for paper_eq9; non-zero is a deviation
                  "forward_step_penalty",
                  # which of the paper's four schemes this cell reproduces

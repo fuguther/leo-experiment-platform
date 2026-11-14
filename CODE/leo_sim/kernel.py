@@ -4577,6 +4577,8 @@ class Kernel:
             cache_position=self.geometry.positions,
             paper_state=_paper_state,
             paper_queue_growth=_paper_growth,
+            paper_predict_damping=float(
+                self.cfg_learning.get("paper_predict_damping") or 0.0) or None,
             paper_queue_true=_paper_true,
         )
 

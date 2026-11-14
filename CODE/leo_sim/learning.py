@@ -1890,7 +1890,8 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
 
 def _paper_predict_from_history(history, now: float,
                                 origin: int | None = None,
-                                topo: dict | None = None
+                                topo: dict | None = None,
+                                damping: float | None = None
                                 ) -> float | None:
     """Project a neighbour queue from the LAST TWO samples it advertised.
 
@@ -1956,7 +1957,9 @@ def _paper_predict_from_history(history, now: float,
         # isolated spike does not dominate.  (A hard cap at max(q0,q1) was tried first and
         # is degenerate -- for any rising trend the cap equals q1, so the prediction
         # collapses to the last observed value and Scheme 3 becomes Scheme 2 exactly.)
-        return max(0.0, q1 + PAPER_PREDICT_DAMPING * slope * age)
+        phi = (PAPER_PREDICT_DAMPING if damping is None
+               else max(0.0, min(1.0, float(damping))))
+        return max(0.0, q1 + phi * slope * age)
     except (AttributeError, TypeError, ValueError):
         return None
 
@@ -1990,7 +1993,9 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                       cache_position=None,
                       paper_state: str = "advertised",
                       paper_queue_growth: float = 0.0,
-                      paper_queue_true: dict | None = None) -> np.ndarray:
+                      paper_queue_true: dict | None = None,
+                      paper_predict_damping: float | None = None
+                      ) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
             contract, sat, cache, now, topo, own, isl_queue_cap,
@@ -2103,7 +2108,8 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                     # received value (Scheme 2 behaviour) rather than inventing one.
                     _proj = _paper_predict_from_history(
                         getattr(cache, "history", {}).get(int(peer)), now,
-                        origin=int(peer), topo=topo)
+                        origin=int(peer), topo=topo,
+                        damping=paper_predict_damping)
                     if _proj is not None:
                         nb_q = float(_proj) / _q_scale
                 pj = cache_position
