@@ -2050,11 +2050,21 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                 # called the result "the neighbour's queue" -- the single most important
                 # input of the entire paper was garbage.
                 nb_q = float(np.asarray(feats[peer])[0])
+                # ONE normalisation for all four arms.  _origin_features reports
+                # q / (isl_queue_cap * 4) -- the sum over four directions divided by
+                # four capacities, i.e. the MEAN occupancy as a fraction of L_max.
+                # Schemes 3 and 4 used to divide by isl_queue_cap alone (4x too large)
+                # and, for Scheme 4, not at all (raw bits, so a neighbour with 10 packets
+                # read as 640000 instead of 0.05).  Each arm therefore saw the SAME
+                # physical queue on a different scale, and the arms that saw it larger
+                # detoured more -- a confound that would masquerade as "information
+                # hurts".  Anything written here must go through _q_scale.
+                _q_scale = float(max(1, int(isl_queue_cap))) * 4.0
                 if paper_state == "ideal" and paper_queue_true is not None:
                     # Scheme 4: the true current queue, no delay at all.
                     _t = paper_queue_true.get(int(peer))
                     if _t is not None:
-                        nb_q = float(_t)
+                        nb_q = float(_t) / _q_scale
                 elif paper_state == "predict":
                     # SECANT OF THE ADVERTISED HISTORY, not an assumed arrival rate.
                     # See _paper_predict_from_history: the arrival-rate substitute
@@ -2066,7 +2076,7 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                         getattr(cache, "history", {}).get(int(peer)), now,
                         origin=int(peer), topo=topo)
                     if _proj is not None:
-                        nb_q = float(_proj) / max(1.0, float(isl_queue_cap))
+                        nb_q = float(_proj) / _q_scale
                 pj = cache_position
                 if pj is not None and root_pos is not None:
                     try:
