@@ -251,6 +251,7 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # learner, reward and action set are identical across all four, which is
         # what makes the comparison attributable to the state-lag mechanism.
         "paper_scheme": (str, type(None)),
+        "paper_predict_damping": (int, float, type(None)),
         "init_from": (str, type(None)),
         "init_from_sha256": (str, type(None)),
         "checkpoint_path": (str, type(None)),
@@ -604,6 +605,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "seed": None,
         "obs_hops": None,
         "paper_scheme": None,
+        "paper_predict_damping": None,
         "init_from": None,
         "init_from_sha256": None,
         "checkpoint_path": None,
