@@ -1874,7 +1874,10 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
     return state
 
 
-def _paper_predict_from_history(history, now: float) -> float | None:
+def _paper_predict_from_history(history, now: float,
+                                origin: int | None = None,
+                                topo: dict | None = None
+                                ) -> float | None:
     """Project a neighbour queue from the LAST TWO samples it advertised.
 
     The linear-arrival-rate substitute was wrong in principle: it assumed the node is
@@ -1903,10 +1906,17 @@ def _paper_predict_from_history(history, now: float) -> float | None:
             #    "rate_bps": float, "work_ahead_bits_proxy": float}
             # sum(q.values()) raised TypeError on that dict and was swallowed by the
             # except below, so every call returned None and the predictor never fired.
+            # MUST use the SAME peer-validated metric as _origin_features, otherwise
+            # the prediction and the raw value are not comparable: _peer_bit_value
+            # returns 0 for a direction whose advertisement was measured on a peer the
+            # current topology no longer maps that direction to (a rematched ISL), and
+            # summing raw values here counted those stale directions anyway.  That alone
+            # inflated the projection, before any extrapolation.
             total = 0.0
-            for rec in q.values():
-                total += float(rec.get("value", 0.0)) if isinstance(rec, dict) \
-                    else float(rec)
+            for direction, rec in q.items():
+                peer_now = (topo.get(int(origin), {}) or {}).get(direction) \
+                    if topo is not None else None
+                total += float(_peer_bit_value(rec, peer_now) or 0.0)
             pairs.append((float(e.generated_at), total))
         pairs.sort()
         if len(pairs) < 2:
@@ -2053,7 +2063,8 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                     # observed trend; with no history it returns None and we keep the
                     # received value (Scheme 2 behaviour) rather than inventing one.
                     _proj = _paper_predict_from_history(
-                        getattr(cache, "history", {}).get(int(peer)), now)
+                        getattr(cache, "history", {}).get(int(peer)), now,
+                        origin=int(peer), topo=topo)
                     if _proj is not None:
                         nb_q = float(_proj) / max(1.0, float(isl_queue_cap))
                 pj = cache_position
