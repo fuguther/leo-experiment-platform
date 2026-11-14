@@ -8117,16 +8117,25 @@ class Kernel:
                 # use.
                 terminal_reward=(
                     # eq.(9): r^reach is a FIXED POSITIVE VALUE granted only on
-                    # successful delivery, and rho3 weights it.  Paying rho3 = 0.2
-                    # alone (as paper_eq9 did) leaves the completion reward far
-                    # below the NEGATIVE sum of the forward terms over a real
-                    # path -- measured forward mean is -0.174 per hop, so a 6-hop
-                    # path accumulates about -1.0 against a +0.2 delivery.  The
-                    # paper's own text says the term exists "to encourage agents
-                    # to deliver", so the unit completion value is +1.0 and rho3
-                    # scales it, giving +0.2*sqrt at minimum... the honest reading
-                    # that keeps the formula intact is 1.0 * rho3.
-                    float(self.cfg_learning["reward_rho3"]) * 1.0
+                    # successful delivery, rho3 weights it.
+                    #
+                    # The unit value 1.0 made delivery NOT WORTH DOING.  Measured on
+                    # this scene: forward reward per hop is -0.0569, so a 6-hop path
+                    # accumulates -0.341 while delivery pays rho3*1.0 = +0.2 -- a NET
+                    # LOSS of -0.141.  A DDQN maximising return therefore prefers to
+                    # wander over to arrive, which is exactly the behaviour measured:
+                    # hops rise monotonically with how much neighbour information the
+                    # arm receives (IDQN 6.01 -> TAP-DAR 6.38) and so does E2E.
+                    #
+                    # The paper fixes neither the value of r^reach nor rho3, but it does
+                    # state the term exists "to encourage agents to deliver" and that
+                    # r^reach is granted "only if the packet successfully reaches the
+                    # destination".  For the reward to encourage anything the completion
+                    # value must exceed the negative path cost; PAPER_REACH_UNIT is set
+                    # from the measured forward cost so that a typical path nets a
+                    # clear positive.  Recorded as a deviation: the paper does not print
+                    # this number.
+                    float(self.cfg_learning["reward_rho3"]) * _learning.PAPER_REACH_UNIT
                     if self.cfg_learning["reward"] in ("paper_eq9", "paper")
                     else float(self.cfg_learning["arrive_reward"])),
             )

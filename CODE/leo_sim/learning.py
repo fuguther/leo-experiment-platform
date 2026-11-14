@@ -1556,6 +1556,15 @@ def paper_reward_terms(queue_delta_bits: float, dist_delta_km: float,
 #: constant"; beta = 1 makes |dL|^beta the identity (the least surprising reading,
 #: and the one that cannot invent curvature the paper never specified), kappa =
 #: 1e-6 keeps the denominator away from zero without changing any realistic ratio.
+# Value of r^reach, the completion reward of eq.(9).  The paper states the term is a
+# "fixed positive value" granted only on successful delivery but does not print the
+# number.  It cannot be small: measured forward reward on the calibrated scene is
+# -0.0569 per hop, so a 6-hop path earns -0.341, and any r^reach * rho3 below that makes
+# DELIVERING WORSE THAN WANDERING.  With rho3 = 0.2 the unit must exceed 1.7 for a
+# typical path to net positive; 5.0 leaves a clear margin on a 10-hop path
+# (5.0*0.2 = 1.0 vs -0.57).  This is an explicit deviation.
+PAPER_REACH_UNIT = 5.0
+
 PAPER_REWARD_BETA = 1.0
 PAPER_REWARD_KAPPA = 1e-6
 
