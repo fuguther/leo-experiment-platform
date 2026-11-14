@@ -1564,6 +1564,11 @@ def paper_reward_terms(queue_delta_bits: float, dist_delta_km: float,
 # typical path to net positive; 5.0 leaves a clear margin on a 10-hop path
 # (5.0*0.2 = 1.0 vs -0.57).  This is an explicit deviation.
 PAPER_REACH_UNIT = 5.0
+# Damping applied to the predictor's slope.  The paper uses a T-LSTM over the
+# advertised sequence; this task only keeps two samples, which cannot tell a ramp
+# from a spike.  Damping keeps the trend's direction while shrinking its magnitude
+# so a burst is not extrapolated into a sustained backlog.  A deviation, recorded.
+PAPER_PREDICT_DAMPING = 0.25
 
 PAPER_REWARD_BETA = 1.0
 PAPER_REWARD_KAPPA = 1e-6
@@ -1936,24 +1941,22 @@ def _paper_predict_from_history(history, now: float,
             return None
         slope = (q1 - q0) / dt
         age = max(0.0, float(now) - t1)
-        linear = q1 + slope * age
-        # MEAN-REVERSION CAP.  Measured on this scene: the linear secant inflates the
-        # neighbour queue by 1.44-1.46x (S2 dims 7/11 read 1.60e-4 / 3.47e-3, S3 reads
-        # 2.33e-4 / 5.01e-3), and that inflation is what makes Scheme 3 detour and lose
-        # 8.61% to Scheme 2.
+        # DAMPED EXTRAPOLATION.  A pure secant inflates the neighbour queue by
+        # 1.44-1.46x on this scene (S2 dims 7/11 read 1.60e-4 / 3.47e-3, S3 reads
+        # 2.33e-4 / 5.01e-3) and that one-sided inflation is what makes Scheme 3 detour
+        # and lose 8.61% to Scheme 2 across three paired seeds.
         #
-        # The cause is structural: the queue is empty 99.98% of instants, so any non-zero
-        # sample is a short burst.  A secant through the burst extrapolates it as a
-        # SUSTAINED backlog, but the true queue has already returned to zero by the next
-        # advertisement.  The paper's T-LSTM learns that reversion from data; a two-point
-        # secant cannot.
+        # The cause is structural: the queue is empty 99.98% of instants, so a non-zero
+        # sample is a short burst.  A secant through the burst reads it as a SUSTAINED
+        # backlog even though the true queue is back to zero by the next advert.  The
+        # paper's T-LSTM learns that reversion from the sequence; two points cannot.
         #
-        # The cap encodes the one fact a two-point secant does have: the neighbour has
-        # never been observed above its own historical maximum on this edge, so projecting
-        # beyond it is unwarranted.  A sustained ramp still predicts upward (its history
-        # max grows with it); an isolated spike does not.
-        hist_max = max(q0, q1)
-        return max(0.0, min(linear, hist_max))
+        # Damping is the honest response to that ignorance: it keeps the direction of the
+        # trend but shrinks its magnitude, so a genuine ramp still predicts upward while an
+        # isolated spike does not dominate.  (A hard cap at max(q0,q1) was tried first and
+        # is degenerate -- for any rising trend the cap equals q1, so the prediction
+        # collapses to the last observed value and Scheme 3 becomes Scheme 2 exactly.)
+        return max(0.0, q1 + PAPER_PREDICT_DAMPING * slope * age)
     except (AttributeError, TypeError, ValueError):
         return None
 
