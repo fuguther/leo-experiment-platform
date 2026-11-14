@@ -1946,9 +1946,12 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
         # (from the paper's P_i^t set), then the distance to the satellite that
         # serves the destination region.
         cap = max(1, int(isl_queue_cap))
-        # own: 4 queue lengths + own position, all normalised
+        # own_state is [slots_ratio, qN, qS, qE, qW, visible_ratio, bias] -- the four
+        # egress queue occupancies start at index 1, NOT at 0.  Slicing [:4] took the
+        # slot ratio as the first direction's queue and dropped W entirely, so the
+        # agent's own "four queue lengths" were [slots, qN, qS, qE].
         own_q = np.asarray(
-            np.ravel(own)[:PAPER_QUEUE_FEATURES], dtype=np.float64).reshape(-1)
+            np.ravel(own)[1:1 + PAPER_QUEUE_FEATURES], dtype=np.float64).reshape(-1)
         own_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
         if root_pos is not None:
             own_pos = np.ravel(
@@ -1983,8 +1986,12 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                 #                               substitutes the true value (S4)
                 # Scheme 1 never reaches this branch: vis_k=0 leaves the cache
                 # empty so feats has no peers at all.
-                nb_q = float(np.mean(
-                    np.asarray(feats[peer])[:PAPER_QUEUE_FEATURES]))
+                # _origin_features returns [queue, slots_ratio, visible_ratio, aoi];
+                # element 0 is the ONLY queue value.  Averaging the first four mixed a
+                # queue length with a slot ratio, a visibility ratio and an AoI and
+                # called the result "the neighbour's queue" -- the single most important
+                # input of the entire paper was garbage.
+                nb_q = float(np.asarray(feats[peer])[0])
                 if paper_state == "ideal" and paper_queue_true is not None:
                     # Scheme 4: the true current queue, no delay at all.
                     _t = paper_queue_true.get(int(peer))
