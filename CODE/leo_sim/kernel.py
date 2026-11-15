@@ -991,6 +991,17 @@ class ISLLink:
                                    decision_id=pkt.decision_id,
                                    backlog_before=backlog)
         self.k._record_isl_queue_state(self, "enqueue_data", pid=pkt.pid)
+        # PAPER: the state broadcast is "triggered by packet arrival events"
+        # (Section III-B), which is what makes neighbour state temporally ASYNCHRONOUS and
+        # NON-UNIFORM -- the very problem the paper studies.
+        #
+        # Measured with the periodic timer instead: adverts landed 99.96% of the time on an
+        # empty queue (mean 313.7 bit) while packets arriving found 100% non-empty queues
+        # (mean 84,862 bit).  Every neighbour therefore advertised "I am idle" regardless of
+        # its real load, S2 and S3 received byte-identical observations, and the predictive
+        # compensation had nothing to compensate.
+        if self.k.cfg_cp.get("paper_arrival_advert"):
+            self.k._maybe_advert_on_arrival(self.sat)
         self.k._poke(self.wake)
 
     def put_ctrl(self, pkt: ControlPacket) -> None:
@@ -1308,6 +1319,9 @@ class Kernel:
             self.cfg_cp.get("event_advert_min_interval_s") or 0.0)
         self._event_advert_enabled = bool(
             self.cfg_cp.get("event_advert_enabled", False))
+        # arrival-triggered broadcast state (paper Section III-B)
+        self._last_arrival_advert_at: dict[int, float] = {}
+        self._arrival_adverts_emitted = 0
         self._last_event_advert_at = {}
         self._event_advert_pending = set()
         self._event_adverts_emitted = 0
@@ -3776,6 +3790,28 @@ class Kernel:
                "pid": None, "decision_id": None, "audit": "control_plane"}
         row.update(fields)
         self.timeline_sink.append(row)
+
+    def _maybe_advert_on_arrival(self, sat: int) -> None:
+        """Broadcast state because a packet arrived, per the paper's Section III-B.
+
+        The paper's premise is that broadcasts are "triggered by packet arrival events",
+        which makes the neighbour state each agent receives ASYNCHRONOUS and NON-UNIFORM.
+        That asynchrony IS the problem the paper solves; sampling on a fixed timer instead
+        removes the problem being studied and makes the predictive unit a no-op.
+
+        A per-satellite floor (control_plane.event_advert_min_interval_s) stops a packet
+        burst from flooding the control plane; this mirrors the merging rule already used by
+        the serving-change trigger.
+        """
+        now = self.env.now
+        last = self._last_arrival_advert_at.get(int(sat))
+        floor = float(self.cfg_cp.get("event_advert_min_interval_s") or 0.0)
+        if last is not None and floor > 0.0 and now - last < floor:
+            return
+        self._last_arrival_advert_at[int(sat)] = now
+        self._advertise(int(sat))
+        self._arrival_adverts_emitted += 1
+        self.mech["arrival_adverts_emitted"] = self._arrival_adverts_emitted
 
     def _advertise(self, sat: int):
         self.ctrl_seq += 1

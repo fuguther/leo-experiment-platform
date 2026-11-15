@@ -102,7 +102,9 @@ OVERRIDE_FIELDS = {
                   "region_lat_bounds_deg", "region_lon_bounds_deg"},
     "access": {"slots_per_satellite", "uplink_rate_mbps",
                "downlink_rate_mbps"},
-    "control_plane": {"advertise_interval_s", "vis_k",
+    "control_plane": {
+        # paper: broadcasts follow packet arrivals, not a fixed timer
+        "paper_arrival_advert","advertise_interval_s", "vis_k",
                       "initial_sync_burst_s", "event_advert_enabled",
                       "event_advert_min_interval_s",
                       # PROTOCOL PAYLOAD SIZE.  The advertisement's size is a

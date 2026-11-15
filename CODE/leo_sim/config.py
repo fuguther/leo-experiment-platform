@@ -191,6 +191,7 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # interval, with changes inside the window merged into the next
         # allowed report.
         "event_advert_enabled": bool,
+        "paper_arrival_advert": bool,
         "event_advert_min_interval_s": (int, float),
     },
     "routing": {
