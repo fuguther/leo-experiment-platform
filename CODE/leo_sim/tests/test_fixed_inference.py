@@ -227,6 +227,39 @@ def test_the_fixed_policy_is_deterministic_across_runs():
     assert sequences[0]
 
 
+def test_optional_policy_decision_record_is_written_to_the_observation_audit():
+    from CODE.leo_sim import kernel
+
+    class RecorderPolicy:
+        name = "recorder"
+
+        def act(self, snapshot):
+            return snapshot.legal_directions[0]
+
+        def decision_record(self):
+            return {"schema": "test-decision-record/v1", "online_only": True}
+
+        def counters(self):
+            return {"calls": 1}
+
+    cfg, rows, geometry, _meta = _branch_fixture()
+    sink = []
+    kernel.run_simulation(cfg, rows, geometry=geometry, decision_sink=sink,
+                          timeline_sink=[], inference_policy=RecorderPolicy())
+    audits = [
+        (row.get("observation_at_start") or {}).get("time_alignment", {})
+        .get("inference_policy")
+        for row in sink if row.get("kind") == "forward"
+    ]
+    audits = [audit for audit in audits if audit]
+    assert audits
+    assert all(
+        audit["decision_record"] == {
+            "schema": "test-decision-record/v1", "online_only": True}
+        for audit in audits
+    )
+
+
 def test_the_branch_replay_accepts_the_inference_policy():
     from CODE.leo_sim import counterfactual
 

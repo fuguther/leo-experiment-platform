@@ -5951,6 +5951,7 @@ class Kernel:
             plan = _ta.plan_decision(probe)
             scored = plan.scored
             policy_choice = None
+            policy_decision_record = None
             if self.inference_policy is not None:
                 policy_choice = self.inference_policy.act(probe)
                 if policy_choice not in probe.legal_directions:
@@ -5958,6 +5959,9 @@ class Kernel:
                         "the inference policy chose "
                         f"{policy_choice!r} outside the legal set "
                         f"{sorted(probe.legal_directions)}")
+                recorder = getattr(self.inference_policy, "decision_record", None)
+                if callable(recorder):
+                    policy_decision_record = recorder()
         except _ta.TimeAlignmentError as exc:
             raise KernelError(
                 f"time_alignment could not score decision at {now}: {exc}")
@@ -6055,6 +6059,7 @@ class Kernel:
                 None if self.inference_policy is None else
                 {"name": getattr(self.inference_policy, "name", None),
                  "choice": policy_choice,
+                 "decision_record": policy_decision_record,
                  "counters": self.inference_policy.counters()}),
             "eta_unknown_terms": {
                 d: list(_ta.estimate_eta(probe, d).unknown_terms)
