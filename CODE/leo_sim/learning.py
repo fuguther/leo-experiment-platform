@@ -1985,7 +1985,9 @@ def _paper_predict_from_history(history, now: float,
         #
         # The decay below models what the paper's T-LSTM learns from data -- that a burst
         # drains -- using the only time constant a two-sample predictor has: PAPER_PREDICT_TAU_S.
-        decay = math.exp(-age / max(1e-9, PAPER_PREDICT_TAU_S))
+        tau = (PAPER_PREDICT_TAU_S if predict_tau is None
+               else max(1e-9, float(predict_tau)))
+        decay = math.exp(-age / tau)
         return max(0.0, q1 * decay + phi * slope * age * decay)
     except (AttributeError, TypeError, ValueError):
         return None
@@ -2024,7 +2026,9 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                       paper_predict_damping: float | None = None,
                       paper_masked_queue: float | None = None,
                       paper_strict: bool = False,
-                      dst_root_pos=None
+                      paper_predict_tau: float | None = None,
+                      dst_root_pos=None,
+                      predict_tau=None
                       ) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
@@ -2139,7 +2143,8 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                     _proj = _paper_predict_from_history(
                         getattr(cache, "history", {}).get(int(peer)), now,
                         origin=int(peer), topo=topo,
-                        damping=paper_predict_damping)
+                        damping=paper_predict_damping,
+                        predict_tau=paper_predict_tau)
                     if _proj is not None:
                         nb_q = float(_proj) / _q_scale
                 pj = cache_position

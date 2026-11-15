@@ -4645,6 +4645,8 @@ class Kernel:
             paper_masked_queue=(None if self.cfg_learning.get("paper_masked_queue") is None
                                 else float(self.cfg_learning["paper_masked_queue"])),
             paper_strict=bool(self.cfg_learning.get("paper_strict")),
+            paper_predict_tau=(None if self.cfg_learning.get("paper_predict_tau") is None
+                               else float(self.cfg_learning["paper_predict_tau"])),
             dst_root_pos=self._paper_dst_serving_pos(dst_cell),
             paper_queue_true=_paper_true,
         )
