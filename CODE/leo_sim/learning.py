@@ -1580,6 +1580,11 @@ PAPER_REACH_UNIT = 5.0
 # from a spike.  Damping keeps the trend's direction while shrinking its magnitude
 # so a burst is not extrapolated into a sustained backlog.  A deviation, recorded.
 PAPER_PREDICT_DAMPING = 0.25
+# Time constant for the predictor's mean reversion, in seconds.  Measured: between an
+# advert (fired on packet arrival, queue momentarily full) and the decision instant,
+# 91% of the backlog drains away.  A secant alone extrapolates that burst forward and
+# was 4.6x worse than no prediction at all.
+PAPER_PREDICT_TAU_S = 0.05
 
 PAPER_REWARD_BETA = 1.0
 PAPER_REWARD_KAPPA = 1e-6
@@ -1970,7 +1975,18 @@ def _paper_predict_from_history(history, now: float,
         # collapses to the last observed value and Scheme 3 becomes Scheme 2 exactly.)
         phi = (PAPER_PREDICT_DAMPING if damping is None
                else max(0.0, min(1.0, float(damping))))
-        return max(0.0, q1 + phi * slope * age)
+        # MEAN REVERSION, not extrapolation.  Measured on the arrival-triggered control
+        # plane: a broadcast now fires when a packet ARRIVES, so it reports a queue that is
+        # momentarily FULL (mean 72,542 bit), while the same edge is drained by the time the
+        # decision is taken (true mean 6,215 bit) -- 91% of the backlog disappears between
+        # advert and decision.  Extrapolating that with a secant therefore moves AWAY from
+        # the truth: the damped secant predicted 316,346 bit, a 4.6x WORSE error than simply
+        # using the stale value.
+        #
+        # The decay below models what the paper's T-LSTM learns from data -- that a burst
+        # drains -- using the only time constant a two-sample predictor has: PAPER_PREDICT_TAU_S.
+        decay = math.exp(-age / max(1e-9, PAPER_PREDICT_TAU_S))
+        return max(0.0, q1 * decay + phi * slope * age * decay)
     except (AttributeError, TypeError, ValueError):
         return None
 
