@@ -4573,7 +4573,13 @@ class Kernel:
             self.cfg_rt["contract"], sat, self.caches[sat], self.env.now,
             self.topo, own, self.cfg_links["isl_queue_bits"],
             obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos,
-            dir_progress=dir_progress, eta_by_dir=eta_by_dir,
+            # A learning arm must be able to ablate the direction-progress block:
+            # it is the per-direction "which way is the goal" hint, and if the policy
+            # leans on it the neighbour-queue block may be inert -- which would make
+            # the four schemes indistinguishable for a reason unrelated to the paper.
+            dir_progress=(None if self.cfg_learning.get("paper_mask_dir_progress")
+                          else dir_progress),
+            eta_by_dir=eta_by_dir,
             cache_position=self.geometry.positions,
             paper_state=_paper_state,
             paper_queue_growth=_paper_growth,

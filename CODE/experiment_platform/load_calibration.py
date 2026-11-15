@@ -160,6 +160,9 @@ OVERRIDE_FIELDS = {
                  # 0.0 says "free"; both are CONSTANT signals, so this separates
                  # "information has no value" from "a constant is easier to learn from".
                  "paper_masked_queue",
+                 # zero the per-direction goal-progress block, to test whether the
+                 # policy relies on it rather than on the neighbour queues
+                 "paper_mask_dir_progress",
                  # opt-in hop cost for paper_eq9; non-zero is a deviation
                  "forward_step_penalty",
                  # which of the paper's four schemes this cell reproduces
