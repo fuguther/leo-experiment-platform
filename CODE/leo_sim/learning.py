@@ -1907,7 +1907,8 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
 def _paper_predict_from_history(history, now: float,
                                 origin: int | None = None,
                                 topo: dict | None = None,
-                                damping: float | None = None
+                                damping: float | None = None,
+                                predict_tau: float | None = None
                                 ) -> float | None:
     """Project a neighbour queue from the LAST TWO samples it advertised.
 
