@@ -74,7 +74,8 @@ def branch_fingerprint(decision_rows, target_decision_id: int) -> str:
 
 def replay_with_forced_action(resolved: dict, rows: list, *,
                               target_decision_id: int, forced_action: str,
-                              geometry=None, inference_policy=None) -> dict:
+                              geometry=None, inference_policy=None,
+                              inference_policy_factory=None) -> dict:
     """Replay one run twice and force exactly one action at one decision.
 
     inference_policy, when given, is an INFERENCE-ONLY policy applied to both
@@ -95,19 +96,33 @@ def replay_with_forced_action(resolved: dict, rows: list, *,
             "deterministic router with learning off; got learning.algorithm="
             f"{algorithm!r}")
 
+    if inference_policy is not None and inference_policy_factory is not None:
+        raise CounterfactualError(
+            "declare inference_policy or inference_policy_factory, not both")
+    if inference_policy_factory is not None:
+        try:
+            baseline_policy = inference_policy_factory()
+            forced_policy = inference_policy_factory()
+        except Exception as exc:
+            raise CounterfactualError(
+                f"inference_policy_factory failed: {exc}") from exc
+    else:
+        baseline_policy = inference_policy
+        forced_policy = inference_policy
+
     base_sink: list = []
     base_timeline: list = []
     baseline = kernel.run_simulation(resolved, rows, geometry=geometry,
                                      decision_sink=base_sink,
                                      timeline_sink=base_timeline,
-                                     inference_policy=inference_policy)
+                                     inference_policy=baseline_policy)
     cf_sink: list = []
     cf_timeline: list = []
     forced_run = kernel.run_simulation(
         resolved, rows, geometry=geometry,
         decision_sink=cf_sink, timeline_sink=cf_timeline,
         forced_actions={target_decision_id: forced_action},
-        inference_policy=inference_policy)
+        inference_policy=forced_policy)
 
     base_fp = branch_fingerprint(base_sink, target_decision_id)
     cf_fp = branch_fingerprint(cf_sink, target_decision_id)
