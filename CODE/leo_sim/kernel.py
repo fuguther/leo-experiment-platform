@@ -4340,6 +4340,27 @@ class Kernel:
                                          "to": target})
 
     # --------------------------------------------------------------- routing
+    def _paper_dst_serving_pos(self, dst_cell: str):
+        """Position of the satellite serving the destination region.
+
+        The paper puts this inside P_i as p_dist(t), a POSITION.  Emitting only its distance
+        left the agent unable to tell which neighbour is goal-ward: comparing |n_j - p_dist|
+        with |p_i - p_dist| needs the position, not one scalar.
+        """
+        try:
+            targets = [int(t) for t in self._serving_sats(str(dst_cell))]
+            if not targets:
+                return None
+            pos = self.geometry.positions(self.env.now)
+            # average the serving satellites' positions, as p_dist names the satellite
+            # "connected to the target ground station"
+            acc = np.zeros(3, dtype=np.float64)
+            for t in targets:
+                acc += np.asarray(pos[int(t)], dtype=np.float64)
+            return acc / float(len(targets))
+        except Exception:  # noqa: BLE001 - a geometry gap must not be fatal
+            return None
+
     def _serving_sats(self, cell: str) -> list[int]:
         """Satellites whose association with the endpoint is active right now
         (direct kernel truth; used ONLY by the labeled oracle).
@@ -4588,6 +4609,7 @@ class Kernel:
             paper_masked_queue=(None if self.cfg_learning.get("paper_masked_queue") is None
                                 else float(self.cfg_learning["paper_masked_queue"])),
             paper_strict=bool(self.cfg_learning.get("paper_strict")),
+            dst_root_pos=self._paper_dst_serving_pos(dst_cell),
             paper_queue_true=_paper_true,
         )
 

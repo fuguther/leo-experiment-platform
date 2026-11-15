@@ -114,12 +114,18 @@ PAPER_NBR_FEATURES = 1 + PAPER_POS_FEATURES                          # 4
 #: 4 own queue lengths + 3 own position + 4 x (1 neighbour queue + 3 relative
 #: position) + 1 dest-serving distance = 24, and _finish appends the shared
 #: destination_features (3) and direction_progress (4), so the total is 31.
-PAPER_BODY = PAPER_QUEUE_FEATURES + PAPER_POS_FEATURES \
-    + 4 * PAPER_NBR_FEATURES + 1
-PAPER_DIM = PAPER_BODY + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES
-# Strict mode emits only the paper's O_i, i.e. the body without the appended
-# dst_feats and dir_progress blocks.
+#: p_dist(t) is a POSITION (3).  It used to be a single scalar distance, which cannot
+#: support "is neighbour j closer to the destination than I am" -- that comparison needs
+#: |n_j - p_dist| vs |p_i - p_dist|, i.e. the position itself.
+PAPER_DIST_POS_FEATURES = 3
+#: The paper's O_i = {L_i, P_i} exactly: own queues(4) + own position(3)
+#: + 4 neighbours x (queue 1 + relative position 3) + p_dist position(3) = 26.
+PAPER_BODY = (PAPER_QUEUE_FEATURES + PAPER_POS_FEATURES
+              + 4 * PAPER_NBR_FEATURES + PAPER_DIST_POS_FEATURES)
+#: Strict mode emits the body only.
 PAPER_STRICT_DIM = PAPER_BODY
+#: Default mode appends the shared destination_features and direction_progress blocks.
+PAPER_DIM = PAPER_BODY + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES
 C4_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own + AoI-weighted aggregate
 C5_DIM = OWN_FEATURES + ORIGIN_FEATURES + 1        # own + freshest entry + staleness flag
 C6_MAX_HOPS = 4
@@ -2001,7 +2007,8 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                       paper_queue_true: dict | None = None,
                       paper_predict_damping: float | None = None,
                       paper_masked_queue: float | None = None,
-                      paper_strict: bool = False
+                      paper_strict: bool = False,
+                      dst_root_pos=None
                       ) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
@@ -2144,14 +2151,24 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
             blocks.append(np.concatenate(
                 [np.asarray([nb_q], dtype=np.float64),
                  np.ravel(nb_pos).astype(np.float64)]))
-        # distance to the destination-serving satellite, normalised by one ISL
-        d_dst = 0.0
-        if dst_feats is not None and len(dst_feats) >= 3:
-            d_dst = float(dst_feats[2])
+        # p_dist(t): the POSITION of the satellite serving the destination.
+        #
+        # The paper lists it inside P_i, whose members are "location information ... respectively"
+        # -- own position, neighbour positions, and the destination-serving satellite's position.
+        # This used to emit only the SCALAR distance to it, which is not enough to route: picking
+        # the goal-ward neighbour needs to compare |n_j - p_dist| against |p_i - p_dist|, and a
+        # single distance cannot support that comparison.  Measured consequence: the learned arms
+        # took 9.90 hops where the deterministic scorer takes 5.18 on the same scene.
+        d_pos = np.zeros(PAPER_DIST_POS_FEATURES, dtype=np.float64)
+        if dst_root_pos is not None:
+            d_pos = np.ravel(
+                np.asarray(dst_root_pos, dtype=np.float64)).astype(np.float64) / 1.0e4
+            if d_pos.shape[0] != PAPER_DIST_POS_FEATURES:
+                d_pos = np.zeros(PAPER_DIST_POS_FEATURES, dtype=np.float64)
         parts = [np.ravel(own_q).astype(np.float64),
                  np.ravel(own_pos).astype(np.float64)] + \
                 [np.ravel(b).astype(np.float64) for b in blocks] + \
-                [np.asarray([d_dst], dtype=np.float64)]
+                [d_pos]
         body = np.concatenate(parts)
         # STRICT mode: emit exactly the paper's O_i = {L_i, P_i} and nothing else.
         #
