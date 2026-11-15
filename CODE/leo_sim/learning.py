@@ -117,6 +117,9 @@ PAPER_NBR_FEATURES = 1 + PAPER_POS_FEATURES                          # 4
 PAPER_BODY = PAPER_QUEUE_FEATURES + PAPER_POS_FEATURES \
     + 4 * PAPER_NBR_FEATURES + 1
 PAPER_DIM = PAPER_BODY + DEST_FEATURES + DIRECTION_PROGRESS_FEATURES
+# Strict mode emits only the paper's O_i, i.e. the body without the appended
+# dst_feats and dir_progress blocks.
+PAPER_STRICT_DIM = PAPER_BODY
 C4_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own + AoI-weighted aggregate
 C5_DIM = OWN_FEATURES + ORIGIN_FEATURES + 1        # own + freshest entry + staleness flag
 C6_MAX_HOPS = 4
@@ -593,6 +596,8 @@ class TensorflowDDQN:
                 f"resume ({type(exc).__name__}: {exc})") from exc
         self.contract = contract
         self.input_dim = CONTRACT_DIMS[contract]
+        if contract == "PAPER" and cfg.get("paper_strict"):
+            self.input_dim = PAPER_STRICT_DIM
         self.cfg = dict(cfg)
         self.seed = int(seed)
         self.rng = np.random.default_rng(self.seed)
@@ -1995,7 +2000,8 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                       paper_queue_growth: float = 0.0,
                       paper_queue_true: dict | None = None,
                       paper_predict_damping: float | None = None,
-                      paper_masked_queue: float | None = None
+                      paper_masked_queue: float | None = None,
+                      paper_strict: bool = False
                       ) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
@@ -2146,7 +2152,20 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                  np.ravel(own_pos).astype(np.float64)] + \
                 [np.ravel(b).astype(np.float64) for b in blocks] + \
                 [np.asarray([d_dst], dtype=np.float64)]
-        return _finish(np.concatenate(parts))
+        body = np.concatenate(parts)
+        # STRICT mode: emit exactly the paper's O_i = {L_i, P_i} and nothing else.
+        #
+        # The default PAPER vector appends dst_feats (3) and dir_progress (4), which the
+        # paper's Section III-A does not define.  An ablation showed the dir_progress block
+        # carries a +46.67% effect on E2E (masking it: 132.49 -> 194.31 ms, p=0.0022) while
+        # the neighbour-queue block -- the paper's actual mechanism -- moves E2E by 6.83%
+        # and the S3-vs-S2 contrast by 0.42%.  Routing therefore ran on a feature the paper
+        # never specified, shared by all four arms, which is why they matched.
+        #
+        # With strict=True the four arms differ ONLY in the information the paper gives them.
+        if paper_strict:
+            return body
+        return _finish(body)
 
     if contract in ("C8", "C9", "C10"):
         # one block PER DIRECTION, in the same order as the action vector, so

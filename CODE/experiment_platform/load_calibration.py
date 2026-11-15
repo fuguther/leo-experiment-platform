@@ -163,6 +163,10 @@ OVERRIDE_FIELDS = {
                  # zero the per-direction goal-progress block, to test whether the
                  # policy relies on it rather than on the neighbour queues
                  "paper_mask_dir_progress",
+                 # emit exactly the paper's O_i={L_i,P_i}, dropping dst_feats and
+                 # dir_progress -- the only configuration in which the four arms differ
+                 # solely in the information the paper specifies
+                 "paper_strict",
                  # opt-in hop cost for paper_eq9; non-zero is a deviation
                  "forward_step_penalty",
                  # which of the paper's four schemes this cell reproduces
