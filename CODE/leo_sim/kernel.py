@@ -5842,11 +5842,13 @@ class Kernel:
             ou_tau_s=self.cfg_ta.get("ou_tau_s"),
             queue_weight=self.cfg_ta.get("queue_weight"),
             provenance=(scope,),
-            pkt_src=(None if pkt is None else str(pkt.src)),
+            pkt_src=(None if pkt is None or getattr(pkt, "src", None) is None
+                     else str(getattr(pkt, "src"))),
             pkt_dst=(None if target_dst is None else str(target_dst)),
-            pkt_age_s=(None if pkt is None else max(0.0, float(now) - float(pkt.emitted_at))),
-            pkt_hop_count=(0 if pkt is None else len(pkt.path)),
-            pkt_deadline_s=(None if pkt is None else pkt.deadline))
+            pkt_age_s=(None if pkt is None or getattr(pkt, "emitted_at", None) is None
+                       else max(0.0, float(now) - float(getattr(pkt, "emitted_at")))),
+            pkt_hop_count=(0 if pkt is None else len(getattr(pkt, "path", ()) or ())),
+            pkt_deadline_s=(None if pkt is None else getattr(pkt, "deadline", None)))
 
     def _ta_common_horizon(self, probe, rule):
         """Delegates to the shared resolver (kept for existing callers)."""
