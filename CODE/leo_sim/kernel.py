@@ -4579,6 +4579,8 @@ class Kernel:
             paper_queue_growth=_paper_growth,
             paper_predict_damping=float(
                 self.cfg_learning.get("paper_predict_damping") or 0.0) or None,
+            paper_masked_queue=(None if self.cfg_learning.get("paper_masked_queue") is None
+                                else float(self.cfg_learning["paper_masked_queue"])),
             paper_queue_true=_paper_true,
         )
 

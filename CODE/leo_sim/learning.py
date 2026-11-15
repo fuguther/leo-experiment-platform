@@ -1994,7 +1994,8 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                       paper_state: str = "advertised",
                       paper_queue_growth: float = 0.0,
                       paper_queue_true: dict | None = None,
-                      paper_predict_damping: float | None = None
+                      paper_predict_damping: float | None = None,
+                      paper_masked_queue: float | None = None
                       ) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
@@ -2127,7 +2128,13 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                     except Exception:  # noqa: BLE001
                         nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
             else:
-                nb_q = 1.0        # unknown reads as fully loaded, never "free"
+                # The masked value is a CONSTANT signal, not the absence of one: with
+                # 1.0 the agent is told "every neighbour is fully loaded", which is a
+                # strong uniform statement.  Making it overridable lets the control
+                # distinguish "neighbour information has no value" from "a constant
+                # input happens to be easier to learn from than a noisy one".
+                nb_q = (1.0 if paper_masked_queue is None
+                        else float(paper_masked_queue))
             blocks.append(np.concatenate(
                 [np.asarray([nb_q], dtype=np.float64),
                  np.ravel(nb_pos).astype(np.float64)]))

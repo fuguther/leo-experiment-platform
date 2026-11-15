@@ -252,6 +252,7 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # what makes the comparison attributable to the state-lag mechanism.
         "paper_scheme": (str, type(None)),
         "paper_predict_damping": (int, float, type(None)),
+        "paper_masked_queue": (int, float, type(None)),
         "init_from": (str, type(None)),
         "init_from_sha256": (str, type(None)),
         "checkpoint_path": (str, type(None)),
@@ -606,6 +607,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "obs_hops": None,
         "paper_scheme": None,
         "paper_predict_damping": None,
+        "paper_masked_queue": None,
         "init_from": None,
         "init_from_sha256": None,
         "checkpoint_path": None,
