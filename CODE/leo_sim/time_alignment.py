@@ -302,6 +302,14 @@ class ObservationSnapshot:
     terminal_propagation_s: tuple = ()
     resource_available: tuple = ()
     local_egress_in_service_s: tuple = ()
+    # Packet-local metadata exposed only after the kernel has frozen this
+    # decision.  These are legal inputs (the packet is in this satellite's
+    # possession); they are not future state or simulator truth.
+    pkt_src: str | None = None
+    pkt_dst: str | None = None
+    pkt_age_s: float | None = None
+    pkt_hop_count: int = 0
+    pkt_deadline_s: float | None = None
 
     def _lookup(self, table: tuple, direction: str):
         for key, value in table:
@@ -356,6 +364,11 @@ class ObservationSnapshot:
             "resource_available": dict(self.resource_available),
             "local_egress_in_service_s": dict(
                 self.local_egress_in_service_s),
+            "pkt_src": self.pkt_src,
+            "pkt_dst": self.pkt_dst,
+            "pkt_age_s": self.pkt_age_s,
+            "pkt_hop_count": self.pkt_hop_count,
+            "pkt_deadline_s": self.pkt_deadline_s,
             "arm": self.arm,
             "predictor": self.predictor,
             "provenance": list(self.provenance),
@@ -435,6 +448,8 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
                   terminal_propagation_s=None,
                   resource_available=None,
                   local_egress_in_service_s=None,
+                  pkt_src=None, pkt_dst=None, pkt_age_s=None,
+                  pkt_hop_count=0, pkt_deadline_s=None,
                   ou_tau_s=None, queue_weight=None) -> ObservationSnapshot:
     """Build the frozen snapshot from kernel-selected fields only.
 
@@ -507,6 +522,13 @@ def make_snapshot(*, satellite: int, snapshot_at: float, history,
             "resource_available", resource_available),
         local_egress_in_service_s=_pairs(
             "local_egress_in_service_s", local_egress_in_service_s),
+        pkt_src=(None if pkt_src is None else str(pkt_src)),
+        pkt_dst=(None if pkt_dst is None else str(pkt_dst)),
+        pkt_age_s=(None if pkt_age_s is None else _finite(
+            "pkt_age_s", pkt_age_s)),
+        pkt_hop_count=int(pkt_hop_count),
+        pkt_deadline_s=(None if pkt_deadline_s is None else _finite(
+            "pkt_deadline_s", pkt_deadline_s)),
     )
 
 

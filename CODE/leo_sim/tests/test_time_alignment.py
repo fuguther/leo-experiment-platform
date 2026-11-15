@@ -428,3 +428,18 @@ def test_tie_digits_refuses_anything_ambiguous():
         with pytest.raises(ta.TimeAlignmentError):
             ta._tie_digits("tie_sig_digits", bad)
 
+
+
+def test_packet_local_metadata_round_trips_in_frozen_snapshot():
+    snapshot = _snapshot(
+        pkt_src="G1:90:180", pkt_dst="G1:142:270",
+        pkt_age_s=0.25, pkt_hop_count=2, pkt_deadline_s=1.5,
+    )
+    assert snapshot.pkt_src == "G1:90:180"
+    assert snapshot.pkt_dst == "G1:142:270"
+    assert snapshot.pkt_age_s == pytest.approx(0.25)
+    assert snapshot.pkt_hop_count == 2
+    assert snapshot.pkt_deadline_s == pytest.approx(1.5)
+    described = snapshot.describe()
+    assert described["pkt_src"] == "G1:90:180"
+    assert described["pkt_dst"] == "G1:142:270"
