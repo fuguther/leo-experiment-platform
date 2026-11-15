@@ -4756,6 +4756,19 @@ class Kernel:
         # positive when the hop moves us closer to the destination
         return float(here_to_dst) - float(peer_to_dst)
 
+    def _learning_obs_dim(self) -> int:
+        """Width of one observation for the running learner.
+
+        The contract's default width is NOT always what the learner emits: under
+        paper_strict the PAPER observation is PAPER_BODY (24) while CONTRACT_DIMS says 31.
+        Terminal transitions write a zero placeholder here, and a single row of the wrong
+        width makes np.stack fail on every training step.
+        """
+        dim = getattr(self.learner, "input_dim", None)
+        if dim:
+            return int(dim)
+        return int(_learning.CONTRACT_DIMS[self.cfg_rt["contract"]])
+
     def _finish_learning_transition(self, pkt: DataPacket, next_state,
                                     next_mask: dict, done: bool,
                                     terminal_reward: float | None = None) -> None:
@@ -4810,9 +4823,7 @@ class Kernel:
                 # paper_strict the observation is PAPER_BODY (24) while CONTRACT_DIMS says
                 # 31, and one 31-wide row in the replay batch made np.stack raise
                 # "all input arrays must have the same shape" on every training step.
-                _dim = (getattr(self.learner, "input_dim", None)
-                        or _learning.CONTRACT_DIMS[self.cfg_rt["contract"]])
-                next_state = np.zeros(int(_dim))
+                next_state = np.zeros(self._learning_obs_dim())
             if next_mask is None:
                 next_mask = {action: False for action in _learning.ACTIONS}
             self.learner.remember(
@@ -8120,7 +8131,7 @@ class Kernel:
                 self._finish_deadline_transition(pkt, "delivered")
         else:
             self._finish_learning_transition(
-                pkt, np.zeros(_learning.CONTRACT_DIMS[self.cfg_rt["contract"]]),
+                pkt, np.zeros(self._learning_obs_dim()),
                 {a: False for a in _learning.ACTIONS}, True,
                 # The legacy arrival reward exists only at real delivery.
                 # Eq.(9)'s completion term is rho3*r^reach with r^reach in
@@ -8213,9 +8224,7 @@ class Kernel:
                 self._finish_deadline_transition(pkt, "failed")
             else:
                 self._finish_learning_transition(
-                    pkt,
-                    np.zeros(_learning.CONTRACT_DIMS[
-                        self.cfg_rt["contract"]]),
+                    pkt, np.zeros(self._learning_obs_dim()),
                     {a: False for a in _learning.ACTIONS}, True,
                     terminal_reward=(None
                                      if pkt.learning_reward is not None
