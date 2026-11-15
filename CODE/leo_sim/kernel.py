@@ -4805,8 +4805,14 @@ class Kernel:
             episode_closed=False)
         if transition is not None and pkt.learning_state is not None:
             if next_state is None:
-                next_state = np.zeros(
-                    _learning.CONTRACT_DIMS[self.cfg_rt["contract"]])
+                # Terminal rows carry a placeholder next_state.  Its width MUST match the
+                # learner's input width, not the contract's default width: under
+                # paper_strict the observation is PAPER_BODY (24) while CONTRACT_DIMS says
+                # 31, and one 31-wide row in the replay batch made np.stack raise
+                # "all input arrays must have the same shape" on every training step.
+                _dim = (getattr(self.learner, "input_dim", None)
+                        or _learning.CONTRACT_DIMS[self.cfg_rt["contract"]])
+                next_state = np.zeros(int(_dim))
             if next_mask is None:
                 next_mask = {action: False for action in _learning.ACTIONS}
             self.learner.remember(
