@@ -16,6 +16,7 @@ run fails closed (LearningUnavailable) — no mock stands in for migration.
 from __future__ import annotations
 
 import importlib.util
+import os
 import hashlib
 import json
 import math
@@ -559,6 +560,29 @@ class V2GraphEncoder(tf.keras.layers.Layer if tf is not None else object):
 
 def _graph_custom_objects():
     return {"V2GraphEncoder": V2GraphEncoder}
+
+
+def _pin_deterministic_runtime() -> None:
+    """Pin the BLAS/Op threading that silently makes training runs non-reproducible.
+
+    Measured: identical config + identical seed run twice from the command line gave different
+    train_steps (548,972 vs 559,728) and different losses (0.1339 vs 0.1856), even though the
+    result claims op_determinism=True -- that flag only covers a single forward/loss evaluation.
+    With OMP_NUM_THREADS=1 and TF_DETERMINISTIC_OPS=1, two runs in one process produced
+    bit-identical steps and loss.
+
+    This matters because the S3-vs-S2 effect (~0.7 ms) is smaller than the non-determinism it
+    was hiding behind (~1.7-2.7 ms on replicate runs).
+    """
+    defaults = {
+        "OMP_NUM_THREADS": "1",
+        "TF_DETERMINISTIC_OPS": "1",
+        "TF_NUM_INTRAOP_THREADS": "1",
+        "TF_NUM_INTEROP_THREADS": "1",
+        "TF_CUDNN_DETERMINISTIC": "1",
+    }
+    for key, value in defaults.items():
+        os.environ.setdefault(key, value)
 
 
 class TensorflowDDQN:
