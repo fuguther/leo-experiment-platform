@@ -1585,6 +1585,10 @@ PAPER_PREDICT_DAMPING = 0.25
 # 91% of the backlog drains away.  A secant alone extrapolates that burst forward and
 # was 4.6x worse than no prediction at all.
 PAPER_PREDICT_TAU_S = 0.05
+# Seconds of advertised history the windowed prediction fits over.  The history
+# holds ~41 samples; a two-point secant uses 2 of them, the paper's T-LSTM uses the
+# sequence.  0 disables the window and falls back to the secant.
+PAPER_PREDICT_WINDOW = 0.5
 
 PAPER_REWARD_BETA = 1.0
 PAPER_REWARD_KAPPA = 1e-6
@@ -1989,7 +1993,28 @@ def _paper_predict_from_history(history, now: float,
         tau = (PAPER_PREDICT_TAU_S if predict_tau is None
                else max(1e-9, float(predict_tau)))
         decay = math.exp(-age / tau)
-        return max(0.0, q1 * decay + phi * slope * age * decay)
+        extrapolated = max(0.0, q1 * decay + phi * slope * age * decay)
+        # WINDOWED PREDICTION.  The history holds ~41 samples but a two-point secant throws
+        # 39 of them away.  The paper's predictor is a T-LSTM over the whole advertised
+        # history (eq. 13-18), so discarding the window is a real departure, not a detail.
+        #
+        # A least-squares line over the recent window is the faithful reduction of "use the
+        # sequence, not the last pair": it still cannot model a T-LSTM's nonlinear memory,
+        # but it does use the same information the T-LSTM is given.
+        window = float(PAPER_PREDICT_WINDOW)
+        if window > 0.0:
+            recent = [(t, q) for (t, q) in pairs if t1 - t <= window]
+            if len(recent) >= 3:
+                n_r = float(len(recent))
+                t_mean = sum(t for t, _ in recent) / n_r
+                q_mean = sum(q for _, q in recent) / n_r
+                num = sum((t - t_mean) * (q - q_mean) for t, q in recent)
+                den = sum((t - t_mean) ** 2 for t, _ in recent)
+                if den > 1e-18:
+                    fitted_slope = num / den
+                    # fitted value at the newest sample's time, then decayed to `now`
+                    return max(0.0, q_mean * decay + phi * fitted_slope * age * decay)
+        return extrapolated
     except (AttributeError, TypeError, ValueError):
         return None
 
