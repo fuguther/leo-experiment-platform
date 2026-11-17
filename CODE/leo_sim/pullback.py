@@ -260,9 +260,10 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
     # External launch witness: checked only when the caller says where the pull
     # put it.  Its absence is NOT inferred from the file being missing.
     if witness_root is None:
-        not_checked.append(
-            "external launch witness (no --witness-root supplied; the witness "
-            "is pulled next to the results, not inside the run directory)")
+        message = ("external launch witness (no --witness-root supplied; the "
+                   "witness is pulled next to the results, not inside the run "
+                   "directory)")
+        not_checked.append(message)
     else:
         errors.extend(_external_witness_errors(
             Path(witness_root), run_dir, governed, not_checked))
@@ -414,6 +415,14 @@ def verify_pulled_run(run_dir: str | Path, *, expect: str,
     if expect == EXPECT_FORMAL:
         formal_errors, not_checked = _formal_increment_errors(
             run_dir, receipt or {}, witness_root)
+        if witness_root is None:
+            # The caller declared this copy FORMAL, and the only evidence that
+            # the launch was governed is the external witness.  Listing it as
+            # "not checked here" while still reporting ok would turn an
+            # unchecked requirement into a pass.
+            formal_errors = list(formal_errors) + [
+                "formal acceptance requires the external launch witness: "
+                "--witness-root was not supplied"]
         check("P5",
               "the formal increment is complete, contract-shaped and agrees "
               "with this copy",

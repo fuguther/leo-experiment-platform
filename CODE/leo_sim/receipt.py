@@ -377,11 +377,15 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
     mode = resolved_cfg["demand"]["mode"]
     if manifest.get("mode") != mode:
         errors.append("manifest mode != resolved config demand mode")
+    # csv used to be recorded as "synthetic"; those manifests are historical
+    # evidence and must keep verifying.  Both labels are accepted for csv, the
+    # new one is what the compiler now emits.
     expected_provenance = {
-        "mlab": "measurement_proxy",
-        "population_gravity": "population_proxy",
-    }.get(mode, "synthetic")
-    if manifest.get("provenance") != expected_provenance:
+        "mlab": {"measurement_proxy"},
+        "population_gravity": {"population_proxy"},
+        "csv": {"external_input", "synthetic"},
+    }.get(mode, {"synthetic"})
+    if manifest.get("provenance") not in expected_provenance:
         errors.append("manifest provenance mismatch")
     # rng_streams: reconstruct the exact config feature branch.  Legacy and
     # non-nested traces keep only the canonical demand mapping; nested
