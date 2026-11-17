@@ -106,7 +106,7 @@ def _with_stream_witness(source: Path, target: Path) -> Path:
         "timeline_log_sha256": timeline_sha,
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     (target / "governance_receipt.json").write_text(json.dumps({
-        "schema": "leo-sim-governance-receipt/v2",
+        "schema": "leo-sim-governance-receipt/v3",
         "formal_run_sha256": hashlib.sha256(
             formal_path.read_bytes()).hexdigest(),
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")

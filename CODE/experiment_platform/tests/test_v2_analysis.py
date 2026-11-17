@@ -48,7 +48,7 @@ def _write_external_witness(root: Path, run_id: str, governed: dict,
     formal = json.loads(
         (root / "CODE" / "Results" / run_id / "formal_run.json").read_text())
     witness = {
-        "schema": "leo-remote-launch-status/v2",
+        "schema": v2_analysis.EXTERNAL_STATUS_SCHEMA,
         "status": "success", "exit_code": 0,
         "launch_nonce": "b" * 32, "run_id": run_id,
         "authorization_sha256": authorization_sha256,
@@ -68,7 +68,7 @@ def test_external_witness_path_supports_explicit_remote_nonce_naming(tmp_path):
     witness_root = tmp_path / ".remote_runtime" / "launches"
     nonce = "d" * 32
     nonce_path = witness_root / f"{nonce}.json"
-    _write(nonce_path, {"schema": "leo-remote-launch-status/v2"})
+    _write(nonce_path, {"schema": v2_analysis.EXTERNAL_STATUS_SCHEMA})
 
     assert v2_analysis._external_witness_path(
         witness_root, "EXP-run", launch_nonce=nonce) == nonce_path
@@ -144,7 +144,7 @@ def _run_fixture(root: Path, run_id: str, arm_id: str, pair: str) -> dict:
     })
     execution_chain = {"CODE/example.py": "9" * 64}
     governed = {
-        "schema": "leo-sim-governance-receipt/v2", "research_eligible": True,
+        "schema": v2_analysis.GOVERNANCE_SCHEMA_V3, "research_eligible": True,
         "run_id": run_id, "launch_nonce": "b" * 32,
         "verification_errors": [],
         "source_git_commit": "d" * 40,
@@ -873,6 +873,38 @@ def test_v2_analysis_v5_rejects_joint_formal_timeline_tamper(tmp_path):
                            "verify_authorization", return_value=auth):
         with pytest.raises(v2_analysis.V2AnalysisError,
                            match="governance witness binding mismatch"):
+            v2_analysis.analyze(root, experiment, auth_path)
+
+
+def test_v2_analysis_rejects_legacy_governance_v2(tmp_path):
+    root, experiment, auth_path, row = _single_run_analysis_fixture(tmp_path)
+    governed_path = (root / "CODE" / "Results" / row["run_id"]
+                     / "governance_receipt.json")
+    governed = json.loads(governed_path.read_text(encoding="utf-8"))
+    governed["schema"] = v2_analysis.GOVERNANCE_SCHEMA_V2_LEGACY
+    governed.pop("formal_run_sha256")
+    _seal_governed(governed)
+    _write(governed_path, governed)
+    auth = json.loads(auth_path.read_text(encoding="utf-8"))
+    with mock.patch.object(v2_analysis.authorize_experiment,
+                           "verify_authorization", return_value=auth):
+        with pytest.raises(v2_analysis.V2AnalysisError,
+                           match="legacy governance receipt v2"):
+            v2_analysis.analyze(root, experiment, auth_path)
+
+
+def test_v2_analysis_rejects_legacy_external_status_v2(tmp_path):
+    root, experiment, auth_path, row = _single_run_analysis_fixture(tmp_path)
+    witness_path = (root / "CODE" / "Results" / "_external_launch_witness"
+                    / f"{row['run_id']}.json")
+    witness = json.loads(witness_path.read_text(encoding="utf-8"))
+    witness["schema"] = v2_analysis.EXTERNAL_STATUS_SCHEMA_V2_LEGACY
+    _write(witness_path, witness)
+    auth = json.loads(auth_path.read_text(encoding="utf-8"))
+    with mock.patch.object(v2_analysis.authorize_experiment,
+                           "verify_authorization", return_value=auth):
+        with pytest.raises(v2_analysis.V2AnalysisError,
+                           match="legacy external launch witness v2"):
             v2_analysis.analyze(root, experiment, auth_path)
 
 

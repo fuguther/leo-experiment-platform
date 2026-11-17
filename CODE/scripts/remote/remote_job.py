@@ -27,12 +27,19 @@ CANONICAL_STATUS = CANONICAL_RUNTIME / "current_status.json"
 CANONICAL_LOGS = CANONICAL_RESULTS / "_overnight_logs"
 CANONICAL_EXPERIMENTS = CANONICAL_WORKSPACE / "EXPERIMENTS"
 CPU_LIST_LIMIT = 64
-V2_GOVERNANCE_SCHEMA = "leo-sim-governance-receipt/v2"
-V2_WITNESS_FIELDS = (
+GOVERNANCE_SCHEMA = "leo-sim-governance-receipt/v3"
+GOVERNANCE_SCHEMA_V2_LEGACY = "leo-sim-governance-receipt/v2"
+EXTERNAL_STATUS_SCHEMA = "leo-remote-launch-status/v3"
+# Backward-compatible source-level alias for tests/tools that still import the
+# original name.  Its value is the current v3 contract, not the legacy v2 one.
+V2_GOVERNANCE_SCHEMA = GOVERNANCE_SCHEMA
+CURRENT_WITNESS_FIELDS = (
     "receipt_schema", "resolved_config_sha256", "trace_manifest_schema",
     "trace_identity_contract", "trace_manifest_sha256",
     "formal_run_sha256",
 )
+# Source-level compatibility alias; the value is the current v3 field set.
+V2_WITNESS_FIELDS = CURRENT_WITNESS_FIELDS
 
 
 def now_iso() -> str:
@@ -130,7 +137,7 @@ def v2_governance_errors(receipt: dict[str, Any], ledgers: dict[str, Any],
     return errors
 
 
-def build_v2_governance_receipt(
+def build_governance_receipt(
         *, receipt: dict[str, Any], ledgers: dict[str, Any],
         verification_errors: list[str], acceptance: dict[str, Any],
         run_id: str, launch_nonce: str, authorization_sha256: str,
@@ -160,7 +167,7 @@ def build_v2_governance_receipt(
     if not isinstance(manifest, dict):
         raise ValueError("manifest.json must contain an object")
     governed = {
-        "schema": V2_GOVERNANCE_SCHEMA,
+        "schema": GOVERNANCE_SCHEMA,
         "research_eligible": not verification_errors,
         "run_id": run_id,
         "launch_nonce": launch_nonce,
@@ -186,6 +193,10 @@ def build_v2_governance_receipt(
     }
     governed["payload_sha256"] = canonical_sha(governed)
     return governed
+
+
+# Backward-compatible source-level alias for older tests/tools.
+build_v2_governance_receipt = build_governance_receipt
 
 
 def parse_cpu_list(value: str) -> list[int]:
@@ -420,7 +431,7 @@ def formal_child_cwd(args: argparse.Namespace, workdir: Path) -> Path:
 
 def base_launch_payload(args: argparse.Namespace) -> dict[str, Any]:
     return {
-        "schema": "leo-remote-launch-status/v2",
+        "schema": EXTERNAL_STATUS_SCHEMA,
         "status": "launching",
         "execution_class": "FORMAL_EXPERIMENT",
         "runtime_kind": getattr(args, "runtime_kind", "legacy_gateway"),
@@ -763,7 +774,7 @@ def run_formal(args: argparse.Namespace) -> int:
                     receipt_errors = v2_governance_errors(
                         receipt_payload, ledgers_payload,
                         authorized_row["acceptance"], receipt_errors)
-                    governed = build_v2_governance_receipt(
+                    governed = build_governance_receipt(
                         receipt=receipt_payload,
                         ledgers=ledgers_payload,
                         verification_errors=receipt_errors,
@@ -802,7 +813,7 @@ def run_formal(args: argparse.Namespace) -> int:
                     payload["governance_receipt"] = str(governed_path)
                     payload["governance_receipt_sha256"] = file_sha256(governed_path)
                     payload["governance_witness"] = {
-                        key: governed[key] for key in V2_WITNESS_FIELDS
+                        key: governed[key] for key in CURRENT_WITNESS_FIELDS
                     }
                     payload["research_eligible"] = governed["research_eligible"]
             except Exception as exc:

@@ -110,7 +110,7 @@ def _write_contract_shaped_formal(directory: Path, *, nonce: str = "a" * 32,
     (directory / "formal_run.json").write_text(json.dumps(formal),
                                                encoding="utf-8")
     governed = {
-        "schema": pullback_mod.GOVERNANCE_SCHEMA_V2,
+        "schema": pullback_mod.GOVERNANCE_SCHEMA_V3,
         "research_eligible": True,
         "run_id": directory.name,
         "launch_nonce": nonce,
@@ -206,6 +206,38 @@ def test_v5_formal_copy_passes_and_joint_tamper_fails(v5_run_dir, tmp_path):
         directory, expect="formal", witness_root=witness_root)
     assert report["ok"] is False
     assert any("formal_run_sha256" in error for error in report["errors"])
+
+
+def test_legacy_v2_governance_is_historical_only(v5_run_dir, tmp_path):
+    directory = _copy(v5_run_dir, tmp_path, "legacy-governance-v2")
+    _write_contract_shaped_formal(directory)
+    governed_path = directory / "governance_receipt.json"
+    governed = json.loads(governed_path.read_text(encoding="utf-8"))
+    governed["schema"] = pullback_mod.GOVERNANCE_SCHEMA_V2_LEGACY
+    governed.pop("formal_run_sha256")
+    governed.pop("payload_sha256", None)
+    governed["payload_sha256"] = pullback_mod._formal_contract().canonical_sha(
+        governed)
+    governed_path.write_text(json.dumps(governed), encoding="utf-8")
+    report = pullback_mod.verify_pulled_run(directory, expect="formal")
+    assert report["ok"] is False
+    assert any("governance_receipt v2 lacks formal_run_sha256" in error
+               for error in report["errors"])
+
+
+def test_legacy_v2_external_status_is_historical_only(v5_run_dir, tmp_path):
+    directory = _copy(v5_run_dir, tmp_path, "legacy-external-v2")
+    witness_root = tmp_path / "legacy-external-witnesses"
+    _write_contract_shaped_formal(directory, witness_root=witness_root)
+    witness_path = next(witness_root.iterdir())
+    witness = json.loads(witness_path.read_text(encoding="utf-8"))
+    witness["schema"] = "leo-remote-launch-status/v2"
+    witness_path.write_text(json.dumps(witness), encoding="utf-8")
+    report = pullback_mod.verify_pulled_run(
+        directory, expect="formal", witness_root=witness_root)
+    assert report["ok"] is False
+    assert any("external launch witness v2 lacks" in error
+               for error in report["errors"])
 
 
 def test_the_caller_must_declare_what_the_copy_is(run_dir):
@@ -315,15 +347,15 @@ def test_the_governance_schema_constant_matches_both_producers():
     """The schema STRING is part of the contract too, not just the key set.
 
     The first version of pullback.py spelled it leo-sim-v2-governance-receipt/v2
-    while both producers spell it leo-sim-governance-receipt/v2.  Every local
+    while both producers spell the current governance schema.  Every local
     fixture used the module's own constant, so all of them agreed with the typo
     and only a real VM result exposed it (2026-09-25).
     """
     from CODE.experiment_platform import v2_analysis
-    assert pullback_mod.GOVERNANCE_SCHEMA_V2 == rj.V2_GOVERNANCE_SCHEMA
-    assert pullback_mod.GOVERNANCE_SCHEMA_V2 == v2_analysis.GOVERNANCE_SCHEMA_V2
+    assert pullback_mod.GOVERNANCE_SCHEMA_V3 == rj.V2_GOVERNANCE_SCHEMA
+    assert pullback_mod.GOVERNANCE_SCHEMA_V3 == v2_analysis.GOVERNANCE_SCHEMA_V3
     assert pullback_mod._formal_contract().EXTERNAL_STATUS_SCHEMA \
-        == "leo-remote-launch-status/v2"
+        == "leo-remote-launch-status/v3"
 
 
 def test_the_external_launch_witness_is_found_by_run_id_or_nonce(
@@ -368,7 +400,7 @@ def test_the_contract_key_sets_match_their_producers(run_dir, tmp_path):
          "code_sha256": receipt_mod.code_sha256(),
          "results_dir": str(directory.parent)},
         receipt)
-    governed = rj.build_v2_governance_receipt(
+    governed = rj.build_governance_receipt(
         receipt=receipt, ledgers=ledgers, verification_errors=[],
         acceptance={"min_delivered_packets": 0}, run_id=directory.name,
         launch_nonce="a" * 32, authorization_sha256="b" * 64,
@@ -380,7 +412,7 @@ def test_the_contract_key_sets_match_their_producers(run_dir, tmp_path):
         resolved_config_path=directory / "resolved_config.json",
         manifest_path=directory / "manifest.json",
         formal_run_path=directory / "formal_run.json")
-    assert set(governed) == set(pullback_mod.GOVERNANCE_KEYS_V2)
+    assert set(governed) == set(pullback_mod.GOVERNANCE_KEYS_V3)
 
     written = json.loads((directory / "formal_run.json").read_text())
     assert set(written) <= (set(pullback_mod.FORMAL_WITNESS_KEYS)

@@ -610,7 +610,7 @@ def _scene_posterior_run(root, run_id):
         "natural_end": True, "conservation_ok": True,
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     governed = {
-        "schema": "leo-sim-governance-receipt/v2", "research_eligible": True,
+        "schema": v2_analysis.GOVERNANCE_SCHEMA_V3, "research_eligible": True,
         "run_id": run_id, "launch_nonce": "b" * 32,
         "verification_errors": [], "authorization_sha256": "a" * 64,
         "source_git_commit": "d" * 40, "source_tree_sha256": "e" * 64,
@@ -634,7 +634,7 @@ def _scene_posterior_run(root, run_id):
     governed = json.loads(
         (out / "governance_receipt.json").read_text(encoding="utf-8"))
     witness = {
-        "schema": "leo-remote-launch-status/v2", "status": "success",
+        "schema": v2_analysis.EXTERNAL_STATUS_SCHEMA, "status": "success",
         "exit_code": 0, "launch_nonce": "b" * 32, "run_id": run_id,
         "authorization_sha256": "a" * 64,
         "config_sha256": rcp["config_sha256"],

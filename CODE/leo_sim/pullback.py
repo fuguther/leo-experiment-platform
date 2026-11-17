@@ -92,16 +92,11 @@ EXTERNAL_WITNESS_REQUIRED_KEYS = frozenset({
     "governance_witness",
 })
 
-#: Exact key set of the V2 governance receipt, mirroring
-#: remote_job.build_v2_governance_receipt.  Same reasoning, same test.
-#: Kept in step with the two producers by construction: _formal_contract()
-#: returns v2_analysis, which defines this exact string, and the producer
-#: remote_job.V2_GOVERNANCE_SCHEMA is asserted equal to it in
-#: tests/test_pullback_authority.py.  The first version of this file spelled it
-#: "leo-sim-v2-governance-receipt/v2" and every local fixture agreed with the
-#: typo, so only a real VM result exposed it (2026-09-25).
-GOVERNANCE_SCHEMA_V2 = "leo-sim-governance-receipt/v2"
-GOVERNANCE_KEYS_V2 = frozenset({
+#: Current governance contract.  v3 adds the formal-witness anchor; v2 is
+#: kept only to classify old directories as historical evidence and reject
+#: them from current formal eligibility.
+GOVERNANCE_SCHEMA_V3 = "leo-sim-governance-receipt/v3"
+GOVERNANCE_KEYS_V3 = frozenset({
     "schema", "research_eligible", "run_id", "launch_nonce",
     "authorization_sha256", "source_git_commit", "source_tree_sha256",
     "deployment_receipt_sha256", "execution_chain_sha256", "acceptance",
@@ -110,6 +105,8 @@ GOVERNANCE_KEYS_V2 = frozenset({
     "trace_manifest_schema", "trace_identity_contract",
     "trace_manifest_sha256", "formal_run_sha256", "payload_sha256",
 })
+GOVERNANCE_SCHEMA_V2_LEGACY = "leo-sim-governance-receipt/v2"
+GOVERNANCE_KEYS_V2_LEGACY = GOVERNANCE_KEYS_V3 - {"formal_run_sha256"}
 
 #: Governance fields that must agree with the copy being verified.
 GOVERNANCE_BINDINGS = {
@@ -190,13 +187,20 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
     v2 = _formal_contract()
     errors.extend(_key_set_errors(FORMAL_WITNESS, formal, FORMAL_WITNESS_KEYS,
                                   FORMAL_WITNESS_OPTIONAL_KEYS))
-    errors.extend(_key_set_errors(GOVERNANCE_RECEIPT, governed,
-                                  GOVERNANCE_KEYS_V2))
+    governed_schema = governed.get("schema")
+    governed_keys = (GOVERNANCE_KEYS_V2_LEGACY
+                     if governed_schema == GOVERNANCE_SCHEMA_V2_LEGACY
+                     else GOVERNANCE_KEYS_V3)
+    errors.extend(_key_set_errors(GOVERNANCE_RECEIPT, governed, governed_keys))
     if formal.get("schema") != FORMAL_WITNESS_SCHEMA:
         errors.append(f"{FORMAL_WITNESS} schema mismatch: {formal.get('schema')!r}")
-    if governed.get("schema") != GOVERNANCE_SCHEMA_V2:
+    if governed_schema == GOVERNANCE_SCHEMA_V2_LEGACY:
         errors.append(
-            f"{GOVERNANCE_RECEIPT} schema mismatch: {governed.get('schema')!r}")
+            "governance_receipt v2 lacks formal_run_sha256 and is "
+            "historical-only; it cannot satisfy current formal eligibility")
+    elif governed_schema != GOVERNANCE_SCHEMA_V3:
+        errors.append(
+            f"{GOVERNANCE_RECEIPT} schema mismatch: {governed_schema!r}")
     if formal.get("run_id") != run_dir.name:
         errors.append(f"{FORMAL_WITNESS} run_id does not name this directory")
     if governed.get("run_id") != run_dir.name:
@@ -337,8 +341,15 @@ def _external_witness_errors(witness_root: Path, run_dir: Path, formal: dict,
     except (OSError, json.JSONDecodeError) as exc:
         return [f"external launch witness is unreadable: {exc}"]
     errors = []
-    if not isinstance(witness, dict) or witness.get("schema") \
-            != v2.EXTERNAL_STATUS_SCHEMA:
+    if not isinstance(witness, dict):
+        errors.append("external launch witness schema mismatch")
+        return errors
+    if witness.get("schema") == v2.EXTERNAL_STATUS_SCHEMA_V2_LEGACY:
+        errors.append(
+            "external launch witness v2 lacks the current formal-witness "
+            "anchor and is historical-only")
+        return errors
+    if witness.get("schema") != v2.EXTERNAL_STATUS_SCHEMA:
         errors.append("external launch witness schema mismatch")
         return errors
     missing = sorted(EXTERNAL_WITNESS_REQUIRED_KEYS - set(witness))

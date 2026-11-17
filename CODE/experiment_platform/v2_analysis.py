@@ -13,7 +13,7 @@ an explicit legacy/internal-only branch and cannot masquerade as v5 evidence.
 POSTERIOR RUNTIME ANALYSIS: a v5 run whose receipt records a runtime
 identity different from the local analyzer (code sha and/or dependency
 versions, e.g. a VM Python 3.11 environment vs a newer local checkout) may
-still be analyzed when authorization + formal_run + governance_receipt v2 +
+still be analyzed when authorization + formal_run + governance_receipt v3 +
 nonce external witness FULLY cross-bind the historical runtime
 code/config/auth/result hashes.  Artifact integrity is then recomputed
 without the local==runtime gate (an internal, unbound receipt primitive)
@@ -60,8 +60,13 @@ CLAIM_GATE_SCHEMA = "leo-sim-v2-claim-gate/v1"
 MATRIX_SCHEMA = "leo-sim-experiment-matrix-manifest/v1"
 ANALYSIS_SCHEMA = "leo-sim-matrix-analysis-request/v1"
 GOVERNANCE_SCHEMA_V1 = "leo-sim-governance-receipt/v1"
-GOVERNANCE_SCHEMA_V2 = "leo-sim-governance-receipt/v2"
-EXTERNAL_STATUS_SCHEMA = "leo-remote-launch-status/v2"
+# Historical v2 lacks the formal-witness anchor.  It remains recognized only
+# so the verifier can reject it explicitly instead of silently accepting the
+# old, weaker contract under a current-looking name.
+GOVERNANCE_SCHEMA_V2_LEGACY = "leo-sim-governance-receipt/v2"
+GOVERNANCE_SCHEMA_V3 = "leo-sim-governance-receipt/v3"
+EXTERNAL_STATUS_SCHEMA_V2_LEGACY = "leo-remote-launch-status/v2"
+EXTERNAL_STATUS_SCHEMA = "leo-remote-launch-status/v3"
 # how a result's runtime identity was bound: reproduced by the local
 # analyzer exactly, or governed through the formal chain because the local
 # analyzer is a newer version than the historical runtime
@@ -247,7 +252,13 @@ def _verify_external_witness(
         witness_root, run_id,
         launch_nonce=expected_nonce if external_witness_by_nonce else None)
     witness = _read_json(path)
-    if not isinstance(witness, dict) or witness.get("schema") != EXTERNAL_STATUS_SCHEMA:
+    if not isinstance(witness, dict):
+        raise V2AnalysisError(f"{run_id} external launch witness schema mismatch")
+    if witness.get("schema") == EXTERNAL_STATUS_SCHEMA_V2_LEGACY:
+        raise V2AnalysisError(
+            f"{run_id} legacy external launch witness v2 has no formal-witness "
+            "anchor and is historical-only")
+    if witness.get("schema") != EXTERNAL_STATUS_SCHEMA:
         raise V2AnalysisError(f"{run_id} external launch witness schema mismatch")
     if witness.get("status") != "success" or witness.get("exit_code") != 0:
         raise V2AnalysisError(f"{run_id} external launch witness is not successful")
@@ -512,7 +523,7 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
     if receipt_schema in receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY:
         # V5 and V6 share the witness contract: V6 only ADDS stream bindings
         # on top of V5, so it is current evidence, not a legacy schema.
-        expected_governance_schema = GOVERNANCE_SCHEMA_V2
+        expected_governance_schema = GOVERNANCE_SCHEMA_V3
     elif receipt_schema in {receipt_mod.LEGACY_RECEIPT_SCHEMA,
                             receipt_mod.LEGACY_RECEIPT_SCHEMA_V4}:
         # Historical v3/v4 artifacts remain readable, but never inherit the
@@ -523,6 +534,10 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
         expected_governance_schema = GOVERNANCE_SCHEMA_V1
     else:
         raise V2AnalysisError(f"{run_id} receipt schema is not a supported formal branch")
+    if governed.get("schema") == GOVERNANCE_SCHEMA_V2_LEGACY:
+        raise V2AnalysisError(
+            f"{run_id} legacy governance receipt v2 has no formal_run_sha256 "
+            "anchor and is historical-only")
     if governed.get("schema") != expected_governance_schema:
         raise V2AnalysisError(f"{run_id} governance receipt schema mismatch")
     if governed.get("run_id") != run_id or governed.get("research_eligible") is not True \
@@ -530,7 +545,7 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
         raise V2AnalysisError(f"{run_id} governance receipt is not eligible")
     if governed.get("authorization_sha256") != authorized.get("authorization_sha256"):
         raise V2AnalysisError(f"{run_id} governance authorization hash mismatch")
-    if expected_governance_schema == GOVERNANCE_SCHEMA_V2:
+    if expected_governance_schema == GOVERNANCE_SCHEMA_V3:
         _verify_governance_identity(
             run_id, governed, authorized, expected_deployment)
     receipt_sha = file_sha256(paths["receipt.json"])
@@ -553,7 +568,7 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
         raise V2AnalysisError(
             f"{run_id} result identity mismatch: "
             + ", ".join(identity_mismatches))
-    if expected_governance_schema == GOVERNANCE_SCHEMA_V2:
+    if expected_governance_schema == GOVERNANCE_SCHEMA_V3:
         expected_binding = {
             # The witness must name the schema of the receipt it witnesses.
             # Hardcoding one version here is exactly how V6 would silently
@@ -577,7 +592,7 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
         external_witness = None
     if receipt_schema in receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY:
         require_formal_streams = (
-            expected_governance_schema == GOVERNANCE_SCHEMA_V2)
+            expected_governance_schema == GOVERNANCE_SCHEMA_V3)
         stream_errors = receipt_mod.verify_receipt_streams(
             str(result_dir),
             require_streams=require_formal_streams,
@@ -813,7 +828,7 @@ def _verify_authorization_bound(
     No current-code identity is recomputed or trusted here.  This function
     is deliberately private and its return value is NOT an evidence
     verdict: ``analyze()`` still requires the full formal witness +
-    governance receipt v2 + external launch witness + receipt cross-hash
+    governance receipt v3 + external launch witness + receipt cross-hash
     chain in ``_verify_result``, which rejects any identity that the
     historical witnesses do not bind.  Any snapshot drift fails closed with
     the original strict error preserved for the record.
