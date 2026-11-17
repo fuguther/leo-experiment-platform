@@ -91,8 +91,8 @@ def _write_contract_shaped_formal(directory: Path, *, nonce: str = "a" * 32,
         "run_id": directory.name,
         "launch_nonce": nonce,
         "authorization_sha256": "b" * 64,
-        "config_sha256": "c" * 64,
-        "code_sha256": "d" * 64,
+        "config_sha256": receipt["config_sha256"],
+        "code_sha256": receipt["code_sha256"],
         "receipt_sha256": _sha(directory / "receipt.json"),
         "natural_end": True,
         "conservation_ok": True,
@@ -366,3 +366,28 @@ def test_external_launch_witness_must_bind_authorization_and_config(
         "authorization_sha256" in error or "config_sha256" in error
         for error in report["errors"]
     ), report["errors"]
+
+
+@pytest.mark.parametrize("field", ["config_sha256", "code_sha256"])
+def test_formal_identity_must_match_receipt(run_dir, tmp_path, field):
+    base = tmp_path / f"formal-{field}"
+    base.mkdir()
+    directory = _copy(run_dir, base, RUN_ID)
+    witness_root = base / "_external_launch_witness"
+    _write_contract_shaped_formal(
+        directory, nonce="a" * 32, witness_root=witness_root)
+    formal_path = directory / "formal_run.json"
+    formal = json.loads(formal_path.read_text())
+    formal[field] = "0" * 64
+    formal_path.write_text(json.dumps(formal), encoding="utf-8")
+    if field == "config_sha256":
+        witness_path = witness_root / f"{'a' * 32}.json"
+        witness = json.loads(witness_path.read_text())
+        witness[field] = formal[field]
+        witness_path.write_text(json.dumps(witness), encoding="utf-8")
+
+    report = pullback_mod.verify_pulled_run(
+        directory, expect="formal", witness_root=witness_root)
+    assert report["ok"] is False
+    assert any(f"formal_run.{field} disagrees with receipt.json" in error
+               for error in report["errors"]), report["errors"]

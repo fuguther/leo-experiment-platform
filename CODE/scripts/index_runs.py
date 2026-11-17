@@ -268,6 +268,15 @@ def derive_status(receipt, artifacts, summary=None):
                 return "interrupted", "独立 summary bundle 但 receipt.interrupted=True"
             if layer.get("natural_end") is False:
                 return "not_natural_end", "独立 summary bundle 但 receipt.natural_end=False"
+            if layer.get("natural_end") is True \
+                    and layer.get("conservation_ok") is not True:
+                if layer.get("conservation_ok") is False:
+                    return "completed_conservation_failed", (
+                        "独立 summary bundle 但 receipt.natural_end=True 且 "
+                        "conservation_ok=False")
+                return "completed_conservation_unknown", (
+                    "独立 summary bundle 但 receipt.natural_end=True 且 "
+                    "conservation_ok 不是 True")
             # Conservation failure is a failure signal on its own, independent of
             # whether the summary also carries natural_end.
             if "conservation_ok" in layer and layer.get("conservation_ok") is not True:
@@ -276,12 +285,6 @@ def derive_status(receipt, artifacts, summary=None):
                         "独立 summary bundle 但 receipt.conservation_ok=False")
                 return "completed_conservation_unknown", (
                     "独立 summary bundle 但 receipt.conservation_ok 不是 True")
-        if (isinstance(explicit_receipt, dict)
-                and explicit_receipt.get("natural_end") is True
-                and explicit_receipt.get("conservation_ok") is not True):
-            return "completed_conservation_unknown", (
-                "独立 summary bundle 的 receipt.natural_end=True 但 "
-                "conservation_ok 不是 True")
         note = (summary or {}).get("note") if isinstance(summary, dict) else None
         if isinstance(note, str) and note.strip().lower().startswith("incomplete"):
             return "summary_bundle_incomplete", "独立 summary bundle 且 note=incomplete"

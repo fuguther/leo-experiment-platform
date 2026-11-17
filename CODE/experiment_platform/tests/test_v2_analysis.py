@@ -1,6 +1,7 @@
 """Focused tests for the dedicated V2 result-to-analysis adapter."""
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -9,7 +10,7 @@ from unittest import mock
 import pytest
 
 from CODE.experiment_platform import authorize_experiment, v2_analysis
-from CODE.leo_sim import kernel, receipt, trace
+from CODE.leo_sim import decision_ledger, kernel, receipt, trace
 from CODE.leo_sim.tests.helpers import StaticGeometry, cell, make_cfg, row
 
 
@@ -44,11 +45,14 @@ def _seal_governed(value: dict) -> None:
 
 def _write_external_witness(root: Path, run_id: str, governed: dict,
                             *, authorization_sha256: str) -> None:
+    formal = json.loads(
+        (root / "CODE" / "Results" / run_id / "formal_run.json").read_text())
     witness = {
         "schema": "leo-remote-launch-status/v2",
         "status": "success", "exit_code": 0,
         "launch_nonce": "b" * 32, "run_id": run_id,
         "authorization_sha256": authorization_sha256,
+        "config_sha256": formal["config_sha256"],
         "last_results_dir": f"/data/论文/leo-direct-sim/CODE/Results/{run_id}",
         "governance_receipt_sha256": v2_analysis.file_sha256(
             root / "CODE" / "Results" / run_id / "governance_receipt.json"),
@@ -121,6 +125,11 @@ def _run_fixture(root: Path, run_id: str, arm_id: str, pair: str) -> dict:
     out.mkdir(parents=True)
     receipt_payload = receipt.write_run(
         str(out), cfg, trace_bytes, manifest, result, rows)
+    for name in ("decisions.jsonl", "timeline.jsonl"):
+        (out / name).write_text("", encoding="utf-8")
+        _write(out / f"{name}.manifest.json", {
+            "schema": "test-empty-stream/v1", "rows": 0,
+        })
     auth_sha = "a" * 64
     _write(out / "formal_run.json", {
         "schema": "leo-sim-formal-run/v1", "run_id": run_id,
@@ -651,6 +660,38 @@ def _single_run_analysis_fixture(tmp_path):
     return root, experiment, auth_path, row
 
 
+def _upgrade_single_run_to_v6(root: Path, run_id: str) -> None:
+    """Upgrade the fixture receipt to V6 and rebind the formal chain."""
+    result_dir = root / "CODE" / "Results" / run_id
+    decisions = result_dir / "decisions.jsonl"
+    timeline = result_dir / "timeline.jsonl"
+    decisions.write_text('{"kind":"decision"}\n', encoding="utf-8")
+    timeline.write_text('{"kind":"timeline"}\n', encoding="utf-8")
+    receipt_path = result_dir / "receipt.json"
+    rcp = json.loads(receipt_path.read_text(encoding="utf-8"))
+    rcp["schema"] = receipt.RECEIPT_SCHEMA_V6
+    rcp["decision_stream_contract"] = decision_ledger.DECISION_STREAM_CONTRACT
+    rcp["decision_log_sha256"] = v2_analysis.file_sha256(decisions)
+    rcp["timeline_log_sha256"] = v2_analysis.file_sha256(timeline)
+    _write(receipt_path, rcp)
+    receipt_sha = v2_analysis.file_sha256(receipt_path)
+
+    formal_path = result_dir / "formal_run.json"
+    formal = json.loads(formal_path.read_text(encoding="utf-8"))
+    formal["receipt_sha256"] = receipt_sha
+    _write(formal_path, formal)
+
+    governed_path = result_dir / "governance_receipt.json"
+    governed = json.loads(governed_path.read_text(encoding="utf-8"))
+    governed["run_receipt_sha256"] = receipt_sha
+    governed["receipt_schema"] = receipt.RECEIPT_SCHEMA_V6
+    _seal_governed(governed)
+    _write(governed_path, governed)
+    _write_external_witness(
+        root, run_id, governed,
+        authorization_sha256=formal["authorization_sha256"])
+
+
 def test_verify_result_accepts_canonical_remote_nonce_witness(tmp_path):
     root, _experiment, auth_path, row = _single_run_analysis_fixture(tmp_path)
     local_witness = (root / "CODE" / "Results"
@@ -755,6 +796,55 @@ def test_v2_analysis_rejects_external_launch_witness_terminal_identity(
     with mock.patch.object(v2_analysis.authorize_experiment,
                            "verify_authorization", return_value=auth):
         with pytest.raises(v2_analysis.V2AnalysisError, match="external launch witness"):
+            v2_analysis.analyze(root, experiment, auth_path)
+
+
+@pytest.mark.parametrize("replacement", [None, "0" * 64])
+def test_v2_analysis_external_witness_requires_bound_config(
+        tmp_path, replacement):
+    root, experiment, auth_path, row = _single_run_analysis_fixture(tmp_path)
+    witness_path = (root / "CODE" / "Results" / "_external_launch_witness"
+                    / f"{row['run_id']}.json")
+    witness = json.loads(witness_path.read_text(encoding="utf-8"))
+    if replacement is None:
+        witness.pop("config_sha256")
+    else:
+        witness["config_sha256"] = replacement
+    _write(witness_path, witness)
+    auth = json.loads(auth_path.read_text(encoding="utf-8"))
+    with mock.patch.object(v2_analysis.authorize_experiment,
+                           "verify_authorization", return_value=auth):
+        with pytest.raises(v2_analysis.V2AnalysisError,
+                           match="external launch witness"):
+            v2_analysis.analyze(root, experiment, auth_path)
+
+
+def test_v2_analysis_accepts_complete_v6_stream_bindings(tmp_path):
+    root, experiment, auth_path, row = _single_run_analysis_fixture(tmp_path)
+    _upgrade_single_run_to_v6(root, row["run_id"])
+    auth = json.loads(auth_path.read_text(encoding="utf-8"))
+    with mock.patch.object(v2_analysis.authorize_experiment,
+                           "verify_authorization", return_value=auth):
+        result = v2_analysis.analyze(root, experiment, auth_path)
+    assert result["status"] == "VERIFIED"
+
+
+@pytest.mark.parametrize("stream", ["decisions.jsonl", "timeline.jsonl"])
+@pytest.mark.parametrize("mutation", ["missing", "tampered"])
+def test_v2_analysis_v6_requires_both_bound_streams(tmp_path, stream, mutation):
+    root, experiment, auth_path, row = _single_run_analysis_fixture(tmp_path)
+    _upgrade_single_run_to_v6(root, row["run_id"])
+    path = root / "CODE" / "Results" / row["run_id"] / stream
+    if mutation == "missing":
+        path.unlink()
+    else:
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write('{"tampered":true}\n')
+    auth = json.loads(auth_path.read_text(encoding="utf-8"))
+    with mock.patch.object(v2_analysis.authorize_experiment,
+                           "verify_authorization", return_value=auth):
+        with pytest.raises(v2_analysis.V2AnalysisError,
+                           match="receipt stream verification failed"):
             v2_analysis.analyze(root, experiment, auth_path)
 
 # ---------------------------------------------------------------- P0 fix:
@@ -1118,17 +1208,90 @@ def test_every_module_that_can_change_the_verdict_is_identity_bound():
         "CODE/experiment_platform/compile_experiment.py",
         "CODE/leo_sim/config.py",
         "CODE/leo_sim/fates.py",
+        "CODE/leo_sim/governance.py",
         "CODE/leo_sim/grid.py",
         "CODE/leo_sim/link_budget.py",
+        "CODE/leo_sim/matrix.py",
         "CODE/leo_sim/population.py",
         "CODE/leo_sim/rng.py",
         "CODE/leo_sim/trace.py",
+        "CODE/leo_sim/trace_family.py",
     )
     listed = set(v2_analysis.ANALYZER_FILES)
     assert set(required) <= listed
     repo_root = Path(__file__).resolve().parents[3]
     for rel in required:
         assert (repo_root / rel).is_file(), rel
+
+
+def test_analyzer_identity_covers_the_static_runtime_import_closure():
+    """Walk local imports, including constant import_module calls.
+
+    Hand-maintaining only the files a reviewer happened to notice repeatedly
+    left verdict-changing modules outside the identity.  This test derives the
+    static CODE import closure from the analyzer entrypoint and requires every
+    concrete module file in that closure to be identity-bound.  Package
+    __init__.py files are excluded here because ANALYZER_FILES is a deliberate
+    module manifest, not a source-tree snapshot.
+    """
+    repo_root = Path(__file__).resolve().parents[3]
+    start = "CODE.experiment_platform.v2_analysis"
+
+    def module_path(module: str) -> Path | None:
+        candidate = repo_root.joinpath(*module.split(".")).with_suffix(".py")
+        return candidate if candidate.is_file() else None
+
+    def add_import_from(values: set[str], current: str, node: ast.ImportFrom):
+        package = current.split(".")[:-1]
+        if node.level:
+            if node.level > len(package):
+                return
+            package = package[:len(package) - node.level + 1]
+        module = ".".join(package + (node.module.split(".") if node.module else []))
+        if module:
+            values.add(module)
+        for alias in node.names:
+            candidate = ".".join(filter(None, (module, alias.name)))
+            if module_path(candidate):
+                values.add(candidate)
+
+    seen: set[str] = set()
+    pending = [start]
+    while pending:
+        module = pending.pop()
+        if module in seen:
+            continue
+        path = module_path(module)
+        if path is None:
+            continue
+        seen.add(module)
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        imports: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                add_import_from(imports, module, node)
+            elif isinstance(node, ast.Call) and node.args:
+                function = node.func
+                name = (function.attr if isinstance(function, ast.Attribute)
+                        else function.id if isinstance(function, ast.Name) else "")
+                argument = node.args[0]
+                if name in {"import_module", "importlib"} \
+                        and isinstance(argument, ast.Constant) \
+                        and isinstance(argument.value, str):
+                    imports.add(argument.value)
+        pending.extend(sorted(value for value in imports
+                              if value.startswith("CODE.")
+                              and value not in seen))
+
+    closure = {
+        str(path.relative_to(repo_root))
+        for module in seen
+        if (path := module_path(module)) is not None
+    }
+    missing = sorted(closure - set(v2_analysis.ANALYZER_FILES))
+    assert not missing, f"runtime import modules missing from analyzer identity: {missing}"
 
 
 def _ddqn_unresolvable_fixture(tmp_path, run_id):

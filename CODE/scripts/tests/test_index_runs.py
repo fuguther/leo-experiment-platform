@@ -532,3 +532,33 @@ def test_summary_bundle_embedded_natural_end_requires_true_conservation(
             "receipt-string-conservation"):
         assert by[run_id]["status"] == "completed_conservation_unknown"
         assert by[run_id]["status"] != "completed_self_verified"
+
+
+@pytest.mark.parametrize("conservation", [None, "unknown", 1])
+def test_summary_bundle_top_level_natural_end_requires_true_conservation(
+        tmp_path, conservation):
+    analysis = tmp_path / "analysis"
+    for run_id, value in {
+        "top-missing-conservation": None,
+        "top-string-conservation": "unknown",
+        "top-truthy-conservation": 1,
+    }.items():
+        if value is not conservation:
+            continue
+        receipt = {"natural_end": True}
+        if value is not None:
+            receipt["conservation_ok"] = value
+        write_json(
+            analysis / "SCN-1" / "runs" / run_id / "summary.json",
+            {
+                "run": run_id,
+                "source_dir": "/tmp/" + run_id,
+                "natural_end": True,
+                "conservation_ok": value,
+                "trace_sha256_matches_manifest": True,
+            },
+        )
+    rows, _, _ = index_runs.build_index([analysis])
+    assert rows
+    assert {row["status"] for row in rows} == {"completed_conservation_unknown"}
+    assert all(row["status"] != "completed_self_verified" for row in rows)

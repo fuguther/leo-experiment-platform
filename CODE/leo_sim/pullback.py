@@ -232,6 +232,16 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
     if formal.get("receipt_sha256") != receipt_sha:
         errors.append(f"{FORMAL_WITNESS} receipt_sha256 does not match this "
                       f"copy's receipt.json")
+    for field in ("config_sha256", "code_sha256"):
+        errors.extend(_hex_or_error(f"receipt.{field}", receipt.get(field),
+                                    _SHA256_HEX))
+        if formal.get(field) != receipt.get(field):
+            errors.append(f"formal_run.{field} disagrees with receipt.json")
+    for field in ("natural_end", "conservation_ok"):
+        if receipt.get(field) is not True:
+            errors.append(f"receipt.{field} is not true")
+        if formal.get(field) != receipt.get(field):
+            errors.append(f"formal_run.{field} disagrees with receipt.json")
     for field, name in sorted(GOVERNANCE_BINDINGS.items()):
         path = run_dir / name
         if path.is_symlink() or not path.is_file():

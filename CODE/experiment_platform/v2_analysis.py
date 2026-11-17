@@ -107,14 +107,17 @@ ANALYZER_FILES = (
     # still claimed the listed files were clean.
     "CODE/leo_sim/config.py",
     "CODE/leo_sim/fates.py",
+    "CODE/leo_sim/governance.py",
     "CODE/leo_sim/grid.py",
     "CODE/leo_sim/link_budget.py",
+    "CODE/leo_sim/matrix.py",
     "CODE/leo_sim/metrics.py",
     "CODE/leo_sim/population.py",
     "CODE/leo_sim/receipt.py",
     "CODE/leo_sim/rng.py",
     "CODE/leo_sim/scene_check.py",
     "CODE/leo_sim/trace.py",
+    "CODE/leo_sim/trace_family.py",
 )
 GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
@@ -229,10 +232,18 @@ def _verify_external_witness(
     if witness.get("status") != "success" or witness.get("exit_code") != 0:
         raise V2AnalysisError(f"{run_id} external launch witness is not successful")
     expected_auth = authorized.get("authorization_sha256")
+    expected_config = formal.get("config_sha256")
+    for label, value in (
+            ("authorization_sha256", witness.get("authorization_sha256")),
+            ("config_sha256", witness.get("config_sha256"))):
+        if not isinstance(value, str) or _SHA256_HEX.fullmatch(value) is None:
+            raise V2AnalysisError(
+                f"{run_id} external launch witness {label} is not a well-formed digest")
     if any(witness.get(key) != expected for key, expected in {
             "launch_nonce": expected_nonce,
             "run_id": run_id,
             "authorization_sha256": expected_auth,
+            "config_sha256": expected_config,
     }.items()):
         raise V2AnalysisError(f"{run_id} external launch witness identity mismatch")
     remote_result = witness.get("last_results_dir")
@@ -543,6 +554,14 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
             external_witness_by_nonce=external_witness_by_nonce)
     else:
         external_witness = None
+    if receipt_schema in receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY:
+        stream_errors = receipt_mod.verify_receipt_streams(
+            str(result_dir),
+            require_streams=expected_governance_schema == GOVERNANCE_SCHEMA_V2)
+        if stream_errors:
+            raise V2AnalysisError(
+                f"{run_id} receipt stream verification failed: "
+                f"{'; '.join(stream_errors)}")
     # Artifact integrity: full recomputation of receipt/manifest/trace/
     # config/ledgers/fates/totals/conservation/mechanisms WITHOUT the
     # local==runtime gate.  Any artifact anomaly fails closed regardless of
