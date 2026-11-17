@@ -121,8 +121,11 @@ PAPER_NBR_FEATURES = 1 + PAPER_POS_FEATURES                          # 4
 PAPER_DIST_POS_FEATURES = 3
 #: The paper's O_i = {L_i, P_i} exactly: own queues(4) + own position(3)
 #: + 4 neighbours x (queue 1 + relative position 3) + p_dist position(3) = 26.
+#: Each neighbour block is [queue, available, 3 relative positions].  `available` is
+#: separate from the queue so that "no link here" cannot be mistaken for "link jammed".
+PAPER_NBR_BLOCK = 1 + 1 + PAPER_POS_FEATURES
 PAPER_BODY = (PAPER_QUEUE_FEATURES + PAPER_POS_FEATURES
-              + 4 * PAPER_NBR_FEATURES + PAPER_DIST_POS_FEATURES)
+              + 4 * PAPER_NBR_BLOCK + PAPER_DIST_POS_FEATURES)
 #: Strict mode emits the body only.
 PAPER_STRICT_DIM = PAPER_BODY
 #: Default mode appends the shared destination_features and direction_progress blocks.
@@ -2143,6 +2146,7 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                     else (topo.get(sat, {}) or {}).get(d))
             nb_q = 0.0
             nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
+            available = 0.0
             if peer is not None and peer in feats:
                 # The neighbour's queue LENGTH, in packets of L_max.
                 #
@@ -2211,17 +2215,28 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                         nb_pos = np.ravel(nb_pos).astype(np.float64)
                     except Exception:  # noqa: BLE001
                         nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
+                available = 1.0
             else:
-                # The masked value is a CONSTANT signal, not the absence of one: with
-                # 1.0 the agent is told "every neighbour is fully loaded", which is a
-                # strong uniform statement.  Making it overridable lets the control
-                # distinguish "neighbour information has no value" from "a constant
-                # input happens to be easier to learn from than a noisy one".
-                nb_q = (1.0 if paper_masked_queue is None
+                # NO NEIGHBOUR IN THIS DIRECTION.  This used to write 1.0, i.e. "fully
+                # loaded", which encodes the ABSENCE of a link as the WORST possible
+                # congestion.  Measured consequence: every E/W slot read exactly 1.0
+                # whenever the satellite has no cross-plane link there (mean 0.3414,
+                # sd 0.4742 -- exactly the {0,1} mixture sqrt(0.3414*0.6586)), so the
+                # policy saw "east and west are jammed, north and south are clear" and
+                # steered along the plane.  That manufactured congestion is why arms
+                # WITH information scored worse than the arm without it
+                # (S2-vs-S1 = +9.95%, p=0.0022).
+                #
+                # Absence is now its own signal: the queue reads 0 (nothing can queue
+                # on a link that does not exist) and `available` carries the fact that
+                # the direction is unusable, so the two are separable instead of merged.
+                nb_q = (0.0 if paper_masked_queue is None
                         else float(paper_masked_queue))
+                available = 0.0
             blocks.append(np.concatenate(
                 [np.asarray([nb_q], dtype=np.float64),
-                 np.ravel(nb_pos).astype(np.float64)]))
+                 np.ravel(nb_pos).astype(np.float64),
+                 np.asarray([available], dtype=np.float64)]))
         # p_dist(t): the POSITION of the satellite serving the destination.
         #
         # The paper lists it inside P_i, whose members are "location information ... respectively"
