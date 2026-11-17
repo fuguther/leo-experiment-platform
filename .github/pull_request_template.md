@@ -1,37 +1,19 @@
-## 状态
+## 修改与依据
 
-- 阶段:DRAFT / READY / BLOCKED
-- owner:
-- base SHA:
-- head SHA:
-- write set(改动路径):
+说明问题、结果行为和改动范围；实现不等于运行验证或科学结论。
 
-## 合并门
+## 版本与验证
 
-对照 `WORKING-MODEL.md` 第三节,三项必须全部可判定:
+- base / head 完整 SHA：
+- 本地验证命令与真实结果：
+- 服务器 CI 对应 SHA、检查与结论：
+- 独立审阅及未解决问题：
 
-- [ ] CI 对 **exact head SHA** 真实跑完且 success
-      (`cancelled` / `skipped` / `in_progress` 一律不算)
-- [ ] 全部判据 PASS,或仅剩非阻塞 backlog(见 `BACKLOG.md`)
-- [ ] 已与最新 `origin/main` 对账,无冲突、无落后
+## 合并检查
 
-## 证据
+- [ ] 已与最新 main 对账，满足目标仓库实际保护规则
+- [ ] 对正确提交身份的必需 CI 已成功，非 skipped/cancelled/in_progress
+- [ ] 独立审阅完成，真实正确性、安全和证据阻断已解决
+- [ ] 实际修改未越过任务、写入归属或实验授权范围
 
-- 改了什么:
-- 为什么:
-- 真实 passed / failed / skipped:
-- 复现命令:
-
-## 判据结果
-
-| 判据 | 结果 | 复现命令 |
-|---|---|---|
-| C1 | | |
-
-## 非阻塞 backlog
-
-集外发现一律进 `BACKLOG.md`,**不在本 PR 阻塞合并。**
-
-## blocker / 恢复条件
-
-无则填「无」。
+非阻塞改进在原任务记录；新发现的问题按实际影响判断，不因位于预先列出的判据之外而自动放行。
