@@ -191,7 +191,9 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
                     sorted_adj: dict | None = None,
                     rate_from_propagation=None,
                     cache_hops: int | None = None,
-                    forbidden_nodes=None) -> tuple[list[str], str]:
+                    forbidden_nodes=None,
+                    known_targets: list[int] | None = None,
+                    ) -> tuple[list[str], str]:
     """Return (ordered candidate directions, status).
 
     status: "ok" (candidates non-empty), "no_info" (no destination
@@ -205,7 +207,28 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
             "known_serving"):
         raise ValueError(f"unknown routing policy {policy!r}")
 
-    if policy in ("oracle", "hop_known_serving", "known_serving"):
+    if str(dst_cell).startswith("sat:"):
+        # INTER-SATELLITE BACKGROUND FLOW: the destination is a NETWORK NODE,
+        # not a ground cell, so no service advertisement is looked up and the
+        # oracle/known-serving information asymmetry does not apply.  The
+        # target node IS the destination for EVERY policy; reachability,
+        # reverse-adjacency search, edge cost and candidate scoring below stay
+        # the ordinary path, so the background flow is routed by exactly the
+        # same mechanism as the test flow (only the destination resolution
+        # differs).  A packet that is already AT the destination is delivered
+        # by the kernel before routing is consulted; here it degrades to the
+        # ordinary "unreachable" (no egress target) result.
+        advertised_targets = [int(str(dst_cell).split(":", 1)[1])]
+    elif known_targets is not None:
+        # DESTINATION KNOWLEDGE = "known" (routing.destination_source).  The
+        # caller already resolved which node attaches the destination from the
+        # static constellation/endpoint table, which the literature takes as
+        # given.  This is NOT congestion information: the edge cost / candidate
+        # scoring below still uses only what `policy` is allowed to see, so an
+        # arm with no queue sharing stays addressable without being handed any
+        # queue state.
+        advertised_targets = list(known_targets)
+    elif policy in ("oracle", "hop_known_serving", "known_serving"):
         # The caller supplies the TRUE current serving set.  For
         # hop_known_serving this is the ONLY difference from "hop": the
         # candidate admission rule already checked _serving_sats, so routing

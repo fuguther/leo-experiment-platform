@@ -77,6 +77,13 @@ def summarize(
     queue_entries: dict[int, tuple[int, float, str]] = {}
     queue_wait: defaultdict[int, float] = defaultdict(float)
     service_starts: dict[tuple[int, int], dict] = {}
+    # O(1) per-packet service-start ordinal.  The ordinal used to be computed
+    # as len([k for k in service_starts if k[0] == pid]), which is a full scan
+    # of every service start already seen: quadratic in the event count, and
+    # it dominated the whole run (430 of 1819 profiled seconds on a 4 s scene,
+    # i.e. it grows with the square of the trace).  The counter produces the
+    # SAME key sequence, so every metric identity is unchanged.
+    service_start_count: defaultdict[int, int] = defaultdict(int)
     prop_starts: dict[tuple[int, int], dict] = {}
     completed_uplink_arrivals: defaultdict[int, list[dict]] = defaultdict(list)
     consumed_uplink_arrivals: defaultdict[int, int] = defaultdict(int)
@@ -135,10 +142,19 @@ def summarize(
                           if index >= used and item["at"] == at
                           and item["satellite"] == satellite]
             if not candidates:
-                raise MetricsError(
-                    f"satellite_ingress for {pid} has no completed uplink propagation "
-                    "arrival at the same time and satellite")
-            consumed_uplink_arrivals[pid] += 1
+                # INTER-SATELLITE BACKGROUND FLOW: a packet whose source is a
+                # satellite has no uplink leg at all, so there is no uplink
+                # propagation arrival to consume.  It is admissible only when
+                # the emitted source is that same satellite; a ground-sourced
+                # packet still requires its uplink arrival.
+                born_here = (str(endpoint).startswith("sat:")
+                             and str(endpoint) == f"sat:{satellite}")
+                if not born_here:
+                    raise MetricsError(
+                        f"satellite_ingress for {pid} has no completed uplink "
+                        "propagation arrival at the same time and satellite")
+            else:
+                consumed_uplink_arrivals[pid] += 1
             ingress[pid] = {"at": at, "endpoint": endpoint,
                             "satellite": satellite, "bits": bits}
         elif kind == "service_start":
@@ -160,7 +176,8 @@ def summarize(
                 if at < entered_at:
                     raise MetricsError("service_start precedes queue_enter")
                 queue_wait[pid] += at - entered_at
-            key = (pid, len([k for k in service_starts if k[0] == pid]))
+            key = (pid, service_start_count[pid])
+            service_start_count[pid] += 1
             service_starts[key] = {
                 "at": at, "stage": stage, "link_id": link_id,
                 "bits": bits, "rate_bps": rate,

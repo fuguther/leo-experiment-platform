@@ -22,6 +22,7 @@ from collections import deque
 from pathlib import Path
 
 from . import config, grid, population, rng
+import numpy as np
 
 TRACE_SCHEMA = "leo-sim-trace/v1"
 TRACE_SCHEMA_V2 = "leo-sim-trace/v2"
@@ -58,6 +59,45 @@ def _format_time(value: float, *, roundtrip: bool = False) -> str:
 
 def _serialized_time(value: float, *, roundtrip: bool = False) -> float:
     return float(_format_time(value, roundtrip=roundtrip))
+
+
+def satellite_background_rows(*, count: int, num_satellites: int,
+                               bits: int, emit_start_s: float,
+                               emit_end_s: float, seed: int,
+                               packet_id_start: int) -> list[dict]:
+    """Random satellite-to-satellite background packets.
+
+    The paper's traffic is "ground test flow + random satellite-to-satellite
+    background flow"; without the second term the inter-satellite queues stay
+    empty and no queue-prediction mechanism can matter.  This generator emits
+    ordinary trace rows whose src/dst are ``sat:<id>``: the kernel injects them
+    at the source satellite's ingress and delivers them when the packet reaches
+    the destination satellite.  Generic capability, no policy.
+    """
+    if num_satellites < 2:
+        raise TraceError("satellite background flow needs >= 2 satellites")
+    if count < 0:
+        raise TraceError("satellite background count must be >= 0")
+    if bits <= 0 or emit_end_s <= emit_start_s:
+        raise TraceError("invalid satellite background arguments")
+    rng = np.random.default_rng(seed)
+    rows = []
+    for i in range(count):
+        src = int(rng.integers(num_satellites))
+        dst = int(rng.integers(num_satellites - 1))
+        if dst >= src:
+            dst += 1
+        t = emit_start_s + float(rng.random()) * (emit_end_s - emit_start_s)
+        rows.append({
+            "packet_id": packet_id_start + i,
+            "emit_time_s": t,
+            "src_grid_id": f"sat:{src}",
+            "dst_grid_id": f"sat:{dst}",
+            "bits": int(bits),
+            "deadline_at_s": None,
+        })
+    rows.sort(key=lambda r: (r["emit_time_s"], r["packet_id"]))
+    return rows
 
 
 def validate_packet_rows(rows: list[dict], horizon_s: float,
@@ -99,7 +139,25 @@ def validate_packet_rows(rows: list[dict], horizon_s: float,
                 f"trace row {i}: emit_time_s {t} beyond run horizon {horizon_s}")
         if isinstance(bits, bool) or not isinstance(bits, int) or bits <= 0:
             raise TraceError(f"trace row {i}: bits must be a positive int: {bits!r}")
-        if not grid.is_valid_grid_id(s) or not grid.is_valid_grid_id(d):
+        def _sat_id(cell):
+            """Return the satellite index for "sat:<id>", else None."""
+            text = str(cell)
+            if not text.startswith("sat:"):
+                return None
+            tail = text.split(":", 1)[1]
+            return int(tail) if tail.isdigit() and int(tail) >= 0 else -1
+
+        s_sat, d_sat = _sat_id(s), _sat_id(d)
+        if (s_sat is None) != (d_sat is None):
+            # inter-satellite flow has BOTH endpoints on satellites; a ground
+            # source with a satellite destination has no delivery rule.
+            raise TraceError(
+                f"trace row {i}: mixed ground/satellite endpoints "
+                f"{s!r}/{d!r}")
+        if s_sat is not None:
+            if s_sat < 0 or d_sat < 0:
+                raise TraceError(f"trace row {i}: invalid satellite id in {s!r}/{d!r}")
+        elif not grid.is_valid_grid_id(s) or not grid.is_valid_grid_id(d):
             raise TraceError(f"trace row {i}: invalid grid id {s!r}/{d!r}")
         if s == d:
             raise TraceError(f"trace row {i}: src == dst cell {s!r}")
@@ -998,17 +1056,26 @@ def materialization_report(resolved: dict, rows: list[dict],
         problems.append(
             f"{report['emission']['packets_before_emission_start']} packet(s) "
             f"emitted before the emission window starts at {emission_start}")
-    if mode != "csv" and set(bits) - {declared_bits}:
+    ground_bits = {row["bits"] for row in rows
+                   if not str(row["src_grid_id"]).startswith("sat:")}
+    if mode != "csv" and ground_bits - {declared_bits}:
         problems.append(
-            f"emitted packet sizes {sorted(set(bits))} do not match the "
+            f"emitted packet sizes {sorted(ground_bits)} do not match the "
             f"declared demand.packet_bits {declared_bits}")
     if report["endpoints"]["self_loops"]:
         problems.append(
             f"{report['endpoints']['self_loops']} packet(s) whose source and "
             "destination are the same aggregate cell")
-    for label, outside in (("source", report["endpoints"]["sources_outside_declared"]),
+    # Satellite-sourced background rows are NOT ground endpoints: their
+    # endpoints are satellite ids, and the config declares the background
+    # stream separately.  They are excluded from the ground endpoint-set gate
+    # (and counted separately below) instead of being reported as violations.
+    def _ground_only(cells):
+        return sorted(c for c in cells if not str(c).startswith("sat:"))
+    for label, outside in (("source",
+                            _ground_only(report["endpoints"]["sources_outside_declared"])),
                            ("destination",
-                            report["endpoints"]["destinations_outside_declared"])):
+                            _ground_only(report["endpoints"]["destinations_outside_declared"]))):
         if outside:
             problems.append(
                 f"emitted {label} cell(s) {outside} are outside the resolved "
@@ -1386,6 +1453,35 @@ def compile_trace(resolved: dict, out_dir: str,
             rows = nested_child_rows
         else:
             rows = master_rows
+        rows.sort(key=lambda r: (r[1], r[0]))
+        rows = [(i + 1, *r[1:]) for i, r in enumerate(rows)]
+
+    # SATELLITE-TO-SATELLITE BACKGROUND FLOW (generic capability, opt-in).
+    # Appended AFTER the ground trace so the ground rows keep their packet ids
+    # and byte identity; background rows take the next ids and are then merged
+    # by (emit_time, packet_id) into the contract order.
+    background_mbps = dm.get("sat_background_mbps")
+    if background_mbps:
+        bits_bg = dm.get("sat_background_packet_bits")
+        if not bits_bg:
+            raise TraceError(
+                "demand.sat_background_packet_bits is required when "
+                "sat_background_mbps is set (the ground packet size is not "
+                "reused: background flow is a separate declared stream)")
+        window = max(0.0, emission_end - emission_start)
+        count = int(round(float(background_mbps) * 1e6 / int(bits_bg) * window))
+        bg = satellite_background_rows(
+            count=count, num_satellites=int(sc["num_satellites"]),
+            bits=int(bits_bg), emit_start_s=emission_start,
+            emit_end_s=emission_end,
+            seed=(int(dm["sat_background_seed"])
+                  if dm.get("sat_background_seed") is not None
+                  else int(sc["seed"])),
+            packet_id_start=(max((r[0] for r in rows), default=0)) + 1)
+        rows = rows + [(r["packet_id"], r["emit_time_s"], r["src_grid_id"],
+                        r["dst_grid_id"], r["bits"],
+                        ("" if r["deadline_at_s"] is None else r["deadline_at_s"]),
+                        "") for r in bg]
         rows.sort(key=lambda r: (r[1], r[0]))
         rows = [(i + 1, *r[1:]) for i, r in enumerate(rows)]
 

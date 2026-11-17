@@ -47,6 +47,7 @@ def _kernel_with_entries(entries, *, decision_sink=None, topology=None):
     instance.caches = {1: LocalCache()}
     instance.topo = {0: {"E": 7} if topology is None else topology}
     instance._recorded_advertisement_history_cache = {}
+    instance._advertisement_rows_cache = {}
     for entry in entries:
         instance.caches[1].put(entry)
     return instance
@@ -195,3 +196,33 @@ def test_online_force_path_is_independent_of_recorded_history_cache():
     assert after == before
     assert after[0] is not before[0]
     assert len(after[0]["advertised_downlink_resources"]) == 99
+
+
+def test_scoring_rows_do_not_depend_on_whether_a_decision_sink_is_attached():
+    """Attaching a diagnostic sink must not change what a decision reads.
+
+    ``_advertisement_history`` doubles as an output channel and returns [] when
+    no decision sink is attached.  The scoring path needs the rows REGARDLESS,
+    so ``_advertisement_rows`` must pass force=True; inheriting the output guard
+    made every candidate report ``no_received_history`` and collapsed the
+    ranking to the bare candidate order, i.e. a run with diagnostics off became
+    a different experiment while still claiming to be a state-time arm.
+    """
+    entry = _entry(peer=7)
+
+    with_sink = _kernel_with_entries([entry], decision_sink=[])
+    rows_with = with_sink._advertisement_rows(1, 0, 1.0)
+
+    without_sink = _kernel_with_entries([entry], decision_sink=[])
+    without_sink.decision_sink = None
+    rows_without = without_sink._advertisement_rows(1, 0, 1.0)
+
+    assert rows_with, "sanity: rows must exist when a sink is attached"
+    assert len(rows_without) == len(rows_with), (
+        "the scoring accessor returned "
+        f"{len(rows_without)} rows without a sink and {len(rows_with)} with "
+        "one; attaching diagnostics must not change routing state")
+    assert rows_without == rows_with
+
+    # and the output-only accessor keeps its guard: no sink -> no rows
+    assert without_sink._recorded_advertisement_history(1, 0, 1.0) == []
