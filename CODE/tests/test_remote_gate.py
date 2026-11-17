@@ -41,6 +41,24 @@ def test_require_data_isl_uses_recomputed_multisat_not_diagnostic_occupied():
     assert not any("data ISL" in e for e in errors)
 
 
+def test_prepared_launch_status_requires_current_v3_schema():
+    args = SimpleNamespace(
+        launch_nonce="a" * 32, session_name="s",
+        expected_run_id="EXP-1", expected_config_sha256="b" * 64,
+        expected_authorization_sha256="c" * 64)
+    prepared = {
+        "schema": remote_job.EXTERNAL_STATUS_SCHEMA,
+        "status": "prepared", "launch_nonce": args.launch_nonce,
+        "session_name": args.session_name, "run_id": args.expected_run_id,
+        "config_sha256": args.expected_config_sha256,
+        "authorization_sha256": args.expected_authorization_sha256,
+    }
+    remote_job.validate_prepared_launch_status(prepared, args)
+    prepared["schema"] = "leo-remote-launch-status/v2"
+    with pytest.raises(ValueError, match="schema must be leo-remote-launch-status/v3"):
+        remote_job.validate_prepared_launch_status(prepared, args)
+
+
 def test_v2_governance_receipt_binds_raw_config_and_trace_contract(tmp_path):
     receipt_path = tmp_path / "receipt.json"
     config_path = tmp_path / "resolved_config.json"
@@ -175,6 +193,7 @@ def test_direct_remote_run_blocks_second_cell_without_predecessor(
     }
     nonce = "a" * 32
     prepared = {
+        "schema": remote_job.EXTERNAL_STATUS_SCHEMA,
         "status": "prepared", "launch_nonce": nonce,
         "session_name": "serial-second", "run_id": "EXP-SERIAL-second",
         "config_sha256": "b" * 64,

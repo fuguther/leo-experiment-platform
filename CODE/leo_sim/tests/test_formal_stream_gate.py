@@ -105,11 +105,21 @@ def _with_stream_witness(source: Path, target: Path) -> Path:
         "schema": "leo-sim-formal-run/v1",
         "timeline_log_sha256": timeline_sha,
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    (target / "governance_receipt.json").write_text(json.dumps({
-        "schema": "leo-sim-governance-receipt/v3",
-        "formal_run_sha256": hashlib.sha256(
-            formal_path.read_bytes()).hexdigest(),
-    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    receipt = json.loads((target / "receipt.json").read_text(encoding="utf-8"))
+    ledgers = json.loads((target / "ledgers.json").read_text(encoding="utf-8"))
+    governed = rj.build_governance_receipt(
+        receipt=receipt, ledgers=ledgers, verification_errors=[],
+        acceptance={}, run_id=target.name, launch_nonce="0" * 32,
+        authorization_sha256="a" * 64,
+        deployment={"source_git_commit": "b" * 40,
+                    "source_tree_sha256": "c" * 64},
+        deployment_receipt_sha256="d" * 64,
+        execution_chain_sha256="e" * 64,
+        receipt_path=target / "receipt.json",
+        resolved_config_path=target / "resolved_config.json",
+        manifest_path=target / "manifest.json",
+        formal_run_path=formal_path)
+    rj.write_json(target / "governance_receipt.json", governed)
     return target
 
 
@@ -177,6 +187,26 @@ def test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate(
         encoding="utf-8")
     errors = rj.verify_v2_formal_result(jointly_tampered)
     assert errors and "formal_run_sha256 does not bind" in errors[0]
+
+    legacy_governance = tmp_path / "v5-legacy-governance-v2"
+    shutil.copytree(certified, legacy_governance)
+    governed_path = legacy_governance / "governance_receipt.json"
+    governed = json.loads(governed_path.read_text(encoding="utf-8"))
+    governed["schema"] = "leo-sim-governance-receipt/v2"
+    governed_path.write_text(json.dumps(governed), encoding="utf-8")
+    errors = rj.verify_v2_formal_result(
+        legacy_governance, require_governance=True)
+    assert errors and "governance_receipt v2 is historical-only" in errors[0]
+
+    missing_governance_field = tmp_path / "v5-missing-governance-field"
+    shutil.copytree(certified, missing_governance_field)
+    governed_path = missing_governance_field / "governance_receipt.json"
+    governed = json.loads(governed_path.read_text(encoding="utf-8"))
+    governed.pop("acceptance")
+    governed_path.write_text(json.dumps(governed), encoding="utf-8")
+    errors = rj.verify_v2_formal_result(
+        missing_governance_field, require_governance=True)
+    assert any("missing contract fields" in error for error in errors)
 
     # …and the form that WAS there before the fix mis-failed exactly this run,
     # after the simulation had already been paid for.

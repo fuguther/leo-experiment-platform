@@ -394,6 +394,7 @@ def verify_v2_formal_result(
          witness from being rewritten together after the VM verdict.
     """
     sys.path.insert(0, str(CANONICAL_WORKSPACE))
+    from CODE.leo_sim import pullback as pullback_mod
     from CODE.leo_sim.receipt import verify_receipt_dir, verify_receipt_streams
 
     errors = list(verify_receipt_dir(str(result_dir)))
@@ -415,10 +416,45 @@ def verify_v2_formal_result(
             else:
                 if not isinstance(governed, dict):
                     errors.append("governance_receipt.json must be a JSON object")
-                elif governed.get("formal_run_sha256") != file_sha256(formal_path):
-                    errors.append(
-                        "governance_receipt.formal_run_sha256 does not bind "
-                        "formal_run.json")
+                else:
+                    schema = governed.get("schema")
+                    if schema == pullback_mod.GOVERNANCE_SCHEMA_V2_LEGACY:
+                        errors.append(
+                            "governance_receipt v2 is historical-only and "
+                            "cannot satisfy the current formal contract")
+                    elif schema != pullback_mod.GOVERNANCE_SCHEMA_V3:
+                        errors.append(
+                            "governance_receipt schema must be "
+                            f"{pullback_mod.GOVERNANCE_SCHEMA_V3}")
+                    else:
+                        expected_keys = set(pullback_mod.GOVERNANCE_KEYS_V3)
+                        actual_keys = set(governed)
+                        missing = sorted(expected_keys - actual_keys)
+                        unknown = sorted(actual_keys - expected_keys)
+                        if missing:
+                            errors.append(
+                                "governance_receipt is missing contract fields "
+                                f"{missing}")
+                        if unknown:
+                            errors.append(
+                                "governance_receipt has unknown fields "
+                                f"{unknown}")
+                        unsigned = {key: value for key, value in governed.items()
+                                    if key != "payload_sha256"}
+                        if governed.get("payload_sha256") != canonical_sha(unsigned):
+                            errors.append(
+                                "governance_receipt.payload_sha256 does not "
+                                "seal the receipt")
+                        if governed.get("research_eligible") is not True:
+                            errors.append(
+                                "governance_receipt.research_eligible is not true")
+                        if governed.get("verification_errors") != []:
+                            errors.append(
+                                "governance_receipt.verification_errors is not empty")
+                        if governed.get("formal_run_sha256") != file_sha256(formal_path):
+                            errors.append(
+                                "governance_receipt.formal_run_sha256 does not "
+                                "bind formal_run.json")
     return errors
 
 
@@ -627,13 +663,14 @@ def result_dir_from_pointer(started_at: float, launch_nonce: str) -> str:
     return str(candidate)
 
 
-def run_formal(args: argparse.Namespace) -> int:
-    workdir, status_path, log_path, config, authorization = validate_formal_paths(args)
-    deployment = verify_receipt(Path(args.deployment_receipt))
-    validate_expected_identity(args, config, authorization)
-    requested_cpu_affinity = validate_cpu_affinity(getattr(args, "cpu_list", ""))
-    prepared = json.loads(launch_status_path(args.launch_nonce).read_text(encoding="utf-8"))
-    expected_prepared = {
+def validate_prepared_launch_status(
+        prepared: dict[str, Any], args: argparse.Namespace) -> None:
+    """Reject a prepared status from a stale or non-v3 launch contract."""
+    if prepared.get("schema") != EXTERNAL_STATUS_SCHEMA:
+        raise ValueError(
+            "prepared launch status schema must be "
+            f"{EXTERNAL_STATUS_SCHEMA}")
+    expected = {
         "status": "prepared",
         "launch_nonce": args.launch_nonce,
         "session_name": args.session_name,
@@ -641,8 +678,17 @@ def run_formal(args: argparse.Namespace) -> int:
         "config_sha256": args.expected_config_sha256,
         "authorization_sha256": args.expected_authorization_sha256,
     }
-    if any(prepared.get(key) != value for key, value in expected_prepared.items()):
+    if any(prepared.get(key) != value for key, value in expected.items()):
         raise ValueError("prepared launch status does not match this formal job")
+
+
+def run_formal(args: argparse.Namespace) -> int:
+    workdir, status_path, log_path, config, authorization = validate_formal_paths(args)
+    deployment = verify_receipt(Path(args.deployment_receipt))
+    validate_expected_identity(args, config, authorization)
+    requested_cpu_affinity = validate_cpu_affinity(getattr(args, "cpu_list", ""))
+    prepared = json.loads(launch_status_path(args.launch_nonce).read_text(encoding="utf-8"))
+    validate_prepared_launch_status(prepared, args)
     verify_v2_run_authorization(args, config, authorization)
     verified_predecessors = verify_v2_serial_predecessors(
         args, config, authorization, deployment)
