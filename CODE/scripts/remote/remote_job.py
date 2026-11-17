@@ -364,8 +364,27 @@ def formal_command(args: argparse.Namespace, workdir: Path, config: Path, author
     return command
 
 
+GOVERNANCE_AUTHORITY_FIELDS = (
+    "run_id", "launch_nonce", "authorization_sha256",
+    "source_git_commit", "source_tree_sha256", "deployment_receipt_sha256",
+    "execution_chain_sha256", "acceptance",
+)
+
+
+def _governance_authority_errors(
+        governed: dict[str, Any], expected: dict[str, Any]) -> list[str]:
+    errors = []
+    for field in GOVERNANCE_AUTHORITY_FIELDS:
+        if governed.get(field) != expected.get(field):
+            errors.append(
+                f"governance_receipt.{field} does not match the "
+                "authorized/deployed identity")
+    return errors
+
+
 def verify_v2_formal_result(
-        result_dir: Path, *, require_governance: bool = False) -> list[str]:
+        result_dir: Path, *, require_governance: bool = False,
+        expected_authority: dict[str, Any] | None = None) -> list[str]:
     """The VM-side verification of one V2 formal result directory.
 
     Split out of run_formal so the exact sequence the VM applies can be
@@ -412,6 +431,18 @@ def verify_v2_formal_result(
             formal_errors, _not_checked = pullback_mod._formal_increment_errors(
                 result_dir, receipt, None)
             errors.extend(formal_errors)
+            if expected_authority is not None:
+                try:
+                    governed = json.loads(
+                        governance_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError) as exc:
+                    errors.append(
+                        f"governance_receipt.json is unreadable for authority "
+                        f"check: {exc}")
+                else:
+                    if isinstance(governed, dict):
+                        errors.extend(_governance_authority_errors(
+                            governed, expected_authority))
     return errors
 
 
@@ -802,9 +833,23 @@ def run_formal(args: argparse.Namespace) -> int:
                         rc = 2
                     governed_path = Path(payload["last_results_dir"]) / "governance_receipt.json"
                     write_json(governed_path, governed)
+                    expected_authority = {
+                        "run_id": args.expected_run_id,
+                        "launch_nonce": args.launch_nonce,
+                        "authorization_sha256":
+                            args.expected_authorization_sha256,
+                        "source_git_commit": deployment["source_git_commit"],
+                        "source_tree_sha256": deployment["source_tree_sha256"],
+                        "deployment_receipt_sha256":
+                            deployment["receipt_sha256"],
+                        "execution_chain_sha256": authorized_row[
+                            "execution_chain_sha256"],
+                        "acceptance": authorized_row["acceptance"],
+                    }
                     anchored_errors = verify_v2_formal_result(
                         Path(payload["last_results_dir"]),
-                        require_governance=True)
+                        require_governance=True,
+                        expected_authority=expected_authority)
                     if anchored_errors:
                         payload["status"] = "failed"
                         payload["exit_code"] = 2
