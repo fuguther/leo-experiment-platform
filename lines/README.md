@@ -1,16 +1,3 @@
-# 研究主线登记
+# 发布目录兼容边界
 
-每条研究线一个文件。本表是唯一索引。
-
-| 文件 | 状态 | 起始 | 说明 |
-|---|---|---|---|
-| `TIME-SEMANTICS.md` | ACTIVE | 2026-09-23 | 状态时间错位 / 候选到达时刻对齐 |
-
-状态取值:
-
-- `ACTIVE` — 当前主线,平台能力按它组织
-- `DORMANT` — 暂停,能力保留,不推进
-- `RETIRED` — 已判死;文件保留作墓碑,注明死因
-- `SUPERSEDED` — 被新线取代;注明接管者
-
-**线的增删改不触及 `../CHARTER.md`。** 一条线死亡、新增或易主,只动本目录。
+版本化发布协议 `CODE/scripts/remote/release_protocol.py` 要求此目录存在，当前保留它以兼容既有 release 身份合同。目录不维护研究线、科学状态或任务计划；研究入口为 [研究仓库 main](https://github.com/fuguther/leo-routing-domain-map/tree/main)。

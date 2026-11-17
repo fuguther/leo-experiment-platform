@@ -42,7 +42,7 @@
 | ① 逐包分布式路由 | frozen/refresh 观测模式（`execution.decision_observation_mode`）；单次候选动作干预（`forced_actions` + `counterfactual.replay_with_forced_action` + CLI `replay_counterfactual`）；逐包分支比较（`minimal_branch_compare.py`）；时间链折叠（`decision_ledger.TIMELINE_FIELDS` + `build_ledger` + CLI `fold_decision_ledger`）；v6 流绑定（`RECEIPT_KEYS_V6`） | 已具备 |
 | ② 异步流量调度 | 无。**零实现** | 需新增 |
 
-研究线登记现状：`lines/README.md` 声明"每条研究线一个文件。本表是唯一索引"，而 `lines/` 目前只有 `TIME-SEMANTICS.md`（状态 ACTIVE，对应研究线①）。②要成为一条被承认的线，须先在 `lines/` 登记（见 §最小执行设计 前置条件）。**本文件不代替该登记。**
+研究问题及是否采用本条件性设计，由研究仓库 main 的正式状态和任务合同确定；本平台不另设登记门。
 
 ### 0.2 "零实现"的核验命令
 
@@ -117,7 +117,7 @@ grep -rniE "compute_servers|compute_wait" CODE --include=*.py | wc -l  # -> 21 /
    （`trace.csv` 被 `trace_identity_sha256` 绑定、进 receipt），一个会改动发射时刻的调度器
    必须说明它与 trace 身份的关系——这是**先决问题**，不是实现细节。
 
-**本轮不替研究者裁定。** 要求是：在 `lines/` 登记②并写下选中的那一个之前，
+所采用的研究假设和参数必须在所属任务合同中明确；本设计稿不授予运行资格。
 §1.4 的 D1--D5 与 §最小执行设计 **保持为草案**，不得落地成代码。已经可以确定、与三选一无关的，
 只有下面三件：
 
@@ -172,7 +172,7 @@ grep -rniE "compute_servers|compute_wait" CODE --include=*.py | wc -l  # -> 21 /
 ### 1.4 为什么把调度对象定义成"流"会退化成按流缓存
 
 流的键是 `(src, dst)`。若一次计算的结果按流缓存，则同一流的后续包直接命中缓存：**不再计算、`t_decision_start` 不再前进、`chosen` 恒定**。此时"调度器"的输出与"每条流一条固定路径"在可观测层面**完全不可区分**，而且它根本不是异步的——计算只发生一次，之后全是查表。
-更实质的代价：它破坏 CHARTER 不变式 4（可归因）。路径复用带来的收益无法归因到"调度"，只能归因到"路由结果被冻住了"。
+更实质的代价：它破坏 README 的可归因要求（可归因）。路径复用带来的收益无法归因到"调度"，只能归因到"路由结果被冻住了"。
 
 **反退化判据（2026-09-26 重写；旧版已删除）**
 
@@ -344,7 +344,7 @@ grep -rniE "compute_servers|compute_wait" CODE --include=*.py | wc -l  # -> 21 /
 **结论：算力争用从本文件写作时的"不可观测"变成了可观测**，"省算力"这条收益现在有字段可依。两条边界必须同时记住：
 
 1. **等待没有进 decision row。** `_compute_queue_wait` 的 docstring 给的理由是：决策行有冻结的 19 键契约，且等待发生在 `decision_id` 分配之前。后果是当 `compute_servers_per_satellite > 0` 时，`t - t_decision_start` **同时包含排队与服务**，只有 timeline 流能把两者分开；要逐决策核验排队，仍绕不开 §4.4 的契约取舍。
-2. **它仍不是"调度"。** 它提供的是"算力有界"这一**代价项**（CHARTER 不变式 5），不产生任何跨包复用的调度结果；§1 的 L2/L3 依旧**需新增**。因此最小步骤**不必**再新造 Resource —— 有界池已由本轮提供，直接引用即可。
+2. **它仍不是"调度"。** 它提供的是"算力有界"这一**代价项**（README 的代价可量化要求），不产生任何跨包复用的调度结果；§1 的 L2/L3 依旧**需新增**。因此最小步骤**不必**再新造 Resource —— 有界池已由本轮提供，直接引用即可。
 
 **本节小结** —— 已有：`t_decision_start` / `t` 两个时刻、自由 milestone 的 timeline 通道、双向行契约、sha256 流绑定；**本轮新增**：有界每星计算池（`execution.compute_servers_per_satellite` + `compute_wait`），使算力争用可观测，且 `0` 时逐位等同于历史行为。需新增：`schedule_install` milestone 及其 extra 键；(A)/(B) 二选一。
 
@@ -425,7 +425,7 @@ grep -rniE "compute_servers|compute_wait" CODE --include=*.py | wc -l  # -> 21 /
 
 **（一）严格配对比较被结构性拒绝。** `counterfactual.replay_with_forced_action`（@1fad58f counterfactual.py:75） 先算 `counterfactual.branch_fingerprint`（@1fad58f counterfactual.py:54），覆盖目标决策之前**全部** decision row（整行；分支点字段 `PRECOMMIT_FIELDS`，`counterfactual.PRECOMMIT_FIELDS`（@1fad58f counterfactual.py:34）。若切换会重写已在途包的动作，基线 run 与实验 run 会在**目标决策之前**就分叉，`branch_states_identical` 为 False，直接 `raise CounterfactualError("the replay did not reach the same branch point")`。
 
-也就是说：全局立即切换会让**平台最核心的因果工具对该实验永久失效**，违反 CHARTER 不变式 3（可干预）。`minimal_branch_compare` 的 `pre_branch_identity.decision_fingerprints_identical` 同样会 False。
+也就是说：全局立即切换会让**平台最核心的因果工具对该实验永久失效**，违反 README 的可干预要求（可干预）。`minimal_branch_compare` 的 `pre_branch_identity.decision_fingerprints_identical` 同样会 False。
 
 **（二）入队无法归属。** `_metric_queue_enter` 的 `decision_id` 必须**显式**传（`kernel._metric_queue_enter`（@1fad58f kernel.py:1538，R8-A8） ：链路 stall / retirement 造成的重入队传 `None`，因为"把它记到上一个决策头上是错的"。全局切换正是这种重入队——它会以 `decision_id=None` 进指标，于是**改变了结果、但在逐决策账本里不可见**。测到的差异归不到任何决策上。
 
@@ -452,7 +452,7 @@ grep -rniE "compute_servers|compute_wait" CODE --include=*.py | wc -l  # -> 21 /
 
 **4. 安装延迟是否建模？** —— **未决定**
 选项：install 与 commit 同刻（免费）／install 消耗 `execution.node_process_delay_s`／新增 `schedule_install_delay_s`。
-改变什么：不建模 → 调度看起来免费，代价项缺失，违反 CHARTER 不变式 5（代价可量化）；建模 → 必须再决定 install 与 F2 是否重叠（`kernel.Kernel.__init__` @1fad58f kernel.py:1138）注释明确 F2 与 `compute_delay_s` **互不重叠**，install 落在哪一侧是新的选择）。
+改变什么：不建模 → 调度看起来免费，代价项缺失，违反 README 的代价可量化要求（代价可量化）；建模 → 必须再决定 install 与 F2 是否重叠（`kernel.Kernel.__init__` @1fad58f kernel.py:1138）注释明确 F2 与 `compute_delay_s` **互不重叠**，install 落在哪一侧是新的选择）。
 
 **5. "算力受限下的调度收益"用什么对照来测？** —— **未决定**
 现状：算力争用**已可观测**（`execution.compute_servers_per_satellite` + timeline `compute_wait`，§4.5；`0` 时逐位等同于历史行为）。仍缺的是**对照设计**：
@@ -475,8 +475,8 @@ D1 只要求严格不等号，但"解耦到什么程度才算异步"没有定：
 **10. 是否允许集中式信息对象 `snapshot_global()`？** —— **未决定**
 改变什么：允许 → ② 从"分布式异步调度"变成"集中式周期调度"，信息范围整段重写（广告时延、AoI 都不再是约束），测到的收益含"全局信息"这一项，与①不可比；不允许 → 维持分布式信息边界。若允许，必须把 `Q0-B`（未来信息）排除在外（`kernel.snapshot_global`（@1fad58f kernel.py:1996；Q0-B 注释 2005 明确它尚无独立视图）。
 
-**11. 是否为②在 `lines/` 注册研究线？** —— **未决定**
-`lines/README.md`："每条研究线一个文件。本表是唯一索引。" 当前只有 `TIME-SEMANTICS.md`（ACTIVE）。②未登记则它不是一个被承认的线，本文件只是设计稿。是否新开文件、是否复用 TIME-SEMANTICS、还是与①合并，由研究者定。
+**11. 研究问题与采用范围**
+研究问题及是否采用本条件性设计，由研究仓库 main 的正式状态和任务合同确定；本平台不另设登记门。
 
 ---
 
@@ -491,7 +491,7 @@ D1 只要求严格不等号，但"解耦到什么程度才算异步"没有定：
 
 ### 前置条件
 
-`lines/` 登记（见 未确定 第 11 条），以及一个新建 profile（形如 `CODE/leo_sim/profiles/t2_async_epoch_smoke.yaml`）。**未核实**：该 profile 的最终命名与是否复用 `t1_frozen_branch_smoke.yaml`。
+所属研究任务合同，以及一个新建 profile（形如 `CODE/leo_sim/profiles/t2_async_epoch_smoke.yaml`）。**未核实**：该 profile 的最终命名与是否复用 `t1_frozen_branch_smoke.yaml`。
 
 ### 改动清单（全部为"新增"，不新增引擎语义）
 
@@ -603,4 +603,4 @@ PY
 2. `receipt verify` 对 V6 的完整校验路径**未逐行核验**（本文件只核到 `receipt.RECEIPT_KEYS_V6`（@1fad58f receipt.py:61） 与 `receipt.STREAM_FILES`（@1fad58f receipt.py:78）。
 3. `schedule_epoch_s >= compute_delay_s` 这条约束的取值边界未做数值实验，是按语义推出的必要条件。
 4. 本文件未运行任何仿真；§最小执行设计的全部输出都是**设计意图**，不是实测结果。任何据此声称的收益均为**未核实**。
-5. 20 Mbps 以上的压力窗口限制仍然生效（`lines/TIME-SEMANTICS.md` 引 `T1-PRESSURE-WINDOW-PASS`，finding R8-A9：access 在约 20 Mbps 以上未解除限流，利用率平台在 0.56）。若在更高速率下取示例参数，测得的是限流平台，不是调度效果。
+5. 20 Mbps 以上的压力窗口限制仍然生效（[固定版本技术记录](https://github.com/fuguther/leo-experiment-platform/blob/5623c9145a626e8e85e18acb1ac2fece621ee221/lines/TIME-SEMANTICS.md) 引 `T1-PRESSURE-WINDOW-PASS`，finding R8-A9：access 在约 20 Mbps 以上未解除限流，利用率平台在 0.56）。若在更高速率下取示例参数，测得的是限流平台，不是调度效果。

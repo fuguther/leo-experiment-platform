@@ -50,7 +50,7 @@ code 2a114890                 code 0ab9bb44     code 57cca0ed      code 57cca0ed
 | 事实 | 证据 |
 |---|---|
 | `1fad58f` 是**单亲提交**（squash），不是 merge commit | `git rev-list --parents -n 1 1fad58f` → `1fad58f bd4a9e0` |
-| `cc0363a` 的树与 `1fad58f` 的树**只差一个文件** | `git diff --stat 1fad58f cc0363a` → 仅 `lines/TIME-SEMANTICS.md`（+5/−24，即 #5 的能力表订正） |
+| `cc0363a` 的树与 `1fad58f` 的树**只差一个文件** | `git diff --stat 1fad58f cc0363a` → 仅 [固定版本技术记录](https://github.com/fuguther/leo-experiment-platform/blob/5623c9145a626e8e85e18acb1ac2fece621ee221/lines/TIME-SEMANTICS.md)（+5/−24，即 #5 的能力表订正） |
 | 两棵树的 **CODE/ 完全相同** | `git diff --stat 1fad58f cc0363a -- CODE/` → 空 |
 | `5fb89de0`（R5 冻结）是 `cc0363a` 的祖先 | `git merge-base --is-ancestor 5fb89de0 cc0363a` → 真 |
 | `98c858f`（chore 分支）也是 `cc0363a` 的祖先 | `git log --oneline cc0363a` 中可见；`98c858f` 的**全部路径都存在于 1fad58f**（缺失 0 个） |
@@ -217,7 +217,7 @@ PY'
 | 文件 | 订正 |
 |---|---|
 | `README.md` | `4402081f…` → `57cca0ed…`，并注明"该值随任何 `CODE/leo_sim/*.py` 变更而变；复核时以实跑为准" |
-| `lines/TIME-SEMANTICS.md` | 能力表两处 ❌（`build_ledger` 无生产入口 / `counterfactual` 无生产入口）与实测计数已过期 → 改为 ✅，并指向 `CODE/experiment_platform/fold_decision_ledger.py` 与 `replay_counterfactual.py`；修正 Markdown 表头重复；"四条不变式" → "五条"；补上 `platform_frozen = blocked` 这一被漏掉的前置门 |
+| [固定版本技术记录](https://github.com/fuguther/leo-experiment-platform/blob/5623c9145a626e8e85e18acb1ac2fece621ee221/lines/TIME-SEMANTICS.md) | 能力表两处 ❌（`build_ledger` 无生产入口 / `counterfactual` 无生产入口）与实测计数已过期 → 改为 ✅，并指向 `CODE/experiment_platform/fold_decision_ledger.py` 与 `replay_counterfactual.py`；修正 Markdown 表头重复；"四条不变式" → "五条"；补上 `platform_frozen = blocked` 这一被漏掉的前置门 |
 
 ---
 

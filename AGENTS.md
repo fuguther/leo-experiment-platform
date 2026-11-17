@@ -1,40 +1,36 @@
-# leo-experiment-platform 工作与维护规则
+# 平台操作规则
 
-本文件保存稳定规则，适用于包含本文件的仓库及其工作树，不记录滚动 SHA、磁盘余量或当前实验进度。先读根目录 `STATUS.md`；工作包 STATUS 仅说明该工作包。
+本文件维护代码与运行操作边界。导航见 README；版本与证据查询见 STATUS。研究路线和科学标准只来自 `fuguther/leo-routing-domain-map` 远端 main 的正式状态及研究规则。
 
-## 执行位置与边界
+## 写入与集成
 
-- 所有仿真、压力测试、决策计时及产生科研数值的实验在 VM 执行。本机只做代码修改、单元/回归测试、静态检查、文档和已回传工件的只读复核。
-- 本机旧实验产物是历史材料，不作为新 VM 实验结果。
-- 旧正式部署 `/data/论文/leo-direct-sim` 保持只读；不得把 T1 发布或清理指向它。
-- T1 根 `/data/论文/leo-t1-wt` 的旧 CODE/Results/launch.json 是历史流程。新发布只使用 `releases/<release-id>`，新运行只使用 `runs/<run-id>`；不得回到向共享 CODE 目录 rsync 覆盖的流程。
-- 主机连接、Python 路径和环境事实以当前配置及实查为准；不用历史磁盘余量或系统 Python 版本代替运行环境验证。
+- 写入前核实仓库、branch、HEAD、工作树、dirty/untracked/ignored 与任务租约；一个工作树只有一个生产写入者。不得覆盖、吸收或清理他人的未提交成果。
+- 使用既有工作区租约与 Git hooks。禁止直推 main、force-push、reset、stash、clean 或改写未知历史。
+- 在已授权范围内提交、推送；合并须核对精确 head、最新 main、真实 CI、独立审阅及未解决对话。分支不按固定天数强行合并或关闭。
+- 审阅依据实际行为、主张与依赖；改动路径无交集不自动通过。新发现的真实安全、正确性或证据缺口仍需处理，不因预设轮数或冻结条目外而自动降级。
+- 不删测试、放宽断言、静默回退或弱化工作流制造通过。必要改进写入原任务，不默认新建 backlog 或状态文件。
 
-## 每次开发、发布和回传
+## 执行与发布
 
-1. 确认工作树归属、分支、HEAD 和修改状态；保护别的任务的 dirty/untracked 文件。同一文件指定一个写入负责人。
-2. 按用户已授权任务修改必要文件并验证，更新既有状态入口。禁止删测试、放宽断言或静默回退制造通过。
-3. 发布必须来自干净工作树的完整 commit SHA，使用 `CODE/scripts/remote/publish-release-remote.sh`。GitHub 备份、合并 main 与发布是不同动作；未核实远端 ref 时保留 `remote_backup_pending`。
-4. 有界诊断/开发运行使用 `CODE/scripts/remote/run-release-remote.sh`，指定已核验 release 和新 run-id。开始创建 run 目录前，runner 强制比较当前 Python、Linux 平台、机器架构和已安装 Python 包清单摘要与 release 内 `CODE/dependencies/t1-vm-linux-aarch64/runtime-identity.json`，并重算核对其中声明的 pip/Conda 锁哈希；不匹配时拒绝运行。成功的 run manifest 记录实际环境并绑定契约哈希，receipt 绑定 manifest 哈希。声明的数据、模型和配置会快照到该 run。`--config` 只登记并固化输入快照，不会自动补齐子命令的位置参数；例如 `config validate` 仍须在 `--` 后显式传入 release 相对路径，runner 会将其替换为 run 隔离快照。失败运行保留回执，不复用 run-id 掩盖失败。
-5. 回传使用 `CODE/scripts/remote/pull-release-results-remote.sh`：partial 暂存、校验、原子落盘、追加 `ANALYSIS/DEPLOYMENT-INDEX.jsonl`。不得手改 VERIFIED 或 receipt hash。
-6. 证据对照本次固定 release、配置和输入身份核验，不要求历史结果等于后来工作树的 HEAD。之后提交不会自动使旧证据失效，也不会使旧证据自动覆盖新代码。
-7. 发布中断时先确认该 release 没有活动上传，再检查 partial/bootstrap/staging；隔离残留并保留原因。不得盲目删目录或覆盖重试；已测试的恢复入口及限制见 STATUS。
+- Mac 用于编辑、静态检查、单元/回归测试及已有证据分析。网络仿真、训练、性能扫描在获授权的 VM 任务中执行；既有训练不因文件整理被中断或扩展。
+- 代码从干净、已提交、已推送的完整 commit 经 `CODE/scripts/remote/publish-release-remote.sh` 构造不可变 release。不能用参考镜像或 rsync 冒充同源发布。
+- 诊断/开发经 `run-release-remote.sh` 固定 release 与新 run-id；遵守版本化运行环境、依赖锁、输入和模型快照校验。`--config` 不自动补齐子命令的位置参数。
+- formal 仍走编译、独立审阅、明确授权、既有 `run-remote.sh`、自然结束回执与重算。诊断入口不授予 formal 资格。
+- 运行环境、资源容量与进程状态实查。不得覆盖既有 release、复用 run-id、修改活动调度器或正在读取的输入。
+- 中断发布先检查活动上传，使用既有 quarantine 恢复器保留必要失败证据，再按合同重试，不盲删残留。
 
-正式实验仍走编译 → 独立审阅 → 明确授权 → 既有 `CODE/scripts/remote/run-remote.sh` → 自然结束回执 → 分析重算。T1 新发布/诊断验证不授予 FORMAL_RUN，不证明科研收益。
+## 验证与回传
 
-## 文件与维护规则
+- 开始和收尾运行 `python3 -B CODE/scripts/maintenance_check.py --repo .`；协议或检查器改动补跑对应测试。
+- 回传只用 `pull-release-results-remote.sh`，核对 run/release、receipt、manifest 与文件集后原子落盘。验收本机证据另加维护检查的 `--verify-evidence --evidence-root <实际路径>`。
+- 索引仅保存不含私有本机路径的 `evidence://t1/<run-id>`。不得手改 VERIFIED、补造来源或追认缺失回执。
+- 历史结果绑定产生它的版本；后续代码变更不自动使旧证据失效，也不自动把旧证据扩展到新实现。
+- 错误修复或明确阻塞，警告逐条解释。缺失、失败、partial、超时和服务端未知保持真实状态。
 
-- 根 STATUS 是当前状态入口；README 负责导航；本文件存稳定规则；工作包和验收报告保留日期、代码身份与证据范围。不要重复建立第二套当前状态文档。
-- 源码、测试、配置模板进 Git。凭据、真实环境配置、模型、外部原始数据和运行输出不因同步方便而入库；Results/out/leo_sim_out 等保持隔离。T1 release 按精确 Git 树及路径/后缀清单打包，不通用地排除 CSV/JSON 或验证许可；发布前核对 manifest 中的数据文件与本机资产登记，未核实来源/许可的材料不得作为新内容推送至公开 GitHub。
-- 开始和收尾运行 `python3 -B CODE/scripts/maintenance_check.py --repo .`。回传后或验收前加 `--verify-evidence --evidence-root /path/to/local-evidence` 并替换为本机实际证据根；索引只保存不含本机路径的 `evidence://t1/<run-id>`，检查器按显式证据根读取对应子目录。此检查只读，不联网、不实验、不删除。
-- 检查错误必须修复或明确阻塞；警告逐项说明。dirty 是工作状态，不得自动清理；缺少外置证据的 checkout 不能冒称回传已核验。
-- 修改维护检查或发布协议时运行相应测试。CI 收集 `CODE/tests` 与 `CODE/scripts/remote/tests`；本机通过不等于远端当前 SHA 已通过。
-- 原始资料、备份、许可和依赖锁的未完成项保留在 STATUS。运行环境清单不替代依赖锁，同盘副本不替代独立备份。
-- 回收前核对所有者、活动进程、未推送提交、未跟踪/ignored 资产、结果引用和备份。没有明确授权不删除历史材料或工作树；Codex 托管工作树使用归档工具。禁止自动 git clean/reset/stash、force-push 或定时垃圾清理。
+## 文件与清理
 
-## 工作区级治理文档
-
-- 工作区级 `AGENTS.md` 与唯一治理主方案、资产登记表保存在本公共仓库以外的权威工作区文档目录；其中含本机路径和本地证据。本仓库的 `AGENTS.md`、`STATUS.md` 只约束和报告仓库内工作，不复制整份主方案，也不把本机目录路径写入公开索引。
-- 工作区主方案、资产清单和本机回传证据不进入公共仓库；当前没有已核验的设备外独立备份。GitHub 上本仓库的公开内容或 T1 发布目录不代表这些资料已备份。备份目标确定后，按主方案记录的清单复制、逐文件验 SHA-256，并从目标恢复样本验证。
-
-报告必须区分本机代码检查、VM 诊断、正式实验与论文结论；维护检查通过只覆盖它实际检查的规则。
+- 公开仓库只保存代码、测试、安全配置、必要合同和小型索引。真实环境配置、凭据、模型、原始数据与运行产物按来源和许可单独保存；release 排除规则不替代许可核验。
+- 活动入口只写当前有效规则与能力边界，不累积旧任务轮次、旧研究安排或旧测试数字。历史来源通过固定 Git 对象和原始证据追溯。
+- 先读内容、查依赖与活动使用者。合并有效内容后删除重复文件；已授权的普通过时说明和可再生产物无需默认备份。
+- 删除唯一原始证据、不可再生状态或回收未知工作树前，核对授权、独立备份与恢复验证。搬移须核对目标不覆盖、源稳定、完整文件集和哈希；同机副本不冒称独立备份。
+- 工作区资产登记、私有路径和备份现态在所属私有工作区维护，不在本文件固化“当前有/无备份”。
