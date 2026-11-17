@@ -474,3 +474,38 @@ def test_unbound_artifact_integrity_is_not_a_public_verifier_api():
     """
     assert not hasattr(receipt, "verify_receipt_dir_artifacts")
     assert callable(receipt._verify_receipt_dir_artifacts_unbound)
+
+
+def test_csv_manifest_accepts_legacy_and_explicit_external_provenance(tmp_path):
+    """CSV labels remain compatible without claiming the producer changed.
+
+    The current producer still emits the historical top-level `synthetic`
+    label while provenance_contract.source.type is `csv_input`.  The validator
+    must accept both that legacy value and the explicit `external_input` label
+    for historical/alternate manifests, and reject unrelated labels.
+    """
+    from CODE.leo_sim.tests.helpers import make_cfg
+    src = tmp_path / "input.csv"
+    src.write_text(
+        "packet_id,emit_time_s,src_lat,src_lon,dst_lat,dst_lon,bits,deadline_at_s\n"
+        "1,0.1,31.0,121.0,40.0,116.0,8000,\n",
+        encoding="utf-8",
+    )
+    cfg = make_cfg({
+        "scenario": {"duration_s": 1.0},
+        "demand": {"mode": "csv", "csv_path": str(src)},
+        "endpoints": {"sites": [
+            {"name": "a", "lat": 31.0, "lon": 121.0},
+            {"name": "b", "lat": 40.0, "lon": 116.0},
+        ]},
+    })
+    manifest = trace.compile_trace(cfg, str(tmp_path / "trace"))
+    assert manifest["provenance"] == "synthetic"
+    assert receipt._validate_manifest(
+        manifest, cfg["config"], cfg["version"]) == []
+    manifest["provenance"] = "external_input"
+    assert receipt._validate_manifest(
+        manifest, cfg["config"], cfg["version"]) == []
+    manifest["provenance"] = "rogue"
+    errors = receipt._validate_manifest(manifest, cfg["config"], cfg["version"])
+    assert any("manifest provenance mismatch" in error for error in errors)

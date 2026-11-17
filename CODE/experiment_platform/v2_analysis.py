@@ -101,9 +101,20 @@ ANALYZER_FILES = (
     "CODE/leo_sim/coverage.py",
     "CODE/leo_sim/counterfactual.py",
     "CODE/leo_sim/decision_ledger.py",
+    # These modules are imported as part of the verifier's runtime closure
+    # (config/trace/fates/grid/link_budget/population/rng).  Omitting them let
+    # a dirty checkout change artifact verification while the analyzer identity
+    # still claimed the listed files were clean.
+    "CODE/leo_sim/config.py",
+    "CODE/leo_sim/fates.py",
+    "CODE/leo_sim/grid.py",
+    "CODE/leo_sim/link_budget.py",
     "CODE/leo_sim/metrics.py",
+    "CODE/leo_sim/population.py",
     "CODE/leo_sim/receipt.py",
+    "CODE/leo_sim/rng.py",
     "CODE/leo_sim/scene_check.py",
+    "CODE/leo_sim/trace.py",
 )
 GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")

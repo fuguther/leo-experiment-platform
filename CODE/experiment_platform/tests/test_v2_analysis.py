@@ -1116,6 +1116,13 @@ def test_every_module_that_can_change_the_verdict_is_identity_bound():
         "CODE/experiment_platform/primary_metrics.py",
         "CODE/work/finalize_decision.py",
         "CODE/experiment_platform/compile_experiment.py",
+        "CODE/leo_sim/config.py",
+        "CODE/leo_sim/fates.py",
+        "CODE/leo_sim/grid.py",
+        "CODE/leo_sim/link_budget.py",
+        "CODE/leo_sim/population.py",
+        "CODE/leo_sim/rng.py",
+        "CODE/leo_sim/trace.py",
     )
     listed = set(v2_analysis.ANALYZER_FILES)
     assert set(required) <= listed

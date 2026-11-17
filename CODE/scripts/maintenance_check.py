@@ -278,6 +278,7 @@ def _check_evidence(repo: Path, records: list[dict[str, Any]], *, verify: bool,
             continue
         if not evidence.is_dir() or evidence.is_symlink():
             warnings.append(f"run {run_id} local evidence is missing; external storage was not checked")
+            checked.setdefault("evidence_unverified_runs", []).append(run_id)
             continue
         if not verify:
             continue
@@ -406,7 +407,12 @@ def main(argv: list[str] | None = None) -> int:
     report = run_check(args.repo, verify_evidence=args.verify_evidence,
                        evidence_root=args.evidence_root)
     print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
-    return 1 if report["errors"] else 0
+    if report["errors"]:
+        return 1
+    if args.verify_evidence and report["summary"].get(
+            "evidence_verification") != "COMPLETE":
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

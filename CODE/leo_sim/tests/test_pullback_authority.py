@@ -22,6 +22,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -130,6 +131,8 @@ def _write_contract_shaped_formal(directory: Path, *, nonce: str = "a" * 32,
             "schema": pullback_mod._formal_contract().EXTERNAL_STATUS_SCHEMA,
             "status": "success", "exit_code": 0, "launch_nonce": nonce,
             "run_id": directory.name,
+            "authorization_sha256": formal["authorization_sha256"],
+            "config_sha256": formal["config_sha256"],
             "governance_receipt_sha256": _sha(
                 directory / "governance_receipt.json"),
             "governance_witness": {
@@ -315,3 +318,51 @@ def test_the_contract_key_sets_match_their_producers(run_dir, tmp_path):
     assert set(written) <= (set(pullback_mod.FORMAL_WITNESS_KEYS)
                             | set(pullback_mod.FORMAL_WITNESS_OPTIONAL_KEYS))
     assert set(pullback_mod.FORMAL_WITNESS_KEYS) <= set(written)
+
+    launch_args = SimpleNamespace(
+        expected_config_sha256="c" * 64,
+        expected_authorization_sha256="b" * 64,
+        launch_nonce="a" * 32,
+        session_name="fixture",
+        expected_run_id=directory.name,
+        workdir="/tmp/work",
+        config="/tmp/config",
+        authorization="/tmp/authorization.json",
+        log_file="/tmp/run.log",
+        status_file="/tmp/status.json",
+        cpu_list="",
+    )
+    launch_payload = rj.base_launch_payload(launch_args)
+    assert pullback_mod.EXTERNAL_WITNESS_REQUIRED_KEYS <= set(launch_payload)
+
+
+@pytest.mark.parametrize(
+    "field,replacement",
+    [
+        ("authorization_sha256", None),
+        ("config_sha256", "0" * 64),
+    ],
+)
+def test_external_launch_witness_must_bind_authorization_and_config(
+        run_dir, tmp_path, field, replacement):
+    base = tmp_path / field
+    base.mkdir()
+    directory = _copy(run_dir, base, RUN_ID)
+    witness_root = base / "_external_launch_witness"
+    _write_contract_shaped_formal(
+        directory, nonce="a" * 32, witness_root=witness_root)
+    witness_path = witness_root / f"{'a' * 32}.json"
+    witness = json.loads(witness_path.read_text())
+    if replacement is None:
+        witness.pop(field)
+    else:
+        witness[field] = replacement
+    witness_path.write_text(json.dumps(witness), encoding="utf-8")
+
+    report = pullback_mod.verify_pulled_run(
+        directory, expect="formal", witness_root=witness_root)
+    assert report["ok"] is False
+    assert any(
+        "authorization_sha256" in error or "config_sha256" in error
+        for error in report["errors"]
+    ), report["errors"]

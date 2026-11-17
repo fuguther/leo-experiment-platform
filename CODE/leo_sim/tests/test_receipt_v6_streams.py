@@ -77,7 +77,9 @@ def test_the_v6_receipt_verifies(runs):
     recompute them. It must say so instead of reporting "verified"; supplying
     the paths must then produce a real verification.
     """
-    verdict = _verify(runs["both"])
+    bare = _run("CODE.leo_sim", "receipt", "verify", str(runs["both"]))
+    assert bare.returncode == 2, bare.stdout + bare.stderr
+    verdict = json.loads(bare.stdout)
     assert verdict["status"] == "PARTIAL", verdict
     assert sorted(verdict["unverified_stream_bindings"]) == [
         "decision_log_sha256", "timeline_log_sha256"]
@@ -163,7 +165,7 @@ def test_passing_only_one_stream_flag_does_not_report_verified(runs):
     done = _run("CODE.leo_sim", "receipt", "verify", str(runs["both"]),
                 "--decision-log", str(runs["dir"] / "d.jsonl"))
     verdict = json.loads(done.stdout)
-    assert done.returncode == 0, verdict
+    assert done.returncode == 2, verdict
     assert verdict["status"] == "PARTIAL", verdict
     assert verdict["unverified_stream_bindings"] == ["timeline_log_sha256"]
 

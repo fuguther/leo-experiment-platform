@@ -80,6 +80,14 @@ FORMAL_WITNESS_KEYS = frozenset({
     "code_sha256", "receipt_sha256", "natural_end", "conservation_ok",
 })
 FORMAL_WITNESS_OPTIONAL_KEYS = frozenset({"timeline_log_sha256"})
+#: Fields the pullback gate must be able to cross-bind from the external launch
+#: witness.  The producer writes additional operational fields; unknown future
+#: fields are permitted, but these identity fields may not disappear.
+EXTERNAL_WITNESS_REQUIRED_KEYS = frozenset({
+    "schema", "status", "exit_code", "launch_nonce", "run_id",
+    "authorization_sha256", "config_sha256", "governance_receipt_sha256",
+    "governance_witness",
+})
 
 #: Exact key set of the V2 governance receipt, mirroring
 #: remote_job.build_v2_governance_receipt.  Same reasoning, same test.
@@ -239,6 +247,10 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
     if governed.get("trace_identity_contract")             != receipt.get("trace_identity_contract"):
         errors.append(
             "governance_receipt.trace_identity_contract disagrees with the copy")
+    errors.extend(_hex_or_error("formal_run.authorization_sha256",
+                                formal.get("authorization_sha256"), _SHA256_HEX))
+    errors.extend(_hex_or_error("governance.authorization_sha256",
+                                governed.get("authorization_sha256"), _SHA256_HEX))
     errors.extend(_hex_or_error("formal_run.config_sha256",
                                 formal.get("config_sha256"), _SHA256_HEX))
     errors.extend(_hex_or_error("formal_run.code_sha256",
@@ -250,10 +262,15 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
                                 _SHA256_HEX))
     errors.extend(_hex_or_error("governance.source_git_commit",
                                 governed.get("source_git_commit"), _GIT_COMMIT))
-    if not isinstance(governed.get("execution_chain_sha256"), dict) \
-            or not governed["execution_chain_sha256"]:
+    execution_chain = governed.get("execution_chain_sha256")
+    if not isinstance(execution_chain, dict) or not execution_chain:
         errors.append("governance_receipt.execution_chain_sha256 is not a "
                       "non-empty mapping")
+    elif any(not isinstance(raw, str) or not raw
+             or not isinstance(digest, str)
+             or _SHA256_HEX.fullmatch(digest) is None
+             for raw, digest in execution_chain.items()):
+        errors.append("governance_receipt.execution_chain_sha256 is malformed")
     if not isinstance(governed.get("acceptance"), dict):
         errors.append("governance_receipt.acceptance is not a mapping")
 
@@ -266,7 +283,7 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
         not_checked.append(message)
     else:
         errors.extend(_external_witness_errors(
-            Path(witness_root), run_dir, governed, not_checked))
+            Path(witness_root), run_dir, formal, governed, not_checked))
     not_checked.extend([
         "authorization cohort binding (v2_analysis, needs the compiled "
         "experiment directory and authorization.json)",
@@ -277,7 +294,8 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
     return errors, not_checked
 
 
-def _external_witness_errors(witness_root: Path, run_dir: Path, governed: dict,
+def _external_witness_errors(witness_root: Path, run_dir: Path, formal: dict,
+                             governed: dict,
                              not_checked: list[str]) -> list[str]:
     v2 = _formal_contract()
     nonce = governed.get("launch_nonce")
@@ -309,11 +327,29 @@ def _external_witness_errors(witness_root: Path, run_dir: Path, governed: dict,
             != v2.EXTERNAL_STATUS_SCHEMA:
         errors.append("external launch witness schema mismatch")
         return errors
+    missing = sorted(EXTERNAL_WITNESS_REQUIRED_KEYS - set(witness))
+    if missing:
+        errors.append(f"external launch witness is missing identity fields {missing}")
+        return errors
     if witness.get("status") != "success" or witness.get("exit_code") != 0:
         errors.append("external launch witness is not a successful launch")
     if witness.get("launch_nonce") != nonce \
             or witness.get("run_id") != run_dir.name:
         errors.append("external launch witness identity does not name this run")
+    for label, value in (
+            ("external launch witness authorization_sha256",
+             witness.get("authorization_sha256")),
+            ("external launch witness config_sha256",
+             witness.get("config_sha256"))):
+        if not isinstance(value, str) or _SHA256_HEX.fullmatch(value) is None:
+            errors.append(f"{label} is not a well-formed digest")
+    if witness.get("authorization_sha256") \
+            != governed.get("authorization_sha256"):
+        errors.append("external launch witness authorization_sha256 disagrees "
+                      "with governance receipt")
+    if witness.get("config_sha256") != formal.get("config_sha256"):
+        errors.append("external launch witness config_sha256 disagrees with "
+                      "formal witness")
     if witness.get("governance_receipt_sha256") \
             != _sha256(run_dir / GOVERNANCE_RECEIPT):
         errors.append("external launch witness does not bind this copy's "

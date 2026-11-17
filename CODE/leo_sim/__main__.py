@@ -706,7 +706,7 @@ def _cmd_receipt_verify(args) -> int:
             "note": ("the receipt binds these streams but no file was found for "
                      "them; pass --decision-log / --timeline-log to check them"),
         }, indent=2))
-        return 0
+        return 2
     print(json.dumps({"status": "verified", "dir": args.dir}, indent=2))
     return 0
 

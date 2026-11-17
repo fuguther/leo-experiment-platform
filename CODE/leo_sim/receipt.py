@@ -377,9 +377,10 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
     mode = resolved_cfg["demand"]["mode"]
     if manifest.get("mode") != mode:
         errors.append("manifest mode != resolved config demand mode")
-    # csv used to be recorded as "synthetic"; those manifests are historical
-    # evidence and must keep verifying.  Both labels are accepted for csv, the
-    # new one is what the compiler now emits.
+    # CSV manifests historically recorded top-level provenance as "synthetic"
+    # even though provenance_contract.source.type is csv_input.  Accept the
+    # historical label and the explicitly external label so old evidence remains
+    # verifiable; the current producer's label is covered separately by tests.
     expected_provenance = {
         "mlab": {"measurement_proxy"},
         "population_gravity": {"population_proxy"},
