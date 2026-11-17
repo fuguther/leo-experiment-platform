@@ -79,6 +79,7 @@ STREAM_FILES = {
     "decision_log_sha256": "decisions.jsonl",
     "timeline_log_sha256": "timeline.jsonl",
 }
+FORMAL_WITNESS_FILE = "formal_run.json"
 
 
 def _family_label(schema: str) -> str:
@@ -1349,8 +1350,40 @@ def _nonblank_lines(path: Path) -> int:
         return sum(1 for line in handle if line.strip())
 
 
+def verify_formal_stream_binding(out_dir: str) -> list[str]:
+    """Verify the formal witness's optional-but-authoritative timeline digest.
+
+    A zero-decision formal run is intentionally signed as a V5 receipt, whose
+    four-key stream binding is absent.  The formal witness still records the
+    digest of ``timeline.jsonl`` so the timeline cannot be changed after the
+    run.  Callers that accept a FORMAL result must therefore verify this field;
+    an old witness without the field is unbound evidence and fails closed here
+    rather than being reported as a fully verified stream set.
+    """
+    out = Path(out_dir)
+    witness_path = out / FORMAL_WITNESS_FILE
+    if witness_path.is_symlink() or not witness_path.is_file():
+        return [f"formal stream binding is missing: {witness_path}"]
+    try:
+        witness = json.loads(witness_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return [f"{witness_path} is unreadable: {exc}"]
+    if not isinstance(witness, dict):
+        return [f"{witness_path} must be a JSON object"]
+    if witness.get("schema") != "leo-sim-formal-run/v1":
+        return [f"{witness_path} formal witness schema mismatch"]
+    bound = witness.get("timeline_log_sha256")
+    if not isinstance(bound, str) or SHA256_HEX.fullmatch(bound) is None:
+        return [
+            f"{witness_path} does not bind timeline.jsonl with a well-formed "
+            "timeline_log_sha256"]
+    return _stream_digest_errors(witness, out / "timeline.jsonl",
+                                 "timeline_log_sha256")
+
+
 def verify_receipt_streams(out_dir: str, *,
-                           require_streams: bool = False) -> list[str]:
+                           require_streams: bool = False,
+                           require_formal_witness: bool = False) -> list[str]:
     """Recompute a run DIRECTORY's stream contract from its own files.
 
     verify_receipt_dir can only check the digests a caller hands it, so the
@@ -1382,8 +1415,15 @@ def verify_receipt_streams(out_dir: str, *,
     behaviour for every existing caller and adds no error for a stream that was
     simply never requested.
 
-    Neither branch reports a digest comparison for v5: the binding does not
-    exist, and saying so is not the same as saying it was verified.
+    require_formal_witness=True is used by the formal VM, pullback and analyzer
+    gates.  It also requires formal_run.json to bind timeline.jsonl by the exact
+    timeline_log_sha256 digest.  A v5 receipt itself has no timeline digest, so
+    omitting this second check would leave a formal timeline mutable.
+
+    Neither branch reports a receipt-level digest comparison for v5: the
+    receipt binding does not exist.  In the formal path the timeline digest is
+    instead recomputed from the formal witness, and the absence of that field
+    is an explicit failure rather than an unverified pass.
     """
     out = Path(out_dir)
     receipt_path = out / "receipt.json"
@@ -1402,6 +1442,8 @@ def verify_receipt_streams(out_dir: str, *,
         errors: list[str] = []
         for key, name in sorted(STREAM_FILES.items()):
             errors.extend(_stream_digest_errors(receipt, out / name, key))
+        if require_formal_witness:
+            errors.extend(verify_formal_stream_binding(str(out)))
         return errors
     errors = []
 
@@ -1448,6 +1490,8 @@ def verify_receipt_streams(out_dir: str, *,
                 f"{receipt_path} is a v5 receipt but its decision stream holds "
                 f"{rows} row(s); the formal route signs v6 whenever decisions "
                 "are recorded, so the empty-decision downgrade is not proven")
+    if require_formal_witness:
+        errors.extend(verify_formal_stream_binding(str(out)))
     return errors
 
 

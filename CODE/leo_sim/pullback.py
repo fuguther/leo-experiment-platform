@@ -79,6 +79,9 @@ FORMAL_WITNESS_KEYS = frozenset({
     "schema", "run_id", "launch_nonce", "authorization_sha256", "config_sha256",
     "code_sha256", "receipt_sha256", "natural_end", "conservation_ok",
 })
+# The field is optional only at the historical key-set layer.  A FORMAL
+# verification now requires it and recomputes the digest; otherwise a v5 run's
+# timeline would remain mutable after the VM verdict.
 FORMAL_WITNESS_OPTIONAL_KEYS = frozenset({"timeline_log_sha256"})
 #: Fields the pullback gate must be able to cross-bind from the external launch
 #: witness.  The producer writes additional operational fields; unknown future
@@ -450,7 +453,8 @@ def verify_pulled_run(run_dir: str | Path, *, expect: str,
     else:
         binding = "not evaluated: no readable receipt"
     stream_errors = receipt_mod.verify_receipt_streams(
-        str(run_dir), require_streams=require_streams)
+        str(run_dir), require_streams=require_streams,
+        require_formal_witness=expect == EXPECT_FORMAL)
     check("P4",
           "the stream contract holds (v6 digests recomputed HERE, not "
           "trusted from the VM run)",

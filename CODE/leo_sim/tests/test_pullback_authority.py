@@ -94,6 +94,7 @@ def _write_contract_shaped_formal(directory: Path, *, nonce: str = "a" * 32,
         "config_sha256": receipt["config_sha256"],
         "code_sha256": receipt["code_sha256"],
         "receipt_sha256": _sha(directory / "receipt.json"),
+        "timeline_log_sha256": _sha(directory / "timeline.jsonl"),
         "natural_end": True,
         "conservation_ok": True,
     }
@@ -141,6 +142,39 @@ def _write_contract_shaped_formal(directory: Path, *, nonce: str = "a" * 32,
         }), encoding="utf-8")
 
 
+def test_formal_stream_binding_is_recomputed_here(run_dir, tmp_path):
+    directory = _copy(run_dir, tmp_path, "formal-stream-binding")
+    witness_root = tmp_path / "witnesses"
+    _write_contract_shaped_formal(directory, witness_root=witness_root)
+    report = pullback_mod.verify_pulled_run(
+        directory, expect="formal", witness_root=witness_root)
+    assert report["ok"] is True, report["errors"]
+
+    tampered = _copy(run_dir, tmp_path, "formal-stream-tampered")
+    tampered_witness = tmp_path / "witnesses-tampered"
+    _write_contract_shaped_formal(tampered, witness_root=tampered_witness)
+    (tampered / "timeline.jsonl").write_bytes(
+        (tampered / "timeline.jsonl").read_bytes() + b'{"extra": 1}\n')
+    report = pullback_mod.verify_pulled_run(
+        tampered, expect="formal", witness_root=tampered_witness)
+    assert report["ok"] is False
+    assert any("timeline_log_sha256 does not match" in error
+               for error in report["errors"])
+
+    unbound = _copy(run_dir, tmp_path, "formal-stream-unbound")
+    unbound_witness = tmp_path / "witnesses-unbound"
+    _write_contract_shaped_formal(unbound, witness_root=unbound_witness)
+    formal_path = unbound / "formal_run.json"
+    formal = json.loads(formal_path.read_text(encoding="utf-8"))
+    formal.pop("timeline_log_sha256")
+    formal_path.write_text(json.dumps(formal), encoding="utf-8")
+    report = pullback_mod.verify_pulled_run(
+        unbound, expect="formal", witness_root=unbound_witness)
+    assert report["ok"] is False
+    assert any("does not bind timeline.jsonl" in error
+               for error in report["errors"])
+
+
 def test_the_caller_must_declare_what_the_copy_is(run_dir):
     with pytest.raises(TypeError):
         pullback_mod.verify_pulled_run(run_dir)
@@ -164,7 +198,7 @@ def test_a_simplified_witness_never_grants_claimable(run_dir, tmp_path):
     assert report["ok"] is False
     assert report["claimable"] is False
     assert report["formal_eligibility"]["status"] == "NOT_EVALUATED"
-    assert [c["id"] for c in report["checks"] if not c["ok"]] == ["P5"]
+    assert {c["id"] for c in report["checks"] if not c["ok"]} == {"P4", "P5"}
     assert any("formal_run.json is missing contract fields" in e
                for e in report["errors"])
     assert any("governance_receipt.json is missing contract fields" in e
@@ -180,7 +214,7 @@ def test_a_lost_formal_witness_is_not_accepted_as_diagnostic(run_dir, tmp_path):
 
     as_formal = pullback_mod.verify_pulled_run(lost, expect="formal")
     assert as_formal["ok"] is False
-    assert [c["id"] for c in as_formal["checks"] if not c["ok"]] == ["P5"]
+    assert {c["id"] for c in as_formal["checks"] if not c["ok"]} == {"P4", "P5"}
     assert any("formal_run.json is missing or symbolic" in e
                for e in as_formal["errors"])
 

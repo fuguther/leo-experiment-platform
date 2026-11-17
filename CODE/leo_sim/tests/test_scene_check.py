@@ -587,6 +587,11 @@ def _scene_posterior_run(root, run_id):
     result = kernel.run_simulation(resolved, rows, geometry=geometry)
     out = root / "CODE" / "Results" / run_id
     receipt.write_run(str(out), resolved, tbytes, manifest, result, rows)
+    for name in ("decisions.jsonl", "timeline.jsonl"):
+        (out / name).write_text("", encoding="utf-8")
+        (out / f"{name}.manifest.json").write_text(
+            json.dumps({"schema": "test-empty-stream/v1", "rows": 0}) + "\n",
+            encoding="utf-8")
     rcp_path = out / "receipt.json"
     rcp = json.loads(rcp_path.read_text(encoding="utf-8"))
     rcp["code_sha256"] = "1" * 64
@@ -600,6 +605,8 @@ def _scene_posterior_run(root, run_id):
         "config_sha256": rcp["config_sha256"],
         "code_sha256": rcp["code_sha256"],
         "receipt_sha256": receipt_sha,
+        "timeline_log_sha256": hashlib.sha256(
+            (out / "timeline.jsonl").read_bytes()).hexdigest(),
         "natural_end": True, "conservation_ok": True,
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     governed = {
@@ -628,6 +635,7 @@ def _scene_posterior_run(root, run_id):
         "schema": "leo-remote-launch-status/v2", "status": "success",
         "exit_code": 0, "launch_nonce": "b" * 32, "run_id": run_id,
         "authorization_sha256": "a" * 64,
+        "config_sha256": rcp["config_sha256"],
         "last_results_dir": "/data/论文/leo-direct-sim/CODE/Results/"
                             + run_id,
         "governance_receipt_sha256": hashlib.sha256(

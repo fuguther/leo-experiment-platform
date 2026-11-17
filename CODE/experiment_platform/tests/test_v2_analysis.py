@@ -138,6 +138,8 @@ def _run_fixture(root: Path, run_id: str, arm_id: str, pair: str) -> dict:
         "code_sha256": receipt_payload["code_sha256"],
         "receipt_sha256": hashlib.sha256(
             (out / "receipt.json").read_bytes()).hexdigest(),
+        "timeline_log_sha256": v2_analysis.file_sha256(
+            out / "timeline.jsonl"),
         "natural_end": True, "conservation_ok": True,
     })
     execution_chain = {"CODE/example.py": "9" * 64}
@@ -679,6 +681,7 @@ def _upgrade_single_run_to_v6(root: Path, run_id: str) -> None:
     formal_path = result_dir / "formal_run.json"
     formal = json.loads(formal_path.read_text(encoding="utf-8"))
     formal["receipt_sha256"] = receipt_sha
+    formal["timeline_log_sha256"] = v2_analysis.file_sha256(timeline)
     _write(formal_path, formal)
 
     governed_path = result_dir / "governance_receipt.json"
@@ -816,6 +819,28 @@ def test_v2_analysis_external_witness_requires_bound_config(
                            "verify_authorization", return_value=auth):
         with pytest.raises(v2_analysis.V2AnalysisError,
                            match="external launch witness"):
+            v2_analysis.analyze(root, experiment, auth_path)
+
+
+@pytest.mark.parametrize("mutation", ["missing_binding", "tampered"])
+def test_v2_analysis_v5_formal_requires_bound_timeline(
+        tmp_path, mutation):
+    root, experiment, auth_path, row = _single_run_analysis_fixture(tmp_path)
+    result_dir = root / "CODE" / "Results" / row["run_id"]
+    formal_path = result_dir / "formal_run.json"
+    if mutation == "missing_binding":
+        formal = json.loads(formal_path.read_text(encoding="utf-8"))
+        formal.pop("timeline_log_sha256")
+        _write(formal_path, formal)
+    else:
+        with (result_dir / "timeline.jsonl").open(
+                "a", encoding="utf-8") as handle:
+            handle.write('{"tampered":true}\n')
+    auth = json.loads(auth_path.read_text(encoding="utf-8"))
+    with mock.patch.object(v2_analysis.authorize_experiment,
+                           "verify_authorization", return_value=auth):
+        with pytest.raises(v2_analysis.V2AnalysisError,
+                           match="receipt stream verification failed"):
             v2_analysis.analyze(root, experiment, auth_path)
 
 
@@ -1292,6 +1317,45 @@ def test_analyzer_identity_covers_the_static_runtime_import_closure():
     }
     missing = sorted(closure - set(v2_analysis.ANALYZER_FILES))
     assert not missing, f"runtime import modules missing from analyzer identity: {missing}"
+
+
+def test_analyzer_identity_covers_the_runtime_code_sha_input_set():
+    """The identity must cover exactly the source set hashed into receipts."""
+    repo_root = Path(__file__).resolve().parents[3]
+    runtime_files = {
+        str(path.relative_to(repo_root))
+        for path in (repo_root / "CODE" / "leo_sim").glob("*.py")
+    }
+    missing = sorted(runtime_files - set(v2_analysis.ANALYZER_FILES))
+    assert not missing, (
+        "receipt.code_sha256() inputs missing from analyzer identity: "
+        f"{missing}")
+
+
+def test_analyzer_identity_covers_authorization_verdict_schemas():
+    required = {
+        "CODE/work/work-package.schema.json",
+        "CODE/work/review-receipt.schema.json",
+        "CODE/work/decision.schema.json",
+    }
+    assert required <= set(v2_analysis.ANALYZER_FILES)
+
+
+@pytest.mark.parametrize("dirty_path", [
+    "CODE/leo_sim/kernel.py",
+    "CODE/work/work-package.schema.json",
+])
+def test_analyzer_identity_rejects_other_runtime_or_schema_dirty(
+        monkeypatch, dirty_path):
+    responses = [
+        mock.Mock(stdout="1" * 40 + "\n"),
+        mock.Mock(stdout=f" M {dirty_path}\n"),
+    ]
+    monkeypatch.setattr(v2_analysis.subprocess, "run",
+                        mock.Mock(side_effect=responses))
+    with pytest.raises(v2_analysis.V2AnalysisError,
+                       match="differ from the bound Git commit"):
+        _REAL_ANALYZER_IDENTITY()
 
 
 def _ddqn_unresolvable_fixture(tmp_path, run_id):

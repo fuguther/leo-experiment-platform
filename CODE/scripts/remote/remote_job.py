@@ -354,8 +354,8 @@ def verify_v2_formal_result(result_dir: Path) -> list[str]:
     """The VM-side verification of one V2 formal result directory.
 
     Split out of run_formal so the exact sequence the VM applies can be
-    executed -- and regression-tested -- without a VM.  Two independent
-    questions, both asked of the directory itself:
+    executed -- and regression-tested -- without a VM.  Three independent
+    questions, all asked of the directory itself:
 
       1. verify_receipt_dir: strict exact-runtime verification.  On the VM the
          checkout IS the runtime, so this is meaningful there; it is *not*
@@ -369,13 +369,17 @@ def verify_v2_formal_result(result_dir: Path) -> list[str]:
          v5 downgrade must be PROVEN -- empty decision stream, both sidecar
          manifests and both stream files present -- and any v6 receipt has both
          digests recomputed.
+      3. require_formal_witness=True: formal_run.json must bind the timeline
+         digest.  A v5 zero-decision formal run has no receipt-level timeline
+         digest, so this check is what prevents a post-verdict timeline edit.
     """
     sys.path.insert(0, str(CANONICAL_WORKSPACE))
     from CODE.leo_sim.receipt import verify_receipt_dir, verify_receipt_streams
 
     errors = list(verify_receipt_dir(str(result_dir)))
-    errors += list(verify_receipt_streams(str(result_dir),
-                                           require_streams=True))
+    errors += list(verify_receipt_streams(
+        str(result_dir), require_streams=True,
+        require_formal_witness=True))
     return errors
 
 

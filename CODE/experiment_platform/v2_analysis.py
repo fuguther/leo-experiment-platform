@@ -78,6 +78,14 @@ GOVERNANCE_WITNESS_FIELDS = (
     "trace_identity_contract", "trace_manifest_sha256",
 )
 REMOTE_RESULTS_ROOT = Path("/data/论文/leo-direct-sim/CODE/Results")
+# `receipt.code_sha256()` hashes every top-level leo_sim/*.py file, so the
+# analyzer identity must cover that exact same source set.  A hand-maintained
+# subset let a dirty kernel/routing/CLI file change the exact-vs-posterior
+# classification while _analyzer_identity() still reported a clean checkout.
+_RUNTIME_CODE_FILES = tuple(
+    f"CODE/leo_sim/{path.name}" for path in sorted(
+        (Path(__file__).resolve().parents[1] / "leo_sim").glob("*.py"))
+)
 ANALYZER_FILES = (
     "CODE/experiment_platform/v2_analysis.py",
     # Imported and CALLED by this module: authorize_experiment decides formal
@@ -93,6 +101,12 @@ ANALYZER_FILES = (
     # listed here.  Adding only the direct imports left the transitive
     # dependency open.
     "CODE/work/finalize_decision.py",
+    # evaluate_decision() reads these schemas when it decides whether the
+    # work package is acceptable.  They are verdict-changing authorization
+    # inputs even though they are not Python modules.
+    "CODE/work/work-package.schema.json",
+    "CODE/work/review-receipt.schema.json",
+    "CODE/work/decision.schema.json",
     "CODE/experiment_platform/compile_experiment.py",
     "CODE/experiment_platform/isl_pressure.py",
     "CODE/experiment_platform/isl_pressure_decision.py",
@@ -118,7 +132,9 @@ ANALYZER_FILES = (
     "CODE/leo_sim/scene_check.py",
     "CODE/leo_sim/trace.py",
     "CODE/leo_sim/trace_family.py",
+    *_RUNTIME_CODE_FILES,
 )
+ANALYZER_FILES = tuple(dict.fromkeys(ANALYZER_FILES))
 GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 
@@ -555,9 +571,12 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
     else:
         external_witness = None
     if receipt_schema in receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY:
+        require_formal_streams = (
+            expected_governance_schema == GOVERNANCE_SCHEMA_V2)
         stream_errors = receipt_mod.verify_receipt_streams(
             str(result_dir),
-            require_streams=expected_governance_schema == GOVERNANCE_SCHEMA_V2)
+            require_streams=require_formal_streams,
+            require_formal_witness=require_formal_streams)
         if stream_errors:
             raise V2AnalysisError(
                 f"{run_id} receipt stream verification failed: "

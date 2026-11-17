@@ -24,6 +24,7 @@ paths and the verification function are the ones the VM uses.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -94,6 +95,18 @@ def _run(tmp_path: Path, policy: str, run_id: str) -> Path:
     return Path(argv[argv.index("--out") + 1])
 
 
+def _with_stream_witness(source: Path, target: Path) -> Path:
+    """Copy a synthetic run and add the formal witness its real CLI writes."""
+    shutil.copytree(source, target)
+    timeline_sha = hashlib.sha256(
+        (target / "timeline.jsonl").read_bytes()).hexdigest()
+    (target / "formal_run.json").write_text(json.dumps({
+        "schema": "leo-sim-formal-run/v1",
+        "timeline_log_sha256": timeline_sha,
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return target
+
+
 @pytest.fixture(scope="module")
 def runs(tmp_path_factory):
     # The two canonical VM paths are relocated for the test, exactly as the
@@ -115,14 +128,33 @@ def _rows(path: Path) -> int:
                if line.strip())
 
 
-def test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate(runs):
+def test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate(
+        runs, tmp_path):
     run = runs["zero"]
     receipt = json.loads((run / "receipt.json").read_text(encoding="utf-8"))
     assert receipt["schema"] == receipt_mod.RECEIPT_SCHEMA
     assert _rows(run / "decisions.jsonl") == 0
     assert _rows(run / "timeline.jsonl") > 0
 
-    assert rj.verify_v2_formal_result(run) == []
+    certified = _with_stream_witness(run, tmp_path / "v5-certified")
+    assert rj.verify_v2_formal_result(certified) == []
+
+    tampered = tmp_path / "v5-timeline-tampered"
+    shutil.copytree(certified, tampered)
+    (tampered / "timeline.jsonl").write_bytes(
+        (tampered / "timeline.jsonl").read_bytes() + b'{"extra": 1}\n')
+    errors = rj.verify_v2_formal_result(tampered)
+    assert errors and "timeline_log_sha256 does not match" in errors[0]
+
+    unbound = tmp_path / "v5-timeline-unbound"
+    shutil.copytree(certified, unbound)
+    formal_path = unbound / "formal_run.json"
+    formal = json.loads(formal_path.read_text(encoding="utf-8"))
+    formal.pop("timeline_log_sha256")
+    formal_path.write_text(json.dumps(formal, indent=2, sort_keys=True) + "\n",
+                           encoding="utf-8")
+    errors = rj.verify_v2_formal_result(unbound)
+    assert errors and "does not bind timeline.jsonl" in errors[0]
 
     # …and the form that WAS there before the fix mis-failed exactly this run,
     # after the simulation had already been paid for.
@@ -139,17 +171,18 @@ def test_a_nonzero_decision_formal_run_is_signed_v6_and_its_digests_are_recomput
     receipt = json.loads((run / "receipt.json").read_text(encoding="utf-8"))
     assert receipt["schema"] == receipt_mod.RECEIPT_SCHEMA_V6
     assert _rows(run / "decisions.jsonl") > 0
-    assert rj.verify_v2_formal_result(run) == []
+    certified = _with_stream_witness(run, tmp_path / "v6-certified")
+    assert rj.verify_v2_formal_result(certified) == []
 
     appended = tmp_path / "appended"
-    shutil.copytree(run, appended)
+    shutil.copytree(certified, appended)
     (appended / "decisions.jsonl").write_bytes(
         (appended / "decisions.jsonl").read_bytes() + b'{"extra": 1}\n')
     errors = rj.verify_v2_formal_result(appended)
     assert errors and "decision_log_sha256 does not match" in errors[0]
 
     dropped = tmp_path / "dropped"
-    shutil.copytree(run, dropped)
+    shutil.copytree(certified, dropped)
     (dropped / "timeline.jsonl").unlink()
     errors = rj.verify_v2_formal_result(dropped)
     assert errors and "timeline_log_sha256: missing or symbolic stream file" \
@@ -163,6 +196,7 @@ def test_the_gate_never_hands_over_stream_paths_unconditionally():
     assert "verify_v2_formal_result" in source
     assert "verify_receipt_streams(" in source
     assert "require_streams=True" in source
+    assert "require_formal_witness=True" in source
     assert "decision_log=str(_run_dir" not in source
     assert "timeline_log=str(_run_dir" not in source
 
@@ -170,7 +204,9 @@ def test_the_gate_never_hands_over_stream_paths_unconditionally():
 def test_a_zero_decision_dir_that_gained_a_row_is_rejected(runs, tmp_path):
     """The v5 downgrade must be PROVEN, not assumed."""
     broken = tmp_path / "contradiction"
-    shutil.copytree(runs["zero"], broken)
+    certified = _with_stream_witness(
+        runs["zero"], tmp_path / "zero-certified")
+    shutil.copytree(certified, broken)
     (broken / "decisions.jsonl").write_text('{"pid": 1}\n', encoding="utf-8")
     errors = rj.verify_v2_formal_result(broken)
     assert errors and "contradicts its own run directory" in errors[0]
