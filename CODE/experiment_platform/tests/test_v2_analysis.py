@@ -1101,6 +1101,29 @@ def test_analyzer_identity_binds_receipt_verifier_file(monkeypatch):
     assert identity["files"]["CODE/leo_sim/receipt.py"] == expected_sha
 
 
+def test_every_module_that_can_change_the_verdict_is_identity_bound():
+    """The identity manifest must cover the decision chain, not just the files
+    the analyzer happens to import directly.
+
+    authorize_experiment decides formal eligibility by calling
+    finalize_decision.evaluate_decision against compile_experiment's
+    EXECUTION_BOUNDARY, so a dirty worktree in either changes the verdict
+    without touching anything listed here.
+    """
+    required = (
+        "CODE/experiment_platform/v2_analysis.py",
+        "CODE/experiment_platform/authorize_experiment.py",
+        "CODE/experiment_platform/primary_metrics.py",
+        "CODE/work/finalize_decision.py",
+        "CODE/experiment_platform/compile_experiment.py",
+    )
+    listed = set(v2_analysis.ANALYZER_FILES)
+    assert set(required) <= listed
+    repo_root = Path(__file__).resolve().parents[3]
+    for rel in required:
+        assert (repo_root / rel).is_file(), rel
+
+
 def _ddqn_unresolvable_fixture(tmp_path, run_id):
     """A fully chain-bound v5 run whose receipt records a historical DDQN
     runtime identity (deps key set includes tensorflow) while the local host
