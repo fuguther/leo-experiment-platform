@@ -403,58 +403,15 @@ def verify_v2_formal_result(
         require_formal_witness=True))
     governance_path = result_dir / "governance_receipt.json"
     if require_governance or governance_path.exists():
-        formal_path = result_dir / "formal_run.json"
-        if governance_path.is_symlink() or not governance_path.is_file():
-            errors.append("governance_receipt.json is missing or symbolic")
-        elif formal_path.is_symlink() or not formal_path.is_file():
-            errors.append("formal_run.json is missing or symbolic")
+        receipt_path = result_dir / "receipt.json"
+        try:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"receipt.json is unreadable for governance check: {exc}")
         else:
-            try:
-                governed = json.loads(governance_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as exc:
-                errors.append(f"governance_receipt.json is unreadable: {exc}")
-            else:
-                if not isinstance(governed, dict):
-                    errors.append("governance_receipt.json must be a JSON object")
-                else:
-                    schema = governed.get("schema")
-                    if schema == pullback_mod.GOVERNANCE_SCHEMA_V2_LEGACY:
-                        errors.append(
-                            "governance_receipt v2 is historical-only and "
-                            "cannot satisfy the current formal contract")
-                    elif schema != pullback_mod.GOVERNANCE_SCHEMA_V3:
-                        errors.append(
-                            "governance_receipt schema must be "
-                            f"{pullback_mod.GOVERNANCE_SCHEMA_V3}")
-                    else:
-                        expected_keys = set(pullback_mod.GOVERNANCE_KEYS_V3)
-                        actual_keys = set(governed)
-                        missing = sorted(expected_keys - actual_keys)
-                        unknown = sorted(actual_keys - expected_keys)
-                        if missing:
-                            errors.append(
-                                "governance_receipt is missing contract fields "
-                                f"{missing}")
-                        if unknown:
-                            errors.append(
-                                "governance_receipt has unknown fields "
-                                f"{unknown}")
-                        unsigned = {key: value for key, value in governed.items()
-                                    if key != "payload_sha256"}
-                        if governed.get("payload_sha256") != canonical_sha(unsigned):
-                            errors.append(
-                                "governance_receipt.payload_sha256 does not "
-                                "seal the receipt")
-                        if governed.get("research_eligible") is not True:
-                            errors.append(
-                                "governance_receipt.research_eligible is not true")
-                        if governed.get("verification_errors") != []:
-                            errors.append(
-                                "governance_receipt.verification_errors is not empty")
-                        if governed.get("formal_run_sha256") != file_sha256(formal_path):
-                            errors.append(
-                                "governance_receipt.formal_run_sha256 does not "
-                                "bind formal_run.json")
+            formal_errors, _not_checked = pullback_mod._formal_increment_errors(
+                result_dir, receipt, None)
+            errors.extend(formal_errors)
     return errors
 
 

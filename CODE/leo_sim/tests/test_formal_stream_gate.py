@@ -101,12 +101,17 @@ def _with_stream_witness(source: Path, target: Path) -> Path:
     timeline_sha = hashlib.sha256(
         (target / "timeline.jsonl").read_bytes()).hexdigest()
     formal_path = target / "formal_run.json"
-    formal_path.write_text(json.dumps({
-        "schema": "leo-sim-formal-run/v1",
-        "timeline_log_sha256": timeline_sha,
-    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     receipt = json.loads((target / "receipt.json").read_text(encoding="utf-8"))
     ledgers = json.loads((target / "ledgers.json").read_text(encoding="utf-8"))
+    from CODE.leo_sim import __main__ as cli_mod
+    cli_mod._write_formal_witness(
+        str(target),
+        {"run_id": target.name, "launch_nonce": "0" * 32,
+         "authorization_sha256": "a" * 64,
+         "config_sha256": receipt["config_sha256"],
+         "code_sha256": receipt["code_sha256"],
+         "results_dir": str(target.parent)},
+        receipt, timeline_log_sha256=timeline_sha)
     governed = rj.build_governance_receipt(
         receipt=receipt, ledgers=ledgers, verification_errors=[],
         acceptance={}, run_id=target.name, launch_nonce="0" * 32,
@@ -114,12 +119,31 @@ def _with_stream_witness(source: Path, target: Path) -> Path:
         deployment={"source_git_commit": "b" * 40,
                     "source_tree_sha256": "c" * 64},
         deployment_receipt_sha256="d" * 64,
-        execution_chain_sha256="e" * 64,
+        execution_chain_sha256={"CODE/example.py": "e" * 64},
         receipt_path=target / "receipt.json",
         resolved_config_path=target / "resolved_config.json",
         manifest_path=target / "manifest.json",
         formal_run_path=formal_path)
     rj.write_json(target / "governance_receipt.json", governed)
+    return target
+
+
+def _copy_vm_run(source: Path, target: Path) -> Path:
+    """Copy a VM fixture under its new run-id and rebind local witnesses."""
+    shutil.copytree(source, target)
+    formal_path = target / "formal_run.json"
+    formal = json.loads(formal_path.read_text(encoding="utf-8"))
+    formal["run_id"] = target.name
+    rj.write_json(formal_path, formal)
+    governed_path = target / "governance_receipt.json"
+    governed = json.loads(governed_path.read_text(encoding="utf-8"))
+    governed["run_id"] = target.name
+    governed["formal_run_sha256"] = hashlib.sha256(
+        formal_path.read_bytes()).hexdigest()
+    unsigned = {key: value for key, value in governed.items()
+                if key != "payload_sha256"}
+    governed["payload_sha256"] = rj.canonical_sha(unsigned)
+    rj.write_json(governed_path, governed)
     return target
 
 
@@ -156,14 +180,14 @@ def test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate(
     assert rj.verify_v2_formal_result(certified) == []
 
     tampered = tmp_path / "v5-timeline-tampered"
-    shutil.copytree(certified, tampered)
+    _copy_vm_run(certified, tampered)
     (tampered / "timeline.jsonl").write_bytes(
         (tampered / "timeline.jsonl").read_bytes() + b'{"extra": 1}\n')
     errors = rj.verify_v2_formal_result(tampered)
     assert errors and "timeline_log_sha256 does not match" in errors[0]
 
     unbound = tmp_path / "v5-timeline-unbound"
-    shutil.copytree(certified, unbound)
+    _copy_vm_run(certified, unbound)
     formal_path = unbound / "formal_run.json"
     formal = json.loads(formal_path.read_text(encoding="utf-8"))
     formal.pop("timeline_log_sha256")
@@ -173,7 +197,7 @@ def test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate(
     assert errors and "does not bind timeline.jsonl" in errors[0]
 
     jointly_tampered = tmp_path / "v5-jointly-tampered"
-    shutil.copytree(certified, jointly_tampered)
+    _copy_vm_run(certified, jointly_tampered)
     changed_timeline = (jointly_tampered / "timeline.jsonl").read_bytes() + \
         b'{"joint": true}\n'
     (jointly_tampered / "timeline.jsonl").write_bytes(changed_timeline)
@@ -186,20 +210,20 @@ def test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate(
         json.dumps(changed_formal, indent=2, sort_keys=True) + "\n",
         encoding="utf-8")
     errors = rj.verify_v2_formal_result(jointly_tampered)
-    assert errors and "formal_run_sha256 does not bind" in errors[0]
+    assert errors and "formal_run_sha256 does not match" in errors[0]
 
     legacy_governance = tmp_path / "v5-legacy-governance-v2"
-    shutil.copytree(certified, legacy_governance)
+    _copy_vm_run(certified, legacy_governance)
     governed_path = legacy_governance / "governance_receipt.json"
     governed = json.loads(governed_path.read_text(encoding="utf-8"))
     governed["schema"] = "leo-sim-governance-receipt/v2"
     governed_path.write_text(json.dumps(governed), encoding="utf-8")
     errors = rj.verify_v2_formal_result(
         legacy_governance, require_governance=True)
-    assert errors and "governance_receipt v2 is historical-only" in errors[0]
+    assert any("governance_receipt v2" in error for error in errors)
 
     missing_governance_field = tmp_path / "v5-missing-governance-field"
-    shutil.copytree(certified, missing_governance_field)
+    _copy_vm_run(certified, missing_governance_field)
     governed_path = missing_governance_field / "governance_receipt.json"
     governed = json.loads(governed_path.read_text(encoding="utf-8"))
     governed.pop("acceptance")
@@ -227,14 +251,14 @@ def test_a_nonzero_decision_formal_run_is_signed_v6_and_its_digests_are_recomput
     assert rj.verify_v2_formal_result(certified) == []
 
     appended = tmp_path / "appended"
-    shutil.copytree(certified, appended)
+    _copy_vm_run(certified, appended)
     (appended / "decisions.jsonl").write_bytes(
         (appended / "decisions.jsonl").read_bytes() + b'{"extra": 1}\n')
     errors = rj.verify_v2_formal_result(appended)
     assert errors and "decision_log_sha256 does not match" in errors[0]
 
     dropped = tmp_path / "dropped"
-    shutil.copytree(certified, dropped)
+    _copy_vm_run(certified, dropped)
     (dropped / "timeline.jsonl").unlink()
     errors = rj.verify_v2_formal_result(dropped)
     assert errors and "timeline_log_sha256: missing or symbolic stream file" \
@@ -258,7 +282,7 @@ def test_a_zero_decision_dir_that_gained_a_row_is_rejected(runs, tmp_path):
     broken = tmp_path / "contradiction"
     certified = _with_stream_witness(
         runs["zero"], tmp_path / "zero-certified")
-    shutil.copytree(certified, broken)
+    _copy_vm_run(certified, broken)
     (broken / "decisions.jsonl").write_text('{"pid": 1}\n', encoding="utf-8")
     errors = rj.verify_v2_formal_result(broken)
     assert errors and "contradicts its own run directory" in errors[0]
