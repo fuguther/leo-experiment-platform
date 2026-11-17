@@ -1,150 +1,46 @@
-# leo-experiment-platform
+# LEO 受控实验平台
 
-LEO 路由研究的**受控实验环境**。
+本仓库拥有可执行仿真核心、实验编排、release/run/receipt 和证据回传实现。研究问题、算法目标与科学状态以 [研究仓库 main](https://github.com/fuguther/leo-routing-domain-map/tree/main) 的 `reasoning/state.yaml` 及配套研究规则为准。
 
-当前同步与维护状态见 [STATUS.md](STATUS.md)，稳定工作规则见 [AGENTS.md](AGENTS.md)。
+操作规则见 [AGENTS.md](AGENTS.md)，版本与运行状态查询见 [STATUS.md](STATUS.md)。
 
-来源:`leo-direct-sim` @ `241627856886934cbbf2a0820982bef2018e6249`(见 `SOURCE-COMMIT.txt`)
+## 源码与资产职责
 
-含 PR #221 平台审计成果(F2 CLI 链路打通、独立重算的阶段分离、四份平台事实基线文档)。
-
----
-
-## 文档
-
-| 文件 | 内容 | 何时改 |
-|---|---|---|
-| [STATUS.md](STATUS.md) | 当前仓库状态、同步/发布入口及未完成证据门 | 发布或维护状态变化时改 |
-| `CHARTER.md` | 平台本体与五条不变式 | 平台本体变了才改 |
-| `WORKING-MODEL.md` | 提交、复核、版本 | 工作方式变了才改 |
-| `lines/` | 研究主线(登记表 + 各线) | 线的增删改判死 |
-
----
-
-## 结构
-
-```
-CHARTER.md                # 平台本体与五条不变式
-WORKING-MODEL.md          # 提交、复核、版本
-lines/                    # 研究主线登记与各线文档
-
-CODE/                     # 导入根,不可改名
-├── leo_sim/              # 仿真核心 —— 与源仓库字节级一致
-├── experiment_platform/  # 编译 / 授权 / 指标重算
-├── scripts/remote/       # 部署与受控执行(仅 .template,无凭据)
-├── tests/                # 顶层测试
-├── work/                 # 工具模块(被测试导入)
-├── data/                 # geoip / traffic
-└── population_map/       # 场景生成数据
-
-ANALYSIS/                 # 指标分析 + claim schema + 平台事实基线(模块名不可改)
-                          #   PLATFORM-AUDIT-REPORT / CURRENT-EVENT-TIMELINE
-                          #   TRAFFIC-MODEL-SPEC / BURST-DESIGN
-EXPERIMENTS/              # 契约与模板(不含实验实例)
-├── templates/            #   请求模板
-├── contracts/            #   运行工件合同
-└── experiment-program.yaml
-```
-
-**`CODE/` 这一层不能去掉。** 源码中:
-
-- 测试使用绝对导入 `from CODE.leo_sim import ...`、`from CODE.work.finalize_decision import ...`
-- `CODE/experiment_platform/compile_experiment.py:343` 硬编码 `PROJECT_ROOT / "CODE"`
-
-改名会同时破坏导入与编译路径。
-
----
-
-## 与源仓库的关系
-
-`leo_sim/` 是**字节级复制**。证据链要求 `code_sha256` 可复现,因此:
-
-- 不在本仓库对复制来的源码做"顺手优化"
-- 需要改动时,按 `CHARTER.md` 的边界判断是否属于平台本体
-
----
-
-## 未包含
-
-| 排除项 | 理由 |
+| 路径 | 职责 |
 |---|---|
-| `CODE/Results/` | 运行结果,不是平台 |
-| `remote.env` | 机器凭据 |
-| `*_legacy_results.py` 及其测试 | 遗留结果整理器 |
-| `EXPERIMENTS/EXP-*/` | 实验实例(仅保留被测试引用的一个 RUNBOOK fixture) |
-| `ANALYSIS/claims/RESEARCH_CLAIMS.yaml` | claim 实例 |
-| `PAPER/` | 依赖方向为 PAPER → 平台,属研究侧 |
+| `CODE/leo_sim/` | 拓扑、链路、队列、包事件与路由执行 |
+| `CODE/experiment_platform/` | 实验编译、授权、诊断与分析入口 |
+| `CODE/scripts/remote/` | 固定版本发布、运行与回传 |
+| `CODE/tests/`、各模块 `tests/` | 机制、协议及回归测试 |
+| `ANALYSIS/` | 测量合同、分析实现与适用边界 |
+| `EXPERIMENTS/` | schema、模板及实验合同 |
 
-判定规则:**契约进,实例不进。** 见 `CHARTER.md` 第三节。
+`SOURCE-COMMIT.txt` 记录模拟器导入来源；实际代码身份由本仓库的精确 commit/tree 确定。`CODE/` 是 Python 导入根，不随目录整理改名。契约、实现与被测试引用的必要 fixture 进入 Git；运行实例、模型、原始数据、凭据和结果按来源、许可及证据合同另行存放。
 
----
+## 平台要求
 
-## 验收
+- 可复现：固定代码、配置、输入、依赖与随机化范围，验证实际可重放程度，不只凭相同 seed 承诺逐位一致。
+- 可追溯：结果绑定唯一代码、输入、release、run 和 receipt 身份。
+- 可干预与归因：对照固定非目标因素，验证共同前缀与干预范围；后续分支各自演化。
+- 代价可量化：记录通信、计算、等待和共享服务资源成本。
+- 实现修改按所属任务审阅与回归；不篡改结果，不为未明确的未来需求增设能力。
 
-```
-python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests ANALYSIS/tests -q
-→ 917 passed, 1 skipped
-```
+## 开发验证
 
-### 最小闭环(实跑,非"测试通过")
-
-```
-python3 -m CODE.leo_sim config validate CODE/leo_sim/profiles/smoke.yaml
-  → {"status":"ok","sha256":"93431539…"}
-
-python3 -m CODE.leo_sim run --config CODE/leo_sim/profiles/smoke.yaml --out out/smoke
-  → conservation_ok: true
-
-python3 -m CODE.leo_sim receipt verify out/smoke
-  → {"status":"verified"}
+```bash
+python3 -B CODE/scripts/maintenance_check.py --repo .
+python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests CODE/scripts/tests CODE/scripts/remote/tests ANALYSIS/tests -q
 ```
 
-回执中的 `code_sha256` 由 `receipt.code_sha256()` 决定,覆盖 `CODE/leo_sim/*.py`
-(**非递归**,不含 `tests/`)。它与源仓库 `2416278` 的一致性是**历史事实,不是不变式**:
-退役旧线(删 `q0_tiny.py` / `info_ladder_tiny.py`)之后本仓库的代码身份已分叉为
-`4402081f…`,不再等于源仓库。运行回执的证据链在**本仓库内部**仍然自洽可复现。
+这是代码与工程验证命令，不授予实验资格。测试结果须绑定实际提交和命令；本地通过、服务器 CI、诊断完成、formal 资格与科学结论分别报告。
 
-### 能力入口(T1 证据链)
+## 运行能力导航
 
-研究主线的「可归因」与「可干预」两条不变式,此前只有实现、没有生产入口
-(`decision_ledger.build_ledger` 的 13 处调用全在测试里;`counterfactual` 无非测试调用者)。
-以下两个入口补上了这一步:
+以下模块均按其固定版本的参数与输入合同使用；涉及仿真的命令只在 VM 上经授权运行，不直接在 Mac 启动：
 
-```
-# 可归因:把决策流与时间线折叠成每决策的十一时刻账本
-python3 -m CODE.experiment_platform.fold_decision_ledger \
-  --decision-log out/run-decisions.jsonl \
-  --timeline-log out/run-timeline.jsonl \
-  --out out/run-ledger.json
+- 决策账本：`CODE.experiment_platform.fold_decision_ledger`。
+- 单动作反事实：`CODE.experiment_platform.replay_counterfactual`。
+- 冻结共同前缀比较：`CODE.experiment_platform.minimal_branch_compare`。
+- 计算压力诊断：`CODE.experiment_platform.cost_pressure_probe`。
 
-# 可干预:严格配对的反事实重放(同一 trace/config/seed,只改一个动作)
-python3 -m CODE.experiment_platform.replay_counterfactual \
-  --config CODE/leo_sim/profiles/smoke.yaml \
-  --decision-id 18 --forced-action S --out out/replay.json
-```
-
-两者都**不修改引擎**,且都要求 `--out` 指向不存在的路径(拒绝静默覆盖)。
-反事实重放要求 `learning.algorithm = none`(确定性路由器)。
-
-### 逐包最小机制比较(T1-FROZEN-BRANCH)
-
-`frozen` 观测与 `forced_actions` 此前在内核里**互斥**，会令反事实落在另一个分支时刻。本实现以冻结观测时刻 `obs["t_observe"]` 为分支点，要求强制动作属于当时合法集合，并用决策指纹和分支前 timeline 行验证共同前缀；两条分支之后独立演化。
-
-```sh
-python3 -m CODE.experiment_platform.minimal_branch_compare \
-  --config CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml \
-  --decision-id 2 --forced-action S --out out/branch-compare.json
-python3 -m CODE.experiment_platform.cost_pressure_probe \
-  --config CODE/leo_sim/profiles/t1_frozen_branch_smoke.yaml \
-  --out out/cost-pressure.json
-```
-
-每星计算池由 `execution.compute_servers_per_satellite` 控制（0 表示无界历史路径）；正值须配合正的 `compute_delay_s`，等待与服务分开记入 timeline。设计细节见 `ANALYSIS/CAPABILITY-TABLE.md`、`ANALYSIS/VERSION-EVIDENCE-RECONCILIATION.md`、`ANALYSIS/TIME-SEMANTICS-QUARTET.md` 和 `ANALYSIS/ASYNC-SCHEDULING-DESIGN.md`。
-
-### 日常维护与 T1 同步
-
-- 先读 [STATUS.md](STATUS.md) 看当前身份和待办；稳定操作约束见 [AGENTS.md](AGENTS.md)。
-- 每次改动前后执行 `python3 -B CODE/scripts/maintenance_check.py --repo .`。验收本机回传证据时，另加 `--verify-evidence --evidence-root /path/to/local-evidence` 并替换成实际证据根。
-- 只从已提交、干净且已推送的完整 commit 发布到隔离 T1 release。诊断/开发运行必须指定已核验的 release 和未使用过的 run-id；声明的数据/模型和配置会快照到该 run，receipt 绑定快照身份。runner 开始建 run 目录前会按 release 内的 `CODE/dependencies/t1-vm-linux-aarch64/runtime-identity.json` 核对 Python、Linux 平台、机器架构、已安装 Python 包清单摘要及两份依赖锁；不匹配即拒绝。run manifest 绑定该契约哈希，receipt 绑定 manifest 哈希。
-- Release 只按版本化路径与后缀排除清单裁剪 Git 树；CSV/JSON 不会因扩展名自动排除，发布前必须对照本机资产登记核对数据文件及许可状态。
-- 回传只通过仓库脚本校验并落盘。公开 `ANALYSIS/DEPLOYMENT-INDEX.jsonl` 保存不含本机路径的 `evidence://t1/<run-id>`；证据根路径由维护者本地显式提供，不写入 Git。
+能力、时间字段与条件限制见 [能力表](ANALYSIS/CAPABILITY-TABLE.md)、[测量协议](ANALYSIS/T1-MEASUREMENT-PROTOCOL.md)、[时间语义合同](ANALYSIS/TIME-SEMANTICS-QUARTET.md)。模块存在不证明相应运行成功，更不证明算法性能。
