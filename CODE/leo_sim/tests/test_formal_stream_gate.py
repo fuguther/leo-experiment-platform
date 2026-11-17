@@ -266,6 +266,19 @@ def test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate(
     assert any("execution_chain_sha256 does not match" in error
                for error in errors), errors
 
+    manifest_schema_tampered = tmp_path / "v5-manifest-schema-tampered"
+    _copy_vm_run(certified, manifest_schema_tampered)
+    governed_path = manifest_schema_tampered / "governance_receipt.json"
+    governed = json.loads(governed_path.read_text(encoding="utf-8"))
+    governed["trace_manifest_schema"] = "leo-sim-trace-manifest/forged"
+    _write_sealed_governance(governed_path, governed)
+    errors = rj.verify_v2_formal_result(
+        manifest_schema_tampered, require_governance=True,
+        expected_authority={**expected_authority,
+                            "run_id": manifest_schema_tampered.name})
+    assert any("trace_manifest_schema disagrees" in error
+               for error in errors), errors
+
     deployment_tampered = tmp_path / "v5-deployment-tampered"
     _copy_vm_run(certified, deployment_tampered)
     governed_path = deployment_tampered / "governance_receipt.json"
@@ -309,6 +322,38 @@ def test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate(
         timeline_log=str(run / "timeline.jsonl"))
     assert old_form == ["stream paths were supplied but this receipt is "
                         "leo-sim-receipt/v5, which carries no stream binding"]
+
+
+def test_formal_authority_comes_from_the_hash_verified_startup_snapshot(
+        tmp_path):
+    authorization = tmp_path / "authorization.json"
+    original = {
+        "authorized_runs": [{
+            "run_id": "EXP-SNAPSHOT",
+            "execution_chain_sha256": {"CODE/original.py": "1" * 64},
+            "acceptance": {"min_delivered_packets": 10},
+        }]
+    }
+    authorization.write_text(json.dumps(original), encoding="utf-8")
+    args = argparse.Namespace(
+        expected_authorization_sha256=hashlib.sha256(
+            authorization.read_bytes()).hexdigest())
+    snapshot = rj.verified_authorization_snapshot(args, authorization)
+    row = rj.authorized_row_from_snapshot(snapshot, "EXP-SNAPSHOT")
+
+    replacement = {
+        "authorized_runs": [{
+            "run_id": "EXP-SNAPSHOT",
+            "execution_chain_sha256": {"CODE/replaced.py": "2" * 64},
+            "acceptance": {"min_delivered_packets": 99},
+        }]
+    }
+    authorization.write_text(json.dumps(replacement), encoding="utf-8")
+
+    assert row["execution_chain_sha256"] == {"CODE/original.py": "1" * 64}
+    assert row["acceptance"] == {"min_delivered_packets": 10}
+    with pytest.raises(ValueError, match="launcher-bound hash"):
+        rj.verified_authorization_snapshot(args, authorization)
 
 
 def test_a_nonzero_decision_formal_run_is_signed_v6_and_its_digests_are_recomputed(
