@@ -157,6 +157,7 @@ def _run_fixture(root: Path, run_id: str, arm_id: str, pair: str) -> dict:
         "trace_manifest_schema": manifest["schema"],
         "trace_identity_contract": receipt_payload["trace_identity_contract"],
         "trace_manifest_sha256": v2_analysis.file_sha256(out / "manifest.json"),
+        "formal_run_sha256": v2_analysis.file_sha256(out / "formal_run.json"),
         "run_receipt_sha256": hashlib.sha256(
             (out / "receipt.json").read_bytes()).hexdigest(),
     }
@@ -393,6 +394,7 @@ def test_v2_analysis_binds_two_real_receipts_and_persisted_outputs(tmp_path):
         governed_path = result_dir / "governance_receipt.json"
         governed = json.loads(governed_path.read_text(encoding="utf-8"))
         governed["authorization_sha256"] = auth_sha
+        governed["formal_run_sha256"] = v2_analysis.file_sha256(formal_path)
         _seal_governed(governed)
         _write(governed_path, governed)
         _write_external_witness(root, row["run_id"], governed,
@@ -612,6 +614,7 @@ def test_v2_analysis_rejects_governance_witness_contract_mismatch(tmp_path):
     governed_path = result_dir / "governance_receipt.json"
     governed = json.loads(governed_path.read_text(encoding="utf-8"))
     governed["authorization_sha256"] = auth_sha
+    governed["formal_run_sha256"] = v2_analysis.file_sha256(formal_path)
     governed["trace_manifest_schema"] = "leo-sim-trace-manifest/v1"
     _seal_governed(governed)
     _write(governed_path, governed)
@@ -655,6 +658,7 @@ def _single_run_analysis_fixture(tmp_path):
     governed_path = result_dir / "governance_receipt.json"
     governed = json.loads(governed_path.read_text(encoding="utf-8"))
     governed["authorization_sha256"] = auth_sha
+    governed["formal_run_sha256"] = v2_analysis.file_sha256(formal_path)
     _seal_governed(governed)
     _write(governed_path, governed)
     _write_external_witness(root, row["run_id"], governed,
@@ -688,6 +692,7 @@ def _upgrade_single_run_to_v6(root: Path, run_id: str) -> None:
     governed = json.loads(governed_path.read_text(encoding="utf-8"))
     governed["run_receipt_sha256"] = receipt_sha
     governed["receipt_schema"] = receipt.RECEIPT_SCHEMA_V6
+    governed["formal_run_sha256"] = v2_analysis.file_sha256(formal_path)
     _seal_governed(governed)
     _write(governed_path, governed)
     _write_external_witness(
@@ -832,6 +837,15 @@ def test_v2_analysis_v5_formal_requires_bound_timeline(
         formal = json.loads(formal_path.read_text(encoding="utf-8"))
         formal.pop("timeline_log_sha256")
         _write(formal_path, formal)
+        governed_path = result_dir / "governance_receipt.json"
+        governed = json.loads(governed_path.read_text(encoding="utf-8"))
+        governed["formal_run_sha256"] = v2_analysis.file_sha256(formal_path)
+        _seal_governed(governed)
+        _write(governed_path, governed)
+        governed = json.loads(governed_path.read_text(encoding="utf-8"))
+        _write_external_witness(
+            root, row["run_id"], governed,
+            authorization_sha256=governed["authorization_sha256"])
     else:
         with (result_dir / "timeline.jsonl").open(
                 "a", encoding="utf-8") as handle:
@@ -841,6 +855,24 @@ def test_v2_analysis_v5_formal_requires_bound_timeline(
                            "verify_authorization", return_value=auth):
         with pytest.raises(v2_analysis.V2AnalysisError,
                            match="receipt stream verification failed"):
+            v2_analysis.analyze(root, experiment, auth_path)
+
+
+def test_v2_analysis_v5_rejects_joint_formal_timeline_tamper(tmp_path):
+    root, experiment, auth_path, row = _single_run_analysis_fixture(tmp_path)
+    result_dir = root / "CODE" / "Results" / row["run_id"]
+    timeline = result_dir / "timeline.jsonl"
+    changed = timeline.read_bytes() + b'{"joint": true}\n'
+    timeline.write_bytes(changed)
+    formal_path = result_dir / "formal_run.json"
+    formal = json.loads(formal_path.read_text(encoding="utf-8"))
+    formal["timeline_log_sha256"] = hashlib.sha256(changed).hexdigest()
+    _write(formal_path, formal)
+    auth = json.loads(auth_path.read_text(encoding="utf-8"))
+    with mock.patch.object(v2_analysis.authorize_experiment,
+                           "verify_authorization", return_value=auth):
+        with pytest.raises(v2_analysis.V2AnalysisError,
+                           match="governance witness binding mismatch"):
             v2_analysis.analyze(root, experiment, auth_path)
 
 
@@ -912,6 +944,7 @@ def _posterior_run_fixture(root: Path, run_id: str, arm_id: str,
     governed = json.loads(governed_path.read_text(encoding="utf-8"))
     governed["run_receipt_sha256"] = receipt_sha
     governed["authorization_sha256"] = "a" * 64
+    governed["formal_run_sha256"] = v2_analysis.file_sha256(formal_path)
     _seal_governed(governed)
     _write(governed_path, governed)
     governed = json.loads(governed_path.read_text(encoding="utf-8"))
@@ -959,6 +992,7 @@ def _package_experiment(root: Path, name: str, rows: list[dict],
         governed_path = root / "CODE" / "Results" / row["run_id"]             / "governance_receipt.json"
         governed = json.loads(governed_path.read_text(encoding="utf-8"))
         governed["authorization_sha256"] = auth_sha
+        governed["formal_run_sha256"] = v2_analysis.file_sha256(formal_path)
         _seal_governed(governed)
         _write(governed_path, governed)
         governed = json.loads(governed_path.read_text(encoding="utf-8"))
@@ -1255,16 +1289,18 @@ def test_analyzer_identity_covers_the_static_runtime_import_closure():
     Hand-maintaining only the files a reviewer happened to notice repeatedly
     left verdict-changing modules outside the identity.  This test derives the
     static CODE import closure from the analyzer entrypoint and requires every
-    concrete module file in that closure to be identity-bound.  Package
-    __init__.py files are excluded here because ANALYZER_FILES is a deliberate
-    module manifest, not a source-tree snapshot.
+    concrete module or package initializer in that closure to be identity-bound.
     """
     repo_root = Path(__file__).resolve().parents[3]
     start = "CODE.experiment_platform.v2_analysis"
 
     def module_path(module: str) -> Path | None:
-        candidate = repo_root.joinpath(*module.split(".")).with_suffix(".py")
-        return candidate if candidate.is_file() else None
+        base = repo_root.joinpath(*module.split("."))
+        candidate = base.with_suffix(".py")
+        if candidate.is_file():
+            return candidate
+        initializer = base / "__init__.py"
+        return initializer if initializer.is_file() else None
 
     def add_import_from(values: set[str], current: str, node: ast.ImportFrom):
         package = current.split(".")[:-1]
@@ -1341,9 +1377,19 @@ def test_analyzer_identity_covers_authorization_verdict_schemas():
     assert required <= set(v2_analysis.ANALYZER_FILES)
 
 
+def test_analyzer_identity_covers_executed_package_initializers():
+    required = {
+        "CODE/__init__.py",
+        "CODE/experiment_platform/__init__.py",
+        "CODE/work/__init__.py",
+    }
+    assert required <= set(v2_analysis.ANALYZER_FILES)
+
+
 @pytest.mark.parametrize("dirty_path", [
     "CODE/leo_sim/kernel.py",
     "CODE/work/work-package.schema.json",
+    "CODE/experiment_platform/__init__.py",
 ])
 def test_analyzer_identity_rejects_other_runtime_or_schema_dirty(
         monkeypatch, dirty_path):
@@ -1379,6 +1425,7 @@ def _ddqn_unresolvable_fixture(tmp_path, run_id):
     governed_path = result_dir / "governance_receipt.json"
     governed = json.loads(governed_path.read_text(encoding="utf-8"))
     governed["run_receipt_sha256"] = receipt_sha
+    governed["formal_run_sha256"] = v2_analysis.file_sha256(formal_path)
     _seal_governed(governed)
     _write(governed_path, governed)
     governed = json.loads(governed_path.read_text(encoding="utf-8"))
@@ -1559,6 +1606,7 @@ def _sealed_matrix_analysis_fixture(
         governed_path = result_dir / "governance_receipt.json"
         governed = json.loads(governed_path.read_text(encoding="utf-8"))
         governed["authorization_sha256"] = auth_sha
+        governed["formal_run_sha256"] = v2_analysis.file_sha256(formal_path)
         _seal_governed(governed)
         _write(governed_path, governed)
         _write_external_witness(root, row["run_id"], governed,

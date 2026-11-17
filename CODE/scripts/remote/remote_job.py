@@ -31,6 +31,7 @@ V2_GOVERNANCE_SCHEMA = "leo-sim-governance-receipt/v2"
 V2_WITNESS_FIELDS = (
     "receipt_schema", "resolved_config_sha256", "trace_manifest_schema",
     "trace_identity_contract", "trace_manifest_sha256",
+    "formal_run_sha256",
 )
 
 
@@ -135,7 +136,8 @@ def build_v2_governance_receipt(
         run_id: str, launch_nonce: str, authorization_sha256: str,
         deployment: dict[str, Any], deployment_receipt_sha256: str,
         execution_chain_sha256: str, receipt_path: Path,
-        resolved_config_path: Path, manifest_path: Path) -> dict[str, Any]:
+        resolved_config_path: Path, manifest_path: Path,
+        formal_run_path: Path) -> dict[str, Any]:
     """Build the V2 witness and the values copied to external launch status.
 
     The result directory is only an internally self-consistent artifact.  The
@@ -180,6 +182,7 @@ def build_v2_governance_receipt(
         "trace_manifest_schema": manifest.get("schema"),
         "trace_identity_contract": receipt.get("trace_identity_contract"),
         "trace_manifest_sha256": file_sha256(manifest_path),
+        "formal_run_sha256": file_sha256(formal_run_path),
     }
     governed["payload_sha256"] = canonical_sha(governed)
     return governed
@@ -350,11 +353,12 @@ def formal_command(args: argparse.Namespace, workdir: Path, config: Path, author
     return command
 
 
-def verify_v2_formal_result(result_dir: Path) -> list[str]:
+def verify_v2_formal_result(
+        result_dir: Path, *, require_governance: bool = False) -> list[str]:
     """The VM-side verification of one V2 formal result directory.
 
     Split out of run_formal so the exact sequence the VM applies can be
-    executed -- and regression-tested -- without a VM.  Three independent
+    executed -- and regression-tested -- without a VM.  Four independent
     questions, all asked of the directory itself:
 
       1. verify_receipt_dir: strict exact-runtime verification.  On the VM the
@@ -372,6 +376,11 @@ def verify_v2_formal_result(result_dir: Path) -> list[str]:
       3. require_formal_witness=True: formal_run.json must bind the timeline
          digest.  A v5 zero-decision formal run has no receipt-level timeline
          digest, so this check is what prevents a post-verdict timeline edit.
+      4. When the governance receipt exists (and always at the final
+         post-governance check), its formal_run_sha256 must bind the exact
+         formal witness copied with the result.  The external launch status
+         then binds the governance receipt, preventing the timeline and formal
+         witness from being rewritten together after the VM verdict.
     """
     sys.path.insert(0, str(CANONICAL_WORKSPACE))
     from CODE.leo_sim.receipt import verify_receipt_dir, verify_receipt_streams
@@ -380,6 +389,25 @@ def verify_v2_formal_result(result_dir: Path) -> list[str]:
     errors += list(verify_receipt_streams(
         str(result_dir), require_streams=True,
         require_formal_witness=True))
+    governance_path = result_dir / "governance_receipt.json"
+    if require_governance or governance_path.exists():
+        formal_path = result_dir / "formal_run.json"
+        if governance_path.is_symlink() or not governance_path.is_file():
+            errors.append("governance_receipt.json is missing or symbolic")
+        elif formal_path.is_symlink() or not formal_path.is_file():
+            errors.append("formal_run.json is missing or symbolic")
+        else:
+            try:
+                governed = json.loads(governance_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                errors.append(f"governance_receipt.json is unreadable: {exc}")
+            else:
+                if not isinstance(governed, dict):
+                    errors.append("governance_receipt.json must be a JSON object")
+                elif governed.get("formal_run_sha256") != file_sha256(formal_path):
+                    errors.append(
+                        "governance_receipt.formal_run_sha256 does not bind "
+                        "formal_run.json")
     return errors
 
 
@@ -750,6 +778,7 @@ def run_formal(args: argparse.Namespace) -> int:
                         receipt_path=receipt_path,
                         resolved_config_path=Path(payload["last_results_dir"]) / "resolved_config.json",
                         manifest_path=Path(payload["last_results_dir"]) / "manifest.json",
+                        formal_run_path=Path(payload["last_results_dir"]) / "formal_run.json",
                     )
                     if receipt_errors:
                         payload["status"] = "failed"
@@ -759,6 +788,17 @@ def run_formal(args: argparse.Namespace) -> int:
                         rc = 2
                     governed_path = Path(payload["last_results_dir"]) / "governance_receipt.json"
                     write_json(governed_path, governed)
+                    anchored_errors = verify_v2_formal_result(
+                        Path(payload["last_results_dir"]),
+                        require_governance=True)
+                    if anchored_errors:
+                        payload["status"] = "failed"
+                        payload["exit_code"] = 2
+                        payload["failure_stage"] = "formal_governance_binding"
+                        payload["error"] = (
+                            "formal governance binding failed: "
+                            + "; ".join(anchored_errors))
+                        rc = 2
                     payload["governance_receipt"] = str(governed_path)
                     payload["governance_receipt_sha256"] = file_sha256(governed_path)
                     payload["governance_witness"] = {

@@ -45,6 +45,7 @@ def test_v2_governance_receipt_binds_raw_config_and_trace_contract(tmp_path):
     receipt_path = tmp_path / "receipt.json"
     config_path = tmp_path / "resolved_config.json"
     manifest_path = tmp_path / "manifest.json"
+    formal_path = tmp_path / "formal_run.json"
     receipt = {"schema": "leo-sim-receipt/v5",
                "trace_identity_contract": "leo-sim-trace-identity/v2",
                "natural_end": True, "conservation_ok": True}
@@ -53,6 +54,7 @@ def test_v2_governance_receipt_binds_raw_config_and_trace_contract(tmp_path):
     config_path.write_text('{"config": {"scenario": {}}}\n', encoding="utf-8")
     manifest_path.write_text(json.dumps({"schema": "leo-sim-trace-manifest/v2"}) + "\n",
                               encoding="utf-8")
+    formal_path.write_text(json.dumps({}) + "\n", encoding="utf-8")
     deployment = {"source_git_commit": "c" * 40,
                   "source_tree_sha256": "d" * 64}
     governed = remote_job.build_v2_governance_receipt(
@@ -60,13 +62,15 @@ def test_v2_governance_receipt_binds_raw_config_and_trace_contract(tmp_path):
         run_id="run-1", launch_nonce="a" * 32, authorization_sha256="b" * 64,
         deployment=deployment, deployment_receipt_sha256="e" * 64,
         execution_chain_sha256="f" * 64, receipt_path=receipt_path,
-        resolved_config_path=config_path, manifest_path=manifest_path)
+        resolved_config_path=config_path, manifest_path=manifest_path,
+        formal_run_path=formal_path)
     assert governed["schema"] == "leo-sim-governance-receipt/v2"
     assert governed["receipt_schema"] == receipt["schema"]
     assert governed["trace_manifest_schema"] == "leo-sim-trace-manifest/v2"
     assert governed["trace_identity_contract"] == receipt["trace_identity_contract"]
     assert len(governed["resolved_config_sha256"]) == 64
     assert len(governed["trace_manifest_sha256"]) == 64
+    assert len(governed["formal_run_sha256"]) == 64
     unsigned = {key: value for key, value in governed.items()
                 if key != "payload_sha256"}
     assert governed["payload_sha256"] == remote_job.canonical_sha(unsigned)

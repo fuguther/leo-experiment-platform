@@ -76,6 +76,7 @@ AUTHORIZATION_VERIFICATION_BOUND = "bound_posterior"
 GOVERNANCE_WITNESS_FIELDS = (
     "receipt_schema", "resolved_config_sha256", "trace_manifest_schema",
     "trace_identity_contract", "trace_manifest_sha256",
+    "formal_run_sha256",
 )
 REMOTE_RESULTS_ROOT = Path("/data/论文/leo-direct-sim/CODE/Results")
 # `receipt.code_sha256()` hashes every top-level leo_sim/*.py file, so the
@@ -87,6 +88,9 @@ _RUNTIME_CODE_FILES = tuple(
         (Path(__file__).resolve().parents[1] / "leo_sim").glob("*.py"))
 )
 ANALYZER_FILES = (
+    "CODE/__init__.py",
+    "CODE/experiment_platform/__init__.py",
+    "CODE/work/__init__.py",
     "CODE/experiment_platform/v2_analysis.py",
     # Imported and CALLED by this module: authorize_experiment decides formal
     # eligibility (the `authorized` block) and primary_metrics defines the
@@ -560,6 +564,7 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
             "trace_manifest_schema": docs["manifest.json"].get("schema"),
             "trace_identity_contract": receipt.get("trace_identity_contract"),
             "trace_manifest_sha256": file_sha256(paths["manifest.json"]),
+            "formal_run_sha256": file_sha256(paths["formal_run.json"]),
         }
         if any(governed.get(key) != value
                for key, value in expected_binding.items()):

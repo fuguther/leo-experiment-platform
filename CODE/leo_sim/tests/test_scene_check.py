@@ -623,6 +623,8 @@ def _scene_posterior_run(root, run_id):
         "trace_identity_contract": rcp["trace_identity_contract"],
         "trace_manifest_sha256": hashlib.sha256(
             (out / "manifest.json").read_bytes()).hexdigest(),
+        "formal_run_sha256": hashlib.sha256(
+            (out / "formal_run.json").read_bytes()).hexdigest(),
         "run_receipt_sha256": receipt_sha,
     }
     governed["payload_sha256"] = v2_analysis.canonical_sha(governed)
@@ -714,6 +716,7 @@ def _scene_analysis_manifest(root, run_id, row):
     governed_path = result_dir / "governance_receipt.json"
     governed = json.loads(governed_path.read_text(encoding="utf-8"))
     governed["authorization_sha256"] = auth_sha
+    governed["formal_run_sha256"] = v2_analysis.file_sha256(formal_path)
     governed.pop("payload_sha256", None)
     governed["payload_sha256"] = v2_analysis.canonical_sha(governed)
     governed_path.write_text(
@@ -726,6 +729,9 @@ def _scene_analysis_manifest(root, run_id, row):
     witness["authorization_sha256"] = auth_sha
     witness["governance_receipt_sha256"] = v2_analysis.file_sha256(
         governed_path)
+    witness["governance_witness"] = {
+        key: governed[key] for key in v2_analysis.GOVERNANCE_WITNESS_FIELDS
+    }
     witness_path.write_text(
         json.dumps(witness, indent=2, sort_keys=True) + "\n",
         encoding="utf-8")

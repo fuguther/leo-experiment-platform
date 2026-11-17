@@ -17,6 +17,7 @@ The gate now:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -36,7 +37,8 @@ from CODE.scripts.remote import remote_job as rj  # noqa: E402
 RUN_ID = "EXP-PULLBACK-AUTHORITY-s7"
 
 
-def _diagnostic_run(root: Path) -> Path:
+def _diagnostic_run(root: Path, *, policy: str = "oracle",
+                   run_id: str = RUN_ID) -> Path:
     """One real run of the official CLI (no formal identity flags)."""
     from CODE.leo_sim import config as config_mod
     resolved = config_mod.resolve_config({
@@ -48,14 +50,14 @@ def _diagnostic_run(root: Path) -> Path:
                    "csv_path": "CODE/data/traffic/t1_step5_micro_ab.csv"},
         "control_plane": {"enabled": False},
         "execution": {"available_capacity_interval_s": 0.1},
-        "routing": {"policy": "oracle"},
+        "routing": {"policy": policy},
         "learning": {"algorithm": "none"},
     })
     config_path = root / "run.yaml"
     config_path.write_text(json.dumps(
         {"config_version": resolved["version"], **resolved["config"]},
         indent=2, sort_keys=True), encoding="utf-8")
-    out_dir = root / RUN_ID
+    out_dir = root / run_id
     out_dir.mkdir()
     proc = subprocess.run(
         [sys.executable, "-m", "CODE.leo_sim", "run", "--config",
@@ -70,6 +72,13 @@ def _diagnostic_run(root: Path) -> Path:
 @pytest.fixture(scope="module")
 def run_dir(tmp_path_factory):
     return _diagnostic_run(tmp_path_factory.mktemp("pullback"))
+
+
+@pytest.fixture(scope="module")
+def v5_run_dir(tmp_path_factory):
+    return _diagnostic_run(
+        tmp_path_factory.mktemp("pullback-v5"), policy="hop",
+        run_id="EXP-PULLBACK-V5-s7")
 
 
 def _copy(run_dir: Path, tmp_path: Path, name: str) -> Path:
@@ -121,6 +130,7 @@ def _write_contract_shaped_formal(directory: Path, *, nonce: str = "a" * 32,
             (directory / "manifest.json").read_text())["schema"],
         "trace_identity_contract": receipt["trace_identity_contract"],
         "trace_manifest_sha256": _sha(directory / "manifest.json"),
+        "formal_run_sha256": _sha(directory / "formal_run.json"),
     }
     governed["payload_sha256"] = pullback_mod._formal_contract().canonical_sha(
         governed)
@@ -173,6 +183,29 @@ def test_formal_stream_binding_is_recomputed_here(run_dir, tmp_path):
     assert report["ok"] is False
     assert any("does not bind timeline.jsonl" in error
                for error in report["errors"])
+
+
+def test_v5_formal_copy_passes_and_joint_tamper_fails(v5_run_dir, tmp_path):
+    directory = _copy(v5_run_dir, tmp_path, "v5-formal")
+    receipt = json.loads((directory / "receipt.json").read_text(encoding="utf-8"))
+    assert receipt["schema"] == receipt_mod.RECEIPT_SCHEMA
+    assert not (directory / "decisions.jsonl").read_text(encoding="utf-8").strip()
+    witness_root = tmp_path / "v5-witnesses"
+    _write_contract_shaped_formal(directory, witness_root=witness_root)
+    report = pullback_mod.verify_pulled_run(
+        directory, expect="formal", witness_root=witness_root)
+    assert report["ok"] is True, report["errors"]
+
+    changed = (directory / "timeline.jsonl").read_bytes() + b'{"joint": true}\n'
+    (directory / "timeline.jsonl").write_bytes(changed)
+    formal_path = directory / "formal_run.json"
+    formal = json.loads(formal_path.read_text(encoding="utf-8"))
+    formal["timeline_log_sha256"] = hashlib.sha256(changed).hexdigest()
+    formal_path.write_text(json.dumps(formal), encoding="utf-8")
+    report = pullback_mod.verify_pulled_run(
+        directory, expect="formal", witness_root=witness_root)
+    assert report["ok"] is False
+    assert any("formal_run_sha256" in error for error in report["errors"])
 
 
 def test_the_caller_must_declare_what_the_copy_is(run_dir):
@@ -327,6 +360,14 @@ def test_the_contract_key_sets_match_their_producers(run_dir, tmp_path):
     directory = _copy(run_dir, tmp_path, "producers")
     ledgers = json.loads((directory / "ledgers.json").read_text())
     receipt = json.loads((directory / "receipt.json").read_text())
+    from CODE.leo_sim import __main__ as cli_mod
+    cli_mod._write_formal_witness(
+        str(directory),
+        {"run_id": directory.name, "launch_nonce": "a" * 32,
+         "authorization_sha256": "b" * 64, "config_sha256": "c" * 64,
+         "code_sha256": receipt_mod.code_sha256(),
+         "results_dir": str(directory.parent)},
+        receipt)
     governed = rj.build_v2_governance_receipt(
         receipt=receipt, ledgers=ledgers, verification_errors=[],
         acceptance={"min_delivered_packets": 0}, run_id=directory.name,
@@ -337,17 +378,10 @@ def test_the_contract_key_sets_match_their_producers(run_dir, tmp_path):
         execution_chain_sha256={"CODE/leo_sim/receipt.py": "2" * 64},
         receipt_path=directory / "receipt.json",
         resolved_config_path=directory / "resolved_config.json",
-        manifest_path=directory / "manifest.json")
+        manifest_path=directory / "manifest.json",
+        formal_run_path=directory / "formal_run.json")
     assert set(governed) == set(pullback_mod.GOVERNANCE_KEYS_V2)
 
-    from CODE.leo_sim import __main__ as cli_mod
-    cli_mod._write_formal_witness(
-        str(directory),
-        {"run_id": directory.name, "launch_nonce": "a" * 32,
-         "authorization_sha256": "b" * 64, "config_sha256": "c" * 64,
-         "code_sha256": receipt_mod.code_sha256(),
-         "results_dir": str(directory.parent)},
-        receipt)
     written = json.loads((directory / "formal_run.json").read_text())
     assert set(written) <= (set(pullback_mod.FORMAL_WITNESS_KEYS)
                             | set(pullback_mod.FORMAL_WITNESS_OPTIONAL_KEYS))

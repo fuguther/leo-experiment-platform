@@ -100,9 +100,15 @@ def _with_stream_witness(source: Path, target: Path) -> Path:
     shutil.copytree(source, target)
     timeline_sha = hashlib.sha256(
         (target / "timeline.jsonl").read_bytes()).hexdigest()
-    (target / "formal_run.json").write_text(json.dumps({
+    formal_path = target / "formal_run.json"
+    formal_path.write_text(json.dumps({
         "schema": "leo-sim-formal-run/v1",
         "timeline_log_sha256": timeline_sha,
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (target / "governance_receipt.json").write_text(json.dumps({
+        "schema": "leo-sim-governance-receipt/v2",
+        "formal_run_sha256": hashlib.sha256(
+            formal_path.read_bytes()).hexdigest(),
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return target
 
@@ -155,6 +161,22 @@ def test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate(
                            encoding="utf-8")
     errors = rj.verify_v2_formal_result(unbound)
     assert errors and "does not bind timeline.jsonl" in errors[0]
+
+    jointly_tampered = tmp_path / "v5-jointly-tampered"
+    shutil.copytree(certified, jointly_tampered)
+    changed_timeline = (jointly_tampered / "timeline.jsonl").read_bytes() + \
+        b'{"joint": true}\n'
+    (jointly_tampered / "timeline.jsonl").write_bytes(changed_timeline)
+    changed_formal_path = jointly_tampered / "formal_run.json"
+    changed_formal = json.loads(
+        changed_formal_path.read_text(encoding="utf-8"))
+    changed_formal["timeline_log_sha256"] = hashlib.sha256(
+        changed_timeline).hexdigest()
+    changed_formal_path.write_text(
+        json.dumps(changed_formal, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
+    errors = rj.verify_v2_formal_result(jointly_tampered)
+    assert errors and "formal_run_sha256 does not bind" in errors[0]
 
     # …and the form that WAS there before the fix mis-failed exactly this run,
     # after the simulation had already been paid for.

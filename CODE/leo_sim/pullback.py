@@ -108,7 +108,7 @@ GOVERNANCE_KEYS_V2 = frozenset({
     "run_receipt_sha256", "natural_end", "conservation_ok",
     "verification_errors", "receipt_schema", "resolved_config_sha256",
     "trace_manifest_schema", "trace_identity_contract",
-    "trace_manifest_sha256", "payload_sha256",
+    "trace_manifest_sha256", "formal_run_sha256", "payload_sha256",
 })
 
 #: Governance fields that must agree with the copy being verified.
@@ -116,6 +116,7 @@ GOVERNANCE_BINDINGS = {
     "run_receipt_sha256": "receipt.json",
     "resolved_config_sha256": "resolved_config.json",
     "trace_manifest_sha256": "manifest.json",
+    "formal_run_sha256": "formal_run.json",
 }
 
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
