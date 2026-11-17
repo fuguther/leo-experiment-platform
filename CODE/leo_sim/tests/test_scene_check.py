@@ -587,6 +587,11 @@ def _scene_posterior_run(root, run_id):
     result = kernel.run_simulation(resolved, rows, geometry=geometry)
     out = root / "CODE" / "Results" / run_id
     receipt.write_run(str(out), resolved, tbytes, manifest, result, rows)
+    for name in ("decisions.jsonl", "timeline.jsonl"):
+        (out / name).write_text("", encoding="utf-8")
+        (out / f"{name}.manifest.json").write_text(
+            json.dumps({"schema": "test-empty-stream/v1", "rows": 0}) + "\n",
+            encoding="utf-8")
     rcp_path = out / "receipt.json"
     rcp = json.loads(rcp_path.read_text(encoding="utf-8"))
     rcp["code_sha256"] = "1" * 64
@@ -600,10 +605,12 @@ def _scene_posterior_run(root, run_id):
         "config_sha256": rcp["config_sha256"],
         "code_sha256": rcp["code_sha256"],
         "receipt_sha256": receipt_sha,
+        "timeline_log_sha256": hashlib.sha256(
+            (out / "timeline.jsonl").read_bytes()).hexdigest(),
         "natural_end": True, "conservation_ok": True,
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     governed = {
-        "schema": "leo-sim-governance-receipt/v2", "research_eligible": True,
+        "schema": v2_analysis.GOVERNANCE_SCHEMA_V3, "research_eligible": True,
         "run_id": run_id, "launch_nonce": "b" * 32,
         "verification_errors": [], "authorization_sha256": "a" * 64,
         "source_git_commit": "d" * 40, "source_tree_sha256": "e" * 64,
@@ -616,6 +623,8 @@ def _scene_posterior_run(root, run_id):
         "trace_identity_contract": rcp["trace_identity_contract"],
         "trace_manifest_sha256": hashlib.sha256(
             (out / "manifest.json").read_bytes()).hexdigest(),
+        "formal_run_sha256": hashlib.sha256(
+            (out / "formal_run.json").read_bytes()).hexdigest(),
         "run_receipt_sha256": receipt_sha,
     }
     governed["payload_sha256"] = v2_analysis.canonical_sha(governed)
@@ -625,9 +634,10 @@ def _scene_posterior_run(root, run_id):
     governed = json.loads(
         (out / "governance_receipt.json").read_text(encoding="utf-8"))
     witness = {
-        "schema": "leo-remote-launch-status/v2", "status": "success",
+        "schema": v2_analysis.EXTERNAL_STATUS_SCHEMA, "status": "success",
         "exit_code": 0, "launch_nonce": "b" * 32, "run_id": run_id,
         "authorization_sha256": "a" * 64,
+        "config_sha256": rcp["config_sha256"],
         "last_results_dir": "/data/论文/leo-direct-sim/CODE/Results/"
                             + run_id,
         "governance_receipt_sha256": hashlib.sha256(
@@ -706,6 +716,7 @@ def _scene_analysis_manifest(root, run_id, row):
     governed_path = result_dir / "governance_receipt.json"
     governed = json.loads(governed_path.read_text(encoding="utf-8"))
     governed["authorization_sha256"] = auth_sha
+    governed["formal_run_sha256"] = v2_analysis.file_sha256(formal_path)
     governed.pop("payload_sha256", None)
     governed["payload_sha256"] = v2_analysis.canonical_sha(governed)
     governed_path.write_text(
@@ -718,6 +729,9 @@ def _scene_analysis_manifest(root, run_id, row):
     witness["authorization_sha256"] = auth_sha
     witness["governance_receipt_sha256"] = v2_analysis.file_sha256(
         governed_path)
+    witness["governance_witness"] = {
+        key: governed[key] for key in v2_analysis.GOVERNANCE_WITNESS_FIELDS
+    }
     witness_path.write_text(
         json.dumps(witness, indent=2, sort_keys=True) + "\n",
         encoding="utf-8")

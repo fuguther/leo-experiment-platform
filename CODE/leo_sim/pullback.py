@@ -79,32 +79,41 @@ FORMAL_WITNESS_KEYS = frozenset({
     "schema", "run_id", "launch_nonce", "authorization_sha256", "config_sha256",
     "code_sha256", "receipt_sha256", "natural_end", "conservation_ok",
 })
+# The field is optional only at the historical key-set layer.  A FORMAL
+# verification now requires it and recomputes the digest; otherwise a v5 run's
+# timeline would remain mutable after the VM verdict.
 FORMAL_WITNESS_OPTIONAL_KEYS = frozenset({"timeline_log_sha256"})
+#: Fields the pullback gate must be able to cross-bind from the external launch
+#: witness.  The producer writes additional operational fields; unknown future
+#: fields are permitted, but these identity fields may not disappear.
+EXTERNAL_WITNESS_REQUIRED_KEYS = frozenset({
+    "schema", "status", "exit_code", "launch_nonce", "run_id",
+    "authorization_sha256", "config_sha256", "governance_receipt_sha256",
+    "governance_witness",
+})
 
-#: Exact key set of the V2 governance receipt, mirroring
-#: remote_job.build_v2_governance_receipt.  Same reasoning, same test.
-#: Kept in step with the two producers by construction: _formal_contract()
-#: returns v2_analysis, which defines this exact string, and the producer
-#: remote_job.V2_GOVERNANCE_SCHEMA is asserted equal to it in
-#: tests/test_pullback_authority.py.  The first version of this file spelled it
-#: "leo-sim-v2-governance-receipt/v2" and every local fixture agreed with the
-#: typo, so only a real VM result exposed it (2026-09-25).
-GOVERNANCE_SCHEMA_V2 = "leo-sim-governance-receipt/v2"
-GOVERNANCE_KEYS_V2 = frozenset({
+#: Current governance contract.  v3 adds the formal-witness anchor; v2 is
+#: kept only to classify old directories as historical evidence and reject
+#: them from current formal eligibility.
+GOVERNANCE_SCHEMA_V3 = "leo-sim-governance-receipt/v3"
+GOVERNANCE_KEYS_V3 = frozenset({
     "schema", "research_eligible", "run_id", "launch_nonce",
     "authorization_sha256", "source_git_commit", "source_tree_sha256",
     "deployment_receipt_sha256", "execution_chain_sha256", "acceptance",
     "run_receipt_sha256", "natural_end", "conservation_ok",
     "verification_errors", "receipt_schema", "resolved_config_sha256",
     "trace_manifest_schema", "trace_identity_contract",
-    "trace_manifest_sha256", "payload_sha256",
+    "trace_manifest_sha256", "formal_run_sha256", "payload_sha256",
 })
+GOVERNANCE_SCHEMA_V2_LEGACY = "leo-sim-governance-receipt/v2"
+GOVERNANCE_KEYS_V2_LEGACY = GOVERNANCE_KEYS_V3 - {"formal_run_sha256"}
 
 #: Governance fields that must agree with the copy being verified.
 GOVERNANCE_BINDINGS = {
     "run_receipt_sha256": "receipt.json",
     "resolved_config_sha256": "resolved_config.json",
     "trace_manifest_sha256": "manifest.json",
+    "formal_run_sha256": "formal_run.json",
 }
 
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
@@ -178,13 +187,20 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
     v2 = _formal_contract()
     errors.extend(_key_set_errors(FORMAL_WITNESS, formal, FORMAL_WITNESS_KEYS,
                                   FORMAL_WITNESS_OPTIONAL_KEYS))
-    errors.extend(_key_set_errors(GOVERNANCE_RECEIPT, governed,
-                                  GOVERNANCE_KEYS_V2))
+    governed_schema = governed.get("schema")
+    governed_keys = (GOVERNANCE_KEYS_V2_LEGACY
+                     if governed_schema == GOVERNANCE_SCHEMA_V2_LEGACY
+                     else GOVERNANCE_KEYS_V3)
+    errors.extend(_key_set_errors(GOVERNANCE_RECEIPT, governed, governed_keys))
     if formal.get("schema") != FORMAL_WITNESS_SCHEMA:
         errors.append(f"{FORMAL_WITNESS} schema mismatch: {formal.get('schema')!r}")
-    if governed.get("schema") != GOVERNANCE_SCHEMA_V2:
+    if governed_schema == GOVERNANCE_SCHEMA_V2_LEGACY:
         errors.append(
-            f"{GOVERNANCE_RECEIPT} schema mismatch: {governed.get('schema')!r}")
+            "governance_receipt v2 lacks formal_run_sha256 and is "
+            "historical-only; it cannot satisfy current formal eligibility")
+    elif governed_schema != GOVERNANCE_SCHEMA_V3:
+        errors.append(
+            f"{GOVERNANCE_RECEIPT} schema mismatch: {governed_schema!r}")
     if formal.get("run_id") != run_dir.name:
         errors.append(f"{FORMAL_WITNESS} run_id does not name this directory")
     if governed.get("run_id") != run_dir.name:
@@ -224,6 +240,16 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
     if formal.get("receipt_sha256") != receipt_sha:
         errors.append(f"{FORMAL_WITNESS} receipt_sha256 does not match this "
                       f"copy's receipt.json")
+    for field in ("config_sha256", "code_sha256"):
+        errors.extend(_hex_or_error(f"receipt.{field}", receipt.get(field),
+                                    _SHA256_HEX))
+        if formal.get(field) != receipt.get(field):
+            errors.append(f"formal_run.{field} disagrees with receipt.json")
+    for field in ("natural_end", "conservation_ok"):
+        if receipt.get(field) is not True:
+            errors.append(f"receipt.{field} is not true")
+        if formal.get(field) != receipt.get(field):
+            errors.append(f"formal_run.{field} disagrees with receipt.json")
     for field, name in sorted(GOVERNANCE_BINDINGS.items()):
         path = run_dir / name
         if path.is_symlink() or not path.is_file():
@@ -234,11 +260,29 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
             errors.append(f"governance_receipt.{field} does not match this "
                           f"copy's {name}")
 
+    manifest_path = run_dir / "manifest.json"
+    if not manifest_path.is_symlink() and manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"manifest.json is unreadable for schema binding: {exc}")
+        else:
+            if not isinstance(manifest, dict):
+                errors.append("manifest.json must be a JSON object")
+            elif governed.get("trace_manifest_schema") != manifest.get("schema"):
+                errors.append(
+                    "governance_receipt.trace_manifest_schema disagrees with "
+                    "the copy's manifest.json")
+
     if governed.get("receipt_schema") != receipt.get("schema"):
         errors.append("governance_receipt.receipt_schema disagrees with the copy")
     if governed.get("trace_identity_contract")             != receipt.get("trace_identity_contract"):
         errors.append(
             "governance_receipt.trace_identity_contract disagrees with the copy")
+    errors.extend(_hex_or_error("formal_run.authorization_sha256",
+                                formal.get("authorization_sha256"), _SHA256_HEX))
+    errors.extend(_hex_or_error("governance.authorization_sha256",
+                                governed.get("authorization_sha256"), _SHA256_HEX))
     errors.extend(_hex_or_error("formal_run.config_sha256",
                                 formal.get("config_sha256"), _SHA256_HEX))
     errors.extend(_hex_or_error("formal_run.code_sha256",
@@ -250,22 +294,28 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
                                 _SHA256_HEX))
     errors.extend(_hex_or_error("governance.source_git_commit",
                                 governed.get("source_git_commit"), _GIT_COMMIT))
-    if not isinstance(governed.get("execution_chain_sha256"), dict) \
-            or not governed["execution_chain_sha256"]:
+    execution_chain = governed.get("execution_chain_sha256")
+    if not isinstance(execution_chain, dict) or not execution_chain:
         errors.append("governance_receipt.execution_chain_sha256 is not a "
                       "non-empty mapping")
+    elif any(not isinstance(raw, str) or not raw
+             or not isinstance(digest, str)
+             or _SHA256_HEX.fullmatch(digest) is None
+             for raw, digest in execution_chain.items()):
+        errors.append("governance_receipt.execution_chain_sha256 is malformed")
     if not isinstance(governed.get("acceptance"), dict):
         errors.append("governance_receipt.acceptance is not a mapping")
 
     # External launch witness: checked only when the caller says where the pull
     # put it.  Its absence is NOT inferred from the file being missing.
     if witness_root is None:
-        not_checked.append(
-            "external launch witness (no --witness-root supplied; the witness "
-            "is pulled next to the results, not inside the run directory)")
+        message = ("external launch witness (no --witness-root supplied; the "
+                   "witness is pulled next to the results, not inside the run "
+                   "directory)")
+        not_checked.append(message)
     else:
         errors.extend(_external_witness_errors(
-            Path(witness_root), run_dir, governed, not_checked))
+            Path(witness_root), run_dir, formal, governed, not_checked))
     not_checked.extend([
         "authorization cohort binding (v2_analysis, needs the compiled "
         "experiment directory and authorization.json)",
@@ -276,7 +326,8 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
     return errors, not_checked
 
 
-def _external_witness_errors(witness_root: Path, run_dir: Path, governed: dict,
+def _external_witness_errors(witness_root: Path, run_dir: Path, formal: dict,
+                             governed: dict,
                              not_checked: list[str]) -> list[str]:
     v2 = _formal_contract()
     nonce = governed.get("launch_nonce")
@@ -304,15 +355,40 @@ def _external_witness_errors(witness_root: Path, run_dir: Path, governed: dict,
     except (OSError, json.JSONDecodeError) as exc:
         return [f"external launch witness is unreadable: {exc}"]
     errors = []
-    if not isinstance(witness, dict) or witness.get("schema") \
-            != v2.EXTERNAL_STATUS_SCHEMA:
+    if not isinstance(witness, dict):
         errors.append("external launch witness schema mismatch")
+        return errors
+    if witness.get("schema") == v2.EXTERNAL_STATUS_SCHEMA_V2_LEGACY:
+        errors.append(
+            "external launch witness v2 lacks the current formal-witness "
+            "anchor and is historical-only")
+        return errors
+    if witness.get("schema") != v2.EXTERNAL_STATUS_SCHEMA:
+        errors.append("external launch witness schema mismatch")
+        return errors
+    missing = sorted(EXTERNAL_WITNESS_REQUIRED_KEYS - set(witness))
+    if missing:
+        errors.append(f"external launch witness is missing identity fields {missing}")
         return errors
     if witness.get("status") != "success" or witness.get("exit_code") != 0:
         errors.append("external launch witness is not a successful launch")
     if witness.get("launch_nonce") != nonce \
             or witness.get("run_id") != run_dir.name:
         errors.append("external launch witness identity does not name this run")
+    for label, value in (
+            ("external launch witness authorization_sha256",
+             witness.get("authorization_sha256")),
+            ("external launch witness config_sha256",
+             witness.get("config_sha256"))):
+        if not isinstance(value, str) or _SHA256_HEX.fullmatch(value) is None:
+            errors.append(f"{label} is not a well-formed digest")
+    if witness.get("authorization_sha256") \
+            != governed.get("authorization_sha256"):
+        errors.append("external launch witness authorization_sha256 disagrees "
+                      "with governance receipt")
+    if witness.get("config_sha256") != formal.get("config_sha256"):
+        errors.append("external launch witness config_sha256 disagrees with "
+                      "formal witness")
     if witness.get("governance_receipt_sha256") \
             != _sha256(run_dir / GOVERNANCE_RECEIPT):
         errors.append("external launch witness does not bind this copy's "
@@ -403,7 +479,8 @@ def verify_pulled_run(run_dir: str | Path, *, expect: str,
     else:
         binding = "not evaluated: no readable receipt"
     stream_errors = receipt_mod.verify_receipt_streams(
-        str(run_dir), require_streams=require_streams)
+        str(run_dir), require_streams=require_streams,
+        require_formal_witness=expect == EXPECT_FORMAL)
     check("P4",
           "the stream contract holds (v6 digests recomputed HERE, not "
           "trusted from the VM run)",
@@ -414,6 +491,14 @@ def verify_pulled_run(run_dir: str | Path, *, expect: str,
     if expect == EXPECT_FORMAL:
         formal_errors, not_checked = _formal_increment_errors(
             run_dir, receipt or {}, witness_root)
+        if witness_root is None:
+            # The caller declared this copy FORMAL, and the only evidence that
+            # the launch was governed is the external witness.  Listing it as
+            # "not checked here" while still reporting ok would turn an
+            # unchecked requirement into a pass.
+            formal_errors = list(formal_errors) + [
+                "formal acceptance requires the external launch witness: "
+                "--witness-root was not supplied"]
         check("P5",
               "the formal increment is complete, contract-shaped and agrees "
               "with this copy",

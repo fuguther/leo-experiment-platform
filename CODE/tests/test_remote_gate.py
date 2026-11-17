@@ -2,6 +2,7 @@
 import sys
 import json
 import inspect
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -41,10 +42,29 @@ def test_require_data_isl_uses_recomputed_multisat_not_diagnostic_occupied():
     assert not any("data ISL" in e for e in errors)
 
 
+def test_prepared_launch_status_requires_current_v3_schema():
+    args = SimpleNamespace(
+        launch_nonce="a" * 32, session_name="s",
+        expected_run_id="EXP-1", expected_config_sha256="b" * 64,
+        expected_authorization_sha256="c" * 64)
+    prepared = {
+        "schema": remote_job.EXTERNAL_STATUS_SCHEMA,
+        "status": "prepared", "launch_nonce": args.launch_nonce,
+        "session_name": args.session_name, "run_id": args.expected_run_id,
+        "config_sha256": args.expected_config_sha256,
+        "authorization_sha256": args.expected_authorization_sha256,
+    }
+    remote_job.validate_prepared_launch_status(prepared, args)
+    prepared["schema"] = "leo-remote-launch-status/v2"
+    with pytest.raises(ValueError, match="schema must be leo-remote-launch-status/v3"):
+        remote_job.validate_prepared_launch_status(prepared, args)
+
+
 def test_v2_governance_receipt_binds_raw_config_and_trace_contract(tmp_path):
     receipt_path = tmp_path / "receipt.json"
     config_path = tmp_path / "resolved_config.json"
     manifest_path = tmp_path / "manifest.json"
+    formal_path = tmp_path / "formal_run.json"
     receipt = {"schema": "leo-sim-receipt/v5",
                "trace_identity_contract": "leo-sim-trace-identity/v2",
                "natural_end": True, "conservation_ok": True}
@@ -53,20 +73,23 @@ def test_v2_governance_receipt_binds_raw_config_and_trace_contract(tmp_path):
     config_path.write_text('{"config": {"scenario": {}}}\n', encoding="utf-8")
     manifest_path.write_text(json.dumps({"schema": "leo-sim-trace-manifest/v2"}) + "\n",
                               encoding="utf-8")
+    formal_path.write_text(json.dumps({}) + "\n", encoding="utf-8")
     deployment = {"source_git_commit": "c" * 40,
                   "source_tree_sha256": "d" * 64}
-    governed = remote_job.build_v2_governance_receipt(
+    governed = remote_job.build_governance_receipt(
         receipt=receipt, ledgers=ledgers, verification_errors=[], acceptance={},
         run_id="run-1", launch_nonce="a" * 32, authorization_sha256="b" * 64,
         deployment=deployment, deployment_receipt_sha256="e" * 64,
         execution_chain_sha256="f" * 64, receipt_path=receipt_path,
-        resolved_config_path=config_path, manifest_path=manifest_path)
-    assert governed["schema"] == "leo-sim-governance-receipt/v2"
+        resolved_config_path=config_path, manifest_path=manifest_path,
+        formal_run_path=formal_path)
+    assert governed["schema"] == "leo-sim-governance-receipt/v3"
     assert governed["receipt_schema"] == receipt["schema"]
     assert governed["trace_manifest_schema"] == "leo-sim-trace-manifest/v2"
     assert governed["trace_identity_contract"] == receipt["trace_identity_contract"]
     assert len(governed["resolved_config_sha256"]) == 64
     assert len(governed["trace_manifest_sha256"]) == 64
+    assert len(governed["formal_run_sha256"]) == 64
     unsigned = {key: value for key, value in governed.items()
                 if key != "payload_sha256"}
     assert governed["payload_sha256"] == remote_job.canonical_sha(unsigned)
@@ -148,7 +171,15 @@ def test_direct_remote_run_blocks_second_cell_without_predecessor(
     ]
     config.parent.mkdir(parents=True)
     config.write_text("{}\n", encoding="utf-8")
-    authorization.write_text("{}\n", encoding="utf-8")
+    authorization.write_text(json.dumps({
+        "authorized_runs": [{
+            "run_id": "EXP-SERIAL-second",
+            "execution_chain_sha256": {"CODE/example.py": "1" * 64},
+            "acceptance": {"min_delivered_packets": 0},
+        }]
+    }) + "\n", encoding="utf-8")
+    authorization_sha256 = hashlib.sha256(
+        authorization.read_bytes()).hexdigest()
     (root / ".deployment_commit").write_text("d" * 40 + "\n",
                                                encoding="ascii")
     (experiment / "request.json").write_text(json.dumps({
@@ -171,10 +202,11 @@ def test_direct_remote_run_blocks_second_cell_without_predecessor(
     }
     nonce = "a" * 32
     prepared = {
+        "schema": remote_job.EXTERNAL_STATUS_SCHEMA,
         "status": "prepared", "launch_nonce": nonce,
         "session_name": "serial-second", "run_id": "EXP-SERIAL-second",
         "config_sha256": "b" * 64,
-        "authorization_sha256": "c" * 64,
+        "authorization_sha256": authorization_sha256,
     }
     launch_path = runtime / "launches" / f"{nonce}.json"
     launch_path.parent.mkdir(parents=True)
@@ -183,7 +215,7 @@ def test_direct_remote_run_blocks_second_cell_without_predecessor(
         action="run", runtime_kind="leo_sim_v2", launch_nonce=nonce,
         session_name="serial-second", expected_run_id="EXP-SERIAL-second",
         expected_config_sha256="b" * 64,
-        expected_authorization_sha256="c" * 64,
+        expected_authorization_sha256=authorization_sha256,
         deployment_receipt=str(runtime / "deployment.json"),
         cpu_list="", status_file=str(status), log_file=str(log),
         workdir=str(code), config=str(config), authorization=str(authorization),

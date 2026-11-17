@@ -266,15 +266,19 @@ def _check_evidence(repo: Path, records: list[dict[str, Any]], *, verify: bool,
     if verify and evidence_root is None:
         warnings.append("local evidence root is not configured; indexed receipts were not opened")
         checked["local_receipts_verified"] = 0
+        checked["evidence_verification"] = "PARTIAL"
+        checked["evidence_verification_reason"] = "local evidence root is not configured"
         return
     for record in records:
         run_id = record["run_id"]
         evidence = _local_evidence_path(repo, record["evidence_uri"], run_id,
                                          evidence_root, errors)
         if evidence is None:
+            checked.setdefault("evidence_skipped_runs", []).append(run_id)
             continue
         if not evidence.is_dir() or evidence.is_symlink():
             warnings.append(f"run {run_id} local evidence is missing; external storage was not checked")
+            checked.setdefault("evidence_unverified_runs", []).append(run_id)
             continue
         if not verify:
             continue
@@ -294,12 +298,40 @@ def _check_evidence(repo: Path, records: list[dict[str, Any]], *, verify: bool,
             )
         except Exception as exc:  # verification failures are report data
             errors.append(f"run {run_id} local receipt verification failed: {exc}")
+            checked.setdefault("evidence_failed_runs", []).append(run_id)
             continue
         if receipt.get("receipt_sha256") != record["receipt_sha256"]:
             errors.append(f"run {run_id} receipt_sha256 differs from the deployment index")
+            checked.setdefault("evidence_failed_runs", []).append(run_id)
             continue
         verified_count += 1
     checked["local_receipts_verified"] = verified_count if verify else 0
+    if not verify:
+        checked["evidence_verification"] = "NOT_REQUESTED"
+    else:
+        # The state is derived from COUNTS, not from "was anything missing".
+        # Judging it by a missing-list alone reported COMPLETE while a run had
+        # actively failed verification, and while an unusable evidence root had
+        # skipped every run -- i.e. a failed or never-run check was published
+        # as a coverage statement.
+        total = len(records)
+        failed = checked.get("evidence_failed_runs") or []
+        skipped = ((checked.get("evidence_unverified_runs") or [])
+                   + (checked.get("evidence_skipped_runs") or []))
+        if total == 0:
+            checked["evidence_verification"] = "PARTIAL"
+            checked["evidence_verification_reason"] = "no indexed runs to verify"
+        elif failed:
+            checked["evidence_verification"] = "FAILED"
+            checked["evidence_verification_reason"] = (
+                f"{len(failed)} of {total} indexed runs failed verification")
+        elif verified_count != total:
+            checked["evidence_verification"] = "PARTIAL"
+            checked["evidence_verification_reason"] = (
+                f"{verified_count} of {total} indexed runs verified; "
+                f"{len(skipped)} skipped")
+        else:
+            checked["evidence_verification"] = "COMPLETE"
 
 
 def run_check(repo: Path, *, verify_evidence: bool = False,
@@ -332,13 +364,22 @@ def run_check(repo: Path, *, verify_evidence: bool = False,
                 warnings=warnings, checked=checked,
             )
 
+    summary: dict[str, Any] = {
+        "checked": "scoped maintenance review completed",
+        "errors": len(errors),
+        "warnings": len(warnings),
+        "info": len(infos),
+    }
+    for key in (
+        "evidence_verification",
+        "evidence_verification_reason",
+        "local_receipts_verified",
+    ):
+        if key in checked:
+            summary[key] = checked[key]
+
     return {
-        "summary": {
-            "checked": "scoped maintenance review completed",
-            "errors": len(errors),
-            "warnings": len(warnings),
-            "info": len(infos),
-        },
+        "summary": summary,
         "scope": (
             "Local Git path metadata, worktree metadata, root README/AGENTS entry points, "
             "deployment-index JSONL, and optionally indexed local receipts. No file contents "
@@ -366,7 +407,12 @@ def main(argv: list[str] | None = None) -> int:
     report = run_check(args.repo, verify_evidence=args.verify_evidence,
                        evidence_root=args.evidence_root)
     print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
-    return 1 if report["errors"] else 0
+    if report["errors"]:
+        return 1
+    if args.verify_evidence and report["summary"].get(
+            "evidence_verification") != "COMPLETE":
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

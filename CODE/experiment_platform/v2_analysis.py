@@ -13,7 +13,7 @@ an explicit legacy/internal-only branch and cannot masquerade as v5 evidence.
 POSTERIOR RUNTIME ANALYSIS: a v5 run whose receipt records a runtime
 identity different from the local analyzer (code sha and/or dependency
 versions, e.g. a VM Python 3.11 environment vs a newer local checkout) may
-still be analyzed when authorization + formal_run + governance_receipt v2 +
+still be analyzed when authorization + formal_run + governance_receipt v3 +
 nonce external witness FULLY cross-bind the historical runtime
 code/config/auth/result hashes.  Artifact integrity is then recomputed
 without the local==runtime gate (an internal, unbound receipt primitive)
@@ -60,8 +60,13 @@ CLAIM_GATE_SCHEMA = "leo-sim-v2-claim-gate/v1"
 MATRIX_SCHEMA = "leo-sim-experiment-matrix-manifest/v1"
 ANALYSIS_SCHEMA = "leo-sim-matrix-analysis-request/v1"
 GOVERNANCE_SCHEMA_V1 = "leo-sim-governance-receipt/v1"
-GOVERNANCE_SCHEMA_V2 = "leo-sim-governance-receipt/v2"
-EXTERNAL_STATUS_SCHEMA = "leo-remote-launch-status/v2"
+# Historical v2 lacks the formal-witness anchor.  It remains recognized only
+# so the verifier can reject it explicitly instead of silently accepting the
+# old, weaker contract under a current-looking name.
+GOVERNANCE_SCHEMA_V2_LEGACY = "leo-sim-governance-receipt/v2"
+GOVERNANCE_SCHEMA_V3 = "leo-sim-governance-receipt/v3"
+EXTERNAL_STATUS_SCHEMA_V2_LEGACY = "leo-remote-launch-status/v2"
+EXTERNAL_STATUS_SCHEMA = "leo-remote-launch-status/v3"
 # how a result's runtime identity was bound: reproduced by the local
 # analyzer exactly, or governed through the formal chain because the local
 # analyzer is a newer version than the historical runtime
@@ -76,10 +81,42 @@ AUTHORIZATION_VERIFICATION_BOUND = "bound_posterior"
 GOVERNANCE_WITNESS_FIELDS = (
     "receipt_schema", "resolved_config_sha256", "trace_manifest_schema",
     "trace_identity_contract", "trace_manifest_sha256",
+    "formal_run_sha256",
 )
 REMOTE_RESULTS_ROOT = Path("/data/论文/leo-direct-sim/CODE/Results")
+# `receipt.code_sha256()` hashes every top-level leo_sim/*.py file, so the
+# analyzer identity must cover that exact same source set.  A hand-maintained
+# subset let a dirty kernel/routing/CLI file change the exact-vs-posterior
+# classification while _analyzer_identity() still reported a clean checkout.
+_RUNTIME_CODE_FILES = tuple(
+    f"CODE/leo_sim/{path.name}" for path in sorted(
+        (Path(__file__).resolve().parents[1] / "leo_sim").glob("*.py"))
+)
 ANALYZER_FILES = (
+    "CODE/__init__.py",
+    "CODE/experiment_platform/__init__.py",
+    "CODE/work/__init__.py",
     "CODE/experiment_platform/v2_analysis.py",
+    # Imported and CALLED by this module: authorize_experiment decides formal
+    # eligibility (the `authorized` block) and primary_metrics defines the
+    # metric vocabulary the analysis gates on.  Leaving them out meant a dirty
+    # worktree in either file could change the verdict while the identity
+    # report still said the listed code was clean.
+    "CODE/experiment_platform/authorize_experiment.py",
+    "CODE/experiment_platform/primary_metrics.py",
+    # authorize_experiment imports these two; finalize_decision DECIDES the
+    # verdict and compile_experiment defines the execution boundary it is
+    # judged against, so both can change the outcome without touching a file
+    # listed here.  Adding only the direct imports left the transitive
+    # dependency open.
+    "CODE/work/finalize_decision.py",
+    # evaluate_decision() reads these schemas when it decides whether the
+    # work package is acceptable.  They are verdict-changing authorization
+    # inputs even though they are not Python modules.
+    "CODE/work/work-package.schema.json",
+    "CODE/work/review-receipt.schema.json",
+    "CODE/work/decision.schema.json",
+    "CODE/experiment_platform/compile_experiment.py",
     "CODE/experiment_platform/isl_pressure.py",
     "CODE/experiment_platform/isl_pressure_decision.py",
     "CODE/experiment_platform/fold_decision_ledger.py",
@@ -87,10 +124,26 @@ ANALYZER_FILES = (
     "CODE/leo_sim/coverage.py",
     "CODE/leo_sim/counterfactual.py",
     "CODE/leo_sim/decision_ledger.py",
+    # These modules are imported as part of the verifier's runtime closure
+    # (config/trace/fates/grid/link_budget/population/rng).  Omitting them let
+    # a dirty checkout change artifact verification while the analyzer identity
+    # still claimed the listed files were clean.
+    "CODE/leo_sim/config.py",
+    "CODE/leo_sim/fates.py",
+    "CODE/leo_sim/governance.py",
+    "CODE/leo_sim/grid.py",
+    "CODE/leo_sim/link_budget.py",
+    "CODE/leo_sim/matrix.py",
     "CODE/leo_sim/metrics.py",
+    "CODE/leo_sim/population.py",
     "CODE/leo_sim/receipt.py",
+    "CODE/leo_sim/rng.py",
     "CODE/leo_sim/scene_check.py",
+    "CODE/leo_sim/trace.py",
+    "CODE/leo_sim/trace_family.py",
+    *_RUNTIME_CODE_FILES,
 )
+ANALYZER_FILES = tuple(dict.fromkeys(ANALYZER_FILES))
 GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 
@@ -199,15 +252,29 @@ def _verify_external_witness(
         witness_root, run_id,
         launch_nonce=expected_nonce if external_witness_by_nonce else None)
     witness = _read_json(path)
-    if not isinstance(witness, dict) or witness.get("schema") != EXTERNAL_STATUS_SCHEMA:
+    if not isinstance(witness, dict):
+        raise V2AnalysisError(f"{run_id} external launch witness schema mismatch")
+    if witness.get("schema") == EXTERNAL_STATUS_SCHEMA_V2_LEGACY:
+        raise V2AnalysisError(
+            f"{run_id} legacy external launch witness v2 has no formal-witness "
+            "anchor and is historical-only")
+    if witness.get("schema") != EXTERNAL_STATUS_SCHEMA:
         raise V2AnalysisError(f"{run_id} external launch witness schema mismatch")
     if witness.get("status") != "success" or witness.get("exit_code") != 0:
         raise V2AnalysisError(f"{run_id} external launch witness is not successful")
     expected_auth = authorized.get("authorization_sha256")
+    expected_config = formal.get("config_sha256")
+    for label, value in (
+            ("authorization_sha256", witness.get("authorization_sha256")),
+            ("config_sha256", witness.get("config_sha256"))):
+        if not isinstance(value, str) or _SHA256_HEX.fullmatch(value) is None:
+            raise V2AnalysisError(
+                f"{run_id} external launch witness {label} is not a well-formed digest")
     if any(witness.get(key) != expected for key, expected in {
             "launch_nonce": expected_nonce,
             "run_id": run_id,
             "authorization_sha256": expected_auth,
+            "config_sha256": expected_config,
     }.items()):
         raise V2AnalysisError(f"{run_id} external launch witness identity mismatch")
     remote_result = witness.get("last_results_dir")
@@ -456,7 +523,7 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
     if receipt_schema in receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY:
         # V5 and V6 share the witness contract: V6 only ADDS stream bindings
         # on top of V5, so it is current evidence, not a legacy schema.
-        expected_governance_schema = GOVERNANCE_SCHEMA_V2
+        expected_governance_schema = GOVERNANCE_SCHEMA_V3
     elif receipt_schema in {receipt_mod.LEGACY_RECEIPT_SCHEMA,
                             receipt_mod.LEGACY_RECEIPT_SCHEMA_V4}:
         # Historical v3/v4 artifacts remain readable, but never inherit the
@@ -467,6 +534,10 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
         expected_governance_schema = GOVERNANCE_SCHEMA_V1
     else:
         raise V2AnalysisError(f"{run_id} receipt schema is not a supported formal branch")
+    if governed.get("schema") == GOVERNANCE_SCHEMA_V2_LEGACY:
+        raise V2AnalysisError(
+            f"{run_id} legacy governance receipt v2 has no formal_run_sha256 "
+            "anchor and is historical-only")
     if governed.get("schema") != expected_governance_schema:
         raise V2AnalysisError(f"{run_id} governance receipt schema mismatch")
     if governed.get("run_id") != run_id or governed.get("research_eligible") is not True \
@@ -474,7 +545,7 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
         raise V2AnalysisError(f"{run_id} governance receipt is not eligible")
     if governed.get("authorization_sha256") != authorized.get("authorization_sha256"):
         raise V2AnalysisError(f"{run_id} governance authorization hash mismatch")
-    if expected_governance_schema == GOVERNANCE_SCHEMA_V2:
+    if expected_governance_schema == GOVERNANCE_SCHEMA_V3:
         _verify_governance_identity(
             run_id, governed, authorized, expected_deployment)
     receipt_sha = file_sha256(paths["receipt.json"])
@@ -497,7 +568,7 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
         raise V2AnalysisError(
             f"{run_id} result identity mismatch: "
             + ", ".join(identity_mismatches))
-    if expected_governance_schema == GOVERNANCE_SCHEMA_V2:
+    if expected_governance_schema == GOVERNANCE_SCHEMA_V3:
         expected_binding = {
             # The witness must name the schema of the receipt it witnesses.
             # Hardcoding one version here is exactly how V6 would silently
@@ -508,6 +579,7 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
             "trace_manifest_schema": docs["manifest.json"].get("schema"),
             "trace_identity_contract": receipt.get("trace_identity_contract"),
             "trace_manifest_sha256": file_sha256(paths["manifest.json"]),
+            "formal_run_sha256": file_sha256(paths["formal_run.json"]),
         }
         if any(governed.get(key) != value
                for key, value in expected_binding.items()):
@@ -518,6 +590,17 @@ def _verify_result(root: Path, results_root: Path, witness_root: Path,
             external_witness_by_nonce=external_witness_by_nonce)
     else:
         external_witness = None
+    if receipt_schema in receipt_mod.RECEIPT_SCHEMAS_V5_FAMILY:
+        require_formal_streams = (
+            expected_governance_schema == GOVERNANCE_SCHEMA_V3)
+        stream_errors = receipt_mod.verify_receipt_streams(
+            str(result_dir),
+            require_streams=require_formal_streams,
+            require_formal_witness=require_formal_streams)
+        if stream_errors:
+            raise V2AnalysisError(
+                f"{run_id} receipt stream verification failed: "
+                f"{'; '.join(stream_errors)}")
     # Artifact integrity: full recomputation of receipt/manifest/trace/
     # config/ledgers/fates/totals/conservation/mechanisms WITHOUT the
     # local==runtime gate.  Any artifact anomaly fails closed regardless of
@@ -745,7 +828,7 @@ def _verify_authorization_bound(
     No current-code identity is recomputed or trusted here.  This function
     is deliberately private and its return value is NOT an evidence
     verdict: ``analyze()`` still requires the full formal witness +
-    governance receipt v2 + external launch witness + receipt cross-hash
+    governance receipt v3 + external launch witness + receipt cross-hash
     chain in ``_verify_result``, which rejects any identity that the
     historical witnesses do not bind.  Any snapshot drift fails closed with
     the original strict error preserved for the record.

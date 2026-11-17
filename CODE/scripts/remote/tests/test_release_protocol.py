@@ -1083,3 +1083,37 @@ def test_failed_pullback_is_quarantined_before_a_clean_retry(tmp_path: Path) -> 
     quarantined = list((evidence_root / ".quarantine").glob("retry-001.*.partial"))
     assert len(quarantined) == 1
     assert quarantined[0].is_dir()
+
+
+def test_run_exits_non_zero_when_the_child_did_not_complete(monkeypatch):
+    """A recorded failure must reach the caller's exit code.
+
+    run_release writes status/exit_code into the receipt, but the CLI printed
+    the result and returned 0, so run-release-remote.sh (which only checks
+    `|| die`) treated a failed attempt as success.
+    """
+    from CODE.scripts.remote import release_protocol as protocol
+
+    monkeypatch.setattr(protocol, "run_release", lambda *a, **k: {
+        "schema": protocol.RUN_RECEIPT_SCHEMA,
+        "run_id": "run-x",
+        "status": "failed",
+        "exit_code": 17,
+    })
+    argv = ["run", "--release-id", "r1", "--run-id", "run-x",
+            "--mode", "diagnostic", "--", "python", "-c", "raise SystemExit(17)"]
+    assert protocol.main(argv) == 3
+
+
+def test_run_exits_zero_only_when_the_child_completed(monkeypatch):
+    from CODE.scripts.remote import release_protocol as protocol
+
+    monkeypatch.setattr(protocol, "run_release", lambda *a, **k: {
+        "schema": protocol.RUN_RECEIPT_SCHEMA,
+        "run_id": "run-y",
+        "status": "completed",
+        "exit_code": 0,
+    })
+    argv = ["run", "--release-id", "r1", "--run-id", "run-y",
+            "--mode", "diagnostic", "--", "python", "-c", "pass"]
+    assert protocol.main(argv) == 0

@@ -1708,6 +1708,13 @@ def main(argv: list[str] | None = None) -> int:
                                             expected_release_id=args.release_id)
             append_deployment_index(repo_root, verified, Path(result["path"]))
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        # A completed attempt is not the same as a successful one. The receipt
+        # records the child status, but returning 0 here made every caller
+        # (`run-release-remote.sh` checks `|| die`) treat a failed attempt as
+        # successful. Mirror a failed child in the command exit code.
+        status = result.get("status") if isinstance(result, dict) else None
+        if args.command == "run" and status != "completed":
+            return 3
         return 0
     except (OSError, ValueError, tarfile.TarError, json.JSONDecodeError, EOFError) as exc:
         print(f"release_protocol: {exc}", file=sys.stderr)

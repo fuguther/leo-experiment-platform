@@ -231,9 +231,11 @@ def test_missing_local_evidence_is_only_a_warning_and_read_only_check_changes_no
     evidence_root = tmp_path / "missing-evidence-root"
     result = _run(repo, "--verify-evidence", "--evidence-root", str(evidence_root))
 
-    assert result.returncode == 0
+    assert result.returncode == 1
     report = _report(result)
     assert not report["errors"]
+    assert report["summary"]["evidence_verification"] == "PARTIAL"
+    assert report["checked"]["evidence_unverified_runs"] == ["run-001"]
     assert any("evidence" in warning.lower() and "missing" in warning.lower()
                for warning in report["warnings"])
     after = {
@@ -250,15 +252,20 @@ def test_opaque_evidence_uri_requires_explicit_external_root_for_verification(tm
     index.write_text(json.dumps(_index_row()) + "\n", encoding="utf-8")
 
     unconfigured = _run(repo, "--verify-evidence")
-    assert unconfigured.returncode == 0, unconfigured.stderr
+    assert unconfigured.returncode == 1, unconfigured.stderr
+    unconfigured_report = _report(unconfigured)
+    assert unconfigured_report["summary"]["evidence_verification"] == "PARTIAL"
     assert any("evidence root" in warning.lower()
-               for warning in _report(unconfigured)["warnings"])
+               for warning in unconfigured_report["warnings"])
 
     evidence_root = tmp_path / "evidence"
     evidence_root.mkdir()
     missing = _run(repo, "--verify-evidence", "--evidence-root", str(evidence_root))
-    assert missing.returncode == 0, missing.stderr
-    assert any("missing" in warning.lower() for warning in _report(missing)["warnings"])
+    assert missing.returncode == 1, missing.stderr
+    missing_report = _report(missing)
+    assert missing_report["summary"]["evidence_verification"] == "PARTIAL"
+    assert any("missing" in warning.lower()
+               for warning in missing_report["warnings"])
 
 
 def test_deployment_index_rejects_local_paths_in_evidence_uri(tmp_path: Path) -> None:
@@ -328,3 +335,27 @@ def test_invalid_utf8_deployment_index_is_reported_without_crashing(tmp_path: Pa
     report = _report(result)
     assert any("utf-8" in error.lower() for error in report["errors"])
     assert "Traceback" not in result.stderr
+
+
+def test_failed_verification_is_not_reported_as_complete_coverage(tmp_path: Path) -> None:
+    """A run whose receipt cannot be verified must not read as COMPLETE.
+
+    The state was derived from "was anything missing", so an evidence directory
+    that existed but failed verification produced
+    local_receipts_verified=0 together with evidence_verification=COMPLETE.
+    """
+    repo = _repo(tmp_path)
+    evidence_parent = tmp_path / "evidence"
+    broken = evidence_parent / "run-001"
+    broken.mkdir(parents=True)          # directory exists, receipt does not
+    row = _index_row(receipt_sha256="0" * 64)
+    index = repo / "ANALYSIS" / "DEPLOYMENT-INDEX.jsonl"
+    index.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    result = _run(repo, "--verify-evidence",
+                  "--evidence-root", str(evidence_parent))
+    assert result.returncode == 1
+    report = _report(result)
+    assert report["summary"]["evidence_verification"] == "FAILED"
+    assert report["checked"]["local_receipts_verified"] == 0
+    assert report["checked"]["evidence_failed_runs"] == ["run-001"]

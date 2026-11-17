@@ -18,7 +18,7 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: ccb7b20a0d0e97f2d55e575f01ac1caea8bded999dcc808cf273064f481f21af
+    execution_chain_sha256: fe32007e3d84dfbfe05e061ed111b4b3086f8e12f527a84b0f52cdf8f5782ca3
     cell_input_sha256:
       b-bounded_population_cost_smoke-network-seed-7: 9595d6babaade0c6f3841825b14af70ab16bf85b9f965102444fe1fedc438b12
   release_ready: false
@@ -44,13 +44,63 @@ design_readiness:
     f70251c8 -> 9595d6ba only because the driver (t1_tasks.py) is part of the
     compiled input identity. No configuration or identity drift is hidden by
     this pin; the diff was recomputed from the branch, not copied from a run.
+    ROUND12 (2026-11-17) re-binds the same one-cell/four-call scope to the
+    verification-hardening patch on main. The chain moves ccb7b20a -> 8291d73c
+    because receipt-stream verification, formal-witness enforcement, analyzer
+    identity closure, and maintenance evidence reporting are identity-bound.
+    Profile, population raster, seed, arm order, cell input, budgets, and
+    simulation semantics are unchanged. No cost probe or performance simulation
+    was run by this re-pin.
+    ROUND13 (2026-11-17) re-binds the same one-cell/four-call scope after an
+    independent review of PR-24. The chain moves 8291d73c -> 41352228 because
+    the follow-up adds the complete runtime analyzer import closure and makes
+    incomplete V6 stream verification, partial evidence verification, malformed
+    formal-witness bindings, and non-boolean conservation verdicts fail closed.
+    Profile, population raster, seed, arm order, cell input, budgets, and
+    simulation semantics are unchanged. No cost probe or performance simulation
+    was run by this re-pin.
+    ROUND14 (2026-11-17) closes the remaining independent-review blockers. The
+    chain moves 41352228 -> 4d25da98 because governance, matrix and
+    trace_family are now identity-bound runtime modules and the formal
+    analyzer requires receipt stream verification. Profile, population raster,
+    seed, arm order, cell input, budgets, and simulation semantics remain
+    unchanged. No cost probe or performance simulation was run by this re-pin.
+    ROUND15 (2026-11-17) closes the actual independent-review findings on
+    PR-24. The chain moves 4d25da98 -> 313bcfe9 because analyzer identity now
+    covers every leo_sim/*.py input hashed by receipt.code_sha256() and the
+    three authorization schemas, while the VM, pullback and analyzer share a
+    fail-closed formal timeline digest check. Profile, population raster,
+    compiled trace, seed, arm order, cell input, budgets, and simulation
+    semantics remain unchanged. No cost probe or performance simulation was
+    run by this re-pin.
+    ROUND16 (2026-11-17) closes the remaining independent-review trust-chain
+    findings. The chain moves 313bcfe9 -> af5c60be because a formal_run.json
+    digest is now anchored in the governance receipt/external witness, and
+    executed Python package initializers are included in analyzer identity.
+    Profile, population raster, compiled trace, seed, arm order, cell input,
+    four-call budget, and simulation semantics remain unchanged. No cost probe
+    or performance simulation was run by this re-pin.
+    ROUND17 (2026-11-17) versions the strengthened witness contract. The chain
+    moves af5c60be -> b1a0ac0e because Governance receipt and External launch
+    status move from v2 to v3, making formal_run_sha256 a mandatory field and
+    classifying v2 evidence as historical-only. Profile, population raster,
+    compiled trace, seed, arm order, cell input, four-call budget, and
+    simulation semantics remain unchanged. No cost probe or performance
+    simulation was run by this re-pin.
+    ROUND18 (2026-11-17) closes the final independent-review consistency gaps.
+    The chain moves b1a0ac0e -> fe32007e because trace_manifest_schema is now
+    cross-bound to manifest.json and post-run governance uses the startup,
+    hash-verified authorization snapshot rather than re-reading a mutable file.
+    Profile, population raster, compiled trace, seed, arm order, cell input,
+    four-call budget, and simulation semantics remain unchanged. No cost probe
+    or performance simulation was run by this re-pin.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: ccb7b20a0d0e97f2d55e575f01ac1caea8bded999dcc808cf273064f481f21af
+  source_execution_chain_sha256: fe32007e3d84dfbfe05e061ed111b4b3086f8e12f527a84b0f52cdf8f5782ca3
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:

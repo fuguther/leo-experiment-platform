@@ -3,6 +3,7 @@ name: test
 on:
   push:
     branches: [main]
+  # Keep pull_request unfiltered: stacked PRs also need an exact-head check.
   pull_request:
 
 # 故意不取消进行中的运行。
@@ -26,4 +27,4 @@ jobs:
       - name: Run read-only repository maintenance check
         run: python -B CODE/scripts/maintenance_check.py --repo .
       - name: Run test suite
-        run: python -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests CODE/scripts/remote/tests ANALYSIS/tests -q
+        run: python -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests CODE/scripts/tests CODE/scripts/remote/tests ANALYSIS/tests -q

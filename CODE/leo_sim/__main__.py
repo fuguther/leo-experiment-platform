@@ -660,11 +660,52 @@ def _cmd_run(args) -> int:
 
 
 def _cmd_receipt_verify(args) -> int:
+    """Verify a run directory, resolving each bound stream INDEPENDENTLY.
+
+    A V6 receipt names two evidence streams but records only their digests, not
+    their paths.  Each stream is therefore resolved on its own: an explicit
+    --decision-log / --timeline-log wins, otherwise the documented in-directory
+    file is used when present.  Deciding this per stream matters -- gating the
+    whole auto-resolution on "neither flag was given" meant that passing one
+    flag silently left the other binding unchecked, and one absent file meant
+    the present one was never verified either.
+    """
+    try:
+        rcp = json.loads(
+            (Path(args.dir) / "receipt.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        rcp = {}
+    is_v6 = isinstance(rcp, dict) and rcp.get("schema") == receipt_mod.RECEIPT_SCHEMA_V6
+
+    resolved: dict[str, str | None] = {
+        "decision_log_sha256": args.decision_log,
+        "timeline_log_sha256": args.timeline_log,
+    }
+    if is_v6:
+        for key, name in receipt_mod.STREAM_FILES.items():
+            if resolved[key] is None:
+                candidate = Path(args.dir) / name
+                if candidate.is_file():
+                    resolved[key] = str(candidate)
+
     errors = receipt_mod.verify_receipt_dir(
-        args.dir, decision_log=args.decision_log,
-        timeline_log=args.timeline_log)
+        args.dir, decision_log=resolved["decision_log_sha256"],
+        timeline_log=resolved["timeline_log_sha256"])
+
+    # Only a V6 receipt binds streams; for older schemas nothing is unverified.
+    unverified = ([key for key, path in sorted(resolved.items()) if path is None]
+                  if is_v6 else [])
     if errors:
         print(json.dumps({"status": "FAILED", "errors": errors}, indent=2))
+        return 2
+    if unverified:
+        print(json.dumps({
+            "status": "PARTIAL",
+            "dir": args.dir,
+            "unverified_stream_bindings": unverified,
+            "note": ("the receipt binds these streams but no file was found for "
+                     "them; pass --decision-log / --timeline-log to check them"),
+        }, indent=2))
         return 2
     print(json.dumps({"status": "verified", "dir": args.dir}, indent=2))
     return 0
