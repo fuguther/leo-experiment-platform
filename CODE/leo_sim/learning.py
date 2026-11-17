@@ -774,10 +774,13 @@ class TensorflowDDQN:
         decay = float(self.cfg["epsilon_decay_s"])
         if decay <= 0.0:
             return float(end)
-        progress = float(getattr(self, "decisions", 0) or 0)
-        if progress > 0:
-            rate = float(self.cfg.get("_decision_rate_hz") or 0.0) or 15000.0
-            return end + (start - end) * math.exp(-progress / (decay * rate))
+        # Decay within THIS episode only, driven by the scene clock.  An earlier attempt
+        # keyed epsilon on the cumulative decision count (self.decisions, which survives
+        # resume) so a chained run would not re-explore.  That inverted the schedule: after
+        # a resume the count is already in the hundreds of thousands, epsilon collapsed to
+        # epsilon_end on the first decision, and the policy explored nothing.  Measured
+        # across rounds 10-13: loss 0.232 -> 0.453, hop count 5.90 -> 12.55, PDR 0.909 ->
+        # 0.645 -- diverged, not converged.
         return end + (start - end) * math.exp(-max(0.0, float(now)) / decay)
 
     @staticmethod
@@ -1331,10 +1334,13 @@ class TabularQLearning:
         decay = float(self.cfg["epsilon_decay_s"])
         if decay <= 0.0:
             return float(end)
-        progress = float(getattr(self, "decisions", 0) or 0)
-        if progress > 0:
-            rate = float(self.cfg.get("_decision_rate_hz") or 0.0) or 15000.0
-            return end + (start - end) * math.exp(-progress / (decay * rate))
+        # Decay within THIS episode only, driven by the scene clock.  An earlier attempt
+        # keyed epsilon on the cumulative decision count (self.decisions, which survives
+        # resume) so a chained run would not re-explore.  That inverted the schedule: after
+        # a resume the count is already in the hundreds of thousands, epsilon collapsed to
+        # epsilon_end on the first decision, and the policy explored nothing.  Measured
+        # across rounds 10-13: loss 0.232 -> 0.453, hop count 5.90 -> 12.55, PDR 0.909 ->
+        # 0.645 -- diverged, not converged.
         return end + (start - end) * math.exp(-max(0.0, float(now)) / decay)
 
     def choose(self, observation: np.ndarray, mask: dict, now: float) -> str:
