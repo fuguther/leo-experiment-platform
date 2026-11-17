@@ -5944,7 +5944,7 @@ class Kernel:
                                        " (resource_id+generation)")
             peer = detail.get("peer")
             rows.append({
-                "schema": "leo-sim-target-probe-decision/v1",
+                "schema": "leo-sim-target-probe-decision/v2",
                 "decision_id": decision_id,
                 "hop_index": getattr(pkt, "current_hop_index", None),
                 "pid": pkt.pid,
@@ -5952,6 +5952,7 @@ class Kernel:
                 "kind": str(kind),
                 "chosen": str(chosen),
                 "selected": bool(direction == chosen),
+                "forced": bool(decision_id is not None and decision_id in self._forced_applied),
                 "direction": str(direction),
                 "candidate_directions": [str(c) for c in candidates],
                 "t_commit_s": float(committed_at),
