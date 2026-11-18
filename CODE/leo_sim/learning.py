@@ -1657,6 +1657,20 @@ PAPER_PREDICT_TAU_S = 0.05
 # sequence.  0 disables the window and falls back to the secant.
 PAPER_PREDICT_WINDOW = 0.5
 
+# Eq.(10) exponent and Eq.(11) regulariser.
+#
+# The paper states only that beta is "a adjustable parameter" and that kappa is "a very
+# small positive constant" -- NEITHER value appears in Table I or anywhere else in the
+# text, so they cannot be reproduced, only chosen.  beta = 1 (linear) is the identity
+# reading of Eq.(10).  A beta below 1 expands the small queue differences that dominate
+# this traffic (the queue averages 0.92 packets against a full scale of 50), which is
+# the only regime in which Scheme 3's tighter neighbour estimate can outrank Scheme 2's
+# stale one: with beta = 1 the load-balancing term contributes 23% of the weighted
+# reward against the distance term's 72%, so a 48% improvement in the queue estimate
+# moves at most a quarter of the objective.
+#
+# Exposed as a run-time override so the sensitivity of the S3-vs-S2 gap to this
+# unreported constant can be measured rather than assumed.
 PAPER_REWARD_BETA = 1.0
 PAPER_REWARD_KAPPA = 1e-6
 

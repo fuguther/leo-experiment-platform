@@ -3299,7 +3299,13 @@ class Kernel:
                         _peer = -1
                     _lj = (self._learning_avg_queue_len(_peer)
                            if _peer >= 0 else 0.0)
-                    _r_q = _learning.paper_eq10_queue(_li, _lj)
+                    # Eq.(10)'s exponent is not reported in the paper, so it is a
+                    # contract parameter rather than a hard-coded constant: the
+                    # sensitivity of the S3-vs-S2 gap to it can then be measured.
+                    _beta = self.cfg_learning.get("paper_reward_beta")
+                    _r_q = (_learning.paper_eq10_queue(_li, _lj, beta=float(_beta))
+                            if _beta is not None
+                            else _learning.paper_eq10_queue(_li, _lj))
                     _hop_km = self._learning_hop_length_km(
                         pkt, _cur_sat, _peer)
                     _prev_km = (float(pkt.learning_prev_dist_km)
