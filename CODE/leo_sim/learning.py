@@ -1792,20 +1792,15 @@ def _origin_features(entry, now: float, isl_queue_cap: int,
     cap = max(1, p.get("access_slots_cap", 1))
     nvis = len(p.get("visible_cells", ()))
     aoi = max(0.0, entry.aoi(now))
-    # NORMALISE BY THE SCALE THE QUEUE ACTUALLY REACHES, NOT BY THE FULL BUFFER.
-    #
-    # The denominator was isl_queue_cap * 4 (the four directions at full buffer = 200
-    # packets), but measured at the paper operating point the advertised time-average is
-    # 0.15 packets.  The neighbour-queue dims therefore sat at 1e-4 against 0.0245 for the
-    # agent's own queue -- a 245x scale gap -- and the Eq.(10) reward and the predictor read
-    # the same compressed signal.  The network cannot learn from a feature that occupies
-    # 0.04% of its nominal range.
-    #
-    # One packet per direction is the scale a congested-but-working link actually presents,
-    # and it is the scale at which the paper's queue term (a ratio of two queue lengths) is
-    # meaningful.  The result is still bounded by 1.0 for a link that somehow saturates.
+    # Normalised by the full-buffer capacity (four directions), i.e. the fraction of L_max.
+    # NOTE: a change to a "reachable scale" denominator was tried and reverted.  It was
+    # motivated by the neighbour-queue dims reading 1e-4 against 0.0245 for the agent's own
+    # queue, but `truth_at_commit` in the decision trace showed the underlying quantity is
+    # genuinely 0 there: at ISL 60 Mbps and 18 Mbps/node every candidate direction reports
+    # `peer_egress_queue_bits: 0`.  The small number was the physics, not the scaling, so
+    # rescaling only re-labelled an empty signal.
     return np.array([
-        min(1.0, q / max(1.0, float(isl_queue_cap) / 50.0 * 4.0)),
+        q / max(1, isl_queue_cap * 4),
         used / cap,
         min(1.0, nvis / 10.0),
         min(1.0, aoi / max(entry.ttl_s, 1e-9)),
