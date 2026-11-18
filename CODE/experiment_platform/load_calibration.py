@@ -158,6 +158,7 @@ OVERRIDE_FIELDS = {
                  # ramp from a burst, so the projection is damped.  Overridable so
                  # the sensitivity of the result to this choice is measurable.
                  "paper_predict_damping",
+                 "paper_reward_beta",
                  "paper_predict_tau",
                  # value written into a masked neighbour slot.  1.0 says "loaded",
                  # 0.0 says "free"; both are CONSTANT signals, so this separates
