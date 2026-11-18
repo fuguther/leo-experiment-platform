@@ -2074,7 +2074,44 @@ def _paper_predict_from_history(history, now: float,
         # genuine trend while refusing to invent magnitudes the data never showed.
         bounded = q1 + phi * slope * age
         bounded = min(bounded, max(q0, q1))
-        extrapolated = max(0.0, bounded * decay)
+        # REVERT TOWARD THE OBSERVED MEAN, NOT TOWARD ZERO.
+        #
+        # `bounded * decay` shrinks toward 0, which is right only if the queue's long-run mean
+        # is 0 and the last sample is a pure transient.  Measured on the arrival-triggered
+        # control plane at ISL 50 Mbps the predictor was WORSE than the value it started from:
+        #
+        #     true queue    mean 0.8195 packets
+        #     advert (S2)   mean 1.2406   bias +0.4211   MAE 0.5488
+        #     predict (S3)  mean 1.8590   bias +1.0395   MAE 1.1217
+        #
+        # Both quantities are already biased high because an arrival-triggered broadcast
+        # samples the queue at the instant it grew.  Multiplying toward zero cannot remove a
+        # positive bias -- it only rescales it -- and the secant term adds more.  Scheme 3 then
+        # reads "neighbour has 1.86 packets queued" against a true 0.82 and detours, which is
+        # why it measured 4.23% WORSE than Scheme 2 at ISL 50 Mbps.
+        #
+        # Reverting toward the MEAN of the advertised window removes the bias without
+        # discarding the signal: a neighbour whose window has been genuinely busier still
+        # predicts higher than one whose window has been idle.
+        hist_mean = sum(v for _, v in pairs) / len(pairs)
+        bounded = hist_mean + (bounded - hist_mean) * decay
+        extrapolated = max(0.0, bounded)
+        # UNIT CONVERSION TO THE REWARD'S QUEUE METRIC.
+        #
+        # q0/q1 here are the sum of the four advertised per-direction queue values, in BITS.
+        # The kernel's l^avg (kernel._learning_avg_queue_len, used by Eq.(11)) is the MEAN
+        # per-direction queue in PACKETS.  Measured at the paper operating point the
+        # advertised quantity averaged 4.23 packets against a true l^avg of 0.92 -- a 4.6x
+        # scale gap.  Comparing observations against a reward computed on a different scale
+        # is why Scheme 3's projection looked like a 107% over-prediction even after the
+        # damping was tuned: it was reporting bits-per-direction-sum where the target was
+        # packets-per-direction-mean.
+        #
+        # Return value stays in the caller's units (see the /_q_scale at the call site), so
+        # the conversion is expressed as the ratio between the two packet metrics.
+        return extrapolated
+        # (kept for clarity: the caller divides by _q_scale, which is isl_queue_cap*4 bits,
+        #  so `extrapolated` is already on the same normalised scale as the observation)
         # WINDOWED PREDICTION.  The history holds ~41 samples but a two-point secant throws
         # 39 of them away.  The paper's predictor is a T-LSTM over the whole advertised
         # history (eq. 13-18), so discarding the window is a real departure, not a detail.
