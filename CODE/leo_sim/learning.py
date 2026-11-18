@@ -2093,8 +2093,24 @@ def _paper_predict_from_history(history, now: float,
         # Reverting toward the MEAN of the advertised window removes the bias without
         # discarding the signal: a neighbour whose window has been genuinely busier still
         # predicts higher than one whose window has been idle.
-        hist_mean = sum(v for _, v in pairs) / len(pairs)
-        bounded = hist_mean + (bounded - hist_mean) * decay
+        # AN ARRIVAL-TRIGGERED BROADCAST ONLY EVER SAMPLES THE QUEUE WHEN IT GREW.
+        #
+        # Reverting toward the window MEAN made the bias worse, not better: measured at
+        # ISL 50 Mbps the predictor's bias went from +1.04 to +2.07 packets.  The reason is
+        # structural.  Section III-B triggers the broadcast on packet ARRIVAL, so every
+        # sample in the window was taken at the instant the queue grew -- the window mean is
+        # a mean of PEAK samples (1.27 packets advertised against a true 0.85), not the
+        # queue's long-run level.  Reverting toward a peak mean reverts toward a peak.
+        #
+        # The queue spends most of its time far below what it advertises, so the honest
+        # reference level is a LOW quantile of the window: it is what the queue reads when it
+        # is not mid-burst, and it is the level a drained neighbour will actually present.
+        # A neighbour whose low quantile is genuinely higher still predicts higher than an
+        # idle one, so the ordering signal survives.
+        levels = sorted(v for _, v in pairs)
+        ref_index = max(0, min(len(levels) - 1, int(0.25 * (len(levels) - 1))))
+        ref_level = levels[ref_index]
+        bounded = ref_level + (bounded - ref_level) * decay
         extrapolated = max(0.0, bounded)
         # UNIT CONVERSION TO THE REWARD'S QUEUE METRIC.
         #
