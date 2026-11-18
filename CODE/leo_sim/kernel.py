@@ -923,6 +923,14 @@ class ISLLink:
         self.ctrl_q: deque[ControlPacket] = deque()
         self.data_bits = 0
         self.ctrl_bits = 0
+        # Time-averaged occupancy.  The paper calls its metric l^avg ("average queue length"),
+        # but `data_bits` is an INSTANTANEOUS reading, and an arrival-triggered broadcast
+        # samples it at the one instant the queue grew.  Measured at 18 Mbps the advertised
+        # value is non-zero only 0.46% of the time, which is why the observation's neighbour
+        # queue dims (7/12/17/22) sat at 0.0001 with a maximum of one packet.
+        self._area_bits_s = 0.0      # integral of occupancy over time
+        self._area_last_t = None     # last sample time for the integral
+        self._area_born_t = None     # first sample time (denominator origin)
         self.data_area = QueueArea()
         self.ctrl_area = QueueArea()
         self.wake = kern.env.event()
@@ -3969,6 +3977,23 @@ class Kernel:
         and waiting time. An active service without a recorded start rate stays
         unknown rather than becoming zero.
         """
+        # Time-average the occupancy instead of reporting one instant.  The paper's metric is
+        # l^avg, and an arrival-triggered broadcast samples `data_bits` at the single instant
+        # a packet arrived: measured at 18 Mbps the advertised value is non-zero 0.46% of the
+        # time, so every downstream consumer (observation dims 7/12/17/22, the Eq.(10) queue
+        # reward, the predictor's history) was working with a signal that is almost always
+        # zero.  Integrating the occupancy between adverts and dividing by the elapsed time
+        # gives the quantity the name promises, and is what the predictor can actually
+        # extrapolate.
+        _now_avg = float(now)
+        if link._area_born_t is None:
+            link._area_born_t = _now_avg
+        if link._area_last_t is not None:
+            _dt = max(0.0, _now_avg - link._area_last_t)
+            link._area_bits_s += float(link.data_bits + link.ctrl_bits) * _dt
+        link._area_last_t = _now_avg
+        _elapsed = max(1e-9, _now_avg - float(getattr(link, "_area_born_t", _now_avg)))
+        averaged_bits = link._area_bits_s / _elapsed
         queued_bits = int(link.data_bits + link.ctrl_bits)
         try:
             rate = float(self._link_rate("isl", float(now), link.sat,
@@ -4001,7 +4026,11 @@ class Kernel:
                       float(queued_bits) + float(active_bits))
         return {
             "peer": int(link.peer),
-            "value": queued_bits,
+            # l^avg: the time-averaged occupancy, not one instant's reading.  See the
+            # integration above -- with the instantaneous value this field was non-zero
+            # only 0.46% of the time, so the neighbour-queue dims, the Eq.(10) reward and
+            # the predictor's history were all reading a signal that was almost always 0.
+            "value": int(round(averaged_bits)),
             "generation": int(link.gen),
             "rate_bps": rate,
             "work_ahead_bits_proxy": work_ahead,
