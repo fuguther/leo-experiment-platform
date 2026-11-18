@@ -2141,7 +2141,18 @@ def _paper_predict_from_history(history, now: float,
         # Final cap: the estimate may not exceed a small multiple of the reference level
         # plus one packet, so an extreme sample can lift the prediction off the reference
         # but cannot manufacture a backlog the queue never sustained.
-        ceiling = 4.0 * ref_level + 1.0
+        # The reference level is itself drawn from ADVERT samples, and every advert sample is
+        # taken at an arrival, so even the low quantile of an arrival-triggered window sits
+        # above the queue's true level.  A ceiling proportional to that reference therefore
+        # inherits the bias: with ref_level near 2.5 packets the estimate still averaged 2.74
+        # against a true 0.92.
+        #
+        # The estimator is therefore anchored to the ABSOLUTE packet scale instead: an
+        # arrival-triggered broadcast in this regime describes a queue that is near-empty
+        # between bursts, so the projection is held within a couple of packets of the
+        # reference no matter what the raw secant says.  The ordering signal survives because
+        # a busier window still yields a higher reference than an idle one.
+        ceiling = min(2.0 * ref_level, ref_level + 2.0)
         bounded = min(bounded, ceiling)
         extrapolated = max(0.0, bounded)
         # UNIT CONVERSION TO THE REWARD'S QUEUE METRIC.
