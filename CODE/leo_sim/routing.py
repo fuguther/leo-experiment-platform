@@ -172,7 +172,8 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
                     reverse_adj: dict | None = None,
                     sorted_adj: dict | None = None,
                     rate_from_propagation=None,
-                    cache_hops: int | None = None) -> tuple[list[str], str]:
+                    cache_hops: int | None = None,
+                    deadline_s: float | None = None) -> tuple[list[str], str]:
     """Return (ordered candidate directions, status).
 
     status: "ok" (candidates non-empty), "no_info" (no destination
@@ -181,9 +182,41 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
     (serve_cells) count as legal egress; mere visibility is not enough.
     """
     if policy not in (
-            "hop", "delay", "capacity", "oracle",
+            "hop", "delay", "capacity", "deadline_capacity", "oracle",
             "info_queue", "info_physical"):
         raise ValueError(f"unknown routing policy {policy!r}")
+
+    # This is an explicit policy portfolio, not a new physical mechanism.
+    # It reuses the existing hop and capacity policies.  When the packet's
+    # remaining deadline is short, it uses hop order first (fewer relays);
+    # otherwise it uses the queue-aware capacity order first.  The second
+    # policy is retained only as tie-break/fallback candidates.
+    if policy == "deadline_capacity":
+        common = dict(
+            sat=sat, dst_cell=dst_cell, now=now, geometry=geometry, topo=topo,
+            cache=cache, own_queue_bits=own_queue_bits,
+            isl_rate_bps=isl_rate_bps, prop_delay=prop_delay,
+            oracle_targets=oracle_targets, best_only=False,
+            reverse_adj=reverse_adj, sorted_adj=sorted_adj,
+            rate_from_propagation=rate_from_propagation,
+            cache_hops=cache_hops, deadline_s=None)
+        hop_dirs, hop_status = choose_next_hop("hop", **common)
+        cap_dirs, cap_status = choose_next_hop("capacity", **common)
+        if hop_status == "no_info" and cap_status == "no_info":
+            return [], "no_info"
+        slack = (float(deadline_s) - float(now)
+                 if deadline_s is not None else float("inf"))
+        primary, secondary = ((hop_dirs, cap_dirs)
+                              if slack <= 5.0 else (cap_dirs, hop_dirs))
+        merged = []
+        for direction in (*primary, *secondary):
+            if direction not in merged:
+                merged.append(direction)
+        if not merged:
+            if hop_status == "unreachable" and cap_status == "unreachable":
+                return [], "unreachable"
+            return [], "no_info"
+        return merged, "ok"
 
     if policy == "oracle":
         # analysis upper bound: caller passes the true current serving sats.
@@ -244,7 +277,7 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
         def fwd_cost(a, b):
             value = observed_propagation(a, b)
             return float("inf") if value is None else value
-    else:  # capacity
+    else:  # capacity / deadline_capacity
         def fwd_cost(a, b):
             c = observed_propagation(a, b)
             if c is None:
@@ -309,7 +342,11 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
             w = fwd_cost(sat, n)
         total = w + dist.get(n, float("inf"))
         if total < float("inf"):
-            scored.append((total, d))
+            score = total
+            if policy == "deadline_capacity" and deadline_s is not None:
+                slack = max(0.0, float(deadline_s) - float(now))
+                score = total + max(0.0, total - slack) * 1e6
+            scored.append((score, total, d))
     if not scored and policy == "info_physical":
         # A temporary zero-rate/geometry outage must still enter the kernel's
         # holding/re-decision path. Returning no candidates would be decoded
@@ -317,15 +354,15 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
         # every topologically reachable first hop as a deferred fallback;
         # the kernel performs the authoritative availability check.
         scored = [
-            (1e300, d) for d, n in sorted(topo.get(sat, {}).items())
+            (1e300, 1e300, d) for d, n in sorted(topo.get(sat, {}).items())
             if dist.get(n, float("inf")) < float("inf")
         ]
-    scored.sort(key=lambda x: (x[0], x[1]))
+    scored.sort(key=lambda x: (x[0], x[1], x[2]))
     if best_only and scored:
         best = scored[0][0]
         scored = [item for item in scored
                   if abs(item[0] - best) <= 1e-12 * max(1.0, abs(best))]
-    return [d for _c, d in scored], "ok"
+    return [d for _score, _total, d in scored], "ok"
 
 
 def _dir_of(topo, a, b):

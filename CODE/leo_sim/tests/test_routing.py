@@ -115,6 +115,34 @@ def test_capacity_policy_avoids_advertised_congestion():
     assert dirs[0] == "N"  # path via 2: sat1's E queue is advertised congested
 
 
+def test_deadline_capacity_is_documented_hop_capacity_portfolio():
+    """Not a new mechanism: short slack uses hop order, long slack capacity."""
+    geo = StaticGeometry(4, neighbors_map=DIVERGE)
+    topo = _topo(geo)
+    cache = _cache_with([
+        (3, {"visible_cells": [B], "isl_queue_bits": {},
+             "isl_propagation_s": {"W": {"peer": 1, "value": 0.001},
+                                   "S": {"peer": 2, "value": 0.001}}},
+         0.0, 0.01, 10.0),
+        (1, {"visible_cells": [],
+             "isl_queue_bits": {"E": {"peer": 3, "value": 900_000_000}},
+             "isl_propagation_s": {"E": {"peer": 3, "value": 0.001}}},
+         0.0, 0.01, 10.0),
+        (2, {"visible_cells": [],
+             "isl_queue_bits": {"E": {"peer": 3, "value": 0}},
+             "isl_propagation_s": {"E": {"peer": 3, "value": 0.001}}},
+         0.0, 0.01, 10.0),
+    ])
+    short, _ = routing.choose_next_hop(
+        "deadline_capacity", 0, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458, deadline_s=1.1)
+    long, _ = routing.choose_next_hop(
+        "deadline_capacity", 0, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458, deadline_s=100.0)
+    assert short[0] == "E"
+    assert long[0] == "N"
+
+
 def test_info_queue_policy_uses_only_local_first_hop_queue():
     """F0 must be a local queue/direction arm, not a remote-cache arm."""
     geo = StaticGeometry(4, neighbors_map=DIVERGE)

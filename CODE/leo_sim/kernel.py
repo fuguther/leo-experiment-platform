@@ -3453,7 +3453,8 @@ class Kernel:
                     (lambda prop_s: link_budget.mcs_rate_bps(
                         prop_s * model.C_KM_S, self.rf_isl, self.mcs_table))
                     if self.rate_model == "mcs" else None),
-                cache_hops=cache_hops)
+                cache_hops=cache_hops,
+                deadline_s=pkt.deadline)
             if status != "ok" or not cands:
                 return None, "peer_route_%s" % status
             egress = cands[0]
@@ -3681,7 +3682,8 @@ class Kernel:
                                 if self.cfg_rt["policy"] == "oracle" else None),
                 best_only=False,
                 reverse_adj=self._routing_reverse_adj,
-                sorted_adj=self._routing_sorted_rev_adj)
+                sorted_adj=self._routing_sorted_rev_adj,
+                deadline_s=pkt.deadline)
             if status == "ok" and cands:
                 egress = cands[0]
         link = self.isls[peer].get(egress) if egress is not None else None
@@ -3918,7 +3920,8 @@ class Kernel:
                     (lambda prop_s: link_budget.mcs_rate_bps(
                         prop_s * model.C_KM_S, self.rf_isl, self.mcs_table))
                     if self.rate_model == "mcs" else None),
-                cache_hops=None)
+                cache_hops=None,
+                deadline_s=pkt.deadline)
             cands = [d for d in cands if self.topo[sat][d] not in pkt.path]
             legal = self._forward_legal_now(pkt, sat, now, cands)
             if legal:
@@ -4142,7 +4145,8 @@ class Kernel:
                 (lambda prop_s: link_budget.mcs_rate_bps(
                     prop_s * model.C_KM_S, self.rf_isl, self.mcs_table))
                 if self.rate_model == "mcs" else None),
-            cache_hops=cache_hops)
+            cache_hops=cache_hops,
+            deadline_s=pkt.deadline)
         if status == "unreachable":
             self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             return
