@@ -10,7 +10,7 @@ from CODE.leo_sim import config as config_mod
 from CODE.leo_sim import kernel
 
 
-CONTRACT = study.ROOT / "CODE/work/WP-T1-COMPLETE/time_alignment_study.yaml"
+CONTRACT = study.ROOT / "EXPERIMENTS/contracts/t1-complete/time_alignment_study.yaml"
 
 
 def test_materialized_blocks_change_only_arm_and_never_call_kernel(tmp_path, monkeypatch):

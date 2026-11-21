@@ -2,7 +2,7 @@
 
 WHY THIS EXISTS
 ---------------
-The offline label builder (work/WP-T1-SCENE-CAL/build_prediction_labels.py)
+The historical offline label builder
 reconstructs the resource backlog from the run event log.  That answers "what
 will the backlog be", but it cannot prove that the predicted bits recorded in
 the decision log and the truth used as the label describe the SAME run, the

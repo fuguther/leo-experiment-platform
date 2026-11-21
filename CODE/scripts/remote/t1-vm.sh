@@ -146,7 +146,7 @@ cmd_experiment() {
     cmd_sync
     local rc=0
     cmd_run "$run_id" python3 -m CODE.experiment_platform.t1_suite compile \
-        --contract CODE/work/WP-T1-COMPLETE/contract.yaml \
+        --contract EXPERIMENTS/contracts/t1-complete/contract.yaml \
         --out "Results/$run_id/compiled" || rc=$?
     if [[ $rc -eq 0 ]]; then
         cmd_run "$run_id" python3 -m CODE.experiment_platform.t1_suite validate \

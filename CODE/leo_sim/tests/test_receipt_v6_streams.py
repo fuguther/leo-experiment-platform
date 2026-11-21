@@ -1,7 +1,7 @@
 """V6 receipt: the decision stream joins the trust chain.
 
 Covers the criteria frozen in
-CODE/work/WP-LEO-V2-T1-TRUST-CHAIN-V6/criteria.json (C3-C5, C8, C9, C11) and
+the historical trust-chain review criteria (C3-C5, C8, C9, C11) and
 guards the failure that the first V6 attempt actually hit: receipt_schema is
 dispatched at several sites, and a new version that is added to only one of
 them falls through to the legacy branch.

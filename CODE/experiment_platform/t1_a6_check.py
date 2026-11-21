@@ -32,7 +32,7 @@ from CODE.experiment_platform import artifact_identity, t1_suite, t1_tasks
 from CODE.leo_sim import config as config_mod, inference, learning
 
 SCHEMA = "t1-a6-acceptance/v1"
-CONTRACT = Path("CODE/work/WP-T1-COMPLETE/contract.yaml")
+CONTRACT = Path("EXPERIMENTS/contracts/t1-complete/contract.yaml")
 
 
 def _sha(path):

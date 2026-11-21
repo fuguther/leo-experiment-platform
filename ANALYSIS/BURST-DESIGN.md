@@ -221,7 +221,7 @@ Mode B 形状固定（B=4，W=120），只扫 `offered_mbps`：
 3. **报告有效窗占比 `f`**，并显式确认 burst 窗落在 `emission_end_s` 之内（F4）。
 4. **Mode A 必须写明"平均负载在 ±x% 内固定"**并给出各 arm 实测值。
 5. **不得**用 `t1_pressure_corridor.yaml:69-73` 的 "duty cycle" 措辞描述比特比 —— 与 goodput 利用率混淆
-   （见 `PLATFORM-AUDIT-REPORT.md` §2 L6 / §3 B5）。
+   （历史审计细节见产生该结论的 Git commit，不在活动平台树重复保存快照）。
 
 ---
 

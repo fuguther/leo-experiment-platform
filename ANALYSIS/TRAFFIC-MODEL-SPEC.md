@@ -132,7 +132,7 @@ manifest 必须带 `not_calibrated_user_demand: True` 与逐字固定的 `proven
 **T3（最高影响）**：`scene_check.verify_decision_contract` 硬绑定
 `traffic.provenance == "population_proxy"` 与 `temporal_model == "local_diurnal_cosine"`
 （`scene_check.py:278-291`），而 `scope` 硬编码 `global_populated_land`（`:250-251`、`:919`）。
-库里唯一入库的 scene-check lane（`CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/scene-decision.yaml:11-13`）
+历史 scene-check lane 的规范已收束为当前 `scene_check` 代码与测试；旧实例可从对应 Git commit 追溯
 正好满足这对耦合 —— 也就是说**当前唯一能通过场景检查的业务配置是被硬编码允许的那一种**，
 M-Lab 场景或合成场景**无法**通过该 lane 获得分类通过。
 

@@ -1,7 +1,7 @@
 """A tracked authorization that predates the current code must not be usable.
 
 The frozen tree still carries another work package's authorization
-(CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/authorization.json).  It was
+(CODE/experiment_platform/tests/fixtures/stale_authorization.json).  It was
 not added by this work and it must not be silently reusable.
 
 An independent review of 2026-09-25 sharpened this test: the refusal that
@@ -29,8 +29,8 @@ from CODE.experiment_platform import authorize_experiment
 from CODE.leo_sim import receipt
 
 ROOT = Path(__file__).resolve().parents[3]
-STALE = (ROOT / "CODE" / "work" / "WP-LEO-V2-GLOBAL-PRESSURE-BRACKET" / "R01"
-         / "authorization.json")
+STALE = (ROOT / "CODE" / "experiment_platform" / "tests" / "fixtures"
+         / "stale_authorization.json")
 
 
 def _tracked_authorizations() -> list[Path]:
@@ -67,17 +67,15 @@ def test_the_superseded_authorization_is_still_in_the_tree():
         "instead of letting the guard skip")
 
 
-def test_the_superseded_authorization_is_refused_by_the_platform():
+def test_the_superseded_authorization_is_refused_without_historical_finalization():
     payload = json.loads(STALE.read_text())
     run_id = payload["authorized_runs"][0]["run_id"]
     with pytest.raises(authorize_experiment.AuthorizationError) as caught:
         authorize_experiment.verify_authorization_for_leo_sim_v2_config(
             ROOT, STALE, STALE, run_id)
-    # Name the CLAUSE that fires, not the generic wrapper: an independent
-    # review of 2026-09-25 showed "no longer validates" alone would also hold
-    # for any other refusal raised through the same wrapper, so it did not
-    # discriminate what this test claims to pin.
-    assert "artifact hash mismatch" in str(caught.value), str(caught.value)
+    # The historical finalization file is intentionally not retained in the
+    # active platform tree.  Absence must refuse the receipt, never disarm it.
+    assert "finalization file is missing" in str(caught.value), str(caught.value)
 
 
 def test_the_superseded_authorization_also_fails_the_code_binding():

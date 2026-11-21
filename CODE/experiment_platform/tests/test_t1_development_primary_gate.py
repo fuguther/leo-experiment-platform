@@ -9,7 +9,7 @@ from CODE.experiment_platform import t1_development, t1_suite
 
 
 CONTRACT_B = (t1_suite.REPO_ROOT /
-              "CODE/work/WP-T1-COMPLETE/contract_dev_b.yaml")
+              "EXPERIMENTS/contracts/t1-complete/contract_dev_b.yaml")
 
 
 def _row(label, *, trace="a" * 64, loss=0.25, pids=(1, 2), window=(5, 20),
@@ -181,7 +181,7 @@ def test_branch_primary_gate_rejects_missing_branch_outcome_or_wrong_window():
 def test_plan_only_contract_is_rejected_before_development_outputs_are_created(
         tmp_path):
     contract = t1_suite.REPO_ROOT / \
-        "CODE/work/WP-T1-COMPLETE/contract_dev_c.yaml"
+        "EXPERIMENTS/contracts/t1-complete/contract_dev_c.yaml"
     out_dir = tmp_path / "development-run"
 
     with pytest.raises(RuntimeError, match="runtime readiness gate"):
