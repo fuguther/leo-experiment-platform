@@ -1,6 +1,6 @@
 # T1 压力窗口：解析型单 OD 走廊（实测特征化）
 
-> **SUPPORTING**；最后核验：2026-09-23。本文是 `CODE/leo_sim/profiles/t1_pressure_corridor.yaml` 的实测特征化记录，用于支撑 `T1-PRESSURE-WINDOW-PASS`。当前合同与门禁状态以 `ANALYSIS/T1-MEASUREMENT-PROTOCOL.md` 与 `EXPERIMENTS/experiment-program.yaml` 为准。
+> **SUPPORTING**；最后核验：2026-09-23。本文是 `CODE/leo_sim/profiles/t1_pressure_corridor.yaml` 的实测特征化记录，用于支撑 `T1-PRESSURE-WINDOW-PASS`。当前合同状态以 `ANALYSIS/T1-MEASUREMENT-PROTOCOL.md` 为准；工作区现态以 `STATUS.md` 和 Issue #3 为准。
 
 ## 1. 为什么需要它
 

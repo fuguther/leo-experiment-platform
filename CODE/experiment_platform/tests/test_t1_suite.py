@@ -19,10 +19,10 @@ from CODE.experiment_platform import t1_development, t1_suite, t1_tasks
 from CODE.leo_sim import trace as leo_trace
 
 ROOT = Path(__file__).resolve().parents[3]
-CONTRACT = ROOT / "CODE/work/WP-T1-COMPLETE/contract.yaml"
-C_CONTRACT = ROOT / "CODE/work/WP-T1-COMPLETE/contract_dev_c.yaml"
+CONTRACT = ROOT / "EXPERIMENTS/contracts/t1-complete/contract.yaml"
+C_CONTRACT = ROOT / "EXPERIMENTS/contracts/t1-complete/contract_dev_c.yaml"
 DEV_COST_PROBE_CONTRACT = ROOT / (
-    "CODE/work/WP-T1-COMPLETE/contract_dev_cost_probe.yaml")
+    "EXPERIMENTS/contracts/t1-complete/contract_dev_cost_probe.yaml")
 
 
 def _run(*args):
@@ -1572,7 +1572,7 @@ def test_a0_smoke_requires_real_four_arm_traffic_and_delivery():
 
 def test_a0_smoke_is_the_first_predeclared_cell_and_is_in_the_cost_bound(
         tmp_path):
-    contract_path = ROOT / "CODE/work/WP-T1-COMPLETE/contract_dev_a.yaml"
+    contract_path = ROOT / "EXPERIMENTS/contracts/t1-complete/contract_dev_a.yaml"
     bundle_dir = tmp_path / "development-bundle"
     bundle = t1_suite.compile_bundle(contract_path, bundle_dir)
     b_dev_ids = bundle["tiers"]["b_dev"]

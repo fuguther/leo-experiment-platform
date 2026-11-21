@@ -115,7 +115,7 @@ LOSS_TABLE_SCHEMA = "t1-design-loss-table/v1"
 SELECTED_DESIGN_SCHEMA = "t1-selected-design/v1"
 
 #: The five pre-declared candidates, in the contract's declared order
-#: (CODE/work/WP-T1-COMPLETE/contract.yaml -> common_horizon_dev_candidates).
+#: (EXPERIMENTS/contracts/t1-complete/contract.yaml -> common_horizon_dev_candidates).
 DECLARED_CANDIDATES = ("mean_eta_offset", "median_eta_offset", "p25_offset",
                        "p50_offset", "p75_offset")
 

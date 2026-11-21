@@ -774,7 +774,7 @@ def _validated_design_accounting(
         # exactly; the extension is shape-checked and anything else is
         # rejected.  Without this the compiler accepted a request (design block
         # present) that the analyzer then refused for every run -- the exact
-        # deferral CODE/work/WP-LEO-V2-T1-TRUST-CHAIN-V6 recorded as S-2, found
+        # deferral recorded by the historical trust-chain audit as S-2, found
         # again by the VM acceptance round on 2026-09-25.
         recomputable = {key: value for key, value in declared.items()
                         if key in expected}

@@ -24,7 +24,7 @@ from CODE.experiment_platform import scene_load_calibration as SLC  # noqa: E402
 
 PROFILE = REPO / "CODE/leo_sim/profiles/t1_scene_trunk_v1.yaml"
 BURST_PROFILE = REPO / "CODE/leo_sim/profiles/t1_scene_trunk_burst_v1.yaml"
-WORK = REPO / "CODE/work/WP-T1-SCENE-CAL"
+WORK = REPO / "EXPERIMENTS/contracts/scene-calibration"
 SPEC = WORK / "scene-spec-trunk-v1.json"
 STATIONARY_CONTRACT = WORK / "scene_calibration_stationary_20261018.json"
 BURST_CONTRACT = WORK / "scene_calibration_burst_20261018.json"

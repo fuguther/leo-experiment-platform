@@ -151,7 +151,7 @@ def test_rejects_missing_control_failure_counter():
 def test_frozen_contract_matches_analyzer_and_classifier_constants():
     root = Path(__file__).resolve().parents[3]
     contract = json.loads((
-        root / "CODE/work/WP-LEO-V2-ISL-BANDWIDTH-PILOT/R03/"
+        root / "EXPERIMENTS/contracts/isl-bandwidth/"
         "pressure-decision.json").read_text(encoding="utf-8"))
 
     window = contract["window_contract"]
@@ -194,8 +194,8 @@ def test_frozen_contract_matches_analyzer_and_classifier_constants():
         "PHYS_INVALID", "DRAIN_INCOMPLETE", "CONTROL_PRESSURE_UNBRACKETED",
         "PRESSURE_CANDIDATE", "NO_PRESSURE_PHYS_VALID",
     ]
-    runbook = (root / "EXPERIMENTS/"
-               "EXP-20260824-ISL-BANDWIDTH-PILOT-R03/RUNBOOK.md").read_text(
+    runbook = (root / "CODE/experiment_platform/tests/fixtures/"
+               "isl_bandwidth_runbook.md").read_text(
                    encoding="utf-8")
     for token in contract["canonical_invocation"]:
         assert token in runbook
