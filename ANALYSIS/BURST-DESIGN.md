@@ -185,8 +185,8 @@ Mode B 形状固定（B=4，W=120），只扫 `offered_mbps`：
 **做法**：固定 `burst_start_s` / `burst_duration_s` / `burst_multiplier` **三个字段完全不动**，
 只扫 `demand.offered_mbps` → **一条路径 → 严格单因素，可声明**。
 
-**库内既有先例**：`EXPERIMENTS/EXP-20260829-GLOBAL-PRESSURE-BRACKET-R02/request.json`
-已经只用 `demand.offered_mbps`（10/20/40/80）扫负载、且共享 `common_config` —— Mode B 的形状已经在库内成立。
+Mode B 的编译约束可直接用当前模板表达；历史实例不再作为活动文件保留。若需复核旧实例，
+应从产生它的 Git commit、run-id 与 receipt 恢复，不得把历史目录当作当前默认值。
 
 **带 burst 的骨架**（T=40，start=8，W=8，B=2 ⇒ `mean_mult=1.20`）：
 

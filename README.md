@@ -1,6 +1,6 @@
 # leo-experiment-platform
 
-LEO 路由研究的受控实验环境。当前仓库身份、工作树和待办以 [STATUS.md](STATUS.md) 和私有 Issue #3 为准；稳定工作规则见 [AGENTS.md](AGENTS.md)。
+LEO 路由研究的受控实验环境。平台当前事实与未决正确性边界见 [STATUS.md](STATUS.md)，topic 级现态见私有 Issue #3；稳定工作规则见 [AGENTS.md](AGENTS.md)。
 
 来源基线记录在 `SOURCE-COMMIT.txt`。`leo_sim/` 的代码身份由 run receipt 绑定，不以目录名或历史提交日期代替。
 
@@ -8,7 +8,7 @@ LEO 路由研究的受控实验环境。当前仓库身份、工作树和待办�
 
 | 文件 | 职责 |
 |---|---|
-| `STATUS.md` | 由 Issue #3 生成的现态视图，禁止手工追加 |
+| `STATUS.md` | 平台当前事实、已知缺口和下一步；不保存历史流水 |
 | `CHARTER.md` | 平台本体与不变式 |
 | `WORKING-MODEL.md` | 提交、复核、版本规则 |
 | `lines/` | 当前研究线与能力边界 |
@@ -56,7 +56,7 @@ EXPERIMENTS/
 ## 验收
 
 ```bash
-python3 -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests   CODE/tests CODE/scripts/tests CODE/scripts/remote/tests ANALYSIS/tests -q
+python3 -m pytest -q
 ```
 
 最小闭环：
