@@ -227,27 +227,17 @@ Mode B 的编译约束可直接用当前模板表达；历史实例不再作为�
 
 ## 7. 与既有测试的关系
 
-- `test_micro_mechanism.py:327` 的 `test_m2_burst_reverses_candidate_order_on_equal_cost_branches`
-  **并不使用** `demand.burst_*`：它把手工排定的 50 ms 包列直接注入 kernel（`:335-337`），
-  断言的是**路由队列排序**（`:359`/`:363`/`:369`/`:392`）。对混淆而言它是干净的，
-  但它**不覆盖真实 burst 旋钮**。真实旋钮的覆盖目前只是元数据回显
-  （`test_trace.py:277-281`/`:332`/`:336-339`）与配置门（`test_config.py:78-107`）；
-  **没有任何测试断言实测负载、`mean_mult` 或任何突发度统计量**。
-- `config.py:570-597` 的 fail-loud 校验（`mode=burst` 必须给出 start/duration；窗口必须与
-  `scenario.duration_s` 相交；`burst_multiplier > 0`）**不得放宽**；F4 建议的
-  `emission_end_s` 校验属新增门禁，不在本审计授权范围内。
-- 本文件**不新增任何代码**。
+- `test_micro_mechanism.py::test_m2_burst_reverses_candidate_order_on_equal_cost_branches`
+  手工注入包列，验证的是路由队列排序，不覆盖真实 burst 旋钮。
+- `test_burst_transform.py`、`test_trace.py` 和 `test_config.py` 覆盖变换、可复现性、
+  窗口合法性、实际落点与配置门；它们证明实现合同，不证明某一 burst 场景具有现实代表性。
+- `config.py` 的 fail-loud 校验不得放宽。旧实验的固定数字只按对应 commit、run-id 和
+  receipt 引用，本文件不复制其活动快照。
 
 ---
 
 ## 8. 复现命令
 
 ```bash
-cd <repo>   # MAIN_SHA 549acd8b7cb7a1bb573e7146653f55273999086d
-python3 /Users/lge/Desktop/topic/leo-runs/probe_burst.py     # §3.4 rev 1 数字
-# 完整实测（§3.1–§3.3 的 4-seed 版本）见 /Users/lge/Desktop/topic/leo-runs/audit-notes/E4-burst.md
-
-# 陷阱 F5 复现（csv 下 burst 旋钮静默失效）
-grep -n "burst_multiplier" CODE/leo_sim/trace.py            # :303 只在 burst/mlab 生效
-grep -rn "burst_multiplier" CODE/leo_sim/config.py          # :291-293 默认 2.0 恒写入 resolved
+python3 -m pytest CODE/leo_sim/tests/test_burst_transform.py   CODE/leo_sim/tests/test_trace.py CODE/leo_sim/tests/test_config.py -q
 ```
