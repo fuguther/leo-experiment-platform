@@ -17,6 +17,12 @@
 - 活动分析入口统一到 `outcome_metrics`、`time_alignment_compare`、`t1_stats` 等可复用实现；不再从目录名或历史报告推断口径。
 - 历史 deadline 文件中的旧 source hash 保持原样，因为它们是冻结契约的证据身份，不表示对应旧脚本仍是活动代码。
 
+## 活动研究边界
+
+- TAP-DAR baseline suite 是独立活动工作流（engineering-governance Issue #10），不由本仓库的活动树清理结果推断其完成或失败。
+- PCVR、TAP-DAR 训练实验、domain-map 中的 cohort/physics-residual 等候选属于算法或研究叶子；没有进入本平台主干，也不因分支存在而成为已选算法。
+- 历史 research 分支只能通过固定 commit、tag、run-id 和原始证据追溯；不得把其预测器、场景或分析器恢复为默认入口。
+
 ## 已知时间语义缺口
 
 以下问题在清理前已由代码和数据流审计指出，清理不改变其语义；在修复并有回归测试前，不应把相关边界结果当作可信科研数值。

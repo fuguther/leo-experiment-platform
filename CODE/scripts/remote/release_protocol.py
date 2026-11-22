@@ -43,12 +43,12 @@ ENVELOPE_SCHEMA = "leo-immutable-release/v1"
 MANIFEST_SCHEMA = "leo-immutable-release-manifest/v1"
 RUN_SCHEMA = "leo-release-run/v1"
 RUN_RECEIPT_SCHEMA = "leo-release-run-receipt/v1"
-T1_REQUIRED_DIRS = ("ANALYSIS", "CODE", "EXPERIMENTS", "lines")
+T1_REQUIRED_DIRS = ("ANALYSIS", "CODE", "EXPERIMENTS")
 T1_OPTIONAL_DIRS = ("docs",)
 T1_DEPLOYED_DIRS = (*T1_REQUIRED_DIRS, *T1_OPTIONAL_DIRS)
 T1_DEPLOYED_FILES = (
-    ".deployment_commit", ".gitignore", "AGENTS.md", "BACKLOG.md", "CHARTER.md",
-    "README.md", "SOURCE-COMMIT.txt", "STATUS.md", "WORKING-MODEL.md",
+    ".deployment_commit", ".gitignore", "AGENTS.md", "README.md",
+    "SOURCE-COMMIT.txt", "STATUS.md",
 )
 RELEASE_ID_RE = re.compile(r"^[0-9a-f]{40}-[0-9a-f]{64}$")
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")

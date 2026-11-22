@@ -4,12 +4,10 @@
 
 | 文件 | 职责 |
 |---|---|
-| `CURRENT-EVENT-TIMELINE.md` | 内核发出、入队、服务、传播与交付的事件顺序 |
+| `CURRENT-EVENT-TIMELINE.md` | 内核发出、决策、计算、入队、服务、传播、交付与安装的事件顺序 |
 | `T1-MEASUREMENT-PROTOCOL.md` | T1 测量口径、门禁与不可声称项 |
 | `TRAFFIC-MODEL-SPEC.md` | 流量和 OD 输入规范 |
 | `BURST-DESIGN.md` | burst 变体的设计与验证边界 |
-| `ASYNC-SCHEDULING-DESIGN.md` | 异步计算、安装和查询的设计合同 |
-| `T1-PRESSURE-WINDOW.md` | 既有压力窗口特性记录 |
 | `paired_analysis.py` | 配对证据的独立分析入口 |
 | `claims/claim.schema.json` | claim 结构合同 |
 

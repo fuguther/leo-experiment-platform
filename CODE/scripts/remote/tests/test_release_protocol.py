@@ -50,15 +50,15 @@ def _repo(path: Path, *, include_docs: bool = True) -> tuple[Path, str]:
     _git(path, "init", "-q")
     _git(path, "config", "user.name", "release test")
     _git(path, "config", "user.email", "release-test@example.invalid")
-    directories = ["ANALYSIS", "CODE", "EXPERIMENTS", "lines"]
+    directories = ["ANALYSIS", "CODE", "EXPERIMENTS"]
     if include_docs:
         directories.append("docs")
     for name in directories:
         directory = path / name
         directory.mkdir()
         (directory / ".keep").write_text(f"{name}\n", encoding="utf-8")
-    for name in (".gitignore", "AGENTS.md", "BACKLOG.md", "CHARTER.md",
-                 "README.md", "SOURCE-COMMIT.txt", "STATUS.md", "WORKING-MODEL.md"):
+    for name in (".gitignore", "AGENTS.md", "README.md",
+                 "SOURCE-COMMIT.txt", "STATUS.md"):
         (path / name).write_text(f"{name}\n", encoding="utf-8")
     (path / "README.md").write_text("from commit\n", encoding="utf-8")
     (path / "CODE" / "payload.py").write_text(
