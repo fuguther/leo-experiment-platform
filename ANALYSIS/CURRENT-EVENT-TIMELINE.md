@@ -210,7 +210,6 @@ N 个包全部被报成 `declared delivered but has no delivered event`，`check
 ## 6. 本文件的取证方式（可复现）
 
 ```bash
-cd <repo>            # MAIN_SHA = 549acd8b7cb7a1bb573e7146653f55273999086d
 git rev-parse HEAD
 grep -n "def _node_process" -A 42 CODE/leo_sim/kernel.py     # §3
 grep -n "decision_compute_s = math.fsum" CODE/leo_sim/metrics_independent.py   # §5.2

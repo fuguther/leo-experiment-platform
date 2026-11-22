@@ -2,10 +2,10 @@
 
 | 字段 | 值 |
 | --- | --- |
-| MAIN_SHA | `549acd8b7cb7a1bb573e7146653f55273999086d`（traffic 相关文件在 `fb6b1a6` 复核未变） |
-| 日期 | 2026-09-24 |
+| 初始审计基线 | `549acd8b7cb7a1bb573e7146653f55273999086d`（2026-09-24） |
+| 最近整理 | 2026-11-22 |
 | 取证 | 逐行读码 + 实跑。凡标 **[EXEC]** 者为实际执行所得，**[READ]** 为读码所得 |
-| 权威文件 | `CODE/leo_sim/trace.py`、`trace_family.py`、`population.py`、`config.py`、`scene_check.py`、`rng.py`、`CODE/data/traffic/` |
+| 权威文件 | 当前 `CODE/leo_sim/{trace,trace_family,population,config,scene_check,rng}.py` 与 `CODE/data/traffic/`；行号只作历史审计锚点 |
 
 > 本文件回答一个问题：**当前平台的"业务/流量"到底是什么，M-Lab 数据到底代表什么，因此哪些论文声明成立、哪些不成立。**
 
@@ -159,7 +159,6 @@ M-Lab 场景或合成场景**无法**通过该 lane 获得分类通过。
 ## 5. 复现命令
 
 ```bash
-cd <repo>   # MAIN_SHA 549acd8b7cb7a1bb573e7146653f55273999086d
 head -1 CODE/data/traffic/mlab_2026-05-27.csv && wc -l CODE/data/traffic/mlab_2026-05-27.csv
 grep -rn "flow_id\|flowid" CODE/ | wc -l                       # -> 0
 sed -n '690,710p' CODE/leo_sim/trace.py                        # RNG 实际消耗的两条流
