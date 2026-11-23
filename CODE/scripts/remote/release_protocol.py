@@ -393,6 +393,40 @@ def read_remote_ref_proof(path: Path) -> dict[str, Any]:
     )
 
 
+def stage_remote_proof(path: Path, data: bytes, *, releases_root: Path = RELEASE_ROOT) -> dict[str, Any]:
+    releases_root = _require_real_directory(releases_root, create=False)
+    incoming = _require_real_directory(releases_root / "incoming", create=False)
+    path = Path(os.path.abspath(path))
+    if path.parent != incoming or not path.name.endswith(".remote-proof.json"):
+        raise ValueError("staged proof must be a direct remote-proof file under releases/incoming")
+    if path.is_symlink() or path.exists():
+        raise ValueError("staged proof target already exists or is unsafe")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, "wb", closefd=False) as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+    finally:
+        os.close(fd)
+    proof = read_remote_ref_proof(path)
+    return {"status": "staged", "path": str(path), "proof_sha256": proof["proof_sha256"]}
+
+
+def remove_staged_proof(path: Path, *, releases_root: Path = RELEASE_ROOT) -> dict[str, str]:
+    releases_root = _require_real_directory(releases_root, create=False)
+    incoming = _require_real_directory(releases_root / "incoming", create=False)
+    path = Path(os.path.abspath(path))
+    if path.parent != incoming or not path.name.endswith(".remote-proof.json"):
+        raise ValueError("staged proof must be a direct remote-proof file under releases/incoming")
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("staged proof is missing or unsafe")
+    path.unlink()
+    if path.exists():
+        raise ValueError("staged proof cleanup did not remove the file")
+    return {"status": "removed", "path": str(path)}
+
+
 def verify_source_commit(repo: Path, commit: str, *, required_local_branch: str = "",
                          required_remote_ref: str = "",
                          expected_repository: str = "") -> dict[str, Any]:
@@ -1076,36 +1110,18 @@ def read_current_pointer_path(path: Path) -> dict[str, Any]:
 
 
 def write_current_pointer(release_id: str, releases_root: Path, *,
-                          remote_proof: dict[str, Any] | None = None,
-                          verify_live_remote: bool = True,
+                          remote_proof: dict[str, Any],
                           max_proof_age_seconds: int = 600) -> dict[str, Any]:
     release_id = _safe_release_id(release_id)
     releases_root = _require_real_directory(releases_root, create=False)
     release = verify_installed_release(releases_root / release_id)
-    if remote_proof is None:
-        if not verify_live_remote:
-            raise ValueError("remote main proof is required when live verification is disabled")
-        if not _live_remote_ref_matches(
-            release["repository"], release["source_git_commit"], CANONICAL_REMOTE_REF
-        ):
-            raise ValueError(f"release commit is not the live tip of {CANONICAL_REMOTE_REF}")
-        remote_proof = {
-            "schema": MAIN_REF_PROOF_SCHEMA,
-            "status": "verified",
-            "repository": release["repository"],
-            "ref": CANONICAL_REMOTE_REF,
-            "commit": release["source_git_commit"],
-            "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        }
-        remote_proof["proof_sha256"] = sha256_bytes(canonical_json(remote_proof))
-    else:
-        remote_proof = verify_remote_ref_proof(
-            remote_proof,
-            expected_repository=release["repository"],
-            expected_commit=release["source_git_commit"],
-            expected_ref=CANONICAL_REMOTE_REF,
-            max_age_seconds=max_proof_age_seconds,
-        )
+    remote_proof = verify_remote_ref_proof(
+        remote_proof,
+        expected_repository=release["repository"],
+        expected_commit=release["source_git_commit"],
+        expected_ref=CANONICAL_REMOTE_REF,
+        max_age_seconds=max_proof_age_seconds,
+    )
     pointer = _current_pointer_payload(release, remote_proof)
     pointer_path = releases_root.parent / CURRENT_POINTER_NAME
     if pointer_path.is_symlink():
@@ -2025,6 +2041,12 @@ def _parser() -> argparse.ArgumentParser:
     remote_proof.add_argument("--ref", required=True)
     remote_proof.add_argument("--expected-repository", default="")
     remote_proof.add_argument("--out", type=Path, required=True)
+    stage_proof = sub.add_parser("stage-proof", help="exclusively stage a remote proof under releases/incoming")
+    stage_proof.add_argument("--out", type=Path, required=True)
+    stage_proof.add_argument("--releases-root", type=Path, required=True)
+    remove_proof = sub.add_parser("remove-proof", help="remove one staged remote proof after verified promotion")
+    remove_proof.add_argument("--path", type=Path, required=True)
+    remove_proof.add_argument("--releases-root", type=Path, required=True)
     install = sub.add_parser("install", help="verify and atomically install a T1 release")
     install.add_argument("--bundle", type=Path, required=True)
     install.add_argument("--releases-root", type=Path, required=True)
@@ -2064,7 +2086,7 @@ def _parser() -> argparse.ArgumentParser:
     set_current = sub.add_parser("set-current", help="atomically select one verified main release")
     set_current.add_argument("--release-id", required=True)
     set_current.add_argument("--releases-root", type=Path, required=True)
-    set_current.add_argument("--remote-proof-file", type=Path)
+    set_current.add_argument("--remote-proof-file", type=Path, required=True)
     verify_current = sub.add_parser("verify-current", help="verify CURRENT.json against its installed release")
     verify_current.add_argument("--releases-root", type=Path, required=True)
     return parser
@@ -2097,6 +2119,15 @@ def main(argv: list[str] | None = None) -> int:
                 expected_repository=args.expected_repository,
             )
             _write_json_atomic(args.out, result, file_mode=0o444)
+        elif args.command == "stage-proof":
+            if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
+                raise ValueError("proof staging must use exactly /data/论文/leo-t1-wt/releases")
+            result = stage_remote_proof(args.out, sys.stdin.buffer.read(),
+                                        releases_root=args.releases_root)
+        elif args.command == "remove-proof":
+            if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
+                raise ValueError("proof cleanup must use exactly /data/论文/leo-t1-wt/releases")
+            result = remove_staged_proof(args.path, releases_root=args.releases_root)
         elif args.command == "install":
             if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
                 raise ValueError("remote install target must be exactly /data/论文/leo-t1-wt/releases")
@@ -2123,8 +2154,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "set-current":
             if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
                 raise ValueError("current release selection must use exactly /data/论文/leo-t1-wt/releases")
-            proof = (read_remote_ref_proof(args.remote_proof_file)
-                     if args.remote_proof_file is not None else None)
+            proof = read_remote_ref_proof(args.remote_proof_file)
             result = write_current_pointer(
                 args.release_id, args.releases_root, remote_proof=proof)
         elif args.command == "verify-current":
