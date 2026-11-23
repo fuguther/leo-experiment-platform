@@ -65,7 +65,7 @@ def _report(result: subprocess.CompletedProcess[str]) -> dict:
 def _index_row(run_id: str = "run-001", receipt_sha256: str | None = None) -> dict:
     return {
         "run_id": run_id,
-        "release_id": "a" * 40 + "-" + "b" * 64,
+        "release_id": "d" * 40 + "-" + "e" * 64,
         "receipt_sha256": receipt_sha256 or "c" * 64,
         "pullback_status": "VERIFIED",
         "evidence_uri": f"evidence://t1/{run_id}",
