@@ -43,10 +43,25 @@ ENVELOPE_SCHEMA = "leo-immutable-release/v1"
 MANIFEST_SCHEMA = "leo-immutable-release-manifest/v1"
 RUN_SCHEMA = "leo-release-run/v1"
 RUN_RECEIPT_SCHEMA = "leo-release-run-receipt/v1"
-T1_REQUIRED_DIRS = ("ANALYSIS", "CODE", "EXPERIMENTS", "lines")
+CURRENT_POINTER_SCHEMA = "t1-current-release/v2"
+CURRENT_POINTER_NAME = "CURRENT.json"
+CANONICAL_REMOTE_REF = "refs/heads/main"
+MAIN_REF_PROOF_SCHEMA = "leo-main-ref-proof/v1"
+T1_REQUIRED_DIRS = ("ANALYSIS", "CODE", "EXPERIMENTS")
 T1_OPTIONAL_DIRS = ("docs",)
 T1_DEPLOYED_DIRS = (*T1_REQUIRED_DIRS, *T1_OPTIONAL_DIRS)
+# SOURCE-COMMIT.txt is the fixed upstream simulator pin, not this platform's
+# release identity. New releases bind the platform commit through
+# `.deployment_commit` and the manifest; legacy releases keep the old file.
 T1_DEPLOYED_FILES = (
+    ".deployment_commit", ".gitignore", "AGENTS.md", "README.md",
+    "STATUS.md", "pytest.ini",
+)
+# Releases built before the 2026-11 platform cleanup remain immutable and
+# verifiable.  This is an explicit read-only compatibility layout, never a
+# fallback for new releases.
+T1_LEGACY_DEPLOYED_DIRS = ("ANALYSIS", "CODE", "EXPERIMENTS", "lines", "docs")
+T1_LEGACY_DEPLOYED_FILES = (
     ".deployment_commit", ".gitignore", "AGENTS.md", "BACKLOG.md", "CHARTER.md",
     "README.md", "SOURCE-COMMIT.txt", "STATUS.md", "WORKING-MODEL.md",
 )
@@ -122,7 +137,8 @@ def sha256_file(path: Path) -> str:
     return guard.sha256_file(path)
 
 
-def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+def _write_json_atomic(path: Path, payload: dict[str, Any], *,
+                       file_mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink():
         raise ValueError(f"refusing to replace symbolic path: {path.name}")
@@ -133,6 +149,8 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
+        if file_mode is not None:
+            os.chmod(temp, file_mode)
         os.replace(temp, path)
         directory_fd = os.open(path.parent, os.O_RDONLY)
         try:
@@ -238,7 +256,8 @@ def _repo_identity(repo: Path) -> str:
 
 
 def _remote_commit_state(repo: Path, commit: str,
-                         remote_refs: Iterable[tuple[str, str]] | None) -> dict[str, Any]:
+                         remote_refs: Iterable[tuple[str, str]] | None,
+                         preferred_ref: str = "") -> dict[str, Any]:
     checked_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     refs: list[tuple[str, str]] = []
     if remote_refs is None:
@@ -256,6 +275,12 @@ def _remote_commit_state(repo: Path, commit: str,
     else:
         refs = [(sha.lower(), ref) for sha, ref in remote_refs]
     matching = sorted(ref for sha, ref in refs if sha == commit)
+    if preferred_ref and preferred_ref in matching:
+        return {
+            "status": "verified",
+            "checked_at": checked_at,
+            "ref": preferred_ref,
+        }
     if matching:
         return {
             "status": "verified",
@@ -266,6 +291,214 @@ def _remote_commit_state(repo: Path, commit: str,
         "status": "remote_backup_pending",
         "checked_at": checked_at,
         "reason": "no advertised origin branch points to this exact commit",
+    }
+
+
+def require_remote_ref(repo: Path, commit: str, ref: str) -> dict[str, Any]:
+    commit = _verify_full_commit(repo, commit)
+    if not ref.startswith("refs/heads/") or any(ch.isspace() for ch in ref):
+        raise ValueError("required remote ref must be one concrete branch ref")
+    state = _remote_commit_state(repo, commit, None, preferred_ref=ref)
+    if state.get("status") != "verified" or state.get("ref") != ref:
+        raise ValueError(f"commit is not the live tip of {ref}")
+    return state
+
+
+def _live_remote_ref_matches(repository: str, commit: str, ref: str) -> bool:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("release repository identity is invalid")
+    if not re.fullmatch(r"refs/heads/[A-Za-z0-9._/-]+", ref):
+        raise ValueError("remote ref is invalid")
+    result = subprocess.run(
+        ["git", "ls-remote", f"https://github.com/{repository}.git", ref],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode:
+        return False
+    fields = result.stdout.strip().split()
+    return len(fields) == 2 and fields[0].lower() == commit and fields[1] == ref
+
+
+def build_remote_ref_proof(repo: Path, commit: str, ref: str, *,
+                           expected_repository: str = "") -> dict[str, Any]:
+    repo = Path(os.path.abspath(repo))
+    commit = _verify_full_commit(repo, commit)
+    repository = _repo_identity(repo)
+    if expected_repository and repository != expected_repository.lower():
+        raise ValueError(
+            f"source origin must be {expected_repository}; observed {repository}"
+        )
+    state = _remote_commit_state(repo, commit, None, preferred_ref=ref)
+    if state.get("status") != "verified" or state.get("ref") != ref:
+        raise ValueError(f"commit is not the live tip of {ref}")
+    proof: dict[str, Any] = {
+        "schema": MAIN_REF_PROOF_SCHEMA,
+        "status": "verified",
+        "repository": repository,
+        "ref": ref,
+        "commit": commit,
+        "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    proof["proof_sha256"] = sha256_bytes(canonical_json(proof))
+    return proof
+
+
+def verify_remote_ref_proof(proof: dict[str, Any], *, expected_repository: str,
+                            expected_commit: str, expected_ref: str,
+                            max_age_seconds: int | None = None) -> dict[str, Any]:
+    if not isinstance(proof, dict):
+        raise ValueError("remote main proof must be an object")
+    payload = dict(proof)
+    recorded = payload.pop("proof_sha256", "")
+    if not recorded or recorded != sha256_bytes(canonical_json(payload)):
+        raise ValueError("remote main proof hash mismatch")
+    payload["proof_sha256"] = recorded
+    expected = {
+        "schema": MAIN_REF_PROOF_SCHEMA,
+        "status": "verified",
+        "repository": expected_repository.lower(),
+        "ref": expected_ref,
+        "commit": expected_commit,
+    }
+    for key, value in expected.items():
+        if payload.get(key) != value:
+            raise ValueError(f"remote main proof {key} mismatch")
+    try:
+        checked_at = datetime.fromisoformat(str(payload.get("checked_at", "")).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("remote main proof checked_at is invalid") from exc
+    if checked_at.tzinfo is None:
+        raise ValueError("remote main proof checked_at must include a timezone")
+    now = datetime.now(timezone.utc)
+    age = (now - checked_at.astimezone(timezone.utc)).total_seconds()
+    if age < -60:
+        raise ValueError("remote main proof checked_at is in the future")
+    if max_age_seconds is not None and age > max_age_seconds:
+        raise ValueError("remote main proof is stale")
+    return payload
+
+
+def read_remote_ref_proof(path: Path) -> dict[str, Any]:
+    path = Path(os.path.abspath(path))
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("remote main proof file is missing or unsafe")
+    proof = _load_hashed_json(path, "proof_sha256")
+    return verify_remote_ref_proof(
+        proof,
+        expected_repository=str(proof.get("repository", "")),
+        expected_commit=str(proof.get("commit", "")),
+        expected_ref=str(proof.get("ref", "")),
+    )
+
+
+def stage_remote_proof(path: Path, data: bytes, *, releases_root: Path = RELEASE_ROOT) -> dict[str, Any]:
+    releases_root = _require_real_directory(releases_root, create=False)
+    incoming = _require_real_directory(releases_root / "incoming", create=False)
+    path = Path(os.path.abspath(path))
+    if path.parent != incoming or not path.name.endswith(".remote-proof.json"):
+        raise ValueError("staged proof must be a direct remote-proof file under releases/incoming")
+    try:
+        proof = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("staged proof must be valid UTF-8 JSON") from exc
+    proof = verify_remote_ref_proof(
+        proof,
+        expected_repository=str(proof.get("repository", "")),
+        expected_commit=str(proof.get("commit", "")),
+        expected_ref=str(proof.get("ref", "")),
+    )
+    releases_fd = _open_real_directory_fd(releases_root)
+    incoming_fd: int | None = None
+    try:
+        incoming_fd = _open_child_directory_fd(releases_fd, "incoming")
+        assert incoming_fd is not None
+        try:
+            os.stat(path.name, dir_fd=incoming_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError("staged proof target already exists or is unsafe")
+        fd = os.open(
+            path.name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=incoming_fd,
+        )
+        try:
+            with os.fdopen(fd, "wb", closefd=False) as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+        finally:
+            os.close(fd)
+        os.fsync(incoming_fd)
+    finally:
+        if incoming_fd is not None:
+            os.close(incoming_fd)
+        os.close(releases_fd)
+    return {"status": "staged", "path": str(path), "proof_sha256": proof["proof_sha256"]}
+
+
+def remove_staged_proof(path: Path, *, releases_root: Path = RELEASE_ROOT) -> dict[str, str]:
+    releases_root = _require_real_directory(releases_root, create=False)
+    incoming = _require_real_directory(releases_root / "incoming", create=False)
+    path = Path(os.path.abspath(path))
+    if path.parent != incoming or not path.name.endswith(".remote-proof.json"):
+        raise ValueError("staged proof must be a direct remote-proof file under releases/incoming")
+    releases_fd = _open_real_directory_fd(releases_root)
+    incoming_fd: int | None = None
+    try:
+        incoming_fd = _open_child_directory_fd(releases_fd, "incoming")
+        assert incoming_fd is not None
+        try:
+            metadata = os.stat(path.name, dir_fd=incoming_fd, follow_symlinks=False)
+        except FileNotFoundError as exc:
+            raise ValueError("staged proof is missing or unsafe") from exc
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("staged proof is not a regular file")
+        os.unlink(path.name, dir_fd=incoming_fd)
+        os.fsync(incoming_fd)
+        try:
+            os.stat(path.name, dir_fd=incoming_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError("staged proof cleanup did not remove the file")
+    finally:
+        if incoming_fd is not None:
+            os.close(incoming_fd)
+        os.close(releases_fd)
+    return {"status": "removed", "path": str(path)}
+
+
+def verify_source_commit(repo: Path, commit: str, *, required_local_branch: str = "",
+                         required_remote_ref: str = "",
+                         expected_repository: str = "") -> dict[str, Any]:
+    repo = Path(os.path.abspath(repo))
+    commit = _verify_full_commit(repo, commit)
+    branch = _check_clean_checkout(repo, commit)
+    if required_local_branch and branch != required_local_branch:
+        raise ValueError(
+            f"source branch must be {required_local_branch!r}; checkout is on {branch!r}"
+        )
+    actual_repository = ""
+    if expected_repository or required_remote_ref:
+        actual_repository = _repo_identity(repo)
+    if expected_repository and actual_repository != expected_repository.lower():
+        raise ValueError(
+            f"source origin must be {expected_repository}; observed {actual_repository}"
+        )
+    backup: dict[str, Any] = {"status": "not_requested"}
+    if required_remote_ref:
+        backup = require_remote_ref(repo, commit, required_remote_ref)
+    return {
+        "status": "verified",
+        "commit": commit,
+        "branch": branch,
+        "repository": actual_repository or None,
+        "remote_backup": backup,
     }
 
 
@@ -284,20 +517,36 @@ def _check_gitlinks(repo: Path, commit: str) -> None:
         raise ValueError("Git submodules are not supported in immutable T1 releases")
 
 
-def t1_source_paths(root: Path) -> list[Path]:
-    """Enumerate only the T1 checkout roots, using deployment_guard exclusions."""
+def _release_source_layout(
+    manifest: dict[str, Any],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return one exact recognised source layout for an immutable manifest."""
+    roots = manifest.get("deployment_roots")
+    if roots == list(T1_DEPLOYED_DIRS):
+        return T1_DEPLOYED_DIRS, T1_DEPLOYED_FILES
+    if roots == list(T1_LEGACY_DEPLOYED_DIRS):
+        return T1_LEGACY_DEPLOYED_DIRS, T1_LEGACY_DEPLOYED_FILES
+    raise ValueError("release does not declare a recognised T1 source-root contract")
+
+
+def _t1_source_paths(
+    root: Path,
+    deployed_dirs: tuple[str, ...],
+    deployed_files: tuple[str, ...],
+    optional_dirs: tuple[str, ...] = T1_OPTIONAL_DIRS,
+) -> list[Path]:
     paths: list[Path] = []
-    for name in T1_DEPLOYED_FILES:
+    for name in deployed_files:
         candidate = root / name
         if candidate.is_symlink():
             raise ValueError(f"release refuses symbolic root file: {name}")
         if candidate.is_file():
             paths.append(candidate)
-    for name in T1_DEPLOYED_DIRS:
+    for name in deployed_dirs:
         directory = root / name
         if directory.is_symlink():
             raise ValueError(f"required T1 release directory missing or unsafe: {name}")
-        if not directory.exists() and name in T1_OPTIONAL_DIRS:
+        if not directory.exists() and name in optional_dirs:
             continue
         if not directory.is_dir():
             raise ValueError(f"required T1 release directory missing or unsafe: {name}")
@@ -314,10 +563,22 @@ def t1_source_paths(root: Path) -> list[Path]:
     return sorted(paths, key=lambda item: item.relative_to(root).as_posix())
 
 
-def validate_t1_tree(root: Path, records: list[dict[str, Any]], *, exact: bool) -> None:
+def t1_source_paths(root: Path) -> list[Path]:
+    """Enumerate only the current T1 checkout roots."""
+    return _t1_source_paths(root, T1_DEPLOYED_DIRS, T1_DEPLOYED_FILES)
+
+
+def validate_t1_tree(
+    root: Path,
+    records: list[dict[str, Any]],
+    *,
+    exact: bool,
+    allowed_dirs: tuple[str, ...] = T1_DEPLOYED_DIRS,
+    allowed_files: tuple[str, ...] = T1_DEPLOYED_FILES,
+) -> None:
     expected: dict[str, dict[str, Any]] = {}
-    allowed_roots = set(T1_DEPLOYED_DIRS)
-    allowed_files = set(T1_DEPLOYED_FILES)
+    allowed_roots = set(allowed_dirs)
+    allowed_files = set(allowed_files)
     for record in records:
         relative = PurePosixPath(str(record.get("path", "")))
         if relative.is_absolute() or not relative.parts or ".." in relative.parts:
@@ -334,7 +595,10 @@ def validate_t1_tree(root: Path, records: list[dict[str, Any]], *, exact: bool) 
         if candidate.stat().st_size != record.get("size") or sha256_file(candidate) != record.get("sha256"):
             raise ValueError(f"release file hash mismatch: {relative}")
     if exact:
-        actual = {path.relative_to(root).as_posix() for path in t1_source_paths(root)}
+        actual = {
+            path.relative_to(root).as_posix()
+            for path in _t1_source_paths(root, allowed_dirs, allowed_files)
+        }
         if actual != set(expected):
             extra = sorted(actual - set(expected))[:5]
             missing = sorted(set(expected) - actual)[:5]
@@ -503,12 +767,24 @@ def _envelope_payload(manifest: dict[str, Any], archive_path: Path, branch: str,
 
 
 def build_release(repo: Path, commit: str, bundle_dir: Path, *,
-                  remote_refs: Iterable[tuple[str, str]] | None = None) -> dict[str, Any]:
+                  remote_refs: Iterable[tuple[str, str]] | None = None,
+                  required_local_branch: str = "",
+                  required_remote_ref: str = "",
+                  expected_repository: str = "") -> dict[str, Any]:
     repo = Path(os.path.abspath(repo))
     bundle_dir = Path(os.path.abspath(bundle_dir))
     commit = _verify_full_commit(repo, commit)
     branch = _check_clean_checkout(repo, commit)
+    if required_local_branch and branch != required_local_branch:
+        raise ValueError(
+            f"release must be built from local branch {required_local_branch!r}; "
+            f"checkout is on {branch!r}"
+        )
     repository = _repo_identity(repo)
+    if expected_repository and repository != expected_repository.lower():
+        raise ValueError(
+            f"source origin must be {expected_repository}; observed {repository}"
+        )
     _check_gitlinks(repo, commit)
     tracked_credentials = _tracked_credential_paths(repo, commit)
     if tracked_credentials:
@@ -558,7 +834,17 @@ def build_release(repo: Path, commit: str, bundle_dir: Path, *,
         manifest_path.write_bytes(canonical_json(manifest) + b"\n")
         archive_path = bundle_dir / "release.tar"
         _write_deterministic_archive(source, archive_path, manifest, commit_epoch)
-        remote_state = _remote_commit_state(repo, commit, remote_refs)
+        remote_state = _remote_commit_state(
+            repo, commit, remote_refs, preferred_ref=required_remote_ref
+        )
+        if required_remote_ref and (
+            remote_state.get("status") != "verified"
+            or remote_state.get("ref") != required_remote_ref
+        ):
+            raise ValueError(
+                f"canonical release requires the exact commit on {required_remote_ref}; "
+                f"remote state is {remote_state.get('status')}"
+            )
         envelope = _envelope_payload(manifest, archive_path, branch, remote_state)
         _write_json_atomic(bundle_dir / "release.json", envelope)
     verified = verify_release_bundle(bundle_dir)
@@ -586,8 +872,7 @@ def _verify_release_tree(root: Path, manifest: dict[str, Any], *,
         raise ValueError("unsupported immutable release manifest schema")
     if manifest.get("source_git_dirty") is not False:
         raise ValueError("dirty source release is forbidden")
-    if manifest.get("deployment_roots") != list(T1_DEPLOYED_DIRS):
-        raise ValueError("release does not declare the exact T1 source roots")
+    deployment_dirs, deployment_files = _release_source_layout(manifest)
     commit = str(manifest.get("source_git_commit", ""))
     if not re.fullmatch(r"[0-9a-f]{40}", commit) or set(commit) == {"0"}:
         raise ValueError("invalid release commit witness")
@@ -604,11 +889,17 @@ def _verify_release_tree(root: Path, manifest: dict[str, Any], *,
         raise ValueError("release Git commit witness does not match the manifest")
     if witness[0].get("sha256") != sha256_file(witness_path):
         raise ValueError("release Git commit witness hash mismatch")
-    validate_t1_tree(root, records, exact=True)
+    validate_t1_tree(
+        root,
+        records,
+        exact=True,
+        allowed_dirs=deployment_dirs,
+        allowed_files=deployment_files,
+    )
     expected_files = {str(item["path"]) for item in records} | {MANIFEST_NAME}
     if allow_envelope:
         expected_files.add(ENVELOPE_NAME)
-    expected_dirs = set(T1_DEPLOYED_DIRS)
+    expected_dirs = set(deployment_dirs)
     for name in expected_files:
         parent = PurePosixPath(name).parent
         while parent.parts:
@@ -795,6 +1086,114 @@ def verify_installed_release(release_dir: Path) -> dict[str, Any]:
         if candidate.stat().st_mode & 0o222:
             raise ValueError("installed release is writable")
     return envelope
+
+
+def _current_pointer_payload(envelope: dict[str, Any],
+                             remote_proof: dict[str, Any]) -> dict[str, Any]:
+    remote_backup = envelope.get("remote_backup")
+    if not isinstance(remote_backup, dict):
+        raise ValueError("current release has no remote backup identity")
+    if remote_backup.get("status") != "verified":
+        raise ValueError("current release must have a verified remote backup")
+    if remote_backup.get("ref") != CANONICAL_REMOTE_REF:
+        raise ValueError(f"current release must be backed by {CANONICAL_REMOTE_REF}")
+    proof = verify_remote_ref_proof(
+        remote_proof,
+        expected_repository=envelope["repository"],
+        expected_commit=envelope["source_git_commit"],
+        expected_ref=CANONICAL_REMOTE_REF,
+    )
+    payload: dict[str, Any] = {
+        "schema": CURRENT_POINTER_SCHEMA,
+        "release_id": envelope["release_id"],
+        "repository": envelope["repository"],
+        "source_git_commit": envelope["source_git_commit"],
+        "source_tree_sha256": envelope["source_tree_sha256"],
+        "archive_sha256": envelope["archive_sha256"],
+        "manifest_sha256": envelope["manifest_sha256"],
+        "artifact_sha256": envelope["artifact_sha256"],
+        "remote_ref": CANONICAL_REMOTE_REF,
+        "remote_proof": proof,
+        "remote_proof_sha256": proof["proof_sha256"],
+        "remote_checked_at": proof["checked_at"],
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    payload["pointer_sha256"] = sha256_bytes(canonical_json(payload))
+    return payload
+
+
+def read_current_pointer_path(path: Path) -> dict[str, Any]:
+    path = Path(os.path.abspath(path))
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"current release pointer is missing or unsafe: {path}")
+    pointer = _load_hashed_json(path, "pointer_sha256")
+    if pointer.get("schema") != CURRENT_POINTER_SCHEMA:
+        raise ValueError("unsupported current release pointer schema")
+    release_id = _safe_release_id(str(pointer.get("release_id", "")))
+    commit = str(pointer.get("source_git_commit", ""))
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("current release pointer commit is invalid")
+    if release_id.split("-", 1)[0] != commit:
+        raise ValueError("current release pointer commit does not match release ID")
+    for field in ("source_tree_sha256", "archive_sha256", "manifest_sha256", "artifact_sha256"):
+        if not re.fullmatch(r"[0-9a-f]{64}", str(pointer.get(field, ""))):
+            raise ValueError(f"current release pointer {field} is invalid")
+    if pointer.get("remote_ref") != CANONICAL_REMOTE_REF:
+        raise ValueError(f"current release pointer must use {CANONICAL_REMOTE_REF}")
+    if not isinstance(pointer.get("repository"), str) or not pointer["repository"]:
+        raise ValueError("current release pointer repository is invalid")
+    proof = verify_remote_ref_proof(
+        pointer.get("remote_proof"),
+        expected_repository=pointer["repository"],
+        expected_commit=commit,
+        expected_ref=CANONICAL_REMOTE_REF,
+    )
+    if pointer.get("remote_proof_sha256") != proof["proof_sha256"]:
+        raise ValueError("current release pointer remote proof hash mismatch")
+    if pointer.get("remote_checked_at") != proof["checked_at"]:
+        raise ValueError("current release pointer remote checked_at mismatch")
+    return pointer
+
+
+def write_current_pointer(release_id: str, releases_root: Path, *,
+                          remote_proof: dict[str, Any],
+                          max_proof_age_seconds: int = 600) -> dict[str, Any]:
+    release_id = _safe_release_id(release_id)
+    releases_root = _require_real_directory(releases_root, create=False)
+    release = verify_installed_release(releases_root / release_id)
+    remote_proof = verify_remote_ref_proof(
+        remote_proof,
+        expected_repository=release["repository"],
+        expected_commit=release["source_git_commit"],
+        expected_ref=CANONICAL_REMOTE_REF,
+        max_age_seconds=max_proof_age_seconds,
+    )
+    pointer = _current_pointer_payload(release, remote_proof)
+    pointer_path = releases_root.parent / CURRENT_POINTER_NAME
+    if pointer_path.is_symlink():
+        raise ValueError("current release pointer may not be a symbolic link")
+    _write_json_atomic(pointer_path, pointer, file_mode=0o444)
+    return read_current_pointer_path(pointer_path)
+
+
+def verify_current_release(releases_root: Path) -> dict[str, Any]:
+    releases_root = _require_real_directory(releases_root, create=False)
+    pointer = read_current_pointer_path(releases_root.parent / CURRENT_POINTER_NAME)
+    release_id = pointer["release_id"]
+    release = verify_installed_release(releases_root / release_id)
+    remote_backup = release.get("remote_backup")
+    if not isinstance(remote_backup, dict) or (
+        remote_backup.get("status") != "verified"
+        or remote_backup.get("ref") != CANONICAL_REMOTE_REF
+    ):
+        raise ValueError(f"current release is not backed by {CANONICAL_REMOTE_REF}")
+    for field in (
+        "release_id", "repository", "source_git_commit", "source_tree_sha256",
+        "archive_sha256", "manifest_sha256", "artifact_sha256",
+    ):
+        if pointer.get(field) != release.get(field):
+            raise ValueError(f"current release pointer {field} does not match the installed release")
+    return {"status": "verified", **pointer}
 
 
 def install_release(bundle_dir: Path, releases_root: Path, *, bootstrap: Path | None = None) -> dict[str, Any]:
@@ -1302,7 +1701,8 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
                 runs_root: Path = RUN_ROOT, mode: str = "diagnostic",
                 config: str = "", authorization: str = "", inputs: list[str] | None = None,
                 seed: int | None = None, resource_group: str = "",
-                timeout_seconds: int = 1800, argv: list[str]) -> dict[str, Any]:
+                timeout_seconds: int = 1800, argv: list[str],
+                require_current: bool = True) -> dict[str, Any]:
     release_id = _safe_release_id(release_id)
     run_id = _safe_run_id(run_id)
     if mode not in {"development", "diagnostic"}:
@@ -1313,6 +1713,14 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
     release = verify_installed_release(release_dir)
     if release.get("release_id") != release_id:
         raise ValueError("requested release identity mismatch")
+    current_pointer: dict[str, Any] | None = None
+    if require_current:
+        current_pointer = verify_current_release(release_root)
+        if current_pointer.get("release_id") != release_id:
+            raise ValueError(
+                "requested release is not current; use --allow-historical-release "
+                "only for an explicit historical reproduction"
+            )
     argv = _release_python_argv(argv, release_dir)
     runtime_identity = _runtime_identity()
     runtime_contract_record = _verify_runtime_contract(
@@ -1389,6 +1797,10 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
             "release_artifact_sha256": release["artifact_sha256"],
             "repository": release["repository"],
             "remote_backup": release.get("remote_backup", {}),
+            "current_release_pointer_sha256": (
+                current_pointer.get("pointer_sha256") if current_pointer else None
+            ),
+            "current_release_status": "verified_current" if current_pointer else "historical_override",
             "config": config_record,
             "authorization_receipt_sha256": authorization_record["sha256"] if authorization_record else None,
             "inputs": input_records,
@@ -1428,9 +1840,13 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
             "source_git_commit": release["source_git_commit"],
             "source_tree_sha256": release["source_tree_sha256"],
             "archive_sha256": release["archive_sha256"],
+            "release_artifact_sha256": release["artifact_sha256"],
+            "repository": release["repository"],
             "run_manifest_sha256": sha256_file(run_dir / RUN_MANIFEST_NAME),
             "exit_code": rc,
             "status": run_manifest["status"],
+            "current_release_pointer_sha256": run_manifest["current_release_pointer_sha256"],
+            "current_release_status": run_manifest["current_release_status"],
             "files": files,
         }
         receipt["receipt_sha256"] = sha256_bytes(canonical_json(receipt))
@@ -1443,7 +1859,8 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
 
 
 def verify_run_directory(run_dir: Path, *, expected_run_id: str = "",
-                         expected_release_id: str = "") -> dict[str, Any]:
+                         expected_release_id: str = "",
+                         release_dir: Path | None = None) -> dict[str, Any]:
     run_dir = Path(os.path.abspath(run_dir))
     if run_dir.is_symlink() or not run_dir.is_dir():
         raise ValueError("run directory is missing or unsafe")
@@ -1469,6 +1886,34 @@ def verify_run_directory(run_dir: Path, *, expected_run_id: str = "",
     for key in ("release_id", "source_git_commit", "source_tree_sha256", "archive_sha256"):
         if manifest.get(key) != receipt.get(key):
             raise ValueError(f"run receipt {key} does not match its manifest")
+    extended_fields = (
+        "release_artifact_sha256", "repository", "current_release_pointer_sha256",
+        "current_release_status",
+    )
+    for key in extended_fields:
+        if (key in manifest or key in receipt) and manifest.get(key) != receipt.get(key):
+            raise ValueError(f"run receipt {key} does not match its manifest")
+    if manifest["release_id"] != (
+        f"{manifest['source_git_commit']}-{manifest['source_tree_sha256']}"
+    ):
+        raise ValueError("run release ID does not match source commit and tree")
+    if not re.fullmatch(r"[0-9a-f]{64}", str(manifest.get("archive_sha256", ""))):
+        raise ValueError("run archive_sha256 is invalid")
+    if ("release_artifact_sha256" in manifest
+            and not re.fullmatch(r"[0-9a-f]{64}", str(manifest.get("release_artifact_sha256", "")))):
+        raise ValueError("run release_artifact_sha256 is invalid")
+    if release_dir is not None:
+        missing_extended = [key for key in extended_fields if key not in manifest or key not in receipt]
+        if missing_extended:
+            raise ValueError(f"run lacks release-bound receipt fields: {missing_extended}")
+        installed = verify_installed_release(Path(release_dir))
+        for field in (
+            "release_id", "source_git_commit", "source_tree_sha256",
+            "archive_sha256", "artifact_sha256", "repository",
+        ):
+            release_field = "release_artifact_sha256" if field == "artifact_sha256" else field
+            if manifest.get(release_field) != installed.get(field):
+                raise ValueError(f"run receipt is not bound to the installed release {field}")
     if manifest.get("execution_class") != receipt.get("execution_class"):
         raise ValueError("run receipt execution class does not match its manifest")
     if manifest.get("status") != receipt.get("status") or manifest.get("exit_code") != receipt.get("exit_code"):
@@ -1624,6 +2069,30 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--commit", required=True)
     build.add_argument("--out", type=Path, required=True)
     build.add_argument("--expected-repository", default="")
+    build.add_argument("--required-local-branch", default="")
+    build.add_argument("--required-remote-ref", default="")
+    verify_remote = sub.add_parser("verify-remote-ref", help="verify a commit is the live tip of one remote branch")
+    verify_remote.add_argument("--repo", type=Path, required=True)
+    verify_remote.add_argument("--commit", required=True)
+    verify_remote.add_argument("--ref", required=True)
+    verify_source = sub.add_parser("verify-source", help="verify a clean source checkout and optional live main identity")
+    verify_source.add_argument("--repo", type=Path, required=True)
+    verify_source.add_argument("--commit", required=True)
+    verify_source.add_argument("--required-local-branch", default="")
+    verify_source.add_argument("--required-remote-ref", default="")
+    verify_source.add_argument("--expected-repository", default="")
+    remote_proof = sub.add_parser("build-remote-proof", help="write a live GitHub branch proof for publisher promotion")
+    remote_proof.add_argument("--repo", type=Path, required=True)
+    remote_proof.add_argument("--commit", required=True)
+    remote_proof.add_argument("--ref", required=True)
+    remote_proof.add_argument("--expected-repository", default="")
+    remote_proof.add_argument("--out", type=Path, required=True)
+    stage_proof = sub.add_parser("stage-proof", help="exclusively stage a remote proof under releases/incoming")
+    stage_proof.add_argument("--out", type=Path, required=True)
+    stage_proof.add_argument("--releases-root", type=Path, required=True)
+    remove_proof = sub.add_parser("remove-proof", help="remove one staged remote proof after verified promotion")
+    remove_proof.add_argument("--path", type=Path, required=True)
+    remove_proof.add_argument("--releases-root", type=Path, required=True)
     install = sub.add_parser("install", help="verify and atomically install a T1 release")
     install.add_argument("--bundle", type=Path, required=True)
     install.add_argument("--releases-root", type=Path, required=True)
@@ -1642,11 +2111,13 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--seed", type=int)
     run.add_argument("--resource-group", default="")
     run.add_argument("--timeout-seconds", type=int, default=1800)
+    run.add_argument("--allow-historical-release", action="store_true")
     run.add_argument("argv", nargs=argparse.REMAINDER)
     verify_run = sub.add_parser("verify-run", help="verify a completed run receipt")
     verify_run.add_argument("--run-dir", type=Path, required=True)
     verify_run.add_argument("--run-id", default="")
     verify_run.add_argument("--release-id", default="")
+    verify_run.add_argument("--release-dir", type=Path)
     pull = sub.add_parser("pull", help="verify and atomically pull back one run")
     pull.add_argument("--evidence-root", type=Path, required=True)
     pull.add_argument("--repo-root", type=Path, required=True)
@@ -1658,6 +2129,12 @@ def _parser() -> argparse.ArgumentParser:
     cleanup.add_argument("--release-id", required=True)
     quarantine = sub.add_parser("quarantine-incoming", help="preserve an abandoned partial before retry")
     quarantine.add_argument("--release-id", required=True)
+    set_current = sub.add_parser("set-current", help="atomically select one verified main release")
+    set_current.add_argument("--release-id", required=True)
+    set_current.add_argument("--releases-root", type=Path, required=True)
+    set_current.add_argument("--remote-proof-file", type=Path, required=True)
+    verify_current = sub.add_parser("verify-current", help="verify CURRENT.json against its installed release")
+    verify_current.add_argument("--releases-root", type=Path, required=True)
     return parser
 
 
@@ -1665,11 +2142,38 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "build":
-            if args.expected_repository and _repo_identity(Path(os.path.abspath(args.repo))) != args.expected_repository.lower():
-                raise ValueError("source origin does not match the expected T1 repository")
-            result = build_release(args.repo, args.commit, args.out)
+            result = build_release(
+                args.repo, args.commit, args.out,
+                required_local_branch=args.required_local_branch,
+                required_remote_ref=args.required_remote_ref,
+                expected_repository=args.expected_repository,
+            )
         elif args.command == "verify":
             result = verify_release_bundle(args.bundle)
+        elif args.command == "verify-remote-ref":
+            result = require_remote_ref(args.repo, args.commit, args.ref)
+        elif args.command == "verify-source":
+            result = verify_source_commit(
+                args.repo, args.commit,
+                required_local_branch=args.required_local_branch,
+                required_remote_ref=args.required_remote_ref,
+                expected_repository=args.expected_repository,
+            )
+        elif args.command == "build-remote-proof":
+            result = build_remote_ref_proof(
+                args.repo, args.commit, args.ref,
+                expected_repository=args.expected_repository,
+            )
+            _write_json_atomic(args.out, result, file_mode=0o444)
+        elif args.command == "stage-proof":
+            if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
+                raise ValueError("proof staging must use exactly /data/论文/leo-t1-wt/releases")
+            result = stage_remote_proof(args.out, sys.stdin.buffer.read(),
+                                        releases_root=args.releases_root)
+        elif args.command == "remove-proof":
+            if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
+                raise ValueError("proof cleanup must use exactly /data/论文/leo-t1-wt/releases")
+            result = remove_staged_proof(args.path, releases_root=args.releases_root)
         elif args.command == "install":
             if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
                 raise ValueError("remote install target must be exactly /data/论文/leo-t1-wt/releases")
@@ -1685,7 +2189,7 @@ def main(argv: list[str] | None = None) -> int:
                 runs_root=args.runs_root, mode=args.mode, config=args.config,
                 authorization=args.authorization, inputs=args.input, seed=args.seed,
                 resource_group=args.resource_group, timeout_seconds=args.timeout_seconds,
-                argv=child_argv,
+                argv=child_argv, require_current=not args.allow_historical_release,
             )
         elif args.command == "prepare-incoming":
             result = {"status": "prepared", "path": str(prepare_incoming(args.release_id))}
@@ -1693,9 +2197,20 @@ def main(argv: list[str] | None = None) -> int:
             result = cleanup_incoming(args.release_id)
         elif args.command == "quarantine-incoming":
             result = quarantine_incoming(args.release_id)
+        elif args.command == "set-current":
+            if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
+                raise ValueError("current release selection must use exactly /data/论文/leo-t1-wt/releases")
+            proof = read_remote_ref_proof(args.remote_proof_file)
+            result = write_current_pointer(
+                args.release_id, args.releases_root, remote_proof=proof)
+        elif args.command == "verify-current":
+            if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
+                raise ValueError("current release verification must use exactly /data/论文/leo-t1-wt/releases")
+            result = verify_current_release(args.releases_root)
         elif args.command == "verify-run":
             result = verify_run_directory(args.run_dir, expected_run_id=args.run_id,
-                                          expected_release_id=args.release_id)
+                                          expected_release_id=args.release_id,
+                                          release_dir=args.release_dir)
         else:
             repo_root = Path(os.path.abspath(args.repo_root))
             evidence_root = Path(os.path.abspath(args.evidence_root))

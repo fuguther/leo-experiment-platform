@@ -593,7 +593,7 @@ def project_horizon_candidates(contract_path, out_path, root=None):
 
 
 #: A3/B3: one frozen deadline D per declared business scenario.
-DEADLINE_DIR = REPO_ROOT / "CODE/work/WP-T1-COMPLETE/deadlines"
+DEADLINE_DIR = REPO_ROOT / "EXPERIMENTS/contracts/t1-complete/deadlines"
 
 
 def deadline_file_for(scenario_id):

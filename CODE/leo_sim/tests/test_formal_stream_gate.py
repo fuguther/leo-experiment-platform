@@ -147,6 +147,13 @@ def _copy_vm_run(source: Path, target: Path) -> Path:
     return target
 
 
+def _write_sealed_governance(path: Path, governed: dict) -> None:
+    unsigned = {key: value for key, value in governed.items()
+                if key != "payload_sha256"}
+    governed["payload_sha256"] = rj.canonical_sha(unsigned)
+    rj.write_json(path, governed)
+
+
 @pytest.fixture(scope="module")
 def runs(tmp_path_factory):
     # The two canonical VM paths are relocated for the test, exactly as the
@@ -178,6 +185,19 @@ def test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate(
 
     certified = _with_stream_witness(run, tmp_path / "v5-certified")
     assert rj.verify_v2_formal_result(certified) == []
+    expected_authority = {
+        "run_id": certified.name,
+        "launch_nonce": "0" * 32,
+        "authorization_sha256": "a" * 64,
+        "source_git_commit": "b" * 40,
+        "source_tree_sha256": "c" * 64,
+        "deployment_receipt_sha256": "d" * 64,
+        "execution_chain_sha256": {"CODE/example.py": "e" * 64},
+        "acceptance": {},
+    }
+    assert rj.verify_v2_formal_result(
+        certified, require_governance=True,
+        expected_authority=expected_authority) == []
 
     tampered = tmp_path / "v5-timeline-tampered"
     _copy_vm_run(certified, tampered)
@@ -232,6 +252,69 @@ def test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate(
         missing_governance_field, require_governance=True)
     assert any("missing contract fields" in error for error in errors)
 
+    authority_tampered = tmp_path / "v5-authority-tampered"
+    _copy_vm_run(certified, authority_tampered)
+    governed_path = authority_tampered / "governance_receipt.json"
+    governed = json.loads(governed_path.read_text(encoding="utf-8"))
+    governed["execution_chain_sha256"] = {
+        "CODE/example.py": "f" * 64}
+    _write_sealed_governance(governed_path, governed)
+    errors = rj.verify_v2_formal_result(
+        authority_tampered, require_governance=True,
+        expected_authority={**expected_authority,
+                            "run_id": authority_tampered.name})
+    assert any("execution_chain_sha256 does not match" in error
+               for error in errors), errors
+
+    manifest_schema_tampered = tmp_path / "v5-manifest-schema-tampered"
+    _copy_vm_run(certified, manifest_schema_tampered)
+    governed_path = manifest_schema_tampered / "governance_receipt.json"
+    governed = json.loads(governed_path.read_text(encoding="utf-8"))
+    governed["trace_manifest_schema"] = "leo-sim-trace-manifest/forged"
+    _write_sealed_governance(governed_path, governed)
+    errors = rj.verify_v2_formal_result(
+        manifest_schema_tampered, require_governance=True,
+        expected_authority={**expected_authority,
+                            "run_id": manifest_schema_tampered.name})
+    assert any("trace_manifest_schema disagrees" in error
+               for error in errors), errors
+
+    deployment_tampered = tmp_path / "v5-deployment-tampered"
+    _copy_vm_run(certified, deployment_tampered)
+    governed_path = deployment_tampered / "governance_receipt.json"
+    governed = json.loads(governed_path.read_text(encoding="utf-8"))
+    governed["source_git_commit"] = "f" * 40
+    _write_sealed_governance(governed_path, governed)
+    errors = rj.verify_v2_formal_result(
+        deployment_tampered, require_governance=True,
+        expected_authority={**expected_authority,
+                            "run_id": deployment_tampered.name})
+    assert any("source_git_commit does not match" in error
+               for error in errors), errors
+
+    nonce_auth_tampered = tmp_path / "v5-nonce-auth-tampered"
+    _copy_vm_run(certified, nonce_auth_tampered)
+    formal_path = nonce_auth_tampered / "formal_run.json"
+    formal = json.loads(formal_path.read_text(encoding="utf-8"))
+    formal["launch_nonce"] = "1" * 32
+    formal["authorization_sha256"] = "2" * 64
+    rj.write_json(formal_path, formal)
+    governed_path = nonce_auth_tampered / "governance_receipt.json"
+    governed = json.loads(governed_path.read_text(encoding="utf-8"))
+    governed["launch_nonce"] = "1" * 32
+    governed["authorization_sha256"] = "2" * 64
+    governed["formal_run_sha256"] = hashlib.sha256(
+        formal_path.read_bytes()).hexdigest()
+    _write_sealed_governance(governed_path, governed)
+    errors = rj.verify_v2_formal_result(
+        nonce_auth_tampered, require_governance=True,
+        expected_authority={**expected_authority,
+                            "run_id": nonce_auth_tampered.name})
+    assert any("launch_nonce does not match" in error
+               for error in errors), errors
+    assert any("authorization_sha256 does not match" in error
+               for error in errors)
+
     # …and the form that WAS there before the fix mis-failed exactly this run,
     # after the simulation had already been paid for.
     old_form = receipt_mod.verify_receipt_dir(
@@ -239,6 +322,38 @@ def test_a_zero_decision_formal_run_is_signed_v5_and_passes_the_gate(
         timeline_log=str(run / "timeline.jsonl"))
     assert old_form == ["stream paths were supplied but this receipt is "
                         "leo-sim-receipt/v5, which carries no stream binding"]
+
+
+def test_formal_authority_comes_from_the_hash_verified_startup_snapshot(
+        tmp_path):
+    authorization = tmp_path / "authorization.json"
+    original = {
+        "authorized_runs": [{
+            "run_id": "EXP-SNAPSHOT",
+            "execution_chain_sha256": {"CODE/original.py": "1" * 64},
+            "acceptance": {"min_delivered_packets": 10},
+        }]
+    }
+    authorization.write_text(json.dumps(original), encoding="utf-8")
+    args = argparse.Namespace(
+        expected_authorization_sha256=hashlib.sha256(
+            authorization.read_bytes()).hexdigest())
+    snapshot = rj.verified_authorization_snapshot(args, authorization)
+    row = rj.authorized_row_from_snapshot(snapshot, "EXP-SNAPSHOT")
+
+    replacement = {
+        "authorized_runs": [{
+            "run_id": "EXP-SNAPSHOT",
+            "execution_chain_sha256": {"CODE/replaced.py": "2" * 64},
+            "acceptance": {"min_delivered_packets": 99},
+        }]
+    }
+    authorization.write_text(json.dumps(replacement), encoding="utf-8")
+
+    assert row["execution_chain_sha256"] == {"CODE/original.py": "1" * 64}
+    assert row["acceptance"] == {"min_delivered_packets": 10}
+    with pytest.raises(ValueError, match="launcher-bound hash"):
+        rj.verified_authorization_snapshot(args, authorization)
 
 
 def test_a_nonzero_decision_formal_run_is_signed_v6_and_its_digests_are_recomputed(

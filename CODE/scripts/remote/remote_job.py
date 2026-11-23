@@ -364,8 +364,27 @@ def formal_command(args: argparse.Namespace, workdir: Path, config: Path, author
     return command
 
 
+GOVERNANCE_AUTHORITY_FIELDS = (
+    "run_id", "launch_nonce", "authorization_sha256",
+    "source_git_commit", "source_tree_sha256", "deployment_receipt_sha256",
+    "execution_chain_sha256", "acceptance",
+)
+
+
+def _governance_authority_errors(
+        governed: dict[str, Any], expected: dict[str, Any]) -> list[str]:
+    errors = []
+    for field in GOVERNANCE_AUTHORITY_FIELDS:
+        if governed.get(field) != expected.get(field):
+            errors.append(
+                f"governance_receipt.{field} does not match the "
+                "authorized/deployed identity")
+    return errors
+
+
 def verify_v2_formal_result(
-        result_dir: Path, *, require_governance: bool = False) -> list[str]:
+        result_dir: Path, *, require_governance: bool = False,
+        expected_authority: dict[str, Any] | None = None) -> list[str]:
     """The VM-side verification of one V2 formal result directory.
 
     Split out of run_formal so the exact sequence the VM applies can be
@@ -412,6 +431,18 @@ def verify_v2_formal_result(
             formal_errors, _not_checked = pullback_mod._formal_increment_errors(
                 result_dir, receipt, None)
             errors.extend(formal_errors)
+            if expected_authority is not None:
+                try:
+                    governed = json.loads(
+                        governance_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError) as exc:
+                    errors.append(
+                        f"governance_receipt.json is unreadable for authority "
+                        f"check: {exc}")
+                else:
+                    if isinstance(governed, dict):
+                        errors.extend(_governance_authority_errors(
+                            governed, expected_authority))
     return errors
 
 
@@ -465,6 +496,42 @@ def validate_expected_identity(args: argparse.Namespace, config: Path, authoriza
         raise ValueError("remote config identity differs from the launcher-bound run id or canonical hash")
     if file_sha256(authorization) != args.expected_authorization_sha256:
         raise ValueError("remote authorization bytes differ from the launcher-bound hash")
+
+
+def verified_authorization_snapshot(
+        args: argparse.Namespace, authorization: Path) -> dict[str, Any]:
+    """Read authorization bytes once and bind that exact snapshot to the hash.
+
+    The post-run governance check must not re-read a mutable path after the
+    child exits: otherwise a swapped authorization file could become the
+    authority used on both sides of a self-consistent comparison.
+    """
+    try:
+        raw = authorization.read_bytes()
+    except OSError as exc:
+        raise ValueError(f"cannot read authorization snapshot: {exc}") from exc
+    if hashlib.sha256(raw).hexdigest() != args.expected_authorization_sha256:
+        raise ValueError("remote authorization bytes differ from the launcher-bound hash")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"authorization snapshot is not valid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("authorization snapshot must contain a JSON object")
+    return payload
+
+
+def authorized_row_from_snapshot(
+        authorization_payload: dict[str, Any], run_id: str) -> dict[str, Any]:
+    rows = authorization_payload.get("authorized_runs")
+    if not isinstance(rows, list):
+        raise ValueError("authorization snapshot lacks authorized_runs")
+    matches = [row for row in rows
+               if isinstance(row, dict) and row.get("run_id") == run_id]
+    if len(matches) != 1:
+        raise ValueError(
+            f"authorization snapshot must contain exactly one row for {run_id}")
+    return matches[0]
 
 
 def verify_v2_serial_predecessors(
@@ -643,6 +710,12 @@ def run_formal(args: argparse.Namespace) -> int:
     workdir, status_path, log_path, config, authorization = validate_formal_paths(args)
     deployment = verify_receipt(Path(args.deployment_receipt))
     validate_expected_identity(args, config, authorization)
+    authorized_row = None
+    if getattr(args, "runtime_kind", "legacy_gateway") == "leo_sim_v2":
+        authorization_payload = verified_authorization_snapshot(
+            args, authorization)
+        authorized_row = authorized_row_from_snapshot(
+            authorization_payload, args.expected_run_id)
     requested_cpu_affinity = validate_cpu_affinity(getattr(args, "cpu_list", ""))
     prepared = json.loads(launch_status_path(args.launch_nonce).read_text(encoding="utf-8"))
     validate_prepared_launch_status(prepared, args)
@@ -769,11 +842,6 @@ def run_formal(args: argparse.Namespace) -> int:
                     ledgers_payload = json.loads(
                         (Path(payload["last_results_dir"]) / "ledgers.json").read_text(
                             encoding="utf-8"))
-                    authorization_payload = json.loads(
-                        authorization.read_text(encoding="utf-8"))
-                    authorized_row = next(
-                        row for row in authorization_payload["authorized_runs"]
-                        if row["run_id"] == args.expected_run_id)
                     receipt_errors = v2_governance_errors(
                         receipt_payload, ledgers_payload,
                         authorized_row["acceptance"], receipt_errors)
@@ -802,9 +870,23 @@ def run_formal(args: argparse.Namespace) -> int:
                         rc = 2
                     governed_path = Path(payload["last_results_dir"]) / "governance_receipt.json"
                     write_json(governed_path, governed)
+                    expected_authority = {
+                        "run_id": args.expected_run_id,
+                        "launch_nonce": args.launch_nonce,
+                        "authorization_sha256":
+                            args.expected_authorization_sha256,
+                        "source_git_commit": deployment["source_git_commit"],
+                        "source_tree_sha256": deployment["source_tree_sha256"],
+                        "deployment_receipt_sha256":
+                            deployment["receipt_sha256"],
+                        "execution_chain_sha256": authorized_row[
+                            "execution_chain_sha256"],
+                        "acceptance": authorized_row["acceptance"],
+                    }
                     anchored_errors = verify_v2_formal_result(
                         Path(payload["last_results_dir"]),
-                        require_governance=True)
+                        require_governance=True,
+                        expected_authority=expected_authority)
                     if anchored_errors:
                         payload["status"] = "failed"
                         payload["exit_code"] = 2

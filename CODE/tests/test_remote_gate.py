@@ -2,6 +2,7 @@
 import sys
 import json
 import inspect
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -170,7 +171,15 @@ def test_direct_remote_run_blocks_second_cell_without_predecessor(
     ]
     config.parent.mkdir(parents=True)
     config.write_text("{}\n", encoding="utf-8")
-    authorization.write_text("{}\n", encoding="utf-8")
+    authorization.write_text(json.dumps({
+        "authorized_runs": [{
+            "run_id": "EXP-SERIAL-second",
+            "execution_chain_sha256": {"CODE/example.py": "1" * 64},
+            "acceptance": {"min_delivered_packets": 0},
+        }]
+    }) + "\n", encoding="utf-8")
+    authorization_sha256 = hashlib.sha256(
+        authorization.read_bytes()).hexdigest()
     (root / ".deployment_commit").write_text("d" * 40 + "\n",
                                                encoding="ascii")
     (experiment / "request.json").write_text(json.dumps({
@@ -197,7 +206,7 @@ def test_direct_remote_run_blocks_second_cell_without_predecessor(
         "status": "prepared", "launch_nonce": nonce,
         "session_name": "serial-second", "run_id": "EXP-SERIAL-second",
         "config_sha256": "b" * 64,
-        "authorization_sha256": "c" * 64,
+        "authorization_sha256": authorization_sha256,
     }
     launch_path = runtime / "launches" / f"{nonce}.json"
     launch_path.parent.mkdir(parents=True)
@@ -206,7 +215,7 @@ def test_direct_remote_run_blocks_second_cell_without_predecessor(
         action="run", runtime_kind="leo_sim_v2", launch_nonce=nonce,
         session_name="serial-second", expected_run_id="EXP-SERIAL-second",
         expected_config_sha256="b" * 64,
-        expected_authorization_sha256="c" * 64,
+        expected_authorization_sha256=authorization_sha256,
         deployment_receipt=str(runtime / "deployment.json"),
         cpu_list="", status_file=str(status), log_file=str(log),
         workdir=str(code), config=str(config), authorization=str(authorization),

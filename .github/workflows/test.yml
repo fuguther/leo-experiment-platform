@@ -7,7 +7,7 @@ on:
   pull_request:
 
 # 故意不取消进行中的运行。
-# WORKING-MODEL 第三节:合并门要求「CI 对 exact head SHA 真实跑完且 success」。
+# 合并门要求 CI 对 exact head SHA 真实跑完且 success。
 # cancelled 不等于绿 —— 取消进行中的运行会让这道门永远无法满足。
 # 若 CI 时长成为问题,应先减少提交频率,而不是把 cancelled 当成绿。
 concurrency:
@@ -27,4 +27,4 @@ jobs:
       - name: Run read-only repository maintenance check
         run: python -B CODE/scripts/maintenance_check.py --repo .
       - name: Run test suite
-        run: python -m pytest CODE/leo_sim/tests CODE/experiment_platform/tests CODE/tests CODE/scripts/tests CODE/scripts/remote/tests ANALYSIS/tests -q
+        run: python -m pytest -q

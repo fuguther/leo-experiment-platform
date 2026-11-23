@@ -2,17 +2,17 @@
 
 > 本文件即任务书第六阶段要求的 `burst_experiment_design.md`（验收标准所列文件名为 `BURST-DESIGN.md`）。
 >
-> **修订记录**：rev 1 用 **Fano 因子**作为突发度统计量。独立复核（`leo-runs/audit-notes/E4-burst.md`）
+> **修订记录**：rev 1 用 **Fano 因子**作为突发度统计量。独立复核记录保存在固定历史位置
 > 实测证明 **Fano 是负载相关的**（同一形状下负载 ×16 使 Fano ×11），用它在 **Mode B** 里会把
 > "负载更高" 误读成 "更突发"。rev 2 因此改用**无量纲、尺度不变**的 **CV²**作为主统计量，
 > 并补入 `emission_end_s` 截断、`mode=csv` 静默失效、编译路径三处更正。**E4 的复核意见正确。**
 
 | 字段 | 值 |
 | --- | --- |
-| MAIN_SHA | `549acd8b7cb7a1bb573e7146653f55273999086d` |
-| 日期 | 2026-09-24 |
+| 初始审计基线 | `549acd8b7cb7a1bb573e7146653f55273999086d`（2026-09-24） |
+| 最近整理 | 2026-11-22 |
 | 取证 | 机制与代数 **[READ]**；数字 **[EXEC]**，§6 给出命令 |
-| 涉及代码 | `CODE/leo_sim/trace.py`（`_rate_multiplier` 302-321、生成 733-770、manifest 871-892）、`CODE/leo_sim/config.py`（83-98、291-293、570-597） |
+| 权威实现 | 当前 `CODE/leo_sim/trace.py`、`config.py` 及其测试；下文行号只作历史审计锚点 |
 
 ---
 
@@ -185,8 +185,8 @@ Mode B 形状固定（B=4，W=120），只扫 `offered_mbps`：
 **做法**：固定 `burst_start_s` / `burst_duration_s` / `burst_multiplier` **三个字段完全不动**，
 只扫 `demand.offered_mbps` → **一条路径 → 严格单因素，可声明**。
 
-**库内既有先例**：`EXPERIMENTS/EXP-20260829-GLOBAL-PRESSURE-BRACKET-R02/request.json`
-已经只用 `demand.offered_mbps`（10/20/40/80）扫负载、且共享 `common_config` —— Mode B 的形状已经在库内成立。
+Mode B 的编译约束可直接用当前模板表达；历史实例不再作为活动文件保留。若需复核旧实例，
+应从产生它的 Git commit、run-id 与 receipt 恢复，不得把历史目录当作当前默认值。
 
 **带 burst 的骨架**（T=40，start=8，W=8，B=2 ⇒ `mean_mult=1.20`）：
 
@@ -221,33 +221,23 @@ Mode B 形状固定（B=4，W=120），只扫 `offered_mbps`：
 3. **报告有效窗占比 `f`**，并显式确认 burst 窗落在 `emission_end_s` 之内（F4）。
 4. **Mode A 必须写明"平均负载在 ±x% 内固定"**并给出各 arm 实测值。
 5. **不得**用 `t1_pressure_corridor.yaml:69-73` 的 "duty cycle" 措辞描述比特比 —— 与 goodput 利用率混淆
-   （见 `PLATFORM-AUDIT-REPORT.md` §2 L6 / §3 B5）。
+   （历史审计细节见产生该结论的 Git commit，不在活动平台树重复保存快照）。
 
 ---
 
 ## 7. 与既有测试的关系
 
-- `test_micro_mechanism.py:327` 的 `test_m2_burst_reverses_candidate_order_on_equal_cost_branches`
-  **并不使用** `demand.burst_*`：它把手工排定的 50 ms 包列直接注入 kernel（`:335-337`），
-  断言的是**路由队列排序**（`:359`/`:363`/`:369`/`:392`）。对混淆而言它是干净的，
-  但它**不覆盖真实 burst 旋钮**。真实旋钮的覆盖目前只是元数据回显
-  （`test_trace.py:277-281`/`:332`/`:336-339`）与配置门（`test_config.py:78-107`）；
-  **没有任何测试断言实测负载、`mean_mult` 或任何突发度统计量**。
-- `config.py:570-597` 的 fail-loud 校验（`mode=burst` 必须给出 start/duration；窗口必须与
-  `scenario.duration_s` 相交；`burst_multiplier > 0`）**不得放宽**；F4 建议的
-  `emission_end_s` 校验属新增门禁，不在本审计授权范围内。
-- 本文件**不新增任何代码**。
+- `test_micro_mechanism.py::test_m2_burst_reverses_candidate_order_on_equal_cost_branches`
+  手工注入包列，验证的是路由队列排序，不覆盖真实 burst 旋钮。
+- `test_burst_transform.py`、`test_trace.py` 和 `test_config.py` 覆盖变换、可复现性、
+  窗口合法性、实际落点与配置门；它们证明实现合同，不证明某一 burst 场景具有现实代表性。
+- `config.py` 的 fail-loud 校验不得放宽。旧实验的固定数字只按对应 commit、run-id 和
+  receipt 引用，本文件不复制其活动快照。
 
 ---
 
 ## 8. 复现命令
 
 ```bash
-cd <repo>   # MAIN_SHA 549acd8b7cb7a1bb573e7146653f55273999086d
-python3 /Users/lge/Desktop/topic/leo-runs/probe_burst.py     # §3.4 rev 1 数字
-# 完整实测（§3.1–§3.3 的 4-seed 版本）见 /Users/lge/Desktop/topic/leo-runs/audit-notes/E4-burst.md
-
-# 陷阱 F5 复现（csv 下 burst 旋钮静默失效）
-grep -n "burst_multiplier" CODE/leo_sim/trace.py            # :303 只在 burst/mlab 生效
-grep -rn "burst_multiplier" CODE/leo_sim/config.py          # :291-293 默认 2.0 恒写入 resolved
+python3 -m pytest CODE/leo_sim/tests/test_burst_transform.py   CODE/leo_sim/tests/test_trace.py CODE/leo_sim/tests/test_config.py -q
 ```

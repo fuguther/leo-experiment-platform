@@ -260,6 +260,20 @@ def _formal_increment_errors(run_dir: Path, receipt: dict,
             errors.append(f"governance_receipt.{field} does not match this "
                           f"copy's {name}")
 
+    manifest_path = run_dir / "manifest.json"
+    if not manifest_path.is_symlink() and manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"manifest.json is unreadable for schema binding: {exc}")
+        else:
+            if not isinstance(manifest, dict):
+                errors.append("manifest.json must be a JSON object")
+            elif governed.get("trace_manifest_schema") != manifest.get("schema"):
+                errors.append(
+                    "governance_receipt.trace_manifest_schema disagrees with "
+                    "the copy's manifest.json")
+
     if governed.get("receipt_schema") != receipt.get("schema"):
         errors.append("governance_receipt.receipt_schema disagrees with the copy")
     if governed.get("trace_identity_contract")             != receipt.get("trace_identity_contract"):
