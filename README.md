@@ -89,6 +89,9 @@ python3 -m pytest -q
 
 Canonical 发布默认要求本地 `main` HEAD、GitHub `refs/heads/main` 和发布 commit
 三者精确一致；安装并完整校验后才会原子更新 VM `/data/论文/leo-t1-wt/CURRENT.json`。
+VM 不要求能访问 GitHub：Mac 在 promotion 前生成自哈希 live-main proof，VM 校验
+proof 与 installed release 后将其嵌入 CURRENT。proof 过期、commit/ref 不符或
+release 身份不符都会拒绝 promotion。
 普通 `run-release-remote.sh` 默认拒绝非 current release；复现旧证据必须显式传
 `--allow-historical-release`。需要未合并诊断包时必须显式使用
 `publish-release-remote.sh --development-release`，该包不会成为 current。

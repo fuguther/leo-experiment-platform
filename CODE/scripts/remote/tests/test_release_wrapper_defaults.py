@@ -31,7 +31,8 @@ def test_publish_defaults_to_clean_main_and_promotes_only_verified_current_relea
 
     assert '--required-local-branch main' in script
     assert '--required-remote-ref refs/heads/main' in script
-    assert 'verify-remote-ref' in script
+    assert 'build-remote-proof' in script
+    assert '--remote-proof-file "$remote_proof_path"' in script
     assert 'set-current --release-id "$release_id"' in script
     assert '--development-release' in script
     assert 'publication_channel=' in script

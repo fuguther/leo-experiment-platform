@@ -46,6 +46,7 @@ RUN_RECEIPT_SCHEMA = "leo-release-run-receipt/v1"
 CURRENT_POINTER_SCHEMA = "t1-current-release/v2"
 CURRENT_POINTER_NAME = "CURRENT.json"
 CANONICAL_REMOTE_REF = "refs/heads/main"
+MAIN_REF_PROOF_SCHEMA = "leo-main-ref-proof/v1"
 T1_REQUIRED_DIRS = ("ANALYSIS", "CODE", "EXPERIMENTS")
 T1_OPTIONAL_DIRS = ("docs",)
 T1_DEPLOYED_DIRS = (*T1_REQUIRED_DIRS, *T1_OPTIONAL_DIRS)
@@ -318,6 +319,78 @@ def _live_remote_ref_matches(repository: str, commit: str, ref: str) -> bool:
         return False
     fields = result.stdout.strip().split()
     return len(fields) == 2 and fields[0].lower() == commit and fields[1] == ref
+
+
+def build_remote_ref_proof(repo: Path, commit: str, ref: str, *,
+                           expected_repository: str = "") -> dict[str, Any]:
+    repo = Path(os.path.abspath(repo))
+    commit = _verify_full_commit(repo, commit)
+    repository = _repo_identity(repo)
+    if expected_repository and repository != expected_repository.lower():
+        raise ValueError(
+            f"source origin must be {expected_repository}; observed {repository}"
+        )
+    state = _remote_commit_state(repo, commit, None, preferred_ref=ref)
+    if state.get("status") != "verified" or state.get("ref") != ref:
+        raise ValueError(f"commit is not the live tip of {ref}")
+    proof: dict[str, Any] = {
+        "schema": MAIN_REF_PROOF_SCHEMA,
+        "status": "verified",
+        "repository": repository,
+        "ref": ref,
+        "commit": commit,
+        "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    proof["proof_sha256"] = sha256_bytes(canonical_json(proof))
+    return proof
+
+
+def verify_remote_ref_proof(proof: dict[str, Any], *, expected_repository: str,
+                            expected_commit: str, expected_ref: str,
+                            max_age_seconds: int | None = None) -> dict[str, Any]:
+    if not isinstance(proof, dict):
+        raise ValueError("remote main proof must be an object")
+    payload = dict(proof)
+    recorded = payload.pop("proof_sha256", "")
+    if not recorded or recorded != sha256_bytes(canonical_json(payload)):
+        raise ValueError("remote main proof hash mismatch")
+    payload["proof_sha256"] = recorded
+    expected = {
+        "schema": MAIN_REF_PROOF_SCHEMA,
+        "status": "verified",
+        "repository": expected_repository.lower(),
+        "ref": expected_ref,
+        "commit": expected_commit,
+    }
+    for key, value in expected.items():
+        if payload.get(key) != value:
+            raise ValueError(f"remote main proof {key} mismatch")
+    try:
+        checked_at = datetime.fromisoformat(str(payload.get("checked_at", "")).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("remote main proof checked_at is invalid") from exc
+    if checked_at.tzinfo is None:
+        raise ValueError("remote main proof checked_at must include a timezone")
+    now = datetime.now(timezone.utc)
+    age = (now - checked_at.astimezone(timezone.utc)).total_seconds()
+    if age < -60:
+        raise ValueError("remote main proof checked_at is in the future")
+    if max_age_seconds is not None and age > max_age_seconds:
+        raise ValueError("remote main proof is stale")
+    return payload
+
+
+def read_remote_ref_proof(path: Path) -> dict[str, Any]:
+    path = Path(os.path.abspath(path))
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("remote main proof file is missing or unsafe")
+    proof = _load_hashed_json(path, "proof_sha256")
+    return verify_remote_ref_proof(
+        proof,
+        expected_repository=str(proof.get("repository", "")),
+        expected_commit=str(proof.get("commit", "")),
+        expected_ref=str(proof.get("ref", "")),
+    )
 
 
 def verify_source_commit(repo: Path, commit: str, *, required_local_branch: str = "",
@@ -935,7 +1008,8 @@ def verify_installed_release(release_dir: Path) -> dict[str, Any]:
     return envelope
 
 
-def _current_pointer_payload(envelope: dict[str, Any]) -> dict[str, Any]:
+def _current_pointer_payload(envelope: dict[str, Any],
+                             remote_proof: dict[str, Any]) -> dict[str, Any]:
     remote_backup = envelope.get("remote_backup")
     if not isinstance(remote_backup, dict):
         raise ValueError("current release has no remote backup identity")
@@ -943,6 +1017,12 @@ def _current_pointer_payload(envelope: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("current release must have a verified remote backup")
     if remote_backup.get("ref") != CANONICAL_REMOTE_REF:
         raise ValueError(f"current release must be backed by {CANONICAL_REMOTE_REF}")
+    proof = verify_remote_ref_proof(
+        remote_proof,
+        expected_repository=envelope["repository"],
+        expected_commit=envelope["source_git_commit"],
+        expected_ref=CANONICAL_REMOTE_REF,
+    )
     payload: dict[str, Any] = {
         "schema": CURRENT_POINTER_SCHEMA,
         "release_id": envelope["release_id"],
@@ -953,6 +1033,9 @@ def _current_pointer_payload(envelope: dict[str, Any]) -> dict[str, Any]:
         "manifest_sha256": envelope["manifest_sha256"],
         "artifact_sha256": envelope["artifact_sha256"],
         "remote_ref": CANONICAL_REMOTE_REF,
+        "remote_proof": proof,
+        "remote_proof_sha256": proof["proof_sha256"],
+        "remote_checked_at": proof["checked_at"],
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     payload["pointer_sha256"] = sha256_bytes(canonical_json(payload))
@@ -979,19 +1062,51 @@ def read_current_pointer_path(path: Path) -> dict[str, Any]:
         raise ValueError(f"current release pointer must use {CANONICAL_REMOTE_REF}")
     if not isinstance(pointer.get("repository"), str) or not pointer["repository"]:
         raise ValueError("current release pointer repository is invalid")
+    proof = verify_remote_ref_proof(
+        pointer.get("remote_proof"),
+        expected_repository=pointer["repository"],
+        expected_commit=commit,
+        expected_ref=CANONICAL_REMOTE_REF,
+    )
+    if pointer.get("remote_proof_sha256") != proof["proof_sha256"]:
+        raise ValueError("current release pointer remote proof hash mismatch")
+    if pointer.get("remote_checked_at") != proof["checked_at"]:
+        raise ValueError("current release pointer remote checked_at mismatch")
     return pointer
 
 
 def write_current_pointer(release_id: str, releases_root: Path, *,
-                          verify_live_remote: bool = True) -> dict[str, Any]:
+                          remote_proof: dict[str, Any] | None = None,
+                          verify_live_remote: bool = True,
+                          max_proof_age_seconds: int = 600) -> dict[str, Any]:
     release_id = _safe_release_id(release_id)
     releases_root = _require_real_directory(releases_root, create=False)
     release = verify_installed_release(releases_root / release_id)
-    if verify_live_remote and not _live_remote_ref_matches(
-        release["repository"], release["source_git_commit"], CANONICAL_REMOTE_REF
-    ):
-        raise ValueError(f"release commit is not the live tip of {CANONICAL_REMOTE_REF}")
-    pointer = _current_pointer_payload(release)
+    if remote_proof is None:
+        if not verify_live_remote:
+            raise ValueError("remote main proof is required when live verification is disabled")
+        if not _live_remote_ref_matches(
+            release["repository"], release["source_git_commit"], CANONICAL_REMOTE_REF
+        ):
+            raise ValueError(f"release commit is not the live tip of {CANONICAL_REMOTE_REF}")
+        remote_proof = {
+            "schema": MAIN_REF_PROOF_SCHEMA,
+            "status": "verified",
+            "repository": release["repository"],
+            "ref": CANONICAL_REMOTE_REF,
+            "commit": release["source_git_commit"],
+            "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        remote_proof["proof_sha256"] = sha256_bytes(canonical_json(remote_proof))
+    else:
+        remote_proof = verify_remote_ref_proof(
+            remote_proof,
+            expected_repository=release["repository"],
+            expected_commit=release["source_git_commit"],
+            expected_ref=CANONICAL_REMOTE_REF,
+            max_age_seconds=max_proof_age_seconds,
+        )
+    pointer = _current_pointer_payload(release, remote_proof)
     pointer_path = releases_root.parent / CURRENT_POINTER_NAME
     if pointer_path.is_symlink():
         raise ValueError("current release pointer may not be a symbolic link")
@@ -1904,6 +2019,12 @@ def _parser() -> argparse.ArgumentParser:
     verify_source.add_argument("--required-local-branch", default="")
     verify_source.add_argument("--required-remote-ref", default="")
     verify_source.add_argument("--expected-repository", default="")
+    remote_proof = sub.add_parser("build-remote-proof", help="write a live GitHub branch proof for publisher promotion")
+    remote_proof.add_argument("--repo", type=Path, required=True)
+    remote_proof.add_argument("--commit", required=True)
+    remote_proof.add_argument("--ref", required=True)
+    remote_proof.add_argument("--expected-repository", default="")
+    remote_proof.add_argument("--out", type=Path, required=True)
     install = sub.add_parser("install", help="verify and atomically install a T1 release")
     install.add_argument("--bundle", type=Path, required=True)
     install.add_argument("--releases-root", type=Path, required=True)
@@ -1943,6 +2064,7 @@ def _parser() -> argparse.ArgumentParser:
     set_current = sub.add_parser("set-current", help="atomically select one verified main release")
     set_current.add_argument("--release-id", required=True)
     set_current.add_argument("--releases-root", type=Path, required=True)
+    set_current.add_argument("--remote-proof-file", type=Path)
     verify_current = sub.add_parser("verify-current", help="verify CURRENT.json against its installed release")
     verify_current.add_argument("--releases-root", type=Path, required=True)
     return parser
@@ -1969,6 +2091,12 @@ def main(argv: list[str] | None = None) -> int:
                 required_remote_ref=args.required_remote_ref,
                 expected_repository=args.expected_repository,
             )
+        elif args.command == "build-remote-proof":
+            result = build_remote_ref_proof(
+                args.repo, args.commit, args.ref,
+                expected_repository=args.expected_repository,
+            )
+            _write_json_atomic(args.out, result, file_mode=0o444)
         elif args.command == "install":
             if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
                 raise ValueError("remote install target must be exactly /data/论文/leo-t1-wt/releases")
@@ -1995,7 +2123,10 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "set-current":
             if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
                 raise ValueError("current release selection must use exactly /data/论文/leo-t1-wt/releases")
-            result = write_current_pointer(args.release_id, args.releases_root)
+            proof = (read_remote_ref_proof(args.remote_proof_file)
+                     if args.remote_proof_file is not None else None)
+            result = write_current_pointer(
+                args.release_id, args.releases_root, remote_proof=proof)
         elif args.command == "verify-current":
             if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
                 raise ValueError("current release verification must use exactly /data/论文/leo-t1-wt/releases")
