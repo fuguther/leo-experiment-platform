@@ -104,7 +104,8 @@ cleanup_json="$(remote "$REMOTE_PYTHON" "$incoming/release_protocol.py" \
     || die "release is published but verified incoming cleanup failed"
 
 current_json=""
-remote_recheck=""
+remote_proof_json=""
+remote_proof_cleanup=""
 if [[ "$development_release" -eq 0 ]]; then
     [[ "$(git -C "$LOCAL_WORKSPACE" branch --show-current)" == "main" ]] \
         || die "local checkout stopped being main during publication"
@@ -112,13 +113,26 @@ if [[ "$development_release" -eq 0 ]]; then
         || die "local HEAD moved during publication; refusing to promote a stale release"
     [[ -z "$(git -C "$LOCAL_WORKSPACE" status --porcelain=v1 --untracked-files=all)" ]] \
         || die "local worktree became dirty during publication; refusing to promote"
-    remote_recheck="$("$PYTHON_BIN" "$SCRIPT_DIR/release_protocol.py" verify-remote-ref \
-        --repo "$LOCAL_WORKSPACE" --commit "$commit" --ref refs/heads/main)" \
+    remote_proof_file="$bundle/remote-main-proof.json"
+    remote_proof_json="$("$PYTHON_BIN" "$SCRIPT_DIR/release_protocol.py" build-remote-proof \
+        --repo "$LOCAL_WORKSPACE" --commit "$commit" --ref refs/heads/main \
+        --expected-repository "$EXPECTED_REPOSITORY" --out "$remote_proof_file")" \
         || die "GitHub main moved or could not be rechecked; refusing to promote CURRENT.json"
+    proof_attempt="$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
+    remote_proof_path="$REMOTE_ROOT/releases/incoming/$release_id.$proof_attempt.remote-proof.json"
+    installed_helper="$REMOTE_ROOT/releases/$release_id/CODE/scripts/remote/release_protocol.py"
+    remote "$REMOTE_PYTHON" "$installed_helper" stage-proof \
+        --out "$remote_proof_path" --releases-root "$REMOTE_ROOT/releases" \
+        < "$remote_proof_file" \
+        || die "could not exclusively stage remote proof; proof path: $remote_proof_path"
     current_json="$(remote "$REMOTE_PYTHON" \
-        "$REMOTE_ROOT/releases/$release_id/CODE/scripts/remote/release_protocol.py" \
-        set-current --release-id "$release_id" --releases-root "$REMOTE_ROOT/releases")" \
-        || die "release is installed but could not become the verified CURRENT.json target"
+        "$installed_helper" \
+        set-current --release-id "$release_id" --releases-root "$REMOTE_ROOT/releases" \
+        --remote-proof-file "$remote_proof_path")" \
+        || die "release is installed but could not become the verified CURRENT.json target; proof retained at $remote_proof_path"
+    remote_proof_cleanup="$(remote "$REMOTE_PYTHON" "$installed_helper" remove-proof \
+        --path "$remote_proof_path" --releases-root "$REMOTE_ROOT/releases")" \
+        || die "CURRENT was promoted but proof cleanup failed; proof retained at $remote_proof_path"
 fi
 
 printf 'release_id=%s\n' "$release_id"
@@ -127,5 +141,6 @@ printf 'publication_channel=%s\n' "$([[ "$development_release" -eq 0 ]] && echo 
 printf 'remote_backup_status=%s\n' "$backup_status"
 printf 'remote_install=%s\n' "$install_json"
 printf 'remote_incoming=%s\n' "$cleanup_json"
-[[ -z "$remote_recheck" ]] || printf 'remote_ref_recheck=%s\n' "$remote_recheck"
+[[ -z "$remote_proof_json" ]] || printf 'remote_main_proof=%s\n' "$remote_proof_json"
+[[ -z "$remote_proof_cleanup" ]] || printf 'remote_proof_cleanup=%s\n' "$remote_proof_cleanup"
 [[ -z "$current_json" ]] || printf 'current_release=%s\n' "$current_json"

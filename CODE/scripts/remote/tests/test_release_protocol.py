@@ -9,6 +9,7 @@ import io
 import fcntl
 import hashlib
 import re
+from datetime import datetime, timezone, timedelta
 from pathlib import PurePosixPath
 from pathlib import Path
 
@@ -77,6 +78,22 @@ def _repo(path: Path, *, include_docs: bool = True) -> tuple[Path, str]:
     _git(path, "add", ".")
     _git(path, "commit", "-q", "-m", "release base")
     return path, _git(path, "rev-parse", "HEAD")
+
+
+def _remote_proof(commit: str, repository: str = "example/release-test",
+                  checked_at: str | None = None) -> dict:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    proof = {
+        "schema": protocol.MAIN_REF_PROOF_SCHEMA,
+        "status": "verified",
+        "repository": repository,
+        "ref": "refs/heads/main",
+        "commit": commit,
+        "checked_at": checked_at or datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    proof["proof_sha256"] = protocol.sha256_bytes(protocol.canonical_json(proof))
+    return proof
 
 
 def _legacy_release_bundle(path: Path) -> tuple[Path, str]:
@@ -755,7 +772,9 @@ def _installed_fixture(tmp_path: Path) -> tuple[Path, Path, str]:
                              remote_refs=[(commit, "refs/heads/main")])
     releases_root = tmp_path / "vm" / "releases"
     install_release(bundle, releases_root, bootstrap=repo / "CODE/scripts/remote/release_protocol.py")
-    protocol.write_current_pointer(envelope["release_id"], releases_root, verify_live_remote=False)
+    protocol.write_current_pointer(
+        envelope["release_id"], releases_root,
+        remote_proof=_remote_proof(commit))
     return repo, releases_root, envelope["release_id"]
 
 
@@ -776,7 +795,9 @@ def _installed_fixture_with_runtime_contract(tmp_path: Path):
     releases_root = tmp_path / "vm" / "releases"
     install_release(bundle, releases_root,
                    bootstrap=repo / "CODE/scripts/remote/release_protocol.py")
-    protocol.write_current_pointer(envelope["release_id"], releases_root, verify_live_remote=False)
+    protocol.write_current_pointer(
+        envelope["release_id"], releases_root,
+        remote_proof=_remote_proof(commit))
     return repo, releases_root, envelope["release_id"]
 
 
@@ -807,7 +828,9 @@ def test_current_pointer_requires_and_roundtrips_a_verified_main_release(tmp_pat
 
     _repo_path, releases_root, release_id = _canonical_installed_fixture(tmp_path)
 
-    pointer = protocol.write_current_pointer(release_id, releases_root, verify_live_remote=False)
+    pointer = protocol.write_current_pointer(
+        release_id, releases_root,
+        remote_proof=_remote_proof(release_id.split("-", 1)[0]))
     current = protocol.verify_current_release(releases_root)
 
     assert pointer["schema"] == protocol.CURRENT_POINTER_SCHEMA
@@ -816,6 +839,123 @@ def test_current_pointer_requires_and_roundtrips_a_verified_main_release(tmp_pat
     assert current["release_id"] == release_id
     pointer_path = releases_root.parent / protocol.CURRENT_POINTER_NAME
     assert stat.S_IMODE(pointer_path.stat().st_mode) == 0o444
+    assert pointer["remote_proof_sha256"] == pointer["remote_proof"]["proof_sha256"]
+
+
+def test_remote_main_proof_roundtrip_and_expiry(tmp_path: Path) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    proof_path = tmp_path / "proof.json"
+    proof = _remote_proof("a" * 40)
+    protocol._write_json_atomic(proof_path, proof)
+    assert protocol.read_remote_ref_proof(proof_path)["commit"] == "a" * 40
+
+    stale = _remote_proof(
+        "a" * 40,
+        checked_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds"))
+    with pytest.raises(ValueError, match="stale"):
+        protocol.verify_remote_ref_proof(
+            stale,
+            expected_repository="example/release-test",
+            expected_commit="a" * 40,
+            expected_ref="refs/heads/main",
+            max_age_seconds=60,
+        )
+
+    tampered = dict(proof)
+    tampered["commit"] = "b" * 40
+    with pytest.raises(ValueError, match="proof hash mismatch"):
+        protocol.verify_remote_ref_proof(
+            tampered,
+            expected_repository="example/release-test",
+            expected_commit="a" * 40,
+            expected_ref="refs/heads/main",
+        )
+
+    wrong_binding = _remote_proof("b" * 40)
+    with pytest.raises(ValueError, match="commit mismatch"):
+        protocol.verify_remote_ref_proof(
+            wrong_binding,
+            expected_repository="example/release-test",
+            expected_commit="a" * 40,
+            expected_ref="refs/heads/main",
+        )
+
+    proof_path.chmod(0o644)
+    tampered_file = json.loads(proof_path.read_text(encoding="utf-8"))
+    tampered_file["repository"] = "other/repository"
+    proof_path.write_text(json.dumps(tampered_file), encoding="utf-8")
+    with pytest.raises(ValueError, match="hash mismatch"):
+        protocol.read_remote_ref_proof(proof_path)
+
+
+def test_staged_proof_is_exclusive_under_incoming_and_cleanup_is_verified(
+    tmp_path: Path,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    releases_root = tmp_path / "vm" / "releases"
+    incoming = releases_root / "incoming"
+    incoming.mkdir(parents=True)
+    proof_path = incoming / ("a" * 40 + "-" + "b" * 64 + ".attempt.remote-proof.json")
+    data = json.dumps(_remote_proof("a" * 40)).encode("utf-8")
+
+    staged = protocol.stage_remote_proof(proof_path, data, releases_root=releases_root)
+    assert staged["status"] == "staged"
+    assert stat.S_IMODE(proof_path.stat().st_mode) == 0o600
+    with pytest.raises(ValueError, match="already exists"):
+        protocol.stage_remote_proof(proof_path, data, releases_root=releases_root)
+
+    removed = protocol.remove_staged_proof(proof_path, releases_root=releases_root)
+    assert removed["status"] == "removed"
+    assert not proof_path.exists()
+
+    outside = tmp_path / "outside.remote-proof.json"
+    with pytest.raises(ValueError, match="direct remote-proof"):
+        protocol.stage_remote_proof(outside, data, releases_root=releases_root)
+
+
+def test_staged_proof_refuses_symlink_target(tmp_path: Path) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    releases_root = tmp_path / "vm" / "releases"
+    incoming = releases_root / "incoming"
+    incoming.mkdir(parents=True)
+    victim = tmp_path / "victim.txt"
+    victim.write_text("preserve", encoding="utf-8")
+    proof_path = incoming / ("a" * 40 + "-" + "b" * 64 + ".attempt.remote-proof.json")
+    proof_path.symlink_to(victim)
+
+    with pytest.raises(ValueError, match="exists or is unsafe"):
+        protocol.stage_remote_proof(
+            proof_path, json.dumps(_remote_proof("a" * 40)).encode("utf-8"),
+            releases_root=releases_root)
+    assert victim.read_text(encoding="utf-8") == "preserve"
+
+
+def test_set_current_cli_accepts_publisher_proof_without_live_access(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _canonical_installed_fixture(tmp_path)
+    commit = release_id.split("-", 1)[0]
+    proof_path = tmp_path / "remote-proof.json"
+    proof_path.write_text(json.dumps(_remote_proof(commit)), encoding="utf-8")
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases_root)
+    monkeypatch.setattr(
+        protocol, "_live_remote_ref_matches",
+        lambda *args: (_ for _ in ()).throw(AssertionError("VM must not query GitHub")))
+
+    rc = protocol.main([
+        "set-current", "--release-id", release_id,
+        "--releases-root", str(releases_root),
+        "--remote-proof-file", str(proof_path),
+    ])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["release_id"] == release_id
+    assert protocol.verify_current_release(releases_root)["release_id"] == release_id
 
 
 def test_current_pointer_refuses_release_not_backed_by_main(tmp_path: Path) -> None:
@@ -836,17 +976,18 @@ def test_current_pointer_refuses_release_not_backed_by_main(tmp_path: Path) -> N
     install_release(bundle, releases_root)
 
     with pytest.raises(ValueError, match="refs/heads/main"):
-        protocol.write_current_pointer(envelope["release_id"], releases_root, verify_live_remote=False)
+        protocol.write_current_pointer(
+            envelope["release_id"], releases_root,
+            remote_proof=_remote_proof(commit))
     assert not (releases_root.parent / protocol.CURRENT_POINTER_NAME).exists()
 
 
-def test_current_pointer_refuses_when_live_main_has_moved(tmp_path: Path, monkeypatch) -> None:
+def test_current_pointer_requires_an_explicit_main_proof(tmp_path: Path) -> None:
     from CODE.scripts.remote import release_protocol as protocol
 
     _repo_path, releases_root, release_id = _canonical_installed_fixture(tmp_path)
-    monkeypatch.setattr(protocol, "_live_remote_ref_matches", lambda *args: False)
 
-    with pytest.raises(ValueError, match="live tip"):
+    with pytest.raises(TypeError, match="remote_proof"):
         protocol.write_current_pointer(release_id, releases_root)
     assert not (releases_root.parent / protocol.CURRENT_POINTER_NAME).exists()
 
@@ -855,7 +996,9 @@ def test_current_pointer_tamper_is_rejected(tmp_path: Path) -> None:
     from CODE.scripts.remote import release_protocol as protocol
 
     _repo_path, releases_root, release_id = _canonical_installed_fixture(tmp_path)
-    protocol.write_current_pointer(release_id, releases_root, verify_live_remote=False)
+    protocol.write_current_pointer(
+        release_id, releases_root,
+        remote_proof=_remote_proof(release_id.split("-", 1)[0]))
     pointer_path = releases_root.parent / protocol.CURRENT_POINTER_NAME
     pointer_path.chmod(0o644)
     pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
@@ -941,6 +1084,35 @@ def test_verify_source_cli_passes_expected_repository(
 
     assert rc == 0
     assert json.loads(capsys.readouterr().out)["repository"] == "example/release-test"
+
+
+def test_build_remote_proof_cli_writes_a_self_hashed_live_binding(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    monkeypatch.setattr(
+        protocol, "_remote_commit_state",
+        lambda *args, **kwargs: {
+            "status": "verified", "ref": "refs/heads/main",
+            "checked_at": "2026-11-23T00:00:00+00:00",
+        })
+    out = tmp_path / "remote-proof.json"
+
+    rc = protocol.main([
+        "build-remote-proof", "--repo", str(repo), "--commit", commit,
+        "--ref", "refs/heads/main",
+        "--expected-repository", "example/release-test", "--out", str(out),
+    ])
+
+    assert rc == 0
+    emitted = json.loads(capsys.readouterr().out)
+    proof = json.loads(out.read_text(encoding="utf-8"))
+    assert emitted["proof_sha256"] == proof["proof_sha256"]
+    assert proof["commit"] == commit
+    assert proof["repository"] == "example/release-test"
 
 
 def test_require_remote_ref_rechecks_the_live_branch_tip(tmp_path: Path, monkeypatch) -> None:
@@ -1249,7 +1421,9 @@ def test_run_uses_an_immutable_input_snapshot_after_source_path_changes(
                              remote_refs=[(commit, "refs/heads/main")])
     releases_root = tmp_path / "vm" / "releases"
     protocol.install_release(bundle, releases_root, bootstrap=reader.parent / "scripts/remote/release_protocol.py")
-    protocol.write_current_pointer(envelope["release_id"], releases_root, verify_live_remote=False)
+    protocol.write_current_pointer(
+        envelope["release_id"], releases_root,
+        remote_proof=_remote_proof(commit))
     source = tmp_path / "input.txt"
     source.write_text("version A\n", encoding="utf-8")
     real_drain = protocol._drain_child
