@@ -321,13 +321,21 @@ def _live_remote_ref_matches(repository: str, commit: str, ref: str) -> bool:
 
 
 def verify_source_commit(repo: Path, commit: str, *, required_local_branch: str = "",
-                         required_remote_ref: str = "") -> dict[str, Any]:
+                         required_remote_ref: str = "",
+                         expected_repository: str = "") -> dict[str, Any]:
     repo = Path(os.path.abspath(repo))
     commit = _verify_full_commit(repo, commit)
     branch = _check_clean_checkout(repo, commit)
     if required_local_branch and branch != required_local_branch:
         raise ValueError(
             f"source branch must be {required_local_branch!r}; checkout is on {branch!r}"
+        )
+    actual_repository = ""
+    if expected_repository or required_remote_ref:
+        actual_repository = _repo_identity(repo)
+    if expected_repository and actual_repository != expected_repository.lower():
+        raise ValueError(
+            f"source origin must be {expected_repository}; observed {actual_repository}"
         )
     backup: dict[str, Any] = {"status": "not_requested"}
     if required_remote_ref:
@@ -336,6 +344,7 @@ def verify_source_commit(repo: Path, commit: str, *, required_local_branch: str 
         "status": "verified",
         "commit": commit,
         "branch": branch,
+        "repository": actual_repository or None,
         "remote_backup": backup,
     }
 
@@ -1889,6 +1898,7 @@ def _parser() -> argparse.ArgumentParser:
     verify_source.add_argument("--commit", required=True)
     verify_source.add_argument("--required-local-branch", default="")
     verify_source.add_argument("--required-remote-ref", default="")
+    verify_source.add_argument("--expected-repository", default="")
     install = sub.add_parser("install", help="verify and atomically install a T1 release")
     install.add_argument("--bundle", type=Path, required=True)
     install.add_argument("--releases-root", type=Path, required=True)
@@ -1943,6 +1953,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.repo, args.commit, args.out,
                 required_local_branch=args.required_local_branch,
                 required_remote_ref=args.required_remote_ref,
+                expected_repository=args.expected_repository,
             )
         elif args.command == "verify":
             result = verify_release_bundle(args.bundle)

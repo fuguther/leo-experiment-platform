@@ -36,7 +36,8 @@ source_status="$($GIT_BIN -C "$LOCAL_WORKSPACE_DIR" status --porcelain --untrack
 verify_canonical_source() {
     "$LOCAL_PYTHON" "$SCRIPT_DIR/release_protocol.py" verify-source \
         --repo "$LOCAL_WORKSPACE_DIR" --commit "$source_commit" \
-        --required-local-branch main --required-remote-ref refs/heads/main >/dev/null
+        --required-local-branch main --required-remote-ref refs/heads/main \
+        --expected-repository fuguther/leo-experiment-platform >/dev/null
 }
 
 verify_canonical_source \

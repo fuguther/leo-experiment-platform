@@ -919,6 +919,7 @@ def test_verify_source_commit_requires_clean_main_and_live_remote(tmp_path: Path
 
     repo, commit = _repo(tmp_path / "repo")
     _git(repo, "branch", "-M", "main")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
     monkeypatch.setattr(
         protocol,
         "_remote_commit_state",
@@ -931,9 +932,17 @@ def test_verify_source_commit_requires_clean_main_and_live_remote(tmp_path: Path
 
     verified = protocol.verify_source_commit(
         repo, commit, required_local_branch="main",
-        required_remote_ref="refs/heads/main")
+        required_remote_ref="refs/heads/main",
+        expected_repository="example/release-test")
     assert verified["status"] == "verified"
+    assert verified["repository"] == "example/release-test"
     assert verified["remote_backup"]["ref"] == "refs/heads/main"
+
+    with pytest.raises(ValueError, match="source origin must be"):
+        protocol.verify_source_commit(
+            repo, commit, required_local_branch="main",
+            required_remote_ref="refs/heads/main",
+            expected_repository="fuguther/leo-experiment-platform")
 
     monkeypatch.setattr(
         protocol, "_remote_commit_state",
@@ -942,6 +951,13 @@ def test_verify_source_commit_requires_clean_main_and_live_remote(tmp_path: Path
         protocol.verify_source_commit(
             repo, commit, required_local_branch="main",
             required_remote_ref="refs/heads/main")
+
+    _git(repo, "remote", "set-url", "origin", str(tmp_path / "local-origin.git"))
+    with pytest.raises(ValueError, match="origin must identify a GitHub repository"):
+        protocol.verify_source_commit(
+            repo, commit, required_local_branch="main",
+            required_remote_ref="refs/heads/main",
+            expected_repository="fuguther/leo-experiment-platform")
 
 
 def test_run_rejects_release_installed_under_a_different_release_id_directory(
