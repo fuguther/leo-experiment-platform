@@ -1,6 +1,6 @@
 # leo-experiment-platform 当前状态
 
-最后对账：2026-11-22。topic 级研究现态仍见私有 Issue #3；本文件只记录平台当前事实、已知正确性缺口和下一步。
+最后对账：2026-11-23。topic 级研究现态仍见私有 Issue #3；本文件只记录平台当前事实、已知正确性缺口和下一步。
 
 ## 当前边界
 
@@ -12,6 +12,15 @@
 - VM 不需要直连 GitHub；Mac 在 promotion 前生成 live-main proof，VM 校验 proof 身份/新鲜度和 installed release 后写入 CURRENT。
 - 旧 `push-remote.sh` 与新 canonical 发布器共用 clean-main/live-GitHub 门；普通 `run_release()` 默认要求 CURRENT，历史复现必须显式覆盖。
 - 测试、CI、维护检查和文件存在都不能建立科研结论；正式结论还要求 exact source、运行回执和对应分析。
+
+## 当前 canonical 发布
+
+- 本地 `main`、GitHub `main` 与 VM CURRENT 均绑定 `0cf102478b5317d4f4f64b840e7264f960543e2e`。
+- release：`0cf102478b5317d4f4f64b840e7264f960543e2e-4606cf18e6ab8f8441f150fa72ce8722b9746bced69678d59fa5a08821dd911c`。
+- artifact：`bead7307ef8af2cc0e632ba6e0df9fc15525a35b5485dafdffd88f9a7511d1b4`。
+- CURRENT pointer：`8cde3c7c1dc23cd75356a861fcd33c7b446bf183e840b2c931e2833f75dc29e6`。
+- VM `verify-current` 已通过；promotion 使用的 live-main proof 为 `d13a5a395f394ccd52a659521c37ddcb81f089421b96004e3ed8dab816695204`，临时 proof 已清理。
+- VM 不要求能访问 GitHub；Mac 在 promotion 前生成自哈希 proof，VM 验证 proof 与 installed release 后写入 CURRENT。
 
 ## 当前清理结果
 
@@ -44,6 +53,7 @@
 
 ## 下一步
 
-1. 清理/一致性分支完成全量本机测试、exact-head CI 和独立审阅后进入 main，再从合并后的 main 发布并核验第一个 canonical `CURRENT.json`。
-2. 为上述时间语义缺口逐项先写最小失败回归，再单独修复；不得在同一次改动中改变路由算法或历史证据。
-3. 修复后从干净、已推送的完整 commit 构造新 release，在 VM 上做能够区分正确性失败的诊断运行，再决定是否重新产生科研数据。
+1. 为上述时间语义缺口逐项先写最小失败回归，再单独修复；不得在同一次改动中改变路由算法或历史证据。
+2. 修复后从干净、已推送的 main 构造新 release；普通运行默认只能使用 CURRENT，历史复现必须显式覆盖。
+3. VM `7e022d7...` release 来源仍未知且有 2 个历史 run 引用；保持只读、禁止作为 current，不能因不在 GitHub 就删除唯一证据。
+4. 正式实验仍须编译、独立审阅、明确授权和 receipt 复核；当前 canonical release 不构成科研结论。
