@@ -18,7 +18,7 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 7ffc5859af92941b4cbb5e2bcc082f8438f08a05662b0d7f672c213012666e4b
+    execution_chain_sha256: 78105787fc1a01c921745b87a3b6c8a281edd9ce58a4b1cd91f269c3e66ae0ad
     cell_input_sha256:
       b-bounded_population_cost_smoke-network-seed-7: 9595d6babaade0c6f3841825b14af70ab16bf85b9f965102444fe1fedc438b12
   release_ready: false
@@ -80,6 +80,13 @@ design_readiness:
     Profile, population raster, compiled trace, seed, arm order, cell input,
     four-call budget, and simulation semantics remain unchanged. No cost probe
     or performance simulation was run by this re-pin.
+    ROUND19 (2026-11-23) re-binds the same one-cell/four-call scope after the
+    platform cleanup corrected the t1_a6_check.py docstring to name
+    run-release-remote.sh instead of the retired t1-vm.sh. The only
+    execution-chain file delta 70f05e4 -> 0c6be12 is that docstring; no
+    executable statement changed. Profile, population raster, compiled trace,
+    seed, arm order, cell input, four-call budget, and simulation semantics are
+    unchanged. No cost probe or performance simulation was run by this re-pin.
     ROUND17 (2026-11-17) versions the strengthened witness contract. The chain
     moves af5c60be -> b1a0ac0e because Governance receipt and External launch
     status move from v2 to v3, making formal_run_sha256 a mandatory field and
@@ -100,7 +107,7 @@ input_identity:
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 7ffc5859af92941b4cbb5e2bcc082f8438f08a05662b0d7f672c213012666e4b
+  source_execution_chain_sha256: 78105787fc1a01c921745b87a3b6c8a281edd9ce58a4b1cd91f269c3e66ae0ad
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:

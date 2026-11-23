@@ -92,5 +92,7 @@ Canonical 发布默认要求本地 `main` HEAD、GitHub `refs/heads/main` 和发
 普通 `run-release-remote.sh` 默认拒绝非 current release；复现旧证据必须显式传
 `--allow-historical-release`。需要未合并诊断包时必须显式使用
 `publish-release-remote.sh --development-release`，该包不会成为 current。
+`CODE/experiment_platform/code_pointer.py` 仅为历史 execution-chain 身份兼容
+保留，canonical release/run 路径不得导入或使用它。
 
 `SOURCE-COMMIT.txt` 只记录固定的上游模拟器 pin，不是平台 release 身份；平台提交由 `.deployment_commit`、release manifest 和 run receipt 绑定。旧 `t1-vm.sh` 已退役，不能被当作新发布入口。

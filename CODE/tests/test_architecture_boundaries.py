@@ -117,6 +117,17 @@ def test_leo_sim_does_not_add_platform_reverse_imports():
     assert dict(actual) == ALLOWED_REVERSE_IMPORTS
 
 
+def test_canonical_code_paths_do_not_use_legacy_current_pointer():
+    offenders = []
+    for package in ("CODE/leo_sim", "CODE/experiment_platform", "CODE/scripts"):
+        for path in (ROOT / package).rglob("*.py"):
+            if "tests" in path.parts or path.name == "code_pointer.py":
+                continue
+            if "code_pointer" in path.read_text(encoding="utf-8"):
+                offenders.append(path.relative_to(ROOT).as_posix())
+    assert offenders == []
+
+
 @pytest.mark.parametrize(
     ("source", "expected"),
     [
