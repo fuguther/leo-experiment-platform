@@ -8,6 +8,7 @@
 - 正式可执行路线是 `leo_sim_v2`。`legacy_gateway` 仅是外部旧平台兼容合同，本仓库不提供可独立完成的正式运行。
 - 实验实例、历史工作包和一次性分析器不进入活动树。追溯旧内容时使用产生它的 Git commit/blob、run-id、manifest、receipt 和原始证据。
 - 长期契约与最小夹具位于 `EXPERIMENTS/contracts/`；运行实例不得写回该目录。
+- Canonical 执行身份只来自干净 `main`、GitHub `refs/heads/main` 与 VM `CURRENT.json` 指向的同一精确 commit；development release 和来源未知的历史 release 不能冒充 current。
 - 测试、CI、维护检查和文件存在都不能建立科研结论；正式结论还要求 exact source、运行回执和对应分析。
 
 ## 当前清理结果
@@ -41,6 +42,6 @@
 
 ## 下一步
 
-1. 清理分支完成全量本机测试、exact-head CI 和独立审阅后进入 main。
+1. 清理/一致性分支完成全量本机测试、exact-head CI 和独立审阅后进入 main，再从合并后的 main 发布并核验第一个 canonical `CURRENT.json`。
 2. 为上述时间语义缺口逐项先写最小失败回归，再单独修复；不得在同一次改动中改变路由算法或历史证据。
 3. 修复后从干净、已推送的完整 commit 构造新 release，在 VM 上做能够区分正确性失败的诊断运行，再决定是否重新产生科研数据。

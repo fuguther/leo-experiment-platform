@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Read-only three-end code identity check.
 
-Compares: local git HEAD, GitHub main, the newest immutable release, and
-CURRENT.json (when present).  It never writes, merges or deletes; it only runs read-only git/network probes.
+Compares local git HEAD, GitHub main, and the verified CURRENT.json release.
+It never writes, merges or deletes; it only runs read-only git/network probes.
 
 Usage:
   python3 -m CODE.scripts.three_end_check \
       --local-repo . --github fuguther/leo-experiment-platform \
-      --release-dir /data/论文/leo-t1-wt/releases \
       --current /data/论文/leo-t1-wt/CURRENT.json --fail-on-drift
 """
 from __future__ import annotations
@@ -18,9 +17,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from CODE.experiment_platform import code_pointer
+from CODE.scripts.remote import release_protocol
 
-COMMIT_FIELDS = ("local", "github", "release", "current")
+COMMIT_FIELDS = ("local", "github", "current")
 
 
 def _git(repo: Path, *args: str) -> str | None:
@@ -58,32 +57,17 @@ def read_github(slug: str, *, offline: bool = False,
             "source": "ls-remote refs/heads/main"}
 
 
-def read_latest_release(release_dir: Path | None) -> dict:
-    if release_dir is None or not release_dir.is_dir():
-        return {"commit": None, "release_id": None}
-    candidates = [p for p in release_dir.iterdir()
-                  if p.is_dir() and (p / ".release-envelope.json").is_file()]
-    if not candidates:
-        return {"commit": None, "release_id": None}
-    latest = max(candidates, key=lambda p: p.stat().st_mtime)
-    try:
-        env = json.loads((latest / ".release-envelope.json").read_text(
-            encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"commit": None, "release_id": latest.name}
-    return {"commit": env.get("source_git_commit"),
-            "release_id": env.get("release_id") or latest.name}
-
-
 def read_current(path: Path | None) -> dict:
     if path is None:
         return {"commit": None}
     try:
-        doc = code_pointer.read_current(path)
-    except code_pointer.PointerError as exc:
+        expected = path.parent / "releases"
+        doc = release_protocol.verify_current_release(expected)
+    except (OSError, ValueError) as exc:
         return {"commit": None, "error": str(exc)}
-    return {"commit": doc["commit"], "release_id": doc.get("release_id"),
-            "dirty": doc.get("dirty")}
+    return {"commit": doc["source_git_commit"],
+            "release_id": doc.get("release_id"),
+            "artifact_sha256": doc.get("artifact_sha256")}
 
 
 def compare_rows(rows: dict) -> dict:
@@ -102,7 +86,6 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--local-repo", type=Path, default=Path.cwd())
     parser.add_argument("--github", default="fuguther/leo-experiment-platform")
-    parser.add_argument("--release-dir", type=Path)
     parser.add_argument("--current", type=Path)
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--json", action="store_true")
@@ -113,7 +96,6 @@ def main(argv=None) -> int:
         "local": read_local(args.local_repo),
         "github": read_github(args.github, offline=args.offline,
                               local_repo=args.local_repo),
-        "release": read_latest_release(args.release_dir),
         "current": read_current(args.current),
     }
     comparison = compare_rows(rows)

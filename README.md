@@ -87,4 +87,10 @@ python3 -m pytest -q
 只从干净、已提交、已推送的完整 commit 构造不可变 release。所有产生科研数值
 的仿真、压力测试、决策计时和训练在 VM 执行。
 
+Canonical 发布默认要求本地 `main` HEAD、GitHub `refs/heads/main` 和发布 commit
+三者精确一致；安装并完整校验后才会原子更新 VM `/data/论文/leo-t1-wt/CURRENT.json`。
+普通 `run-release-remote.sh` 默认拒绝非 current release；复现旧证据必须显式传
+`--allow-historical-release`。需要未合并诊断包时必须显式使用
+`publish-release-remote.sh --development-release`，该包不会成为 current。
+
 `SOURCE-COMMIT.txt` 只记录固定的上游模拟器 pin，不是平台 release 身份；平台提交由 `.deployment_commit`、release manifest 和 run receipt 绑定。旧 `t1-vm.sh` 已退役，不能被当作新发布入口。

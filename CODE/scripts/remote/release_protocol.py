@@ -43,6 +43,9 @@ ENVELOPE_SCHEMA = "leo-immutable-release/v1"
 MANIFEST_SCHEMA = "leo-immutable-release-manifest/v1"
 RUN_SCHEMA = "leo-release-run/v1"
 RUN_RECEIPT_SCHEMA = "leo-release-run-receipt/v1"
+CURRENT_POINTER_SCHEMA = "t1-current-release/v2"
+CURRENT_POINTER_NAME = "CURRENT.json"
+CANONICAL_REMOTE_REF = "refs/heads/main"
 T1_REQUIRED_DIRS = ("ANALYSIS", "CODE", "EXPERIMENTS")
 T1_OPTIONAL_DIRS = ("docs",)
 T1_DEPLOYED_DIRS = (*T1_REQUIRED_DIRS, *T1_OPTIONAL_DIRS)
@@ -249,7 +252,8 @@ def _repo_identity(repo: Path) -> str:
 
 
 def _remote_commit_state(repo: Path, commit: str,
-                         remote_refs: Iterable[tuple[str, str]] | None) -> dict[str, Any]:
+                         remote_refs: Iterable[tuple[str, str]] | None,
+                         preferred_ref: str = "") -> dict[str, Any]:
     checked_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     refs: list[tuple[str, str]] = []
     if remote_refs is None:
@@ -267,6 +271,12 @@ def _remote_commit_state(repo: Path, commit: str,
     else:
         refs = [(sha.lower(), ref) for sha, ref in remote_refs]
     matching = sorted(ref for sha, ref in refs if sha == commit)
+    if preferred_ref and preferred_ref in matching:
+        return {
+            "status": "verified",
+            "checked_at": checked_at,
+            "ref": preferred_ref,
+        }
     if matching:
         return {
             "status": "verified",
@@ -278,6 +288,16 @@ def _remote_commit_state(repo: Path, commit: str,
         "checked_at": checked_at,
         "reason": "no advertised origin branch points to this exact commit",
     }
+
+
+def require_remote_ref(repo: Path, commit: str, ref: str) -> dict[str, Any]:
+    commit = _verify_full_commit(repo, commit)
+    if not ref.startswith("refs/heads/") or any(ch.isspace() for ch in ref):
+        raise ValueError("required remote ref must be one concrete branch ref")
+    state = _remote_commit_state(repo, commit, None, preferred_ref=ref)
+    if state.get("status") != "verified" or state.get("ref") != ref:
+        raise ValueError(f"commit is not the live tip of {ref}")
+    return state
 
 
 def _verify_full_commit(repo: Path, commit: str) -> str:
@@ -545,11 +565,18 @@ def _envelope_payload(manifest: dict[str, Any], archive_path: Path, branch: str,
 
 
 def build_release(repo: Path, commit: str, bundle_dir: Path, *,
-                  remote_refs: Iterable[tuple[str, str]] | None = None) -> dict[str, Any]:
+                  remote_refs: Iterable[tuple[str, str]] | None = None,
+                  required_local_branch: str = "",
+                  required_remote_ref: str = "") -> dict[str, Any]:
     repo = Path(os.path.abspath(repo))
     bundle_dir = Path(os.path.abspath(bundle_dir))
     commit = _verify_full_commit(repo, commit)
     branch = _check_clean_checkout(repo, commit)
+    if required_local_branch and branch != required_local_branch:
+        raise ValueError(
+            f"release must be built from local branch {required_local_branch!r}; "
+            f"checkout is on {branch!r}"
+        )
     repository = _repo_identity(repo)
     _check_gitlinks(repo, commit)
     tracked_credentials = _tracked_credential_paths(repo, commit)
@@ -600,7 +627,17 @@ def build_release(repo: Path, commit: str, bundle_dir: Path, *,
         manifest_path.write_bytes(canonical_json(manifest) + b"\n")
         archive_path = bundle_dir / "release.tar"
         _write_deterministic_archive(source, archive_path, manifest, commit_epoch)
-        remote_state = _remote_commit_state(repo, commit, remote_refs)
+        remote_state = _remote_commit_state(
+            repo, commit, remote_refs, preferred_ref=required_remote_ref
+        )
+        if required_remote_ref and (
+            remote_state.get("status") != "verified"
+            or remote_state.get("ref") != required_remote_ref
+        ):
+            raise ValueError(
+                f"canonical release requires the exact commit on {required_remote_ref}; "
+                f"remote state is {remote_state.get('status')}"
+            )
         envelope = _envelope_payload(manifest, archive_path, branch, remote_state)
         _write_json_atomic(bundle_dir / "release.json", envelope)
     verified = verify_release_bundle(bundle_dir)
@@ -842,6 +879,86 @@ def verify_installed_release(release_dir: Path) -> dict[str, Any]:
         if candidate.stat().st_mode & 0o222:
             raise ValueError("installed release is writable")
     return envelope
+
+
+def _current_pointer_payload(envelope: dict[str, Any]) -> dict[str, Any]:
+    remote_backup = envelope.get("remote_backup")
+    if not isinstance(remote_backup, dict):
+        raise ValueError("current release has no remote backup identity")
+    if remote_backup.get("status") != "verified":
+        raise ValueError("current release must have a verified remote backup")
+    if remote_backup.get("ref") != CANONICAL_REMOTE_REF:
+        raise ValueError(f"current release must be backed by {CANONICAL_REMOTE_REF}")
+    payload: dict[str, Any] = {
+        "schema": CURRENT_POINTER_SCHEMA,
+        "release_id": envelope["release_id"],
+        "repository": envelope["repository"],
+        "source_git_commit": envelope["source_git_commit"],
+        "source_tree_sha256": envelope["source_tree_sha256"],
+        "archive_sha256": envelope["archive_sha256"],
+        "manifest_sha256": envelope["manifest_sha256"],
+        "artifact_sha256": envelope["artifact_sha256"],
+        "remote_ref": CANONICAL_REMOTE_REF,
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    payload["pointer_sha256"] = sha256_bytes(canonical_json(payload))
+    return payload
+
+
+def read_current_pointer_path(path: Path) -> dict[str, Any]:
+    path = Path(os.path.abspath(path))
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"current release pointer is missing or unsafe: {path}")
+    pointer = _load_hashed_json(path, "pointer_sha256")
+    if pointer.get("schema") != CURRENT_POINTER_SCHEMA:
+        raise ValueError("unsupported current release pointer schema")
+    release_id = _safe_release_id(str(pointer.get("release_id", "")))
+    commit = str(pointer.get("source_git_commit", ""))
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("current release pointer commit is invalid")
+    if release_id.split("-", 1)[0] != commit:
+        raise ValueError("current release pointer commit does not match release ID")
+    for field in ("source_tree_sha256", "archive_sha256", "manifest_sha256", "artifact_sha256"):
+        if not re.fullmatch(r"[0-9a-f]{64}", str(pointer.get(field, ""))):
+            raise ValueError(f"current release pointer {field} is invalid")
+    if pointer.get("remote_ref") != CANONICAL_REMOTE_REF:
+        raise ValueError(f"current release pointer must use {CANONICAL_REMOTE_REF}")
+    if not isinstance(pointer.get("repository"), str) or not pointer["repository"]:
+        raise ValueError("current release pointer repository is invalid")
+    return pointer
+
+
+def write_current_pointer(release_id: str, releases_root: Path) -> dict[str, Any]:
+    release_id = _safe_release_id(release_id)
+    releases_root = _require_real_directory(releases_root, create=False)
+    release = verify_installed_release(releases_root / release_id)
+    pointer = _current_pointer_payload(release)
+    pointer_path = releases_root.parent / CURRENT_POINTER_NAME
+    if pointer_path.is_symlink():
+        raise ValueError("current release pointer may not be a symbolic link")
+    _write_json_atomic(pointer_path, pointer)
+    os.chmod(pointer_path, 0o444)
+    return read_current_pointer_path(pointer_path)
+
+
+def verify_current_release(releases_root: Path) -> dict[str, Any]:
+    releases_root = _require_real_directory(releases_root, create=False)
+    pointer = read_current_pointer_path(releases_root.parent / CURRENT_POINTER_NAME)
+    release_id = pointer["release_id"]
+    release = verify_installed_release(releases_root / release_id)
+    remote_backup = release.get("remote_backup")
+    if not isinstance(remote_backup, dict) or (
+        remote_backup.get("status") != "verified"
+        or remote_backup.get("ref") != CANONICAL_REMOTE_REF
+    ):
+        raise ValueError(f"current release is not backed by {CANONICAL_REMOTE_REF}")
+    for field in (
+        "release_id", "repository", "source_git_commit", "source_tree_sha256",
+        "archive_sha256", "manifest_sha256", "artifact_sha256",
+    ):
+        if pointer.get(field) != release.get(field):
+            raise ValueError(f"current release pointer {field} does not match the installed release")
+    return {"status": "verified", **pointer}
 
 
 def install_release(bundle_dir: Path, releases_root: Path, *, bootstrap: Path | None = None) -> dict[str, Any]:
@@ -1349,7 +1466,8 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
                 runs_root: Path = RUN_ROOT, mode: str = "diagnostic",
                 config: str = "", authorization: str = "", inputs: list[str] | None = None,
                 seed: int | None = None, resource_group: str = "",
-                timeout_seconds: int = 1800, argv: list[str]) -> dict[str, Any]:
+                timeout_seconds: int = 1800, argv: list[str],
+                require_current: bool = False) -> dict[str, Any]:
     release_id = _safe_release_id(release_id)
     run_id = _safe_run_id(run_id)
     if mode not in {"development", "diagnostic"}:
@@ -1360,6 +1478,14 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
     release = verify_installed_release(release_dir)
     if release.get("release_id") != release_id:
         raise ValueError("requested release identity mismatch")
+    current_pointer: dict[str, Any] | None = None
+    if require_current:
+        current_pointer = verify_current_release(release_root)
+        if current_pointer.get("release_id") != release_id:
+            raise ValueError(
+                "requested release is not current; use --allow-historical-release "
+                "only for an explicit historical reproduction"
+            )
     argv = _release_python_argv(argv, release_dir)
     runtime_identity = _runtime_identity()
     runtime_contract_record = _verify_runtime_contract(
@@ -1436,6 +1562,10 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
             "release_artifact_sha256": release["artifact_sha256"],
             "repository": release["repository"],
             "remote_backup": release.get("remote_backup", {}),
+            "current_release_pointer_sha256": (
+                current_pointer.get("pointer_sha256") if current_pointer else None
+            ),
+            "current_release_status": "verified_current" if current_pointer else "historical_override",
             "config": config_record,
             "authorization_receipt_sha256": authorization_record["sha256"] if authorization_record else None,
             "inputs": input_records,
@@ -1671,6 +1801,12 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--commit", required=True)
     build.add_argument("--out", type=Path, required=True)
     build.add_argument("--expected-repository", default="")
+    build.add_argument("--required-local-branch", default="")
+    build.add_argument("--required-remote-ref", default="")
+    verify_remote = sub.add_parser("verify-remote-ref", help="verify a commit is the live tip of one remote branch")
+    verify_remote.add_argument("--repo", type=Path, required=True)
+    verify_remote.add_argument("--commit", required=True)
+    verify_remote.add_argument("--ref", required=True)
     install = sub.add_parser("install", help="verify and atomically install a T1 release")
     install.add_argument("--bundle", type=Path, required=True)
     install.add_argument("--releases-root", type=Path, required=True)
@@ -1689,6 +1825,7 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--seed", type=int)
     run.add_argument("--resource-group", default="")
     run.add_argument("--timeout-seconds", type=int, default=1800)
+    run.add_argument("--allow-historical-release", action="store_true")
     run.add_argument("argv", nargs=argparse.REMAINDER)
     verify_run = sub.add_parser("verify-run", help="verify a completed run receipt")
     verify_run.add_argument("--run-dir", type=Path, required=True)
@@ -1705,6 +1842,11 @@ def _parser() -> argparse.ArgumentParser:
     cleanup.add_argument("--release-id", required=True)
     quarantine = sub.add_parser("quarantine-incoming", help="preserve an abandoned partial before retry")
     quarantine.add_argument("--release-id", required=True)
+    set_current = sub.add_parser("set-current", help="atomically select one verified main release")
+    set_current.add_argument("--release-id", required=True)
+    set_current.add_argument("--releases-root", type=Path, required=True)
+    verify_current = sub.add_parser("verify-current", help="verify CURRENT.json against its installed release")
+    verify_current.add_argument("--releases-root", type=Path, required=True)
     return parser
 
 
@@ -1714,9 +1856,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "build":
             if args.expected_repository and _repo_identity(Path(os.path.abspath(args.repo))) != args.expected_repository.lower():
                 raise ValueError("source origin does not match the expected T1 repository")
-            result = build_release(args.repo, args.commit, args.out)
+            result = build_release(
+                args.repo, args.commit, args.out,
+                required_local_branch=args.required_local_branch,
+                required_remote_ref=args.required_remote_ref,
+            )
         elif args.command == "verify":
             result = verify_release_bundle(args.bundle)
+        elif args.command == "verify-remote-ref":
+            result = require_remote_ref(args.repo, args.commit, args.ref)
         elif args.command == "install":
             if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
                 raise ValueError("remote install target must be exactly /data/论文/leo-t1-wt/releases")
@@ -1732,7 +1880,7 @@ def main(argv: list[str] | None = None) -> int:
                 runs_root=args.runs_root, mode=args.mode, config=args.config,
                 authorization=args.authorization, inputs=args.input, seed=args.seed,
                 resource_group=args.resource_group, timeout_seconds=args.timeout_seconds,
-                argv=child_argv,
+                argv=child_argv, require_current=not args.allow_historical_release,
             )
         elif args.command == "prepare-incoming":
             result = {"status": "prepared", "path": str(prepare_incoming(args.release_id))}
@@ -1740,6 +1888,14 @@ def main(argv: list[str] | None = None) -> int:
             result = cleanup_incoming(args.release_id)
         elif args.command == "quarantine-incoming":
             result = quarantine_incoming(args.release_id)
+        elif args.command == "set-current":
+            if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
+                raise ValueError("current release selection must use exactly /data/论文/leo-t1-wt/releases")
+            result = write_current_pointer(args.release_id, args.releases_root)
+        elif args.command == "verify-current":
+            if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
+                raise ValueError("current release verification must use exactly /data/论文/leo-t1-wt/releases")
+            result = verify_current_release(args.releases_root)
         elif args.command == "verify-run":
             result = verify_run_directory(args.run_dir, expected_run_id=args.run_id,
                                           expected_release_id=args.release_id)
