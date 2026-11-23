@@ -399,17 +399,45 @@ def stage_remote_proof(path: Path, data: bytes, *, releases_root: Path = RELEASE
     path = Path(os.path.abspath(path))
     if path.parent != incoming or not path.name.endswith(".remote-proof.json"):
         raise ValueError("staged proof must be a direct remote-proof file under releases/incoming")
-    if path.is_symlink() or path.exists():
-        raise ValueError("staged proof target already exists or is unsafe")
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     try:
-        with os.fdopen(fd, "wb", closefd=False) as handle:
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
+        proof = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("staged proof must be valid UTF-8 JSON") from exc
+    proof = verify_remote_ref_proof(
+        proof,
+        expected_repository=str(proof.get("repository", "")),
+        expected_commit=str(proof.get("commit", "")),
+        expected_ref=str(proof.get("ref", "")),
+    )
+    releases_fd = _open_real_directory_fd(releases_root)
+    incoming_fd: int | None = None
+    try:
+        incoming_fd = _open_child_directory_fd(releases_fd, "incoming")
+        assert incoming_fd is not None
+        try:
+            os.stat(path.name, dir_fd=incoming_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError("staged proof target already exists or is unsafe")
+        fd = os.open(
+            path.name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=incoming_fd,
+        )
+        try:
+            with os.fdopen(fd, "wb", closefd=False) as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+        finally:
+            os.close(fd)
+        os.fsync(incoming_fd)
     finally:
-        os.close(fd)
-    proof = read_remote_ref_proof(path)
+        if incoming_fd is not None:
+            os.close(incoming_fd)
+        os.close(releases_fd)
     return {"status": "staged", "path": str(path), "proof_sha256": proof["proof_sha256"]}
 
 
@@ -419,11 +447,29 @@ def remove_staged_proof(path: Path, *, releases_root: Path = RELEASE_ROOT) -> di
     path = Path(os.path.abspath(path))
     if path.parent != incoming or not path.name.endswith(".remote-proof.json"):
         raise ValueError("staged proof must be a direct remote-proof file under releases/incoming")
-    if path.is_symlink() or not path.is_file():
-        raise ValueError("staged proof is missing or unsafe")
-    path.unlink()
-    if path.exists():
-        raise ValueError("staged proof cleanup did not remove the file")
+    releases_fd = _open_real_directory_fd(releases_root)
+    incoming_fd: int | None = None
+    try:
+        incoming_fd = _open_child_directory_fd(releases_fd, "incoming")
+        assert incoming_fd is not None
+        try:
+            metadata = os.stat(path.name, dir_fd=incoming_fd, follow_symlinks=False)
+        except FileNotFoundError as exc:
+            raise ValueError("staged proof is missing or unsafe") from exc
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("staged proof is not a regular file")
+        os.unlink(path.name, dir_fd=incoming_fd)
+        os.fsync(incoming_fd)
+        try:
+            os.stat(path.name, dir_fd=incoming_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError("staged proof cleanup did not remove the file")
+    finally:
+        if incoming_fd is not None:
+            os.close(incoming_fd)
+        os.close(releases_fd)
     return {"status": "removed", "path": str(path)}
 
 
