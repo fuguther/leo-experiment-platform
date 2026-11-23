@@ -87,6 +87,13 @@ ANALYZER_FILES = (
     # report still said the listed code was clean.
     "CODE/experiment_platform/authorize_experiment.py",
     "CODE/experiment_platform/primary_metrics.py",
+    # authorize_experiment imports these two; finalize_decision DECIDES the
+    # verdict and compile_experiment defines the execution boundary it is
+    # judged against, so both can change the outcome without touching a file
+    # listed here.  Adding only the direct imports left the transitive
+    # dependency open.
+    "CODE/work/finalize_decision.py",
+    "CODE/experiment_platform/compile_experiment.py",
     "CODE/experiment_platform/isl_pressure.py",
     "CODE/experiment_platform/isl_pressure_decision.py",
     "CODE/experiment_platform/fold_decision_ledger.py",

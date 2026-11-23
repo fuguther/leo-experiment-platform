@@ -256,6 +256,10 @@ def derive_status(receipt, artifacts, summary=None):
         return "interrupted", "receipt.interrupted=True"
     if natural_end is True and conservation is False:
         return "completed_conservation_failed", "receipt.natural_end=True 且 receipt.conservation_ok=False"
+    if natural_end is True and conservation is None:
+        # A run that ended naturally but never recorded a conservation verdict
+        # is NOT a clean completion: the bookkeeping check simply did not run.
+        return "completed_conservation_unknown", "receipt.natural_end=True 但 receipt.conservation_ok 缺失"
     if natural_end is True:
         return "completed", "receipt.natural_end=True"
     if natural_end is False:

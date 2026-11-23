@@ -221,10 +221,15 @@ def test_the_external_launch_witness_is_checked_only_when_declared(
     witness_root = tmp_path / "_external_launch_witness"
     _write_contract_shaped_formal(directory, witness_root=witness_root)
 
+    # A formal copy whose witness was never supplied cannot be accepted: the
+    # witness is the only evidence the launch was governed.  It is still named
+    # in not_checked_here, but it is also a failed check.
     undeclared = pullback_mod.verify_pulled_run(directory, expect="formal")
-    assert undeclared["ok"] is True
+    assert undeclared["ok"] is False
     assert any("external launch witness" in item
                for item in undeclared["formal_eligibility"]["not_checked_here"])
+    assert any("--witness-root was not supplied" in item
+               for item in undeclared["errors"])
 
     witness = next(witness_root.iterdir())
     payload = json.loads(witness.read_text())
