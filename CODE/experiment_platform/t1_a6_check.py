@@ -2,7 +2,7 @@
 
 WHY A SEPARATE ENTRY POINT
 -------------------------
-`t1-vm.sh experiment` compiles, validates and runs the acceptance and dev
+`run-release-remote.sh` compiles, validates and runs the acceptance and dev
 tiers.  Three things it cannot prove are proven here, on the VM, in one
 bounded run:
 

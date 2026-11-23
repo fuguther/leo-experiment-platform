@@ -46,9 +46,20 @@ RUN_RECEIPT_SCHEMA = "leo-release-run-receipt/v1"
 T1_REQUIRED_DIRS = ("ANALYSIS", "CODE", "EXPERIMENTS")
 T1_OPTIONAL_DIRS = ("docs",)
 T1_DEPLOYED_DIRS = (*T1_REQUIRED_DIRS, *T1_OPTIONAL_DIRS)
+# SOURCE-COMMIT.txt is the fixed upstream simulator pin, not this platform's
+# release identity. New releases bind the platform commit through
+# `.deployment_commit` and the manifest; legacy releases keep the old file.
 T1_DEPLOYED_FILES = (
     ".deployment_commit", ".gitignore", "AGENTS.md", "README.md",
-    "SOURCE-COMMIT.txt", "STATUS.md",
+    "STATUS.md", "pytest.ini",
+)
+# Releases built before the 2026-11 platform cleanup remain immutable and
+# verifiable.  This is an explicit read-only compatibility layout, never a
+# fallback for new releases.
+T1_LEGACY_DEPLOYED_DIRS = ("ANALYSIS", "CODE", "EXPERIMENTS", "lines", "docs")
+T1_LEGACY_DEPLOYED_FILES = (
+    ".deployment_commit", ".gitignore", "AGENTS.md", "BACKLOG.md", "CHARTER.md",
+    "README.md", "SOURCE-COMMIT.txt", "STATUS.md", "WORKING-MODEL.md",
 )
 RELEASE_ID_RE = re.compile(r"^[0-9a-f]{40}-[0-9a-f]{64}$")
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -284,20 +295,36 @@ def _check_gitlinks(repo: Path, commit: str) -> None:
         raise ValueError("Git submodules are not supported in immutable T1 releases")
 
 
-def t1_source_paths(root: Path) -> list[Path]:
-    """Enumerate only the T1 checkout roots, using deployment_guard exclusions."""
+def _release_source_layout(
+    manifest: dict[str, Any],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return one exact recognised source layout for an immutable manifest."""
+    roots = manifest.get("deployment_roots")
+    if roots == list(T1_DEPLOYED_DIRS):
+        return T1_DEPLOYED_DIRS, T1_DEPLOYED_FILES
+    if roots == list(T1_LEGACY_DEPLOYED_DIRS):
+        return T1_LEGACY_DEPLOYED_DIRS, T1_LEGACY_DEPLOYED_FILES
+    raise ValueError("release does not declare a recognised T1 source-root contract")
+
+
+def _t1_source_paths(
+    root: Path,
+    deployed_dirs: tuple[str, ...],
+    deployed_files: tuple[str, ...],
+    optional_dirs: tuple[str, ...] = T1_OPTIONAL_DIRS,
+) -> list[Path]:
     paths: list[Path] = []
-    for name in T1_DEPLOYED_FILES:
+    for name in deployed_files:
         candidate = root / name
         if candidate.is_symlink():
             raise ValueError(f"release refuses symbolic root file: {name}")
         if candidate.is_file():
             paths.append(candidate)
-    for name in T1_DEPLOYED_DIRS:
+    for name in deployed_dirs:
         directory = root / name
         if directory.is_symlink():
             raise ValueError(f"required T1 release directory missing or unsafe: {name}")
-        if not directory.exists() and name in T1_OPTIONAL_DIRS:
+        if not directory.exists() and name in optional_dirs:
             continue
         if not directory.is_dir():
             raise ValueError(f"required T1 release directory missing or unsafe: {name}")
@@ -314,10 +341,22 @@ def t1_source_paths(root: Path) -> list[Path]:
     return sorted(paths, key=lambda item: item.relative_to(root).as_posix())
 
 
-def validate_t1_tree(root: Path, records: list[dict[str, Any]], *, exact: bool) -> None:
+def t1_source_paths(root: Path) -> list[Path]:
+    """Enumerate only the current T1 checkout roots."""
+    return _t1_source_paths(root, T1_DEPLOYED_DIRS, T1_DEPLOYED_FILES)
+
+
+def validate_t1_tree(
+    root: Path,
+    records: list[dict[str, Any]],
+    *,
+    exact: bool,
+    allowed_dirs: tuple[str, ...] = T1_DEPLOYED_DIRS,
+    allowed_files: tuple[str, ...] = T1_DEPLOYED_FILES,
+) -> None:
     expected: dict[str, dict[str, Any]] = {}
-    allowed_roots = set(T1_DEPLOYED_DIRS)
-    allowed_files = set(T1_DEPLOYED_FILES)
+    allowed_roots = set(allowed_dirs)
+    allowed_files = set(allowed_files)
     for record in records:
         relative = PurePosixPath(str(record.get("path", "")))
         if relative.is_absolute() or not relative.parts or ".." in relative.parts:
@@ -334,7 +373,10 @@ def validate_t1_tree(root: Path, records: list[dict[str, Any]], *, exact: bool) 
         if candidate.stat().st_size != record.get("size") or sha256_file(candidate) != record.get("sha256"):
             raise ValueError(f"release file hash mismatch: {relative}")
     if exact:
-        actual = {path.relative_to(root).as_posix() for path in t1_source_paths(root)}
+        actual = {
+            path.relative_to(root).as_posix()
+            for path in _t1_source_paths(root, allowed_dirs, allowed_files)
+        }
         if actual != set(expected):
             extra = sorted(actual - set(expected))[:5]
             missing = sorted(set(expected) - actual)[:5]
@@ -586,8 +628,7 @@ def _verify_release_tree(root: Path, manifest: dict[str, Any], *,
         raise ValueError("unsupported immutable release manifest schema")
     if manifest.get("source_git_dirty") is not False:
         raise ValueError("dirty source release is forbidden")
-    if manifest.get("deployment_roots") != list(T1_DEPLOYED_DIRS):
-        raise ValueError("release does not declare the exact T1 source roots")
+    deployment_dirs, deployment_files = _release_source_layout(manifest)
     commit = str(manifest.get("source_git_commit", ""))
     if not re.fullmatch(r"[0-9a-f]{40}", commit) or set(commit) == {"0"}:
         raise ValueError("invalid release commit witness")
@@ -604,11 +645,17 @@ def _verify_release_tree(root: Path, manifest: dict[str, Any], *,
         raise ValueError("release Git commit witness does not match the manifest")
     if witness[0].get("sha256") != sha256_file(witness_path):
         raise ValueError("release Git commit witness hash mismatch")
-    validate_t1_tree(root, records, exact=True)
+    validate_t1_tree(
+        root,
+        records,
+        exact=True,
+        allowed_dirs=deployment_dirs,
+        allowed_files=deployment_files,
+    )
     expected_files = {str(item["path"]) for item in records} | {MANIFEST_NAME}
     if allow_envelope:
         expected_files.add(ENVELOPE_NAME)
-    expected_dirs = set(T1_DEPLOYED_DIRS)
+    expected_dirs = set(deployment_dirs)
     for name in expected_files:
         parent = PurePosixPath(name).parent
         while parent.parts:

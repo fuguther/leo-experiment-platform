@@ -86,3 +86,5 @@ python3 -m pytest -q
 
 只从干净、已提交、已推送的完整 commit 构造不可变 release。所有产生科研数值
 的仿真、压力测试、决策计时和训练在 VM 执行。
+
+`SOURCE-COMMIT.txt` 只记录固定的上游模拟器 pin，不是平台 release 身份；平台提交由 `.deployment_commit`、release manifest 和 run receipt 绑定。旧 `t1-vm.sh` 已退役，不能被当作新发布入口。

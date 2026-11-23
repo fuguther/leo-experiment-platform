@@ -204,6 +204,22 @@ class AuthorizeExperimentTests(unittest.TestCase):
             with self.assertRaises(AuthorizationError):
                 verify_authorization(root, authorization_path)
 
+    def test_post_authorization_artifact_change_fails_the_artifact_hash_binding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            experiment, finalization, authorization_path, _ = self.make_fixture(root)
+            authorization = build_authorization(root, experiment, finalization)
+            write_json(authorization_path, authorization)
+            self.assertEqual(verify_authorization(root, authorization_path), authorization)
+
+            runbook = experiment / "RUNBOOK.md"
+            runbook.write_text("# Fixture runbook changed after review\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                    AuthorizationError,
+                    "work decision no longer validates: artifact hash mismatch"):
+                verify_authorization(root, authorization_path)
+
     def test_v2_authorization_binds_compiled_config_and_code(self) -> None:
         from CODE.leo_sim import governance
 
@@ -330,6 +346,24 @@ class AuthorizeExperimentTests(unittest.TestCase):
             with self.assertRaises(AuthorizationError):
                 verify_authorization_for_leo_sim_v2_config(
                     root, authorization_path, config_path, run["run_id"] + "-wrong")
+
+            tampered = json.loads(json.dumps(authorization))
+            tampered["authorized_runs"][0]["code_sha256"] = "0" * 64
+            unsigned = dict(tampered)
+            unsigned.pop("payload_sha256", None)
+            tampered["payload_sha256"] = canonical_sha(unsigned)
+            write_json(authorization_path, tampered)
+            # A self-consistent payload with a stale code witness is rejected
+            # while recomputing the whole authorization graph.  The later row
+            # matcher is defence in depth and is unreachable after this earlier
+            # exact-evidence check fails.
+            with self.assertRaisesRegex(
+                    AuthorizationError,
+                    "authorization no longer matches recomputed evidence"):
+                verify_authorization_for_leo_sim_v2_config(
+                    root, authorization_path, config_path, run["run_id"])
+
+            write_json(authorization_path, authorization)
 
             # Reverification recomputes the declared data trace and checkpoint
             # byte identities. These fixtures deliberately do not deserialize

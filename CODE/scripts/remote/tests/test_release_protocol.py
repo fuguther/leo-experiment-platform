@@ -58,7 +58,7 @@ def _repo(path: Path, *, include_docs: bool = True) -> tuple[Path, str]:
         directory.mkdir()
         (directory / ".keep").write_text(f"{name}\n", encoding="utf-8")
     for name in (".gitignore", "AGENTS.md", "README.md",
-                 "SOURCE-COMMIT.txt", "STATUS.md"):
+                 "STATUS.md", "pytest.ini"):
         (path / name).write_text(f"{name}\n", encoding="utf-8")
     (path / "README.md").write_text("from commit\n", encoding="utf-8")
     (path / "CODE" / "payload.py").write_text(
@@ -76,6 +76,117 @@ def _repo(path: Path, *, include_docs: bool = True) -> tuple[Path, str]:
     _git(path, "add", ".")
     _git(path, "commit", "-q", "-m", "release base")
     return path, _git(path, "rev-parse", "HEAD")
+
+
+def _legacy_release_bundle(path: Path) -> tuple[Path, str]:
+    """Create the exact legacy pre-cleanup release layout without old code."""
+    from CODE.scripts.remote import deployment_guard as guard
+    from CODE.scripts.remote import release_protocol as protocol
+
+    commit = "1" * 40
+    directories = ["ANALYSIS", "CODE", "EXPERIMENTS", "lines", "docs",
+                   "CODE/scripts", "CODE/scripts/remote"]
+    files = {
+        ".deployment_commit": (commit + "\n").encode("ascii"),
+        ".gitignore": b".gitignore\n",
+        "AGENTS.md": b"AGENTS.md\n",
+        "BACKLOG.md": b"BACKLOG.md\n",
+        "CHARTER.md": b"CHARTER.md\n",
+        "README.md": b"legacy release\n",
+        "SOURCE-COMMIT.txt": b"legacy source\n",
+        "STATUS.md": b"STATUS.md\n",
+        "WORKING-MODEL.md": b"WORKING-MODEL.md\n",
+        "CODE/scripts/remote/release_protocol.py": b"legacy verifier\n",
+    }
+    records = [
+        {
+            "path": name,
+            "size": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+        }
+        for name, data in sorted(files.items())
+    ]
+    manifest = {
+        "schema": protocol.MANIFEST_SCHEMA,
+        "repository": "example/release-test",
+        "source_git_commit": commit,
+        "source_git_dirty": False,
+        "deployment_roots": ["ANALYSIS", "CODE", "EXPERIMENTS", "lines", "docs"],
+        "deployed_files": records,
+        "dependency_lock": {"status": "unpinned", "files": []},
+        "source_audit": {"status": "passed"},
+    }
+    manifest["source_tree_sha256"] = guard.tree_sha256(records)
+    manifest["manifest_sha256"] = protocol.sha256_bytes(
+        protocol.canonical_json(manifest))
+    manifest_bytes = protocol.canonical_json(manifest) + b"\n"
+
+    path.mkdir()
+    archive_path = path / "release.tar"
+    with tarfile.open(archive_path, "w", format=tarfile.PAX_FORMAT) as archive:
+        for name in directories:
+            info = tarfile.TarInfo(name + "/")
+            info.type = tarfile.DIRTYPE
+            info.mode = 0o755
+            archive.addfile(info)
+        for name, data in sorted(files.items()):
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mode = 0o444
+            archive.addfile(info, io.BytesIO(data))
+        info = tarfile.TarInfo(protocol.MANIFEST_NAME)
+        info.size = len(manifest_bytes)
+        info.mode = 0o444
+        archive.addfile(info, io.BytesIO(manifest_bytes))
+
+    release_id = f"{commit}-{manifest['source_tree_sha256']}"
+    artifact = {
+        "schema": protocol.ENVELOPE_SCHEMA,
+        "release_id": release_id,
+        "repository": manifest["repository"],
+        "source_git_commit": commit,
+        "source_git_branch": "legacy-branch",
+        "source_tree_sha256": manifest["source_tree_sha256"],
+        "archive_sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+        "manifest_sha256": manifest["manifest_sha256"],
+        "dependency_lock": manifest["dependency_lock"],
+    }
+    artifact_identity = {
+        key: value for key, value in artifact.items()
+        if key != "source_git_branch"
+    }
+    envelope = {
+        **artifact,
+        "artifact_sha256": protocol.sha256_bytes(
+            protocol.canonical_json(artifact_identity)),
+        "remote_backup": {"status": "remote_backup_pending"},
+    }
+    envelope["envelope_sha256"] = protocol.sha256_bytes(
+        protocol.canonical_json(envelope))
+    (path / "release.json").write_bytes(
+        json.dumps(envelope, sort_keys=True).encode("utf-8") + b"\n")
+    return path, release_id
+
+
+def test_head_verifier_accepts_exact_legacy_pre_cleanup_release(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import verify_release_bundle
+
+    bundle, release_id = _legacy_release_bundle(tmp_path / "legacy-bundle")
+
+    assert verify_release_bundle(bundle)["release_id"] == release_id
+
+
+def test_current_release_includes_root_pytest_configuration(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import build_release
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+
+    build_release(repo, commit, bundle, remote_refs=[])
+
+    with tarfile.open(bundle / "release.tar", "r:") as archive:
+        assert "pytest.ini" in {member.name for member in archive.getmembers()}
 
 
 def test_release_build_accepts_repository_without_optional_docs_root(tmp_path: Path) -> None:
