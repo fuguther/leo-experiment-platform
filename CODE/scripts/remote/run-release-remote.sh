@@ -13,12 +13,15 @@ usage() {
 Usage:
   run-release-remote.sh --release-id ID --run-id ID --mode diagnostic|development \
       [--config RELEASE_RELATIVE_PATH] [--input NAME=VM_PATH]... [--seed N] \
-      [--resource-group NAME] [--timeout-seconds N] -- python3 ARGS...
+      [--resource-group NAME] [--timeout-seconds N] [--allow-historical-release] \
+      -- python3 ARGS...
 
 The runner accepts an entrypoint committed under CODE/ in the selected release.
 Formal execution remains on the existing authorized runner; this entrypoint
 cannot select formal mode. T1_REMOTE_RUN_PYTHON can override the established
-T1 conda interpreter when the VM environment changes.
+T1 conda interpreter when the VM environment changes. By default the selected
+release must exactly match /data/论文/leo-t1-wt/CURRENT.json; historical
+reproduction requires the explicit --allow-historical-release switch.
 EOF
 }
 quote() { printf -v REPLY '%q' "$1"; }
@@ -35,6 +38,7 @@ remote() {
 [[ "$REMOTE_ROOT" == "/data/论文/leo-t1-wt" ]] || die "T1_REMOTE_ROOT must remain /data/论文/leo-t1-wt"
 [[ -x "$SSH_BIN" ]] || die "SSH executable is unavailable: $SSH_BIN"
 release_id=""; run_id=""; mode=""; config=""; seed=""; resource_group=""; timeout_seconds="1800"
+allow_historical_release=0
 inputs=(); argv=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -46,6 +50,7 @@ while [[ $# -gt 0 ]]; do
         --seed) [[ $# -ge 2 ]] || die "--seed requires an integer"; seed="$2"; shift 2 ;;
         --resource-group) [[ $# -ge 2 ]] || die "--resource-group requires a name"; resource_group="$2"; shift 2 ;;
         --timeout-seconds) [[ $# -ge 2 ]] || die "--timeout-seconds requires an integer"; timeout_seconds="$2"; shift 2 ;;
+        --allow-historical-release) allow_historical_release=1; shift ;;
         --) shift; argv=("$@"); break ;;
         --help|-h) usage; exit 0 ;;
         *) die "unknown argument: $1" ;;
@@ -68,7 +73,26 @@ for input in "${inputs[@]-}"; do
     [[ "$input" == *=* ]] || die "each input must use NAME=VM_PATH"
 done
 
-remote_argv=("$REMOTE_RUN_PYTHON" "$REMOTE_ROOT/releases/$release_id/CODE/scripts/remote/release_protocol.py"
+helper="$REMOTE_ROOT/releases/$release_id/CODE/scripts/remote/release_protocol.py"
+if [[ "$allow_historical_release" -eq 0 ]]; then
+    current_check='import hashlib,json,sys
+from pathlib import Path
+p=Path(sys.argv[1])
+if p.is_symlink() or not p.is_file():
+    raise SystemExit("CURRENT.json is missing or unsafe")
+d=json.loads(p.read_text(encoding="utf-8"))
+recorded=d.pop("pointer_sha256","")
+actual=hashlib.sha256(json.dumps(d,ensure_ascii=False,sort_keys=True,separators=(",",":")).encode("utf-8")).hexdigest()
+if d.get("schema") != "t1-current-release/v2" or not recorded or recorded != actual:
+    raise SystemExit("CURRENT.json is invalid")
+print(d.get("release_id", ""))'
+    current_release_id="$(remote "$REMOTE_PYTHON" -c "$current_check" "$REMOTE_ROOT/CURRENT.json")" \
+        || die "current release identity is missing or invalid; refusing to run a stale release"
+    [[ "$current_release_id" == "$release_id" ]] \
+        || die "requested release is not CURRENT.json; historical runs require --allow-historical-release"
+fi
+
+remote_argv=("$REMOTE_RUN_PYTHON" "$helper"
     run --release-id "$release_id" --run-id "$run_id"
     --release-root "$REMOTE_ROOT/releases" --runs-root "$REMOTE_ROOT/runs" --mode "$mode"
     --timeout-seconds "$timeout_seconds")
@@ -79,5 +103,8 @@ for input in "${inputs[@]-}"; do
     [[ -n "$input" ]] || continue
     remote_argv+=(--input "$input")
 done
+if [[ "$allow_historical_release" -eq 1 ]] && remote "grep" -q -- '--allow-historical-release' "$helper"; then
+    remote_argv+=(--allow-historical-release)
+fi
 remote_argv+=(-- "${argv[@]}")
 remote "${remote_argv[@]}" || die "T1 diagnostic/development run failed; inspect its isolated run receipt and logs"

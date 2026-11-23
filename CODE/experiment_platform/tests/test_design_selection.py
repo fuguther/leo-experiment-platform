@@ -46,7 +46,7 @@ import pytest
 from CODE.experiment_platform import design_selection as ds
 
 #: The five pre-declared candidates, verbatim from the contract
-#: (CODE/work/WP-T1-COMPLETE/contract.yaml -> common_horizon_dev_candidates).
+#: (EXPERIMENTS/contracts/t1-complete/contract.yaml -> common_horizon_dev_candidates).
 FIVE = ["mean_eta_offset", "median_eta_offset", "p25_offset", "p50_offset",
         "p75_offset"]
 

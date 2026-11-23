@@ -10,7 +10,7 @@ from CODE.experiment_platform import study_design
 @pytest.fixture
 def plan(tmp_path):
     target = tmp_path / 'plan'
-    study_design.compile_study(study_design.ROOT / 'CODE/work/WP-T1-COMPLETE/time_alignment_study.yaml', target)
+    study_design.compile_study(study_design.ROOT / 'EXPERIMENTS/contracts/t1-complete/time_alignment_study.yaml', target)
     data = {'simulator_calls': 0,
             'burst_trace_identical_across_predictor_and_advertisement_blocks': True,
             'blocks': [{'block': block, 'packets': acceptance.STUDY_EXPECTED_PACKETS[block],

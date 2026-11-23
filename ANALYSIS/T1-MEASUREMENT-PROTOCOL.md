@@ -1,10 +1,10 @@
-# T1 测量与反事实协议（leased from 2026-09-23 分层审查）
+# T1 实验叶子：测量与反事实协议
 
-> **CURRENT-CONTRACT**；最后核验：2026-09-23。本文定义 T1（邻居状态时间错位 / 候选到达时刻对齐）研究所需的测量与反事实能力契约与五个门禁的验收标准。它**不授权任何实验**：正式运行仍须走编译 → 独立三角色审阅 → 授权 → clean-main 部署 → 自然结束回执 → 分析重算。
+> **T1-LEAF-CONTRACT**；最后整理：2026-11-22。本文定义 T1（邻居状态时间错位 / 候选到达时刻对齐）实验叶子所需的测量与反事实能力及门禁。它不是平台主干或当前研究路线；当前代码、事件时间线和契约是事实来源。本文**不授权任何实验**。
 
 ## 1. 来源与范围
 
-本文条款来自 2026-09-23 的《leo-direct-sim 平台分层审查报告》，并经 2026-09-23 的实测复核（见 `CURRENT-EXPERIMENT-READINESS.md` 的 2026-09-23 节）。审查结论：
+本文条款来自 2026-09-23 的《leo-direct-sim 平台分层审查报告》，并于 2026-09-23 经一次实测复核；该复核记录未被保留为当前活动文件，因此这里不提供会失效的活动路径。审查结论：
 
 - 平台的数据平面 / SimPy 事件、控制平面 / AoI、信息泄漏控制与正式证据链**足以承担 T1 研究，不需要重写模拟器**；
 - 真正缺的是**与这个新因果问题对应的测量能力和反事实能力**，共五类，对应五个门禁。
@@ -13,7 +13,7 @@
 
 ## 2. 五个门禁
 
-进入正式 T1 实验前必须依次通过。门禁状态以 `EXPERIMENTS/experiment-program.yaml` 的 `gates` 为准；本文只定义标准。
+进入正式 T1 实验前必须依次通过。当前工作区现态以 Issue #3 和 `STATUS.md` 为准；本文只定义测量标准。
 
 | 门禁 | 通过标准 |
 |---|---|
@@ -21,7 +21,7 @@
 | `T1-DOWNSTREAM-RESOURCE-PASS` | 对每个候选动作记录**该包到达后实际竞争的出口**（固定 downstream policy 下的具体 egress）、到达前 workload、在服务剩余量与控制积压；不再用「邻居全部方向求和」代替 |
 | `T1-COUNTERFACTUAL-REPLAY-PASS` | 存在严格配对的反事实 harness：同 immutable trace / config / seed 重放到同一 decision，校验 pre-branch state hash，只强制改变目标包这一次动作；**不得** deepcopy SimPy 环境，**不得**从原轨迹读取未选候选的未来状态 |
 | `T1-COMPUTE-DELAY-PASS` | 决策计算时延进入模拟时间，且**两种模式分别建模、分别可证**：(a) `refresh`（**已实现**）= `decision_start → timeout → 在提交时刻重新观测并重新求解 → commit`；(b) `frozen`（**已实现 2026-09-23**）= `在 decision_start 冻结观测 o(t0) → 对 o(t0) 推理 → commit 时只做合法性校验（链路是否断开、队列是否已满），不得用最新状态重新求最优`。默认关闭（延迟 0），关闭时与旧行为等价。**只有 (b) 代表「计算期间状态陈旧」这一类真实同步推理** |
-| `T1-PRESSURE-WINDOW-PASS` | 存在可解析的 ISL 压力窗口（固定 OD corridor / hotspot、access 不限流、constant PHY），且能量化其有向 ISL 利用率量级 |
+| `T1-PRESSURE-WINDOW-PASS` | 当前固定契约内的 OD corridor / hotspot、access 限流、PHY 与冻结运行证据共同证明 ISL 压力窗口成立，并能量化其有向利用率；历史 profile 名本身不构成通过 |
 
 ## 3. `T1-TIME-LEDGER-PASS` 设计
 
@@ -137,7 +137,7 @@ decision sink 是 append-only 流（`_DecisionLogWriter` 逐行写 JSONL）。�
   - **v1 边界（刻意限制，不是遗漏）**：不与 learning arm 组合（学习需要自己的观测契约）、不与 `forced_actions` 组合（反事实 harness 在分支点强制动作，而 frozen 把分支点移到了观测时刻）；两者都 fail-loud 抛 `KernelError`。拒绝记录只走 timeline sink——**不新增 mechanism counter**，因为那会改变 receipt 的 `MECHANISM_COUNTER_KEYS` 键集。
   - 验收证据（`CODE/leo_sim/tests/test_frozen_observation.py`，10 个测试）：① 4.3 的 2×2 反例——`frozen` 下 V2 的 delay 版**不提交** `forward`，而 `refresh` 提交；② V1 下 `frozen` 记 `commit_rejected`，`refresh` 什么都不记；③ 状态不变时两种模式**逐条相同**（负对照）；④ 关闭新特性（默认 `refresh` + 延迟 0）与基线逐位等价（digest `NO_RESULT_DIFFERENCES`）。
   - **已知行为差异（必须随 claim 一起说明）**：某目的 cell 的**第一次**决策会因 endpoint 惰性创建而看到空服务集（`no_info`）——`refresh` 靠同一时刻的重新求解把它掩盖过去，`frozen` 会如实地把这个 `no_info` 当作观测结果并 hold 一个计算周期。这不是 frozen 的缺陷，而是 `refresh` 一直在掩盖的一个冷启动效应。
-- **`T1-PRESSURE-WINDOW-PASS`**：现有 `EXP-20260829-GLOBAL-PRESSURE-BRACKET-R02` 在 10/20/40/80 Mbps 下无可饱和有向 ISL、无持续 hotspot（80 Mbps 的 1 s active-window p99 utilization 约 0.5%，最大约 1%），**不能充当 T1 主压力场景**；须另建固定 OD corridor / hotspot、access 不限流、constant PHY 的可解析场景。
+- **`T1-PRESSURE-WINDOW-PASS`**：历史压力运行不足以自动证明当前场景可达压力窗口；必须用当前提交内的 profile、编译 trace、运行 manifest 和有向 ISL utilization 结果重新验收。过去的正负数字只在各自 run-id、config 和 receipt 范围内引用。
 
 ## 5. 明确不做
 

@@ -14,22 +14,26 @@ usage() {
     cat <<'EOF'
 Usage:
   pull-release-results-remote.sh --run-id ID --release-id ID --evidence-root ABSOLUTE_PATH
+      [--allow-legacy-self-consistent-pull]
 
 Verifies the VM receipt, streams exactly one T1 run, validates the received
 file set and hashes into <evidence-root>/<run-id>, then appends the small
 verified record to ANALYSIS/DEPLOYMENT-INDEX.jsonl. Evidence stays outside the
 source repository. Choose an evidence root on separately backed-up storage if
 independent backup is required.
+By default the VM helper must verify the run against the installed immutable
+release. A legacy helper without --release-dir requires the explicit override.
 EOF
 }
 quote() { printf -v REPLY '%q' "$1"; }
 
-run_id=""; release_id=""; evidence_root=""
+run_id=""; release_id=""; evidence_root=""; allow_legacy_self_consistent=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --run-id) [[ $# -ge 2 ]] || die "--run-id requires a value"; run_id="$2"; shift 2 ;;
         --release-id) [[ $# -ge 2 ]] || die "--release-id requires a value"; release_id="$2"; shift 2 ;;
         --evidence-root) [[ $# -ge 2 ]] || die "--evidence-root requires an absolute path"; evidence_root="$2"; shift 2 ;;
+        --allow-legacy-self-consistent-pull) allow_legacy_self_consistent=1; shift ;;
         --help|-h) usage; exit 0 ;;
         *) die "unknown argument: $1" ;;
     esac
@@ -43,6 +47,14 @@ done
 run_dir="$REMOTE_ROOT/runs/$run_id"
 helper="$REMOTE_ROOT/releases/$release_id/CODE/scripts/remote/release_protocol.py"
 remote_args=("$REMOTE_PYTHON" "$helper" verify-run --run-dir "$run_dir" --run-id "$run_id" --release-id "$release_id")
+if "$SSH_BIN" -o BatchMode=yes "$REMOTE_HOST" \
+    "grep -q -- '--release-dir' $(printf '%q' "$helper")" >/dev/null 2>&1; then
+    remote_args+=(--release-dir "$REMOTE_ROOT/releases/$release_id")
+elif [[ "$allow_legacy_self_consistent" -eq 0 ]]; then
+    die "release helper lacks installed-release verification; re-publish, or explicitly use --allow-legacy-self-consistent-pull"
+else
+    printf '[pull-release] WARNING: legacy self-consistent receipt verification selected explicitly\n' >&2
+fi
 remote_command=""
 for argument in "${remote_args[@]}"; do
     quote "$argument"
