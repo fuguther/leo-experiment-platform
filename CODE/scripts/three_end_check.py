@@ -74,11 +74,12 @@ def compare_rows(rows: dict) -> dict:
     values = {name: row.get("commit") for name, row in rows.items()
               if row.get("commit")}
     distinct = sorted(set(values.values()))
+    missing = [name for name in rows if not rows[name].get("commit")]
     return {
         "values": values,
         "distinct_commits": distinct,
-        "consistent": len(distinct) <= 1,
-        "missing": [name for name in rows if not rows[name].get("commit")],
+        "consistent": not missing and len(distinct) == 1,
+        "missing": missing,
     }
 
 

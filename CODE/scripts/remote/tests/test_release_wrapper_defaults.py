@@ -3,6 +3,7 @@ from pathlib import Path
 
 RUN_WRAPPER = Path(__file__).resolve().parents[1] / "run-release-remote.sh"
 PUBLISH_WRAPPER = Path(__file__).resolve().parents[1] / "publish-release-remote.sh"
+PUSH_WRAPPER = Path(__file__).resolve().parents[1] / "push-remote.sh"
 
 
 def test_t1_runner_defaults_to_the_versioned_isolated_runtime_without_user_paths():
@@ -33,3 +34,12 @@ def test_publish_defaults_to_clean_main_and_promotes_only_verified_current_relea
     assert 'set-current --release-id "$release_id"' in script
     assert '--development-release' in script
     assert 'publication_channel=' in script
+
+
+def test_legacy_deploy_wrapper_uses_the_same_canonical_source_gate():
+    script = PUSH_WRAPPER.read_text(encoding="utf-8")
+
+    assert 'verify-source' in script
+    assert '--required-local-branch main' in script
+    assert '--required-remote-ref refs/heads/main' in script
+    assert script.count('verify_canonical_source') >= 3

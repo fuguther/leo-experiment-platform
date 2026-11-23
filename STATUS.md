@@ -9,6 +9,7 @@
 - 实验实例、历史工作包和一次性分析器不进入活动树。追溯旧内容时使用产生它的 Git commit/blob、run-id、manifest、receipt 和原始证据。
 - 长期契约与最小夹具位于 `EXPERIMENTS/contracts/`；运行实例不得写回该目录。
 - Canonical 执行身份只来自干净 `main`、GitHub `refs/heads/main` 与 VM `CURRENT.json` 指向的同一精确 commit；development release 和来源未知的历史 release 不能冒充 current。
+- 旧 `push-remote.sh` 与新 canonical 发布器共用 clean-main/live-GitHub 门；普通 `run_release()` 默认要求 CURRENT，历史复现必须显式覆盖。
 - 测试、CI、维护检查和文件存在都不能建立科研结论；正式结论还要求 exact source、运行回执和对应分析。
 
 ## 当前清理结果

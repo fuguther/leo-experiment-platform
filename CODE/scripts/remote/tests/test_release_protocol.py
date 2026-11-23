@@ -8,6 +8,7 @@ import tarfile
 import io
 import fcntl
 import hashlib
+import re
 from pathlib import PurePosixPath
 from pathlib import Path
 
@@ -750,13 +751,16 @@ def _installed_fixture(tmp_path: Path) -> tuple[Path, Path, str]:
     _add_runtime_contract(repo, protocol._runtime_identity())
     commit = _git(repo, "rev-parse", "HEAD")
     bundle = tmp_path / "bundle"
-    envelope = build_release(repo, commit, bundle, remote_refs=[])
+    envelope = build_release(repo, commit, bundle,
+                             remote_refs=[(commit, "refs/heads/main")])
     releases_root = tmp_path / "vm" / "releases"
     install_release(bundle, releases_root, bootstrap=repo / "CODE/scripts/remote/release_protocol.py")
+    protocol.write_current_pointer(envelope["release_id"], releases_root, verify_live_remote=False)
     return repo, releases_root, envelope["release_id"]
 
 
 def _installed_fixture_with_runtime_contract(tmp_path: Path):
+    from CODE.scripts.remote import release_protocol as protocol
     from CODE.scripts.remote.release_protocol import build_release, install_release
 
     repo, _commit = _repo(tmp_path / "repo")
@@ -767,10 +771,12 @@ def _installed_fixture_with_runtime_contract(tmp_path: Path):
     })
     commit = _git(repo, "rev-parse", "HEAD")
     bundle = tmp_path / "bundle"
-    envelope = build_release(repo, commit, bundle, remote_refs=[])
+    envelope = build_release(repo, commit, bundle,
+                             remote_refs=[(commit, "refs/heads/main")])
     releases_root = tmp_path / "vm" / "releases"
     install_release(bundle, releases_root,
                    bootstrap=repo / "CODE/scripts/remote/release_protocol.py")
+    protocol.write_current_pointer(envelope["release_id"], releases_root, verify_live_remote=False)
     return repo, releases_root, envelope["release_id"]
 
 
@@ -801,7 +807,7 @@ def test_current_pointer_requires_and_roundtrips_a_verified_main_release(tmp_pat
 
     _repo_path, releases_root, release_id = _canonical_installed_fixture(tmp_path)
 
-    pointer = protocol.write_current_pointer(release_id, releases_root)
+    pointer = protocol.write_current_pointer(release_id, releases_root, verify_live_remote=False)
     current = protocol.verify_current_release(releases_root)
 
     assert pointer["schema"] == protocol.CURRENT_POINTER_SCHEMA
@@ -830,7 +836,18 @@ def test_current_pointer_refuses_release_not_backed_by_main(tmp_path: Path) -> N
     install_release(bundle, releases_root)
 
     with pytest.raises(ValueError, match="refs/heads/main"):
-        protocol.write_current_pointer(envelope["release_id"], releases_root)
+        protocol.write_current_pointer(envelope["release_id"], releases_root, verify_live_remote=False)
+    assert not (releases_root.parent / protocol.CURRENT_POINTER_NAME).exists()
+
+
+def test_current_pointer_refuses_when_live_main_has_moved(tmp_path: Path, monkeypatch) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _canonical_installed_fixture(tmp_path)
+    monkeypatch.setattr(protocol, "_live_remote_ref_matches", lambda *args: False)
+
+    with pytest.raises(ValueError, match="live tip"):
+        protocol.write_current_pointer(release_id, releases_root)
     assert not (releases_root.parent / protocol.CURRENT_POINTER_NAME).exists()
 
 
@@ -838,7 +855,7 @@ def test_current_pointer_tamper_is_rejected(tmp_path: Path) -> None:
     from CODE.scripts.remote import release_protocol as protocol
 
     _repo_path, releases_root, release_id = _canonical_installed_fixture(tmp_path)
-    protocol.write_current_pointer(release_id, releases_root)
+    protocol.write_current_pointer(release_id, releases_root, verify_live_remote=False)
     pointer_path = releases_root.parent / protocol.CURRENT_POINTER_NAME
     pointer_path.chmod(0o644)
     pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
@@ -897,6 +914,36 @@ def test_require_remote_ref_rechecks_the_live_branch_tip(tmp_path: Path, monkeyp
         protocol.require_remote_ref(repo, commit, "refs/heads/main")
 
 
+def test_verify_source_commit_requires_clean_main_and_live_remote(tmp_path: Path, monkeypatch) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "branch", "-M", "main")
+    monkeypatch.setattr(
+        protocol,
+        "_remote_commit_state",
+        lambda *args, **kwargs: {
+            "status": "verified",
+            "ref": "refs/heads/main",
+            "checked_at": "2026-11-23T00:00:00+00:00",
+        },
+    )
+
+    verified = protocol.verify_source_commit(
+        repo, commit, required_local_branch="main",
+        required_remote_ref="refs/heads/main")
+    assert verified["status"] == "verified"
+    assert verified["remote_backup"]["ref"] == "refs/heads/main"
+
+    monkeypatch.setattr(
+        protocol, "_remote_commit_state",
+        lambda *args, **kwargs: {"status": "remote_backup_pending"})
+    with pytest.raises(ValueError, match="live tip"):
+        protocol.verify_source_commit(
+            repo, commit, required_local_branch="main",
+            required_remote_ref="refs/heads/main")
+
+
 def test_run_rejects_release_installed_under_a_different_release_id_directory(
     tmp_path: Path,
 ) -> None:
@@ -924,6 +971,7 @@ def test_run_requires_current_pointer_before_creating_a_run_directory(tmp_path: 
     from CODE.scripts.remote.release_protocol import run_release
 
     _repo_path, releases_root, release_id = _installed_fixture(tmp_path)
+    (releases_root.parent / "CURRENT.json").unlink()
     runs_root = tmp_path / "vm" / "runs"
 
     with pytest.raises(ValueError, match="CURRENT.json"):
@@ -934,7 +982,6 @@ def test_run_requires_current_pointer_before_creating_a_run_directory(tmp_path: 
             runs_root=runs_root,
             mode="diagnostic",
             argv=["python3", "CODE/payload.py"],
-            require_current=True,
         )
 
     assert not (runs_root / "missing-current-001").exists()
@@ -1011,13 +1058,19 @@ def test_run_accepts_matching_runtime_contract_and_binds_its_hash(
         (runs_root / "matching-runtime-001" / "run-manifest.json").read_text(
             encoding="utf-8"))
     assert result["status"] == "completed"
-    assert manifest["current_release_status"] == "historical_override"
-    assert manifest["current_release_pointer_sha256"] is None
+    assert manifest["current_release_status"] == "verified_current"
+    assert re.fullmatch(r"[0-9a-f]{64}", manifest["current_release_pointer_sha256"])
     assert manifest["environment"]["machine"] == "aarch64"
     assert manifest["runtime_contract"] == {
         "path": "CODE/dependencies/t1-vm-linux-aarch64/runtime-identity.json",
         "sha256": hashlib.sha256(contract_path.read_bytes()).hexdigest(),
     }
+    assert protocol.verify_run_directory(
+        runs_root / "matching-runtime-001",
+        expected_run_id="matching-runtime-001",
+        expected_release_id=release_id,
+        release_dir=release_dir,
+    )["release_id"] == release_id
 
 
 def test_runtime_contract_rejects_dependency_lock_hash_mismatch(tmp_path: Path) -> None:
@@ -1123,9 +1176,11 @@ def test_run_uses_an_immutable_input_snapshot_after_source_path_changes(
     _add_runtime_contract(repo, protocol._runtime_identity())
     commit = _git(repo, "rev-parse", "HEAD")
     bundle = tmp_path / "bundle"
-    envelope = build_release(repo, commit, bundle, remote_refs=[])
+    envelope = build_release(repo, commit, bundle,
+                             remote_refs=[(commit, "refs/heads/main")])
     releases_root = tmp_path / "vm" / "releases"
     protocol.install_release(bundle, releases_root, bootstrap=reader.parent / "scripts/remote/release_protocol.py")
+    protocol.write_current_pointer(envelope["release_id"], releases_root, verify_live_remote=False)
     source = tmp_path / "input.txt"
     source.write_text("version A\n", encoding="utf-8")
     real_drain = protocol._drain_child

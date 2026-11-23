@@ -20,6 +20,24 @@ def test_compare_rows_detects_drift():
     assert sorted(drift["distinct_commits"]) == [COMMIT, OTHER]
 
 
+def test_compare_rows_never_treats_missing_endpoint_as_consistent():
+    missing_github = tec.compare_rows({
+        "local": {"commit": COMMIT},
+        "github": {"commit": None, "error": "offline"},
+        "current": {"commit": COMMIT},
+    })
+    missing_current = tec.compare_rows({
+        "local": {"commit": COMMIT},
+        "github": {"commit": COMMIT},
+        "current": {"commit": None},
+    })
+
+    assert missing_github["consistent"] is False
+    assert missing_github["missing"] == ["github"]
+    assert missing_current["consistent"] is False
+    assert missing_current["missing"] == ["current"]
+
+
 def test_read_current_reports_missing(tmp_path):
     assert tec.read_current(tmp_path / "absent.json")["commit"] is None
 

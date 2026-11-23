@@ -136,7 +136,8 @@ def sha256_file(path: Path) -> str:
     return guard.sha256_file(path)
 
 
-def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+def _write_json_atomic(path: Path, payload: dict[str, Any], *,
+                       file_mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink():
         raise ValueError(f"refusing to replace symbolic path: {path.name}")
@@ -147,6 +148,8 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
+        if file_mode is not None:
+            os.chmod(temp, file_mode)
         os.replace(temp, path)
         directory_fd = os.open(path.parent, os.O_RDONLY)
         try:
@@ -298,6 +301,43 @@ def require_remote_ref(repo: Path, commit: str, ref: str) -> dict[str, Any]:
     if state.get("status") != "verified" or state.get("ref") != ref:
         raise ValueError(f"commit is not the live tip of {ref}")
     return state
+
+
+def _live_remote_ref_matches(repository: str, commit: str, ref: str) -> bool:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("release repository identity is invalid")
+    if not re.fullmatch(r"refs/heads/[A-Za-z0-9._/-]+", ref):
+        raise ValueError("remote ref is invalid")
+    result = subprocess.run(
+        ["git", "ls-remote", f"https://github.com/{repository}.git", ref],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode:
+        return False
+    fields = result.stdout.strip().split()
+    return len(fields) == 2 and fields[0].lower() == commit and fields[1] == ref
+
+
+def verify_source_commit(repo: Path, commit: str, *, required_local_branch: str = "",
+                         required_remote_ref: str = "") -> dict[str, Any]:
+    repo = Path(os.path.abspath(repo))
+    commit = _verify_full_commit(repo, commit)
+    branch = _check_clean_checkout(repo, commit)
+    if required_local_branch and branch != required_local_branch:
+        raise ValueError(
+            f"source branch must be {required_local_branch!r}; checkout is on {branch!r}"
+        )
+    backup: dict[str, Any] = {"status": "not_requested"}
+    if required_remote_ref:
+        backup = require_remote_ref(repo, commit, required_remote_ref)
+    return {
+        "status": "verified",
+        "commit": commit,
+        "branch": branch,
+        "remote_backup": backup,
+    }
 
 
 def _verify_full_commit(repo: Path, commit: str) -> str:
@@ -928,16 +968,20 @@ def read_current_pointer_path(path: Path) -> dict[str, Any]:
     return pointer
 
 
-def write_current_pointer(release_id: str, releases_root: Path) -> dict[str, Any]:
+def write_current_pointer(release_id: str, releases_root: Path, *,
+                          verify_live_remote: bool = True) -> dict[str, Any]:
     release_id = _safe_release_id(release_id)
     releases_root = _require_real_directory(releases_root, create=False)
     release = verify_installed_release(releases_root / release_id)
+    if verify_live_remote and not _live_remote_ref_matches(
+        release["repository"], release["source_git_commit"], CANONICAL_REMOTE_REF
+    ):
+        raise ValueError(f"release commit is not the live tip of {CANONICAL_REMOTE_REF}")
     pointer = _current_pointer_payload(release)
     pointer_path = releases_root.parent / CURRENT_POINTER_NAME
     if pointer_path.is_symlink():
         raise ValueError("current release pointer may not be a symbolic link")
-    _write_json_atomic(pointer_path, pointer)
-    os.chmod(pointer_path, 0o444)
+    _write_json_atomic(pointer_path, pointer, file_mode=0o444)
     return read_current_pointer_path(pointer_path)
 
 
@@ -1467,7 +1511,7 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
                 config: str = "", authorization: str = "", inputs: list[str] | None = None,
                 seed: int | None = None, resource_group: str = "",
                 timeout_seconds: int = 1800, argv: list[str],
-                require_current: bool = False) -> dict[str, Any]:
+                require_current: bool = True) -> dict[str, Any]:
     release_id = _safe_release_id(release_id)
     run_id = _safe_run_id(run_id)
     if mode not in {"development", "diagnostic"}:
@@ -1605,9 +1649,13 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
             "source_git_commit": release["source_git_commit"],
             "source_tree_sha256": release["source_tree_sha256"],
             "archive_sha256": release["archive_sha256"],
+            "release_artifact_sha256": release["artifact_sha256"],
+            "repository": release["repository"],
             "run_manifest_sha256": sha256_file(run_dir / RUN_MANIFEST_NAME),
             "exit_code": rc,
             "status": run_manifest["status"],
+            "current_release_pointer_sha256": run_manifest["current_release_pointer_sha256"],
+            "current_release_status": run_manifest["current_release_status"],
             "files": files,
         }
         receipt["receipt_sha256"] = sha256_bytes(canonical_json(receipt))
@@ -1620,7 +1668,8 @@ def run_release(release_id: str, run_id: str, *, release_root: Path = RELEASE_RO
 
 
 def verify_run_directory(run_dir: Path, *, expected_run_id: str = "",
-                         expected_release_id: str = "") -> dict[str, Any]:
+                         expected_release_id: str = "",
+                         release_dir: Path | None = None) -> dict[str, Any]:
     run_dir = Path(os.path.abspath(run_dir))
     if run_dir.is_symlink() or not run_dir.is_dir():
         raise ValueError("run directory is missing or unsafe")
@@ -1643,9 +1692,29 @@ def verify_run_directory(run_dir: Path, *, expected_run_id: str = "",
         raise ValueError("unexpected run ID")
     if expected_release_id and manifest.get("release_id") != expected_release_id:
         raise ValueError("unexpected release ID")
-    for key in ("release_id", "source_git_commit", "source_tree_sha256", "archive_sha256"):
+    for key in (
+        "release_id", "source_git_commit", "source_tree_sha256", "archive_sha256",
+        "release_artifact_sha256", "repository", "current_release_pointer_sha256",
+        "current_release_status",
+    ):
         if manifest.get(key) != receipt.get(key):
             raise ValueError(f"run receipt {key} does not match its manifest")
+    if manifest["release_id"] != (
+        f"{manifest['source_git_commit']}-{manifest['source_tree_sha256']}"
+    ):
+        raise ValueError("run release ID does not match source commit and tree")
+    for field in ("archive_sha256", "release_artifact_sha256"):
+        if not re.fullmatch(r"[0-9a-f]{64}", str(manifest.get(field, ""))):
+            raise ValueError(f"run {field} is invalid")
+    if release_dir is not None:
+        installed = verify_installed_release(Path(release_dir))
+        for field in (
+            "release_id", "source_git_commit", "source_tree_sha256",
+            "archive_sha256", "artifact_sha256", "repository",
+        ):
+            release_field = "release_artifact_sha256" if field == "artifact_sha256" else field
+            if manifest.get(release_field) != installed.get(field):
+                raise ValueError(f"run receipt is not bound to the installed release {field}")
     if manifest.get("execution_class") != receipt.get("execution_class"):
         raise ValueError("run receipt execution class does not match its manifest")
     if manifest.get("status") != receipt.get("status") or manifest.get("exit_code") != receipt.get("exit_code"):
@@ -1807,6 +1876,11 @@ def _parser() -> argparse.ArgumentParser:
     verify_remote.add_argument("--repo", type=Path, required=True)
     verify_remote.add_argument("--commit", required=True)
     verify_remote.add_argument("--ref", required=True)
+    verify_source = sub.add_parser("verify-source", help="verify a clean source checkout and optional live main identity")
+    verify_source.add_argument("--repo", type=Path, required=True)
+    verify_source.add_argument("--commit", required=True)
+    verify_source.add_argument("--required-local-branch", default="")
+    verify_source.add_argument("--required-remote-ref", default="")
     install = sub.add_parser("install", help="verify and atomically install a T1 release")
     install.add_argument("--bundle", type=Path, required=True)
     install.add_argument("--releases-root", type=Path, required=True)
@@ -1831,6 +1905,7 @@ def _parser() -> argparse.ArgumentParser:
     verify_run.add_argument("--run-dir", type=Path, required=True)
     verify_run.add_argument("--run-id", default="")
     verify_run.add_argument("--release-id", default="")
+    verify_run.add_argument("--release-dir", type=Path)
     pull = sub.add_parser("pull", help="verify and atomically pull back one run")
     pull.add_argument("--evidence-root", type=Path, required=True)
     pull.add_argument("--repo-root", type=Path, required=True)
@@ -1865,6 +1940,12 @@ def main(argv: list[str] | None = None) -> int:
             result = verify_release_bundle(args.bundle)
         elif args.command == "verify-remote-ref":
             result = require_remote_ref(args.repo, args.commit, args.ref)
+        elif args.command == "verify-source":
+            result = verify_source_commit(
+                args.repo, args.commit,
+                required_local_branch=args.required_local_branch,
+                required_remote_ref=args.required_remote_ref,
+            )
         elif args.command == "install":
             if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
                 raise ValueError("remote install target must be exactly /data/论文/leo-t1-wt/releases")
@@ -1898,7 +1979,8 @@ def main(argv: list[str] | None = None) -> int:
             result = verify_current_release(args.releases_root)
         elif args.command == "verify-run":
             result = verify_run_directory(args.run_dir, expected_run_id=args.run_id,
-                                          expected_release_id=args.release_id)
+                                          expected_release_id=args.release_id,
+                                          release_dir=args.release_dir)
         else:
             repo_root = Path(os.path.abspath(args.repo_root))
             evidence_root = Path(os.path.abspath(args.evidence_root))
