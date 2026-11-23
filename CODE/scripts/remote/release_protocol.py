@@ -1692,21 +1692,29 @@ def verify_run_directory(run_dir: Path, *, expected_run_id: str = "",
         raise ValueError("unexpected run ID")
     if expected_release_id and manifest.get("release_id") != expected_release_id:
         raise ValueError("unexpected release ID")
-    for key in (
-        "release_id", "source_git_commit", "source_tree_sha256", "archive_sha256",
+    for key in ("release_id", "source_git_commit", "source_tree_sha256", "archive_sha256"):
+        if manifest.get(key) != receipt.get(key):
+            raise ValueError(f"run receipt {key} does not match its manifest")
+    extended_fields = (
         "release_artifact_sha256", "repository", "current_release_pointer_sha256",
         "current_release_status",
-    ):
-        if manifest.get(key) != receipt.get(key):
+    )
+    for key in extended_fields:
+        if (key in manifest or key in receipt) and manifest.get(key) != receipt.get(key):
             raise ValueError(f"run receipt {key} does not match its manifest")
     if manifest["release_id"] != (
         f"{manifest['source_git_commit']}-{manifest['source_tree_sha256']}"
     ):
         raise ValueError("run release ID does not match source commit and tree")
-    for field in ("archive_sha256", "release_artifact_sha256"):
-        if not re.fullmatch(r"[0-9a-f]{64}", str(manifest.get(field, ""))):
-            raise ValueError(f"run {field} is invalid")
+    if not re.fullmatch(r"[0-9a-f]{64}", str(manifest.get("archive_sha256", ""))):
+        raise ValueError("run archive_sha256 is invalid")
+    if ("release_artifact_sha256" in manifest
+            and not re.fullmatch(r"[0-9a-f]{64}", str(manifest.get("release_artifact_sha256", "")))):
+        raise ValueError("run release_artifact_sha256 is invalid")
     if release_dir is not None:
+        missing_extended = [key for key in extended_fields if key not in manifest or key not in receipt]
+        if missing_extended:
+            raise ValueError(f"run lacks release-bound receipt fields: {missing_extended}")
         installed = verify_installed_release(Path(release_dir))
         for field in (
             "release_id", "source_git_commit", "source_tree_sha256",
