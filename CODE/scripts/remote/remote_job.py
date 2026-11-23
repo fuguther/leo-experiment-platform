@@ -27,11 +27,19 @@ CANONICAL_STATUS = CANONICAL_RUNTIME / "current_status.json"
 CANONICAL_LOGS = CANONICAL_RESULTS / "_overnight_logs"
 CANONICAL_EXPERIMENTS = CANONICAL_WORKSPACE / "EXPERIMENTS"
 CPU_LIST_LIMIT = 64
-V2_GOVERNANCE_SCHEMA = "leo-sim-governance-receipt/v2"
-V2_WITNESS_FIELDS = (
+GOVERNANCE_SCHEMA = "leo-sim-governance-receipt/v3"
+GOVERNANCE_SCHEMA_V2_LEGACY = "leo-sim-governance-receipt/v2"
+EXTERNAL_STATUS_SCHEMA = "leo-remote-launch-status/v3"
+# Backward-compatible source-level alias for tests/tools that still import the
+# original name.  Its value is the current v3 contract, not the legacy v2 one.
+V2_GOVERNANCE_SCHEMA = GOVERNANCE_SCHEMA
+CURRENT_WITNESS_FIELDS = (
     "receipt_schema", "resolved_config_sha256", "trace_manifest_schema",
     "trace_identity_contract", "trace_manifest_sha256",
+    "formal_run_sha256",
 )
+# Source-level compatibility alias; the value is the current v3 field set.
+V2_WITNESS_FIELDS = CURRENT_WITNESS_FIELDS
 
 
 def now_iso() -> str:
@@ -129,13 +137,14 @@ def v2_governance_errors(receipt: dict[str, Any], ledgers: dict[str, Any],
     return errors
 
 
-def build_v2_governance_receipt(
+def build_governance_receipt(
         *, receipt: dict[str, Any], ledgers: dict[str, Any],
         verification_errors: list[str], acceptance: dict[str, Any],
         run_id: str, launch_nonce: str, authorization_sha256: str,
         deployment: dict[str, Any], deployment_receipt_sha256: str,
         execution_chain_sha256: str, receipt_path: Path,
-        resolved_config_path: Path, manifest_path: Path) -> dict[str, Any]:
+        resolved_config_path: Path, manifest_path: Path,
+        formal_run_path: Path) -> dict[str, Any]:
     """Build the V2 witness and the values copied to external launch status.
 
     The result directory is only an internally self-consistent artifact.  The
@@ -158,7 +167,7 @@ def build_v2_governance_receipt(
     if not isinstance(manifest, dict):
         raise ValueError("manifest.json must contain an object")
     governed = {
-        "schema": V2_GOVERNANCE_SCHEMA,
+        "schema": GOVERNANCE_SCHEMA,
         "research_eligible": not verification_errors,
         "run_id": run_id,
         "launch_nonce": launch_nonce,
@@ -180,9 +189,14 @@ def build_v2_governance_receipt(
         "trace_manifest_schema": manifest.get("schema"),
         "trace_identity_contract": receipt.get("trace_identity_contract"),
         "trace_manifest_sha256": file_sha256(manifest_path),
+        "formal_run_sha256": file_sha256(formal_run_path),
     }
     governed["payload_sha256"] = canonical_sha(governed)
     return governed
+
+
+# Backward-compatible source-level alias for older tests/tools.
+build_v2_governance_receipt = build_governance_receipt
 
 
 def parse_cpu_list(value: str) -> list[int]:
@@ -350,6 +364,88 @@ def formal_command(args: argparse.Namespace, workdir: Path, config: Path, author
     return command
 
 
+GOVERNANCE_AUTHORITY_FIELDS = (
+    "run_id", "launch_nonce", "authorization_sha256",
+    "source_git_commit", "source_tree_sha256", "deployment_receipt_sha256",
+    "execution_chain_sha256", "acceptance",
+)
+
+
+def _governance_authority_errors(
+        governed: dict[str, Any], expected: dict[str, Any]) -> list[str]:
+    errors = []
+    for field in GOVERNANCE_AUTHORITY_FIELDS:
+        if governed.get(field) != expected.get(field):
+            errors.append(
+                f"governance_receipt.{field} does not match the "
+                "authorized/deployed identity")
+    return errors
+
+
+def verify_v2_formal_result(
+        result_dir: Path, *, require_governance: bool = False,
+        expected_authority: dict[str, Any] | None = None) -> list[str]:
+    """The VM-side verification of one V2 formal result directory.
+
+    Split out of run_formal so the exact sequence the VM applies can be
+    executed -- and regression-tested -- without a VM.  Four independent
+    questions, all asked of the directory itself:
+
+      1. verify_receipt_dir: strict exact-runtime verification.  On the VM the
+         checkout IS the runtime, so this is meaningful there; it is *not*
+         usable against a pulled-back copy (a different machine's identity),
+         which is why pull-back acceptance is a separate gate.
+      2. verify_receipt_streams(require_streams=True): the stream contract,
+         resolved from the receipt instead of from unconditionally supplied
+         paths.  Without this the V6 binding was a claim rather than evidence;
+         with unconditional paths a legitimate zero-decision run (which is
+         signed v5 and carries no binding at all) was failed instead. Here the
+         v5 downgrade must be PROVEN -- empty decision stream, both sidecar
+         manifests and both stream files present -- and any v6 receipt has both
+         digests recomputed.
+      3. require_formal_witness=True: formal_run.json must bind the timeline
+         digest.  A v5 zero-decision formal run has no receipt-level timeline
+         digest, so this check is what prevents a post-verdict timeline edit.
+      4. When the governance receipt exists (and always at the final
+         post-governance check), its formal_run_sha256 must bind the exact
+         formal witness copied with the result.  The external launch status
+         then binds the governance receipt, preventing the timeline and formal
+         witness from being rewritten together after the VM verdict.
+    """
+    sys.path.insert(0, str(CANONICAL_WORKSPACE))
+    from CODE.leo_sim import pullback as pullback_mod
+    from CODE.leo_sim.receipt import verify_receipt_dir, verify_receipt_streams
+
+    errors = list(verify_receipt_dir(str(result_dir)))
+    errors += list(verify_receipt_streams(
+        str(result_dir), require_streams=True,
+        require_formal_witness=True))
+    governance_path = result_dir / "governance_receipt.json"
+    if require_governance or governance_path.exists():
+        receipt_path = result_dir / "receipt.json"
+        try:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"receipt.json is unreadable for governance check: {exc}")
+        else:
+            formal_errors, _not_checked = pullback_mod._formal_increment_errors(
+                result_dir, receipt, None)
+            errors.extend(formal_errors)
+            if expected_authority is not None:
+                try:
+                    governed = json.loads(
+                        governance_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError) as exc:
+                    errors.append(
+                        f"governance_receipt.json is unreadable for authority "
+                        f"check: {exc}")
+                else:
+                    if isinstance(governed, dict):
+                        errors.extend(_governance_authority_errors(
+                            governed, expected_authority))
+    return errors
+
+
 def formal_child_cwd(args: argparse.Namespace, workdir: Path) -> Path:
     """Return the runtime cwd whose import/data semantics were authorized."""
     if getattr(args, "runtime_kind", "legacy_gateway") == "leo_sim_v2":
@@ -359,7 +455,7 @@ def formal_child_cwd(args: argparse.Namespace, workdir: Path) -> Path:
 
 def base_launch_payload(args: argparse.Namespace) -> dict[str, Any]:
     return {
-        "schema": "leo-remote-launch-status/v2",
+        "schema": EXTERNAL_STATUS_SCHEMA,
         "status": "launching",
         "execution_class": "FORMAL_EXPERIMENT",
         "runtime_kind": getattr(args, "runtime_kind", "legacy_gateway"),
@@ -400,6 +496,42 @@ def validate_expected_identity(args: argparse.Namespace, config: Path, authoriza
         raise ValueError("remote config identity differs from the launcher-bound run id or canonical hash")
     if file_sha256(authorization) != args.expected_authorization_sha256:
         raise ValueError("remote authorization bytes differ from the launcher-bound hash")
+
+
+def verified_authorization_snapshot(
+        args: argparse.Namespace, authorization: Path) -> dict[str, Any]:
+    """Read authorization bytes once and bind that exact snapshot to the hash.
+
+    The post-run governance check must not re-read a mutable path after the
+    child exits: otherwise a swapped authorization file could become the
+    authority used on both sides of a self-consistent comparison.
+    """
+    try:
+        raw = authorization.read_bytes()
+    except OSError as exc:
+        raise ValueError(f"cannot read authorization snapshot: {exc}") from exc
+    if hashlib.sha256(raw).hexdigest() != args.expected_authorization_sha256:
+        raise ValueError("remote authorization bytes differ from the launcher-bound hash")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"authorization snapshot is not valid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("authorization snapshot must contain a JSON object")
+    return payload
+
+
+def authorized_row_from_snapshot(
+        authorization_payload: dict[str, Any], run_id: str) -> dict[str, Any]:
+    rows = authorization_payload.get("authorized_runs")
+    if not isinstance(rows, list):
+        raise ValueError("authorization snapshot lacks authorized_runs")
+    matches = [row for row in rows
+               if isinstance(row, dict) and row.get("run_id") == run_id]
+    if len(matches) != 1:
+        raise ValueError(
+            f"authorization snapshot must contain exactly one row for {run_id}")
+    return matches[0]
 
 
 def verify_v2_serial_predecessors(
@@ -555,13 +687,14 @@ def result_dir_from_pointer(started_at: float, launch_nonce: str) -> str:
     return str(candidate)
 
 
-def run_formal(args: argparse.Namespace) -> int:
-    workdir, status_path, log_path, config, authorization = validate_formal_paths(args)
-    deployment = verify_receipt(Path(args.deployment_receipt))
-    validate_expected_identity(args, config, authorization)
-    requested_cpu_affinity = validate_cpu_affinity(getattr(args, "cpu_list", ""))
-    prepared = json.loads(launch_status_path(args.launch_nonce).read_text(encoding="utf-8"))
-    expected_prepared = {
+def validate_prepared_launch_status(
+        prepared: dict[str, Any], args: argparse.Namespace) -> None:
+    """Reject a prepared status from a stale or non-v3 launch contract."""
+    if prepared.get("schema") != EXTERNAL_STATUS_SCHEMA:
+        raise ValueError(
+            "prepared launch status schema must be "
+            f"{EXTERNAL_STATUS_SCHEMA}")
+    expected = {
         "status": "prepared",
         "launch_nonce": args.launch_nonce,
         "session_name": args.session_name,
@@ -569,8 +702,23 @@ def run_formal(args: argparse.Namespace) -> int:
         "config_sha256": args.expected_config_sha256,
         "authorization_sha256": args.expected_authorization_sha256,
     }
-    if any(prepared.get(key) != value for key, value in expected_prepared.items()):
+    if any(prepared.get(key) != value for key, value in expected.items()):
         raise ValueError("prepared launch status does not match this formal job")
+
+
+def run_formal(args: argparse.Namespace) -> int:
+    workdir, status_path, log_path, config, authorization = validate_formal_paths(args)
+    deployment = verify_receipt(Path(args.deployment_receipt))
+    validate_expected_identity(args, config, authorization)
+    authorized_row = None
+    if getattr(args, "runtime_kind", "legacy_gateway") == "leo_sim_v2":
+        authorization_payload = verified_authorization_snapshot(
+            args, authorization)
+        authorized_row = authorized_row_from_snapshot(
+            authorization_payload, args.expected_run_id)
+    requested_cpu_affinity = validate_cpu_affinity(getattr(args, "cpu_list", ""))
+    prepared = json.loads(launch_status_path(args.launch_nonce).read_text(encoding="utf-8"))
+    validate_prepared_launch_status(prepared, args)
     verify_v2_run_authorization(args, config, authorization)
     verified_predecessors = verify_v2_serial_predecessors(
         args, config, authorization, deployment)
@@ -686,23 +834,18 @@ def run_formal(args: argparse.Namespace) -> int:
                     rc = 2
                 elif getattr(args, "runtime_kind", "legacy_gateway") == "leo_sim_v2":
                     receipt_path = Path(payload["last_results_dir"]) / "receipt.json"
-                    sys.path.insert(0, str(CANONICAL_WORKSPACE))
-                    from CODE.leo_sim.receipt import verify_receipt_dir
-
-                    receipt_errors = verify_receipt_dir(payload["last_results_dir"])
+                    # One implementation, shared by the VM path and the
+                    # regression test (see verify_v2_formal_result).
+                    receipt_errors = verify_v2_formal_result(
+                        Path(payload["last_results_dir"]))
                     receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
                     ledgers_payload = json.loads(
                         (Path(payload["last_results_dir"]) / "ledgers.json").read_text(
                             encoding="utf-8"))
-                    authorization_payload = json.loads(
-                        authorization.read_text(encoding="utf-8"))
-                    authorized_row = next(
-                        row for row in authorization_payload["authorized_runs"]
-                        if row["run_id"] == args.expected_run_id)
                     receipt_errors = v2_governance_errors(
                         receipt_payload, ledgers_payload,
                         authorized_row["acceptance"], receipt_errors)
-                    governed = build_v2_governance_receipt(
+                    governed = build_governance_receipt(
                         receipt=receipt_payload,
                         ledgers=ledgers_payload,
                         verification_errors=receipt_errors,
@@ -717,6 +860,7 @@ def run_formal(args: argparse.Namespace) -> int:
                         receipt_path=receipt_path,
                         resolved_config_path=Path(payload["last_results_dir"]) / "resolved_config.json",
                         manifest_path=Path(payload["last_results_dir"]) / "manifest.json",
+                        formal_run_path=Path(payload["last_results_dir"]) / "formal_run.json",
                     )
                     if receipt_errors:
                         payload["status"] = "failed"
@@ -726,10 +870,35 @@ def run_formal(args: argparse.Namespace) -> int:
                         rc = 2
                     governed_path = Path(payload["last_results_dir"]) / "governance_receipt.json"
                     write_json(governed_path, governed)
+                    expected_authority = {
+                        "run_id": args.expected_run_id,
+                        "launch_nonce": args.launch_nonce,
+                        "authorization_sha256":
+                            args.expected_authorization_sha256,
+                        "source_git_commit": deployment["source_git_commit"],
+                        "source_tree_sha256": deployment["source_tree_sha256"],
+                        "deployment_receipt_sha256":
+                            deployment["receipt_sha256"],
+                        "execution_chain_sha256": authorized_row[
+                            "execution_chain_sha256"],
+                        "acceptance": authorized_row["acceptance"],
+                    }
+                    anchored_errors = verify_v2_formal_result(
+                        Path(payload["last_results_dir"]),
+                        require_governance=True,
+                        expected_authority=expected_authority)
+                    if anchored_errors:
+                        payload["status"] = "failed"
+                        payload["exit_code"] = 2
+                        payload["failure_stage"] = "formal_governance_binding"
+                        payload["error"] = (
+                            "formal governance binding failed: "
+                            + "; ".join(anchored_errors))
+                        rc = 2
                     payload["governance_receipt"] = str(governed_path)
                     payload["governance_receipt_sha256"] = file_sha256(governed_path)
                     payload["governance_witness"] = {
-                        key: governed[key] for key in V2_WITNESS_FIELDS
+                        key: governed[key] for key in CURRENT_WITNESS_FIELDS
                     }
                     payload["research_eligible"] = governed["research_eligible"]
             except Exception as exc:

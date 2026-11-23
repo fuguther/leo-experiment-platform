@@ -1,0 +1,583 @@
+# Retained invalid C draft. This contract is not applicable to the current native-region/DDQN study.
+schema: wp-t1-complete-development-contract/v1
+batch_id: t1-c-regional-network-value-development
+question: 在同样可获得的本地与邻居历史信息、同一评分器和合法 N/E/S/W 候选下， 将资源状态查询到候选预计使用时刻是否改善逐包端到端转发；计入计算、查询、 更新和控制广告成本后，改善是否仍存在？
+purpose: bounded_development_only
+not_formal: true
+not_training: true
+development_only: true
+confirm_seed_start: 1001
+campaign_stage: INVALIDATED_PENDING_NATIVE_REGION_AND_TRAINED_DDQN_DESIGN
+design_validity:
+  status: SUPERSEDED_INVALID_NOT_RUNNABLE
+  reason: This draft substitutes a fixed 24-satellite/3-plane/three-site workload for the native population-driven regional ground-grid workload and has no compatible trained DDQN input/action path.
+  applies_to: all nested C0/C1 profiles, cells, parameters, and call estimates in this file
+  current_run_started: false
+  current_vm_calls: 0
+  current_release_id: null
+model_requirement:
+  required_for_next_study: real_trained_ddqn
+  checkpoint_found_in_audited_workspace_scope: false
+  training_provenance_verified: false
+  training_authorized: false
+  note: A6 test_weights artifacts and finite forward probes verify plumbing only; they are not trained policies.
+c1_predeclared_design:
+  status: SUPERSEDED_INVALID_NOT_RUNNABLE
+  scenario_scope: RETIRED_FIXED_24_SATELLITE_3_PLANE_THREE_SITE_SIX_DIRECTED_OD_TEMPLATE
+  validity_note: All nested scenario parameters and simulator-call counts describe this retired synthetic template and are not a current executable design or budget expansion.
+  normalized_packet_workload:
+    packet_bits: 12000
+    packet_bytes_assumption: 1500
+    peak_offered_pps: 832
+    peak_offered_mbps: 9.984
+    isl_rate_mbps: 5.0
+    gsl_downlink_rate_mbps: 1000.0
+    link_rate_model: constant
+    topology_recompute_s: 5.0
+    emission_window_s:
+    - 0.0
+    - 8.0
+    deadline_s: 30.0
+    observation_stop_s: 40.0
+    population_window_s:
+    - 1.0
+    - 8.0
+    advertisement_vis_k: 4
+    advertisement_scope: whole_advertisement_destination_and_queue_rate_availability
+    origin_snapshot_generation_rate_hz: 12.0
+  groups:
+    competitive_four_arm_network:
+      scenario_id: temporal_multi_od_competitive_c
+      workload: temporal_transfer_1500
+      seeds:
+      - 11
+      - 23
+      - 42
+      task: network_alignment
+      cells: 3
+      simulator_calls: 12
+    competitive_five_execution_modes:
+      scenario_id: temporal_multi_od_competitive_c
+      workload: temporal_transfer_1500
+      seeds:
+      - 11
+      - 23
+      - 42
+      task: execution_modes
+      modes:
+      - per_packet
+      - per_flow
+      - precomputed
+      - async_point
+      - async_window
+      cells: 3
+      simulator_calls: 15
+    advertisement_interval_one_factor:
+      reference_scenario_id: temporal_multi_od_competitive_c
+      scenario_id: temporal_multi_od_advert_interval_1s
+      workload: temporal_transfer_1500
+      seed: 11
+      task: network_alignment
+      reference_advertisement_interval_s: 2.0
+      changed_advertisement_interval_s: 1.0
+      only_changed_factor: control_plane.advertise_interval_s
+      cells: 1
+      simulator_calls: 4
+  expected_b_dev_cells: 7
+  simulator_call_budget: 31
+  pilot_cell_ids:
+  - b-temporal_multi_od_competitive_c-network-seed-11
+  - b-temporal_multi_od_competitive_c-execution-modes-seed-11
+  pilot_gate: full_network_input_pairing_conservation_information_and_cost_checks; competition measured
+    in actual full-network logs; not arm winners
+  append_remaining_cells_only_after_pilot_gate: true
+  common_rule_freeze:
+    source: c0_seed7_phase_stratified_calibration_receipt_and_result_sha256_from_verified_pullback
+    forbid_using_evaluation_seeds:
+    - 11
+    - 23
+    - 42
+    tie_and_no_eligible_behavior: same_as_calibration_source_rule_above
+    update_required_before_c1_release: true
+  mechanism_evidence:
+    source: three_c0_seed7_phase_stratified_snapshots_and_their_independent_action_replays
+    evaluation_logs: natural network trajectories only; no unexecuted counterfactual outcomes
+    claim_boundary: local calibration mechanisms explain potential; they do not prove effects at un-replayed
+      evaluation decisions
+calibration_source:
+  status: pending_implementation_and_c0_pullback
+  required_seed: 7
+  evaluation_seeds_forbidden:
+  - 11
+  - 23
+  - 42
+  candidate_order:
+  - p25_offset
+  - median_eta_offset
+  - mean_eta_offset
+  - p75_offset
+  phase_windows_s:
+    growth:
+    - 1.0
+    - 4.0
+    transfer:
+    - 4.0
+    - 7.0
+    decay:
+    - 7.0
+    - 8.0
+  snapshots_per_phase: 1
+  required_total_snapshots: 3
+  min_distinct_ods: 2
+  eligibility: at least two legal directions and complete named-resource/input data; use only predecision
+    structure and histories
+  selection: phase order growth/transfer/decay; first eligible by (decision_time,decision_id); prefer
+    a not-yet-sampled OD when an eligible one exists in that phase; never inspect scores, actions
+    or outcomes to choose points
+  same_sample_rule: every horizon uses exactly the same selected snapshots and their independently
+    replayed per-action outcome tables
+  aggregation: equal weight to each phase; target-packet normalized deadline loss; also retain per-snapshot
+    and per-OD values
+  tie_rule: absolute tolerance 1e-12; declared order; explicitly report ties
+  coverage_failure: freeze declared median_eta as operational comparator; mark NO_STRONG_COMMON; do
+    not search evaluation seeds or new winning snapshots
+  strength_claim: complete coverage permits multi-phase development-calibrated comparator only; not
+    universal optimum or statistically confirmed strong baseline
+development_seed_pool:
+- 7
+- 11
+- 23
+- 42
+selected_development_seeds:
+- 11
+- 23
+- 42
+admission_measurement_window_s:
+- 1.0
+- 8.0
+admission_thresholds:
+  min_offered: 1
+  min_forward_decisions: 20
+  min_comparable_branch_points: 10
+  min_competing_branch_points: 5
+  min_effective_query_coverage: 0.9
+  min_generated_ods: 6
+  min_simultaneous_packets: 5
+  min_simultaneous_ods: 2
+  concurrency_source: exact packet manifest plus packet_fate times in every captured full-network
+    arm; sampled counterfactual branches are excluded
+  effective_query_definition: finite candidate score, finite query target, and a direction-keyed mapping
+    to the named directed egress resource at that decision time; no missing fields or fallback
+  competing_branch_definition: a full-network predecision point with a named candidate resource and
+    positive known backlog at that time; do not use future branch outcomes for admission
+  required_direction_order:
+  - N
+  - E
+  - S
+  - W
+  each_decision_must_record:
+  - four_direction_peer_map
+  - route_candidate_mask
+  - physical_legal_mask
+  - final_legal_mask
+  - filter_reasons
+  - candidate_scores
+  - chosen_action
+  outcome_fields_forbidden:
+  - loss
+  - regret
+  - delivery_advantage
+  - arm_ranking
+  - candidate_winner
+  min_concurrency_duration_s: 1.0
+  concurrency_duration_definition: exact cumulative duration within [1,8) where at least two distinct
+    ODs each have live packets and at least five packets are in-system; report contiguous intervals
+    and window fraction
+  decision_count_source: full-network candidate/queue audits, not the three counterfactual snapshots;
+    emit full decision counts, saved snapshots and replay counts separately
+  negative_control_scope: positive delivery and population/input conservation only; do not require
+    congestion or zero effect
+a0_smoke:
+  scenario_id: steady_multi_od_negative_control_c
+  network_seed: 7
+  cell_rule: first_b_dev_cell
+  gate: stale/now/common/candidate each have positive offered packets, forward decisions, and delivered
+    packets; outcome_document.partition_exact is true; offered equals the input packet manifest count
+  on_failure: stop_before_any_remaining_b_dev_cell;preserve_result;do_not_resume_run
+  call_accounting: included in the declared negative-control network cell
+historical_ledger:
+  wp_b_runs_01_and_02:
+    simulator_calls: 8
+    simulator_wall_s: 109.071837305
+  previously_available_b_budget:
+    simulator_calls: 52
+    simulator_wall_s: 3490.928162695
+  c0_reserved:
+    simulator_calls: 17
+    simulator_wall_s: 1200.0
+    status: design_estimate_must_be_expanded_from_actual_calls_before_run
+  c1_reserved:
+    simulator_calls: 31
+    simulator_wall_s: 2290.928162695
+    status: design_estimate_must_be_expanded_from_actual_calls_before_run
+  across_c0_c1:
+    simulator_calls: 48
+    additional_validity_preflight_reserve_calls: 4
+    total_b_calls_after_planned_campaign: 56
+    call_limit: 60
+    remaining_call_ceiling: 52
+    simulator_wall_s: 3490.928162695
+    b_wall_limit_s: 3600.0
+    actual_cost_rule: expand captures, forced replays, benchmarks, failures and all internal simulations;
+      planned cell names are not actual call evidence
+    reduction_order: remove optional advertisement-frequency comparison first; preserve multi-phase
+      calibration and complete four-arm/five-mode paired core; stop if core cannot fit
+  a_plus_b_previous_accounting:
+    a_outer_wall_s: 1061.0
+    b_vm_simulator_wall_s: 109.071837305
+    historical_total_s: 1170.071837305
+    combined_limit_s: 7200.0
+simulator_call_budget: 17
+b_run_limits:
+  max_simulator_calls: 17
+  max_b_dev_cells: 2
+  max_simulator_wall_s: 1200.0
+  max_cell_wall_s: 120
+  max_concurrency: 1
+budgets:
+  cell_wall_s: 120
+  max_cells: 60
+  total_wall_s: 1200.0
+  simulator_call_budget: 17
+dev_parameters:
+  scenario.duration_s: 40.0
+  demand.emission_end_s: 8.0
+  demand.offered_mbps: 9.984
+  demand.packet_bits: 12000
+  time_alignment.enabled: true
+  time_alignment.arm: candidate
+  time_alignment.predictor: bounded_linear
+  time_alignment.common_rule: median_eta
+  time_alignment.execution_mode: per_packet
+  time_alignment.per_flow_ttl_s: 0.5
+  time_alignment.query_delay_s: 1.0e-06
+  async_routing.update_interval_s: 0.5
+  async_routing.window_bins: 4
+  execution.compute_servers_per_satellite: 1
+  execution.compute_delay_s: 0.001
+  execution.decision_observation_mode: frozen
+statistics:
+  unit: scenario x generated OD trace x seed; arms and modes paired within unit
+  packet_is_independent_repeat: false
+  main_loss: L=min(delay,D)/D; loss, fully observed beyond D and terminal failure score 1; administrative
+    censoring remains unknown with bounds
+  deadline:
+    type: declared_development_diagnostic
+    value_s: 30.0
+    source: frozen C contract; shared by all arms and execution modes
+    formal_use: forbidden
+  population_window_s:
+  - 1.0
+  - 8.0
+  primary_comparison: 'for each complete scenario x trace x seed block: full-network mean_loss(common)-mean_loss(candidate)
+    over all offered packets generated in [1,8); positive favors candidate; report all four arms and
+    unknown loss bounds'
+  common_arm_for_this_development: independent seed-7 three-phase, minimum-two-OD calibration frozen
+    before evaluation seeds 11/23/42; if coverage incomplete use declared median baseline with NO_STRONG_COMMON
+  execution_mode_comparison: same all-offered [1,8) population and D=30 network loss for all five
+    modes; additionally report whole-trace outcomes and actual foreground/background/query/precompute/control
+    cost, with policy and information differences disclosed
+  single_factor_control: seed-11 full-network four-arm comparison; only advertisement interval changes
+    from 2.0 to 1.0 seconds, with the same trace, packet sizes, rates, topology, visibility scope,
+    predictor, scorer, compute and query service
+  cross_run_comparison: forbidden with WP-A or C0-vs-C1 outcomes
+  development_claim_boundary: three evaluation seeds are bounded development descriptions only; no
+    significance, equivalence, universal gain/loss, or satellite-flight claim
+  minimum_substantive_difference: 0.01
+  sensitivity:
+  - 0.005
+  - 0.02
+  bootstrap: not used to claim precision with three independent evaluation blocks; show individual
+    values and paired descriptive summary
+  dev_seeds:
+  - 11
+  - 23
+  - 42
+  confirm_seeds_start: 1001
+  sample_size_rule: separate reviewed confirmation design from independent-block variance, predeclared
+    minimum meaningful effect and power or interval precision; no fixed minimum n or best-observed-effect
+    planning; degenerate variance means not ready
+  these_are_design_thresholds_not_measurements: true
+  secondary_mechanism_comparison: local regret, prediction/ETA error, action and independently replayed
+    outcomes at three preselected calibration snapshots; never replace network endpoint
+formal_design:
+  ready: false
+  reason: development-only; formal confirmation requires a separate frozen contract, independent review
+    and exact FORMAL_RUN authorization
+  confirm_seeds: []
+parameter_table:
+  c_normalized_packet_study:
+    packet_size_assumption:
+      bytes: 1500
+      bits: 12000
+      evidence_boundary: fixed experimental assumption; no measured packet-size distribution is claimed
+        for this workload or satellite system
+    isl_rate_mbps: 5.0
+    data_packet_serialization_s: 0.0024
+    pps_by_phase:
+      low_and_decay:
+        per_od: 42
+        total: 252
+      growth:
+        two_hot_ods_each: 250
+        four_other_ods_each: 83
+        total: 832
+      transfer:
+        two_hot_ods_each: 250
+        four_other_ods_each: 83
+        total: 832
+    nominal_aggregate_mbps:
+      low_and_decay: 3.024
+      growth_and_transfer: 9.984
+    nominal_aggregate_to_one_isl_capacity_ratio:
+      low_and_decay: 0.6048
+      growth_and_transfer: 1.9968
+    emission_window_s:
+    - 0.0
+    - 8.0
+    observation_stop_s: 40.0
+    population_window_s:
+    - 1.0
+    - 8.0
+    deadline_s: 30.0
+    final_deadline_observation_margin_s: 2.0
+  common_timing_and_information:
+    isl_topology_recompute_s: 5.0
+    link_rate_model: constant
+    configured_isl_rate_mbps: 5.0
+    configured_gsl_uplink_rate_mbps: 1000.0
+    configured_gsl_downlink_rate_mbps: 1000.0
+    configured_rate_evidence_boundary: simulation profile parameters, not measured or flight-calibrated
+      link rates; terminal scoring uses this GSL downlink rate, never the ISL rate
+    advertisement_packet_bits: 8000
+    advertisement_interval_s: 2.0
+    advertisement_ttl_s: 10.0
+    satellite_count_for_origin_ad_rate: 24
+    origin_snapshot_generation_rate_hz: 12.0
+    forwarded_control_packet_rate: recompute from actual control-plane hop/transmission events; not
+      inferred from origin snapshot rate
+    advertisement_vis_k: 4
+    advertisement_scope: vis_k=4 applies to the whole advertisement, including destination service
+      and queue/rate/availability fields; all four information arms share it
+    execution_compute_servers_per_satellite: 1
+    decision_compute_service_s: 0.001
+    resource_query_service_s: 1.0e-06
+    async_update_interval_s: 0.5
+    async_window_bins: 4
+    host_timing_measurement: VM host wall-clock measurements are reported separately when returned;
+      configured compute/query service times are simulator assumptions, not host execution benchmarks
+  comparison_limit: all parameters are simulation assumptions; no flight calibration; only within-identical-design
+    paired comparisons support attribution
+workloads:
+  sites: &id001
+  - id: equator
+    lat: 0.1
+    lon: 0.1
+  - id: north
+    lat: 52.6
+    lon: 90.4
+  - id: pacific_corridor
+    lat: 41.5
+    lon: 156.5
+  flows: &id002
+  - id: equator_to_north
+    src: equator
+    dst: north
+  - id: equator_to_pacific_corridor
+    src: equator
+    dst: pacific_corridor
+  - id: north_to_equator
+    src: north
+    dst: equator
+  - id: north_to_pacific_corridor
+    src: north
+    dst: pacific_corridor
+  - id: pacific_corridor_to_equator
+    src: pacific_corridor
+    dst: equator
+  - id: pacific_corridor_to_north
+    src: pacific_corridor
+    dst: north
+  steady_low_1500:
+    schema: t1-synthetic-od-workload/v1
+    workload_id: fixed_1500_byte_six_od_negative_control
+    packet_bits: 12000
+    jitter_s: 0.002
+    sites: *id001
+    flows: *id002
+    phases:
+    - id: steady
+      start_s: 0.0
+      end_s: 8.0
+      rates_pps:
+        equator_to_north: 42
+        equator_to_pacific_corridor: 42
+        north_to_equator: 42
+        north_to_pacific_corridor: 42
+        pacific_corridor_to_equator: 42
+        pacific_corridor_to_north: 42
+  temporal_transfer_1500:
+    schema: t1-synthetic-od-workload/v1
+    workload_id: fixed_1500_byte_low_growth_hotspot_transfer_decay_six_od
+    packet_bits: 12000
+    jitter_s: 0.0005
+    sites: *id001
+    flows: *id002
+    phases:
+    - id: low
+      start_s: 0.0
+      end_s: 1.0
+      rates_pps:
+        equator_to_north: 42
+        equator_to_pacific_corridor: 42
+        north_to_equator: 42
+        north_to_pacific_corridor: 42
+        pacific_corridor_to_equator: 42
+        pacific_corridor_to_north: 42
+    - id: growth
+      start_s: 1.0
+      end_s: 4.0
+      rates_pps:
+        equator_to_north: 250
+        equator_to_pacific_corridor: 83
+        north_to_equator: 250
+        north_to_pacific_corridor: 83
+        pacific_corridor_to_equator: 83
+        pacific_corridor_to_north: 83
+    - id: transfer
+      start_s: 4.0
+      end_s: 7.0
+      rates_pps:
+        equator_to_north: 83
+        equator_to_pacific_corridor: 83
+        north_to_equator: 83
+        north_to_pacific_corridor: 250
+        pacific_corridor_to_equator: 83
+        pacific_corridor_to_north: 250
+    - id: decay
+      start_s: 7.0
+      end_s: 8.0
+      rates_pps:
+        equator_to_north: 42
+        equator_to_pacific_corridor: 42
+        north_to_equator: 42
+        north_to_pacific_corridor: 42
+        pacific_corridor_to_equator: 42
+        pacific_corridor_to_north: 42
+b_round:
+  note: Same original four-direction platform and declared three-site six-OD corridor. All online
+    arms receive only legitimate advertisements and share coverage/fallback rules. C0 validates normalized
+    research traffic and calibrates; C1 evaluates the frozen rule.
+  budgets:
+    simulator_call_budget: 17
+    max_b_dev_cells: 2
+    max_cell_wall_s: 120
+    total_vm_simulation_wall_s: 1200.0
+    concurrency: 1
+  scenarios:
+  - id: steady_multi_od_negative_control_c
+    business: six directed ODs, fixed 1500B, steady low competition; process and primary-population
+      check
+    expectation: negative_control
+    workload: steady_low_1500
+    profile: CODE/leo_sim/profiles/t1_dev_regional_multiod_c.yaml
+    parameters:
+      scenario.duration_s: 40.0
+      demand.emission_end_s: 8.0
+      demand.packet_bits: 12000
+      links.isl_rate_mbps: 5.0
+      topology.recompute_interval_s: 5.0
+      control_plane.vis_k: 4
+      control_plane.ttl_s: 10.0
+      control_plane.advertise_interval_s: 2.0
+      control_plane.packet_bits: 8000
+      execution.compute_delay_s: 0.001
+      execution.compute_servers_per_satellite: 1
+      time_alignment.enabled: true
+      time_alignment.arm: candidate
+      time_alignment.predictor: bounded_linear
+      time_alignment.common_rule: median_eta
+      time_alignment.execution_mode: per_packet
+      time_alignment.per_flow_ttl_s: 0.5
+      time_alignment.query_delay_s: 1.0e-06
+      async_routing.update_interval_s: 0.5
+      async_routing.window_bins: 4
+    seeds:
+    - 7
+    tasks:
+    - network_alignment
+    task_seeds:
+      network_alignment:
+      - 7
+  - id: temporal_multi_od_calibration_c
+    business: independent seed-7 three-phase and multi-OD development calibration on the same dynamic
+      traffic family as evaluation
+    expectation: dev_calibration_only
+    workload: temporal_transfer_1500
+    profile: CODE/leo_sim/profiles/t1_dev_regional_multiod_c.yaml
+    parameters:
+      scenario.duration_s: 40.0
+      demand.emission_end_s: 8.0
+      demand.packet_bits: 12000
+      links.isl_rate_mbps: 5.0
+      topology.recompute_interval_s: 5.0
+      control_plane.vis_k: 4
+      control_plane.ttl_s: 10.0
+      control_plane.advertise_interval_s: 2.0
+      control_plane.packet_bits: 8000
+      execution.compute_delay_s: 0.001
+      execution.compute_servers_per_satellite: 1
+      time_alignment.enabled: true
+      time_alignment.arm: candidate
+      time_alignment.predictor: bounded_linear
+      time_alignment.common_rule: median_eta
+      time_alignment.execution_mode: per_packet
+      time_alignment.per_flow_ttl_s: 0.5
+      time_alignment.query_delay_s: 1.0e-06
+      async_routing.update_interval_s: 0.5
+      async_routing.window_bins: 4
+    seeds:
+    - 7
+    tasks:
+    - branch_alignment
+    task_seeds:
+      branch_alignment:
+      - 7
+    max_branches: 3
+    min_sampled_branches: 3
+    calibrate_common_horizon: true
+    sampling_rule: contract calibration_source phase-and-OD rule; must be implemented, not generic
+      even-stride sampling
+pilot_cell_ids: []
+excluded_from_this_matrix:
+- M-Lab and locally registered traffic tables with unverified redistribution rights
+- measured packet-size distribution; 1500B is an experiment assumption
+- cross-run outcome comparisons between C0 repair reproduction and C1 outcomes
+- all confirmation seeds, FORMAL_RUN, training and satellite-flight claims
+- endpoint, minimum-elevation, topology or threshold searches
+design_readiness:
+  status: INVALID_SUPERSEDED_NOT_RELEASE_READY
+  meaning: The C draft is invalid for the current study. The suite has a fail-closed readiness check, but this contract does not satisfy it and must not be published or run.
+  runtime_gate_implemented: true
+  required_before_release:
+  - verify_the_upgraded_full_constellation_and_topology_from_the_current_mainline
+  - implement_native_population_region_filter_and_frozen_dynamic_business_input
+  - bind_one_proven_trained_ddqn_checkpoint_and_compatible_observation_action_contract
+  - pass_arm_specific_predicted_resource_state_into_the_model_that_owns_the_action
+  - correct_eta_resource_entry_timing_and_record_unknown_peer_processing
+  - make_async_window_bins_score_their_declared_target_instants_and_rebase_on_actual_install
+  - define_five_mode_action_ownership_reuse_and_full_model_compute_cost
+  - implement_phase_and_od_calibration_sampler_and_full_network_primary_metrics
+  - expand_actual_internal_calls_and_wall_budget_for_the_verified_full_constellation_control_scope
+  - retain_a_fail_closed_invalid_contract_run_rejection_test
+  on_incomplete: do_not_release_or_run_this_contract; preserve work and record the exact blocker

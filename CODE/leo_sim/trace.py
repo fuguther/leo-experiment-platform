@@ -24,10 +24,13 @@ from pathlib import Path
 from . import config, grid, population, rng
 
 TRACE_SCHEMA = "leo-sim-trace/v1"
+TRACE_SCHEMA_V2 = "leo-sim-trace/v2"
 TRACE_MANIFEST_SCHEMA_V1 = "leo-sim-trace-manifest/v1"
-TRACE_MANIFEST_SCHEMA = "leo-sim-trace-manifest/v2"
+TRACE_MANIFEST_SCHEMA_V2 = "leo-sim-trace-manifest/v2"
+TRACE_MANIFEST_SCHEMA = "leo-sim-trace-manifest/v3"
 TRACE_PROVENANCE_SCHEMA_V1 = "leo-sim-trace-provenance/v1"
-TRACE_PROVENANCE_SCHEMA = "leo-sim-trace-provenance/v2"
+TRACE_PROVENANCE_SCHEMA_V2 = "leo-sim-trace-provenance/v2"
+TRACE_PROVENANCE_SCHEMA = "leo-sim-trace-provenance/v3"
 PACKET_ID_CONTRACT = (
     "synthetic: sequential 1..N in emission order; "
     "csv: source packet_id preserved verbatim")
@@ -39,14 +42,22 @@ class TraceError(ValueError):
     pass
 
 
-def _format_time(value: float) -> str:
-    """Canonical, byte-reproducible trace time representation."""
+def _format_time(value: float, *, roundtrip: bool = False) -> str:
+    """Canonical trace time representation.
+
+    Legacy traces retain their frozen six-decimal encoding.  Research-D
+    traces use Python's shortest float64 round-trip spelling so a generated
+    time just below a half-open emission boundary cannot be rounded onto the
+    excluded endpoint.
+    """
+    if roundtrip:
+        return repr(float(value))
     text = f"{float(value):.{TIME_DECIMALS}f}".rstrip("0").rstrip(".")
     return text or "0"
 
 
-def _serialized_time(value: float) -> float:
-    return float(_format_time(value))
+def _serialized_time(value: float, *, roundtrip: bool = False) -> float:
+    return float(_format_time(value, roundtrip=roundtrip))
 
 
 def validate_packet_rows(rows: list[dict], horizon_s: float,
@@ -71,6 +82,7 @@ def validate_packet_rows(rows: list[dict], horizon_s: float,
             pid, t = r["packet_id"], r["emit_time_s"]
             s, d = r["src_grid_id"], r["dst_grid_id"]
             bits, dl = r["bits"], r["deadline_at_s"]
+            research_dl = r.get("research_deadline_at_s")
         except (KeyError, TypeError) as exc:
             raise TraceError(f"trace row {i}: missing field {exc}")
         if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
@@ -97,6 +109,17 @@ def validate_packet_rows(rows: list[dict], horizon_s: float,
             if dl < t:
                 raise TraceError(
                     f"trace row {i}: deadline {dl} earlier than emit_time {t}")
+        if research_dl is not None:
+            if (not isinstance(research_dl, (int, float))
+                    or isinstance(research_dl, bool)
+                    or not math.isfinite(research_dl)):
+                raise TraceError(
+                    f"trace row {i}: research deadline not finite: "
+                    f"{research_dl!r}")
+            if research_dl < t:
+                raise TraceError(
+                    f"trace row {i}: research deadline {research_dl} earlier "
+                    f"than emit_time {t}")
         key = (float(t), pid)
         if prev_key is not None and key < prev_key:
             raise TraceError(
@@ -300,7 +323,8 @@ def _dst_choices(gen, mode, endpoints, i, t, dm, mlab_weights=None):
 
 
 def _rate_multiplier(mode, t, src_lon, dm):
-    if mode in ("burst", "mlab") and dm["burst_start_s"] is not None:
+    if mode in ("burst", "mlab", "population_gravity") \
+            and dm["burst_start_s"] is not None:
         start, dur = dm["burst_start_s"], dm["burst_duration_s"]
         if start <= t < start + dur:
             return dm["burst_multiplier"]
@@ -551,17 +575,552 @@ def _select_mlab_endpoints(grid_deg: float, agg_deg: float,
     return endpoints, weights, summary
 
 
-def compile_trace(resolved: dict, out_dir: str) -> dict:
-    """Compile an immutable trace. Returns the manifest dict."""
+#: THE DECLARED MULTIPLIER FUNCTION IS CHECKED DETERMINISTICALLY; THE RANDOM
+#: DRAW IS NOT JUDGED.
+#:
+#: Two different questions used to be answered by one test, and the second one
+#: was answered wrongly (independent review, 2026-09-25):
+#:
+#:   1. Is the multiplier FUNCTION the declared one?  That is a property of the
+#:      code and the config, so it is checked deterministically by
+#:      verify_burst_transform() below: boundary behaviour, longitude
+#:      independence, and the algebraic consistency of the thinning formula
+#:      (which holds by construction, so it is a sanity check on the formula,
+#:      NOT evidence about the generator).  A failure here refuses the compile.
+#:      The generator's own ACCEPTANCE STEP is not deterministically
+#:      observable: an independent review of 2026-09-25 patched only that step,
+#:      dropped the burst entirely, and this check still reported zero
+#:      mismatches.  A defect there is a STATISTICAL finding (question 2).
+#:   2. Did THIS random draw land near its expectation?  That is a property of
+#:      the seed, not of the platform.  It is reported as a statistical
+#:      DIAGNOSTIC and never refuses the compile: at multiplier 5 on the
+#:      reference fixture the 3-sigma band rejected 2 of the first 400 seeds
+#:      (222 and 227) while the realized in-window mean over the 398 OTHER seeds
+#:      was 248.40 against an expected 250, sample sd 15.57 (theoretical 15.81);
+#:      over all 400 seeds the mean is 248.42 with sample sd 16.00, so the quoted
+#:      pair is the outlier-excluded set, not the full one.  A correct generator
+#:      inside a wrong test.
+#:
+#: Nothing here re-seeds or retries: one seed, one generation, one report.  A
+#: diagnostic that reads INCOMPATIBLE keeps the seed, the raw sample and the
+#: numbers so a human can judge; it does NOT auto-fail the run.
+#:
+#: The intensity verdict is COMPATIBLE / INCOMPATIBLE and nothing stronger.
+#: Statistical compatibility is not a proof that the transform WAS APPLIED; the
+#: deterministic check above is what speaks to the correctness of the multiplier
+#: FUNCTION.  The generator's application of it is not observed.
+INTENSITY_SIGMA = 3.0
+
+#: BACKSTOP longitudes for verify_burst_transform(), used when the caller does
+#: not pass the longitudes the trace actually uses: a 1-degree grid over
+#: [-180, 180).  The first version probed three longitudes; an independent
+#: review of 2026-09-25 falsified it with a transform that leaked at every
+#: longitude EXCEPT those three, and the trace compiled.  The grid is a
+#: declared constant so the coverage is a number a reader can check, not an
+#: adjective.
+BURST_LONGITUDE_PROBE_STEP_DEG = 1.0
+#: Time sweep inside the declared window, in seconds.  Boundary probes alone
+#: let a 1-second hole through (independent review C7, 2026-09-25).
+BURST_TIME_PROBE_STEP_S = 0.05
+BURST_LONGITUDE_PROBES = tuple(
+    -180.0 + index * BURST_LONGITUDE_PROBE_STEP_DEG
+    for index in range(int(round(360.0 / BURST_LONGITUDE_PROBE_STEP_DEG))))
+
+
+def _poisson_band(mean: float) -> float:
+    """Half-width of the declared INTENSITY_SIGMA band around a Poisson mean."""
+    return INTENSITY_SIGMA * math.sqrt(mean)
+
+
+def _expected_in_window(resolved: dict, start: float,
+                        window_end: float) -> tuple[float, float, float]:
+    """The declared expectation, as exact arithmetic rather than a fit."""
+    dm = resolved["config"]["demand"]
+    width = window_end - start
+    effective_multiplier = max(1.0, float(dm["burst_multiplier"]))
+    generation_mbps = (float(dm["nested_master_offered_mbps"])
+                       if dm["nested_master_offered_mbps"] is not None
+                       else float(dm["offered_mbps"]))
+    total_rate = generation_mbps * 1e6 / int(dm["packet_bits"])
+    inclusion = (1.0 if dm["nested_master_offered_mbps"] is None
+                 else float(dm["offered_mbps"])
+                 / float(dm["nested_master_offered_mbps"]))
+    return (total_rate * effective_multiplier * width * inclusion,
+            total_rate * width * inclusion, effective_multiplier)
+
+
+def verify_burst_transform(resolved: dict, longitudes=None,
+                           longitude_source=None) -> dict:
+    """Deterministically check the declared burst MULTIPLIER FUNCTION.
+
+    Property of the code and the config, independent of any seed: the
+    multiplier function must return exactly the declared value on
+    [start, start+duration) and 1.0 outside it, at every probed longitude
+    (BURST_LONGITUDE_PROBE_STEP_DEG below defines the grid), and the thinning
+    FORMULA must be arithmetically consistent with it:
+
+        proposal_rate(t) * acceptance_probability(t)
+            == base_rate * multiplier(t),
+        proposal_rate(t)   = base_rate * max(1, multiplier)
+        acceptance(t)      = multiplier(t) / max(1, multiplier)
+
+    longitudes overrides the probe set.  compile_trace passes the longitudes of
+    the endpoints the generator will actually use, and the generator only ever
+    calls the multiplier function at those longitudes, so the check is COMPLETE
+    in longitude for that trace.  It is NOT complete in time: the window is
+    swept on BURST_TIME_PROBE_STEP_S plus the exact boundaries, and a hole
+    narrower than the step would not be seen.  Without the longitudes argument
+    the 1-degree grid is used as a backstop, which is a sample in longitude
+    too.
+
+    WHAT THIS DOES NOT DO: it does not observe the generator.  accepted ==
+    proposal_rate * (multiplier / max_multiplier) is an algebraic identity, so
+    the thinning clause holds for every probe regardless of what the generator
+    does; an independent review of 2026-09-25 patched ONLY the generator's
+    acceptance step (leaving the multiplier function correct), dropped the
+    burst entirely, and the trace still compiled with mismatched_probes = 0.
+    The generator's application of the transform is a statistical question --
+    see _burst_intensity_diagnostics, which reports the realized in-window
+    count against the declared expectation and, by platform rule, never
+    refuses a compile.
+
+    Sampling limits: the longitude set is complete only when the caller passes
+    the longitudes the generator will use (compile_trace does); the time sweep
+    sees a hole only if the hole contains a probe instant, so the escaping hole
+    width is the largest gap between consecutive probes -- measured at
+    0.05000000000000426 s for a 0.05 s step, i.e. the nominal step plus float
+    error, NOT a strict bound.
+
+    Returns a report of every probe; raises TraceError on the first property
+    that does not hold.
+    """
+    dm = resolved["config"]["demand"]
+    mode = dm["mode"]
+    start = float(dm["burst_start_s"])
+    window_end = start + float(dm["burst_duration_s"])
+    multiplier = float(dm["burst_multiplier"])
+    max_multiplier = max(1.0, multiplier)
+    total_rate = float(dm["offered_mbps"]) * 1e6 / int(dm["packet_bits"])
+    probe_longitudes = tuple(BURST_LONGITUDE_PROBES if longitudes is None
+                             else sorted({float(value) for value in longitudes}))
+    if not probe_longitudes:
+        raise TraceError("verify_burst_transform requires at least one longitude")
+    probe_instants = [
+        ("before_window", start - 1e-9, 1.0),
+        ("window_start", start, multiplier),
+        ("window_middle", start + (window_end - start) / 2.0, multiplier),
+        ("window_end_minus_eps", window_end - 1e-9, multiplier),
+        ("window_end", window_end, 1.0),
+        ("after_window", window_end + 1e-9, 1.0),
+    ]
+    # Boundary probes alone are a SAMPLE in t: an independent review of
+    # 2026-09-25 (C7) falsified the "complete" claim with a transform that
+    # drops the burst only for 12.0 <= t < 13.0 and still compiled.  The window
+    # is therefore swept on a declared grid as well.  This is still sampling:
+    # a hole narrower than the step is not detectable here, and the docstring
+    # says so instead of claiming a proof.
+    step = BURST_TIME_PROBE_STEP_S
+    instant = start
+    index = 0
+    # strictly inside the half-open window: window_end itself is probed above
+    # with expected 1.0, and the first version wrongly expected the multiplier
+    # there (caught by the test run, 2026-09-25)
+    while instant < window_end:
+        probe_instants.append((f"window_sweep_{index}", instant, multiplier))
+        index += 1
+        instant = start + index * step
+    probes = []
+    for longitude in probe_longitudes:
+        for label, t, expected in probe_instants:
+            actual = _rate_multiplier(mode, t, longitude, dm)
+            proposal = total_rate * max_multiplier
+            accepted = proposal * (actual / max_multiplier)
+            probes.append({
+                "probe": label, "longitude_deg": longitude, "t": t,
+                "multiplier": actual, "expected": expected,
+                "thinning_rate": accepted,
+                "declared_rate": total_rate * expected,
+                "matches": (actual == expected
+                            and math.isclose(accepted,
+                                             total_rate * expected,
+                                             rel_tol=1e-12, abs_tol=0.0)),
+            })
+    broken = [probe for probe in probes if not probe["matches"]]
+    report = {
+        "schema": "leo-sim-burst-transform/v1",
+        "mode": mode,
+        "window": [start, window_end],
+        "multiplier": multiplier,
+        "max_multiplier": max_multiplier,
+        "probes": probes,
+        "checked_probes": len(probes),
+        "checked_longitudes": list(probe_longitudes),
+        # precedence matters: the backstop grid is a property of THIS function,
+        # the caller's label is only a label.  An independent review showed the
+        # first version let a caller-supplied sentence describe the backstop
+        # grid (2026-09-25).
+        "longitude_source": (
+            "1-degree backstop grid" if longitudes is None
+            else longitude_source if longitude_source is not None
+            else (f"caller-supplied longitudes (n={len(probe_longitudes)}); "
+                  "completeness is the caller's claim, not verified here")),
+        "mismatched_probes": len(broken),
+        # What this report does and does not establish.  The first version
+        # claimed to check "that the generator APPLIES the declared burst" and
+        # printed a thinning clause as if it were evidence; an independent
+        # review of 2026-09-25 falsified that: accepted = total_rate *
+        # max_multiplier * (multiplier / max_multiplier) is an algebraic
+        # identity, so the clause matches for ALL probes no matter what the
+        # generator does.  Patching only the generator's acceptance step (leaving
+        # _rate_multiplier correct) dropped the burst entirely and still
+        # produced mismatched_probes = 0 and problems = [], i.e. the generator's
+        # application is NOT observed here.
+        "verified": (
+            "the multiplier function returns the declared value on the "
+            "half-open window and 1.0 outside it, at every probed longitude "
+            "and every probed instant"),
+        "not_verified": (
+            "that the generator's acceptance step uses that function. The "
+            "thinning clause below is an algebraic identity and is reported as "
+            "consistency of the FORMULA, not as evidence about the generator. A "
+            "generator-side defect shows up in burst.intensity (realized "
+            "in-window count against the declared expectation), which by "
+            "platform rule never refuses a compile and is judged by the "
+            "pre-declared experiment design"),
+        "thinning_clause_is_algebraic_identity": True,
+    }
+    if broken:
+        first = broken[0]
+        # Name the OBSERVATION, not a conclusion about application: this check
+        # sees return values and nothing else, so "not applied" was false both
+        # for a function that returns the declared multiplier everywhere and
+        # for one that returns half of it -- both ARE applied, both failed here
+        # (independent review, 2026-09-25).
+        raise TraceError(
+            "the burst multiplier function does not return the declared value "
+            "at this probe: "
+            f"probe {first['probe']} at t={first['t']} longitude "
+            f"{first['longitude_deg']} gives multiplier {first['multiplier']} "
+            f"and thinning rate {first['thinning_rate']}, expected "
+            f"{first['expected']} / {first['declared_rate']}")
+    return report
+
+
+def _burst_intensity_diagnostics(resolved: dict, start: float,
+                                 window_end: float, inside: list[dict],
+                                 emitted_packets: int) -> dict:
+    """Report how this random draw compares with the declared expectation.
+
+    NOT a gate.  The generator is an exact thinning of a Poisson process, so
+    the in-window count is Poisson(E_burst); a single draw can legitimately sit
+    far from its mean and a compiler that refuses it is rejecting the seed, not
+    the declaration.  Every field needed to judge that by hand is preserved:
+    the seed, the raw counts, the expectation, and the tolerance used.
+    """
+    dm = resolved["config"]["demand"]
+    seed = resolved["config"]["scenario"]["seed"]
+    if dm["mode"] == "csv":
+        return {"status": "NOT_APPLICABLE", "scenario_seed": seed,
+                "reason": ("csv demand is replayed verbatim; there is no "
+                           "generator rate for the declaration to be compared "
+                           "against")}
+    width = window_end - start
+    expected_burst, expected_base, effective_multiplier = \
+        _expected_in_window(resolved, start, window_end)
+    observed = len(inside)
+    separation = expected_burst - expected_base
+    sigma_span = (_poisson_band(expected_burst) + _poisson_band(expected_base)
+                  if expected_burst > 0 else float("inf"))
+    band = _poisson_band(expected_burst) if expected_burst > 0 else None
+    report = {
+        "status": None,
+        "scenario_seed": seed,
+        "sigma": INTENSITY_SIGMA,
+        "window_width_s": width,
+        "expected_packets_if_burst_applied": expected_burst,
+        "expected_packets_if_burst_not_applied": expected_base,
+        "observed_packets": observed,
+        "observed_over_expected_burst": (observed / expected_burst
+                                         if expected_burst > 0 else None),
+        "acceptance_band": band,
+        "required_separation": sigma_span,
+        "predicted_separation": separation,
+        "sigma_distance": (abs(observed - expected_burst)
+                           / math.sqrt(expected_burst)
+                           if expected_burst > 0 else None),
+        "raw_sample_preserved": {
+            "inside_window": observed,
+            # NOT len(inside): that is the same number as inside_window and
+            # said "0 emitted" for a 3-packet trace (caught by the independent
+            # review of 2026-09-25).  The emitted count comes from the caller,
+            # which is the only place that has the whole trace.
+            "all_emitted": emitted_packets,
+            "note": ("the sample and its seed are reported, never replaced or "
+                     "re-drawn"),
+        },
+    }
+    if effective_multiplier <= 1.0:
+        report["status"] = "UNVERIFIABLE"
+        report["reason"] = ("burst_multiplier <= 1 leaves the rate unchanged, "
+                            "so there is no intensity to compare against")
+        return report
+    if not math.isfinite(sigma_span) or separation <= sigma_span:
+        report["status"] = "UNDECIDABLE"
+        report["reason"] = (
+            f"the declaration predicts {expected_burst:.3f} packets inside the "
+            f"window and {expected_base:.3f} if the burst were not applied; "
+            f"separating those at {INTENSITY_SIGMA} sigma needs more than "
+            f"{sigma_span:.3f} and the gap is {separation:.3f}. A non-empty "
+            "window is NOT evidence that the declared intensity happened")
+        return report
+    if abs(observed - expected_burst) > band:
+        report["status"] = "INCOMPATIBLE"
+        report["reason"] = (
+            f"this draw put {observed} packets inside the window against an "
+            f"expected {expected_burst:.3f} +/- {band:.3f} "
+            f"({report['sigma_distance']:.2f} sigma, seed {seed}). A single "
+            "Poisson draw is allowed to sit that far out, so this is reported "
+            "as a property of THIS SEED rather than proof of a defect. It is, "
+            "however, the only RUNTIME field that responds to a generator whose "
+            "acceptance step ignores the multiplier: burst.applied reads true "
+            "and mismatched_probes stays 0 in that case (independent review, "
+            "2026-09-25). A draw this far out calls for the pre-declared "
+            "design's judgement, not a re-draw")
+        return report
+    report["status"] = "COMPATIBLE"
+    report["reason"] = (
+        f"{observed} packets inside the window against an expected "
+        f"{expected_burst:.3f} +/- {band:.3f} (seed {seed}); statistically "
+        "COMPATIBLE with the declaration, which is not a proof that the "
+        "transform was APPLIED -- verify_burst_transform() speaks to the "
+        "multiplier FUNCTION, not to the generator's acceptance step")
+    return report
+
+
+def materialization_report(resolved: dict, rows: list[dict],
+                           declared_cells: set | None = None,
+                           endpoint_longitudes=None,
+                           endpoint_longitude_source=None) -> dict:
+    """Mechanically check the EMITTED trace against what the config declared.
+
+    The manifest records what was ASKED FOR (target load, declared burst
+    window, declared packet size).  Until this function existed nothing
+    compared those declarations with the rows that were actually written, so a
+    declaration that never materialized - a burst window past the emission
+    horizon, a burst window under a mode that ignores it, a packet size the
+    generator does not use - reached the receipt unremarked.  Every rule below
+    either raises TraceError or, where the platform deliberately annotates
+    instead (the burst block), records that annotation in the manifest: the
+    trace is the experiment's
+    input, and an input whose treatment did not happen cannot be repaired
+    downstream.
+
+    rows is the serialized row list (the same dicts validate_packet_rows and
+    load_trace accept), so the check runs on the exact values written to disk.
+    The returned report is evidence; it is deliberately NOT added to
+    manifest.json, whose key set is a frozen part of the receipt contract.
+    """
     cfg = resolved["config"]
     sc, dm, ep = cfg["scenario"], cfg["demand"], cfg["endpoints"]
     mode = dm["mode"]
     duration = float(sc["duration_s"])
+    emission_start = float(dm["emission_start_s"])
+    emission_end = (duration if dm["emission_end_s"] is None
+                    else float(dm["emission_end_s"]))
+    declared_bits = int(dm["packet_bits"])
+    if declared_cells is None and mode != "csv":
+        try:
+            declared_cells = {site["agg_grid_id"] for site in _endpoints(cfg)}
+        except TraceError as exc:
+            # mlab_auto and population_gravity derive their endpoint set from a
+            # data source, so it cannot be re-derived from the config alone.
+            # Say which argument fixes it instead of failing with a message
+            # about endpoints.sites that names nothing the caller can act on
+            # (found by the cold-start review of 2026-09-25).
+            raise TraceError(
+                f"materialization_report cannot derive the declared endpoint "
+                f"set for demand.mode={mode} ({exc}); this mode takes its "
+                "endpoints from a data source, so a direct caller must pass "
+                "declared_cells (compile_trace does)") from exc
+
+    times = [float(row["emit_time_s"]) for row in rows]
+    bits = [int(row["bits"]) for row in rows]
+    sources = {row["src_grid_id"] for row in rows}
+    destinations = {row["dst_grid_id"] for row in rows}
+
+    strict_half_open = (dm["research_deadline_s"] is not None or any(
+        row.get("research_deadline_at_s") is not None for row in rows))
+    report: dict = {
+        "schema": "leo-sim-trace-materialization/v1",
+        "mode": mode,
+        "packets": len(rows),
+        "offered_bits": sum(bits),
+        "packet_bits": {
+            "declared": declared_bits,
+            "observed_distinct": sorted(set(bits)),
+            "declaration_applies": mode != "csv",
+        },
+        "emission": {
+            "emission_start_s": emission_start,
+            "emission_end_s": emission_end,
+            "first_emit_s": times[0] if times else None,
+            "last_emit_s": times[-1] if times else None,
+            "packets_before_emission_start": sum(
+                1 for value in times if value < emission_start),
+            "packets_after_emission_end": sum(
+                1 for value in times
+                if (value >= emission_end if strict_half_open
+                    else value > emission_end)),
+            "interval": ("[emission_start_s, emission_end_s)"
+                         if strict_half_open
+                         else "[emission_start_s, emission_end_s]"),
+        },
+        "endpoints": {
+            "distinct_sources": len(sources),
+            "distinct_destinations": len(destinations),
+            "declared_cells": len(declared_cells) if declared_cells else None,
+            "sources_outside_declared": (sorted(sources - declared_cells)
+                                         if declared_cells else []),
+            "destinations_outside_declared": (sorted(destinations - declared_cells)
+                                              if declared_cells else []),
+            "self_loops": sum(1 for row in rows
+                              if row["src_grid_id"] == row["dst_grid_id"]),
+        },
+        "burst": None,
+    }
+
+    problems: list[str] = []
+    if report["emission"]["packets_after_emission_end"]:
+        problems.append(
+            f"{report['emission']['packets_after_emission_end']} packet(s) "
+            f"outside the emission window ending at {emission_end}")
+    if report["emission"]["packets_before_emission_start"]:
+        problems.append(
+            f"{report['emission']['packets_before_emission_start']} packet(s) "
+            f"emitted before the emission window starts at {emission_start}")
+    if mode != "csv" and set(bits) - {declared_bits}:
+        problems.append(
+            f"emitted packet sizes {sorted(set(bits))} do not match the "
+            f"declared demand.packet_bits {declared_bits}")
+    if report["endpoints"]["self_loops"]:
+        problems.append(
+            f"{report['endpoints']['self_loops']} packet(s) whose source and "
+            "destination are the same aggregate cell")
+    for label, outside in (("source", report["endpoints"]["sources_outside_declared"]),
+                           ("destination",
+                            report["endpoints"]["destinations_outside_declared"])):
+        if outside:
+            problems.append(
+                f"emitted {label} cell(s) {outside} are outside the resolved "
+                "endpoint set")
+
+    if mode in ("burst", "mlab", "population_gravity") \
+            and dm["burst_start_s"] is not None:
+        start = float(dm["burst_start_s"])
+        window_end = start + float(dm["burst_duration_s"])
+        inside = [row for row in rows if start <= float(row["emit_time_s"]) < window_end]
+        effective_multiplier = max(1.0, float(dm["burst_multiplier"]))
+        # Deterministic, and narrower than its name suggests: this checks the
+        # multiplier FUNCTION and the thinning formula, not the generator's
+        # acceptance step (see the docstring's WHAT THIS DOES NOT DO).  A
+        # generator-side defect is visible only in the statistical diagnostic
+        # below.
+        transform = verify_burst_transform(resolved, endpoint_longitudes,
+                                           endpoint_longitude_source)
+        # Statistical: where did THIS draw land?  Recorded, never a gate.
+        intensity = _burst_intensity_diagnostics(resolved, start, window_end,
+                                                 inside, len(rows))
+        report["burst"] = {
+            "start_s": start,
+            "duration_s": float(dm["burst_duration_s"]),
+            "end_s": window_end,
+            "multiplier": float(dm["burst_multiplier"]),
+            "effective_multiplier": effective_multiplier,
+            "packets_inside_window": len(inside),
+            # "applied" answers ONE question only: did any emitted packet fall
+            # inside the declared window.  Read it together with applied_reason:
+            # true here does NOT mean the generator applied the burst -- a
+            # generator that drops it entirely still reads true.  Whether the realized INTENSITY is
+            # compatible with the declared multiplier is a separate statistical
+            # diagnostic reported below; conflating the two is exactly how "one
+            # packet in the window" would get read as intensity acceptance.
+            # applied_reason separates the two ways applied can be false, which
+            # a bare boolean cannot (independent review, 2026-09-25).
+            "applied": bool(inside) and effective_multiplier > 1.0,
+            "applied_reason": (
+                "MULTIPLIER_IS_A_NOOP" if effective_multiplier <= 1.0
+                else "WINDOW_OBSERVED" if inside
+                else "NO_PACKET_IN_WINDOW"),
+            "transform": transform,
+            "intensity": intensity,
+            "intensity_compatible": intensity.get("status") == "COMPATIBLE",
+        }
+        if not inside:
+            # NOT a refusal.  A declared window that receives no packet is a
+            # legitimate outcome of the declared random process when the
+            # declaration itself predicts a small expectation, and whether an
+            # experiment has enough discriminating power to say anything about
+            # the treatment is a question for the PRE-DECLARED DESIGN -- not
+            # something a generic trace compiler may answer by refusing to
+            # compile, and never something to be repaired by dropping the
+            # sample or drawing another seed.
+            #
+            # What the compiler owes the reader is the fact and the numbers, so
+            # they are recorded here (and in burst.intensity / burst.applied)
+            # instead of being turned into a gate.  Everything structural --
+            # mode, window inside the emission window, multiplier > 1, and the
+            # deterministic transform check above -- still refuses.
+            report["burst"]["zero_packet_diagnostic"] = {
+                "observed_packets_in_window": 0,
+                "emitted_packets": len(rows),
+                "scenario_seed": intensity.get("scenario_seed"),
+                "expected_packets_if_burst_applied":
+                    intensity.get("expected_packets_if_burst_applied"),
+                "expected_packets_if_burst_not_applied":
+                    intensity.get("expected_packets_if_burst_not_applied"),
+                "meaning": ("the declared treatment is unobservable in this "
+                            "sample; the raw sample and its seed are reported "
+                            "unchanged and no re-draw was attempted"),
+                "where_discriminating_power_is_judged": (
+                    "the pre-declared experiment design, not this compiler"),
+            }
+        if effective_multiplier <= 1.0:
+            problems.append(
+                f"a burst window is declared with burst_multiplier "
+                f"{dm['burst_multiplier']} <= 1.0, which leaves the emission "
+                "rate unchanged: the declaration is a no-op treatment")
+
+    report["problems"] = problems
+    if problems:
+        raise TraceError(
+            "trace materialization does not match the resolved config: "
+            + "; ".join(problems))
+    return report
+
+
+def compile_trace(resolved: dict, out_dir: str,
+                  evidence: dict | None = None) -> dict:
+    """Compile an immutable trace. Returns the manifest dict.
+
+    The optional evidence sink is caller-owned.  When given, the
+    materialization report produced by the gate below is written into it, so a
+    caller can surface that evidence WITHOUT the report entering the returned
+    manifest (whose key set is closed and checked by
+    receipt._validate_manifest) and without recomputing it from a config whose
+    endpoint set cannot be re-derived (mlab_auto / population_gravity read it
+    from a data source).
+    """
+    cfg = resolved["config"]
+    sc, dm, ep = cfg["scenario"], cfg["demand"], cfg["endpoints"]
+    mode = dm["mode"]
+    duration = float(sc["duration_s"])
+    emission_start = float(dm["emission_start_s"])
     emission_end = (duration if dm["emission_end_s"] is None
                     else float(dm["emission_end_s"]))
     drain_s = duration - emission_end
     bits_per_pkt = int(dm["packet_bits"])
     deadline = dm["deadline_s"]
+    research_deadline = dm["research_deadline_s"]
     out = Path(out_dir)
     if out.is_symlink():
         raise TraceError(f"output directory may not be a symbolic link: {out}")
@@ -599,6 +1158,9 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
             if missing:
                 raise TraceError(f"csv missing columns {sorted(missing)}")
             seen_ids: set[int] = set()
+            research_column = "research_deadline_at_s" in (reader.fieldnames or [])
+            strict_half_open = (research_deadline is not None
+                                or research_column)
             for row in reader:
                 src_id = row["packet_id"]
                 # packet identity contract: source packet_id values are kept
@@ -621,7 +1183,9 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
                     raise TraceError(
                         f"csv row {src_id}: emit_time_s must be a number: "
                         f"{row['emit_time_s']!r}")
-                if not math.isfinite(t) or t < 0.0 or t > emission_end:
+                if (not math.isfinite(t) or t < 0.0
+                        or (t >= emission_end if strict_half_open
+                            else t > emission_end)):
                     # out-of-horizon records are never silently dropped; an
                     # explicitly approved separate filtering stage would be
                     # required to drop demand, and none exists
@@ -664,7 +1228,23 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
                         raise TraceError(
                             f"csv row {src_id}: invalid deadline {dl_raw!r}")
                 dl = dl_raw  # validated, preserved verbatim (immutable input)
-                rows.append((pid_val, t, s, d, bits_val, dl))
+                research_raw = (row.get("research_deadline_at_s") or "").strip()
+                if research_raw != "":
+                    try:
+                        research_value = float(research_raw)
+                    except (TypeError, ValueError):
+                        raise TraceError(
+                            f"csv row {src_id}: invalid research deadline "
+                            f"{research_raw!r}")
+                    if not math.isfinite(research_value) or research_value < t:
+                        raise TraceError(
+                            f"csv row {src_id}: invalid research deadline "
+                            f"{research_raw!r}")
+                    research_dl = research_raw
+                else:
+                    research_dl = ("" if research_deadline is None else
+                                   repr(t + float(research_deadline)))
+                rows.append((pid_val, t, s, d, bits_val, dl, research_dl))
         rows.sort(key=lambda r: (r[1], r[0]))  # emission order; ids preserved
         # sparse endpoints come straight from the CSV's active cells;
         # endpoints.sites is not required in csv mode
@@ -674,7 +1254,10 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
         population_table = None
         if mode == "population_gravity":
             population_table = population.load_population_regions(
-                dm["population_path"], ep["aggregation_deg"])
+                dm["population_path"], ep["aggregation_deg"],
+                lat_bounds_deg=ep["region_lat_bounds_deg"],
+                lon_bounds_deg=ep["region_lon_bounds_deg"],
+                source_root=Path.cwd())
             endpoints = [
                 {"name": region.grid_id, "lat": region.lat, "lon": region.lon,
                  "weight": region.population, "agg_grid_id": region.grid_id}
@@ -753,7 +1336,8 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
                 continue
             # thinning with max multiplier keeps diurnal/burst deterministic
             max_mult = 1.0
-            if mode in ("burst", "mlab") and dm["burst_start_s"] is not None:
+            if mode in ("burst", "mlab", "population_gravity") \
+                    and dm["burst_start_s"] is not None:
                 max_mult = max(1.0, dm["burst_multiplier"])
             elif mode == "diurnal":
                 max_mult = 1.0 + abs(dm["diurnal_amplitude"])
@@ -761,10 +1345,11 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
                     and dm["temporal_model"] == "local_diurnal_cosine":
                 # same envelope legacy diurnal uses: 1 + |amplitude|
                 max_mult = 1.0 + abs(dm["diurnal_amplitude"])
-            t = 0.0
+            t = emission_start
             while True:
                 t += float(gen.exponential(1.0 / (base_rate * max_mult)))
-                if t > emission_end:
+                if (t >= emission_end if research_deadline is not None
+                        else t > emission_end):
                     break
                 if gen.random() > _rate_multiplier(mode, t, e["lon"], dm) / max_mult:
                     continue
@@ -775,9 +1360,11 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
                 else:
                     dst = _dst_choices(gen, mode, endpoints, i, t, dm,
                                        mlab_weights)
-                dl = f"{t + deadline:.6f}" if deadline is not None else ""
+                dl = repr(t + float(deadline)) if deadline is not None else ""
+                research_dl = (repr(t + float(research_deadline))
+                               if research_deadline is not None else "")
                 candidate = (pid, t, e["agg_grid_id"], dst["agg_grid_id"],
-                             bits_per_pkt, dl)
+                             bits_per_pkt, dl, research_dl)
                 master_rows.append(candidate)
                 # every fully generated candidate receives exactly one
                 # independent nested_filter draw (generation order); kept
@@ -810,27 +1397,68 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
             f"({max_packets}); tighten the demand config instead of generating "
             f"an unbounded trace")
 
+    include_research_deadline = research_deadline is not None or any(
+        research_dl not in (None, "")
+        for *_, research_dl in rows)
+
     # Validate the exact serialized values, not higher-precision in-memory
     # values.  This guarantees compile success implies load_trace success.
     serialized_rows = [
-        (pid, _serialized_time(t), s, d, bits,
-         (_serialized_time(float(dl)) if dl != "" else ""))
-        for pid, t, s, d, bits, dl in rows
+        (pid, _serialized_time(t, roundtrip=include_research_deadline), s, d, bits,
+         (_serialized_time(float(dl), roundtrip=include_research_deadline)
+          if dl != "" else ""),
+         (_serialized_time(float(research_dl),
+                           roundtrip=include_research_deadline)
+          if research_dl not in (None, "") else ""))
+        for pid, t, s, d, bits, dl, research_dl in rows
     ]
-    validate_packet_rows(
-        [{"packet_id": pid, "emit_time_s": float(t), "src_grid_id": s,
-          "dst_grid_id": d, "bits": int(bits),
-          "deadline_at_s": (float(dl) if dl != "" else None)}
-         for pid, t, s, d, bits, dl in serialized_rows],
-        horizon_s=duration, max_packets=max_packets)
+    packet_rows = [
+        {"packet_id": pid, "emit_time_s": float(t), "src_grid_id": s,
+         "dst_grid_id": d, "bits": int(bits),
+         "deadline_at_s": (float(dl) if dl != "" else None),
+         "research_deadline_at_s": (
+             float(research_dl) if research_dl != "" else None)}
+        for pid, t, s, d, bits, dl, research_dl in serialized_rows
+    ]
+    validate_packet_rows(packet_rows, horizon_s=duration,
+                         max_packets=max_packets)
+    # Input materialization gate.  The rows checked here are the exact
+    # serialized values that go to trace.csv, and the check runs BEFORE any
+    # artifact is written, so a refused trace leaves no trace.csv or
+    # manifest.json behind for a downstream stage to pick up.  This is the only
+    # call site that sees the REAL endpoint set (mlab_auto and
+    # population_gravity derive it from a data source, not from the config),
+    # which is why the evidence is handed out here through the sink instead of
+    # being recomputed by the caller.
+    materialization = materialization_report(
+        resolved, packet_rows,
+        declared_cells={e["agg_grid_id"] for e in endpoints},
+        # csv endpoints are aggregate cells without coordinates, and csv demand
+        # is replayed verbatim so no generator transform applies; pass None
+        # then and let the 1-degree grid be the backstop.
+        endpoint_longitudes=([e["lon"] for e in endpoints if "lon" in e] or None),
+        endpoint_longitude_source=(
+            "the endpoint longitudes this trace uses; trace.py calls the "
+            "multiplier function at no other longitude"))
+    if evidence is not None:
+        evidence["materialization"] = materialization
 
     trace_path = out / "trace.csv"
     with open(trace_path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh, lineterminator="\n")
-        w.writerow(["packet_id", "emit_time_s", "src_grid_id", "dst_grid_id", "bits", "deadline_at_s"])
-        for pid, t, s, d, bits, dl in serialized_rows:
-            w.writerow([pid, _format_time(t), s, d, bits,
-                        (_format_time(dl) if dl != "" else "")])
+        columns = ["packet_id", "emit_time_s", "src_grid_id", "dst_grid_id",
+                   "bits", "deadline_at_s"]
+        if include_research_deadline:
+            columns.append("research_deadline_at_s")
+        w.writerow(columns)
+        for pid, t, s, d, bits, dl, research_dl in serialized_rows:
+            row = [pid, _format_time(t, roundtrip=include_research_deadline),
+                   s, d, bits,
+                   (_format_time(dl, roundtrip=include_research_deadline)
+                    if dl != "" else "")]
+            if include_research_deadline:
+                row.append(_format_time(research_dl, roundtrip=True))
+            w.writerow(row)
     trace_sha256 = hashlib.sha256(trace_path.read_bytes()).hexdigest()
 
     offered_bits = sum(r[4] for r in rows)
@@ -847,6 +1475,7 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
         "units": {
             "emit_time": "seconds_since_run_start",
             "deadline": "seconds_since_run_start_or_empty",
+            "research_deadline": "seconds_since_run_start_or_empty",
             "coordinates": "degrees_wgs84",
             "bits": "bits",
         },
@@ -874,8 +1503,9 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
                 None if mode == "csv" else float(dm["offered_mbps"])
             ),
             "realized_offered_mbps": (
-                float(offered_bits) / emission_end / 1_000_000.0
-                if emission_end > 0 else 0.0
+                float(offered_bits) / (emission_end - emission_start)
+                / 1_000_000.0
+                if emission_end > emission_start else 0.0
             ),
             "horizon_s": duration,
             "packet_bits": bits_per_pkt,
@@ -888,7 +1518,7 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
                 "start_s": float(dm["burst_start_s"]),
                 "duration_s": float(dm["burst_duration_s"]),
                 "multiplier": float(dm["burst_multiplier"]),
-            } if mode in ("burst", "mlab")
+            } if mode in ("burst", "mlab", "population_gravity")
             and dm["burst_start_s"] is not None else None),
             # legacy mode:diurnal keeps its historical two-key value
             # exactly; only the new population-local-time combination uses
@@ -919,7 +1549,8 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
 
     manifest = {
         "schema": TRACE_MANIFEST_SCHEMA,
-        "trace_schema": TRACE_SCHEMA,
+        "trace_schema": (TRACE_SCHEMA_V2 if include_research_deadline
+                         else TRACE_SCHEMA),
         "trace_sha256": trace_sha256,
         "trace_identity_sha256": config.trace_identity_sha256(resolved, input_hash),
         "config_version": resolved["version"],
@@ -964,6 +1595,13 @@ def compile_trace(resolved: dict, out_dir: str) -> dict:
                 "aggregation_deg": population_table.aggregation_deg,
                 "total_population": population_table.total_population,
                 "candidate_regions": len(population_table.regions),
+                "region_center_filter": (
+                    None if ep["region_lat_bounds_deg"] is None else {
+                        "latitude_deg": list(ep["region_lat_bounds_deg"]),
+                        "longitude_deg": list(ep["region_lon_bounds_deg"]),
+                        "intervals": "half_open",
+                        "selection": "aggregate_cell_center",
+                    }),
                 "source_population_exponent": dm[
                     "source_population_exponent"],
                 "destination_population_exponent": dm[
@@ -1018,7 +1656,13 @@ def load_trace(path: str, horizon_s: float | None = None,
     rows = []
     with open(path, newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
-        if set(reader.fieldnames or []) != {"packet_id", "emit_time_s", "src_grid_id", "dst_grid_id", "bits", "deadline_at_s"}:
+        legacy_columns = {
+            "packet_id", "emit_time_s", "src_grid_id", "dst_grid_id",
+            "bits", "deadline_at_s",
+        }
+        research_columns = legacy_columns | {"research_deadline_at_s"}
+        columns = set(reader.fieldnames or [])
+        if columns not in (legacy_columns, research_columns):
             raise TraceError(f"trace columns mismatch in {path}")
         for i, r in enumerate(reader):
             try:
@@ -1035,6 +1679,16 @@ def load_trace(path: str, horizon_s: float | None = None,
                     dl = float(dl_raw)
                 except (TypeError, ValueError):
                     raise TraceError(f"trace row {i}: unparsable deadline {dl_raw!r}")
+            research_raw = r.get("research_deadline_at_s")
+            if research_raw in (None, ""):
+                research_dl = None
+            else:
+                try:
+                    research_dl = float(research_raw)
+                except (TypeError, ValueError):
+                    raise TraceError(
+                        f"trace row {i}: unparsable research deadline "
+                        f"{research_raw!r}")
             rows.append({
                 "packet_id": pid,
                 "emit_time_s": t,
@@ -1042,6 +1696,7 @@ def load_trace(path: str, horizon_s: float | None = None,
                 "dst_grid_id": r["dst_grid_id"],
                 "bits": bits,
                 "deadline_at_s": dl,
+                "research_deadline_at_s": research_dl,
             })
     validate_packet_rows(
         rows,

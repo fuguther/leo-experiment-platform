@@ -2,10 +2,10 @@
 
 | 字段 | 值 |
 | --- | --- |
-| MAIN_SHA | `549acd8b7cb7a1bb573e7146653f55273999086d`（traffic 相关文件在 `fb6b1a6` 复核未变） |
-| 日期 | 2026-09-24 |
+| 初始审计基线 | `549acd8b7cb7a1bb573e7146653f55273999086d`（2026-09-24） |
+| 最近整理 | 2026-11-22 |
 | 取证 | 逐行读码 + 实跑。凡标 **[EXEC]** 者为实际执行所得，**[READ]** 为读码所得 |
-| 权威文件 | `CODE/leo_sim/trace.py`、`trace_family.py`、`population.py`、`config.py`、`scene_check.py`、`rng.py`、`CODE/data/traffic/` |
+| 权威文件 | 当前 `CODE/leo_sim/{trace,trace_family,population,config,scene_check,rng}.py` 与 `CODE/data/traffic/`；行号只作历史审计锚点 |
 
 > 本文件回答一个问题：**当前平台的"业务/流量"到底是什么，M-Lab 数据到底代表什么，因此哪些论文声明成立、哪些不成立。**
 
@@ -132,7 +132,7 @@ manifest 必须带 `not_calibrated_user_demand: True` 与逐字固定的 `proven
 **T3（最高影响）**：`scene_check.verify_decision_contract` 硬绑定
 `traffic.provenance == "population_proxy"` 与 `temporal_model == "local_diurnal_cosine"`
 （`scene_check.py:278-291`），而 `scope` 硬编码 `global_populated_land`（`:250-251`、`:919`）。
-库里唯一入库的 scene-check lane（`CODE/work/WP-LEO-V2-GLOBAL-PRESSURE-BRACKET/R01/scene-decision.yaml:11-13`）
+历史 scene-check lane 的规范已收束为当前 `scene_check` 代码与测试；旧实例可从对应 Git commit 追溯
 正好满足这对耦合 —— 也就是说**当前唯一能通过场景检查的业务配置是被硬编码允许的那一种**，
 M-Lab 场景或合成场景**无法**通过该 lane 获得分类通过。
 
@@ -159,7 +159,6 @@ M-Lab 场景或合成场景**无法**通过该 lane 获得分类通过。
 ## 5. 复现命令
 
 ```bash
-cd <repo>   # MAIN_SHA 549acd8b7cb7a1bb573e7146653f55273999086d
 head -1 CODE/data/traffic/mlab_2026-05-27.csv && wc -l CODE/data/traffic/mlab_2026-05-27.csv
 grep -rn "flow_id\|flowid" CODE/ | wc -l                       # -> 0
 sed -n '690,710p' CODE/leo_sim/trace.py                        # RNG 实际消耗的两条流

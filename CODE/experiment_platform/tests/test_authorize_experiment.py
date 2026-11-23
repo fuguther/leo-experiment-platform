@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sys
 import tempfile
 import unittest
@@ -203,6 +204,22 @@ class AuthorizeExperimentTests(unittest.TestCase):
             with self.assertRaises(AuthorizationError):
                 verify_authorization(root, authorization_path)
 
+    def test_post_authorization_artifact_change_fails_the_artifact_hash_binding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            experiment, finalization, authorization_path, _ = self.make_fixture(root)
+            authorization = build_authorization(root, experiment, finalization)
+            write_json(authorization_path, authorization)
+            self.assertEqual(verify_authorization(root, authorization_path), authorization)
+
+            runbook = experiment / "RUNBOOK.md"
+            runbook.write_text("# Fixture runbook changed after review\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                    AuthorizationError,
+                    "work decision no longer validates: artifact hash mismatch"):
+                verify_authorization(root, authorization_path)
+
     def test_v2_authorization_binds_compiled_config_and_code(self) -> None:
         from CODE.leo_sim import governance
 
@@ -215,6 +232,18 @@ class AuthorizeExperimentTests(unittest.TestCase):
                          "decision.schema.json"):
                 (root / "CODE" / "work" / name).write_bytes(
                     (PROJECT_ROOT / "CODE" / "work" / name).read_bytes())
+            inputs = root / "EXPERIMENTS" / "inputs"
+            inputs.mkdir(parents=True)
+            demand_path = inputs / "demand.csv"
+            demand_a = (
+                "packet_id,emit_time_s,src_lat,src_lon,dst_lat,dst_lon,bits\n"
+                "1,0,0,0,0,10,8000\n")
+            demand_path.write_text(demand_a, encoding="utf-8")
+            checkpoint_path = inputs / "model.keras"
+            checkpoint_a = b"valid-checkpoint-A"
+            checkpoint_path.write_bytes(checkpoint_a)
+            metadata_a = b'{"schema": "leo-sim-ddqn/v1", "contract": "C3"}'
+            (inputs / "metadata.json").write_bytes(metadata_a)
             request = {
                 "schema": governance.REQUEST_SCHEMA,
                 "experiment_id": "EXP-LEO-V2-AUTH",
@@ -232,8 +261,17 @@ class AuthorizeExperimentTests(unittest.TestCase):
                         {"name": "a", "lat": 0.0, "lon": 0.0},
                         {"name": "b", "lat": 0.0, "lon": 10.0},
                     ]},
-                    "control_plane": {"enabled": False},
-                    "routing": {"policy": "oracle"},
+                    "control_plane": {"enabled": True},
+                    "demand": {"mode": "csv",
+                               "csv_path": "EXPERIMENTS/inputs/demand.csv"},
+                    "routing": {"policy": "hop", "learning_enabled": True},
+                    "learning": {
+                        "algorithm": "ddqn", "mode": "eval",
+                        "checkpoint_path": "EXPERIMENTS/inputs/model.keras",
+                        "checkpoint_sha256": hashlib.sha256(checkpoint_a).hexdigest(),
+                        "checkpoint_metadata_sha256": hashlib.sha256(
+                            metadata_a).hexdigest(),
+                    },
                 },
             }
             request_path = root / "request-input.json"
@@ -300,14 +338,49 @@ class AuthorizeExperimentTests(unittest.TestCase):
             finalization_path = work_dir / "finalization.json"
             write_json(finalization_path, finalization)
             authorization_path = experiment / "authorization.json"
-            write_json(authorization_path, build_authorization(
-                root, experiment, finalization_path))
+            authorization = build_authorization(root, experiment, finalization_path)
+            write_json(authorization_path, authorization)
             verified = verify_authorization_for_leo_sim_v2_config(
                 root, authorization_path, config_path, run["run_id"])
             self.assertEqual(verified["status"], "AUTHORIZED")
             with self.assertRaises(AuthorizationError):
                 verify_authorization_for_leo_sim_v2_config(
                     root, authorization_path, config_path, run["run_id"] + "-wrong")
+
+            tampered = json.loads(json.dumps(authorization))
+            tampered["authorized_runs"][0]["code_sha256"] = "0" * 64
+            unsigned = dict(tampered)
+            unsigned.pop("payload_sha256", None)
+            tampered["payload_sha256"] = canonical_sha(unsigned)
+            write_json(authorization_path, tampered)
+            # A self-consistent payload with a stale code witness is rejected
+            # while recomputing the whole authorization graph.  The later row
+            # matcher is defence in depth and is unreachable after this earlier
+            # exact-evidence check fails.
+            with self.assertRaisesRegex(
+                    AuthorizationError,
+                    "authorization no longer matches recomputed evidence"):
+                verify_authorization_for_leo_sim_v2_config(
+                    root, authorization_path, config_path, run["run_id"])
+
+            write_json(authorization_path, authorization)
+
+            # Reverification recomputes the declared data trace and checkpoint
+            # byte identities. These fixtures deliberately do not deserialize
+            # the checkpoint or launch a simulation; they test the
+            # authorization gate that runs before either operation.
+            demand_path.write_text(
+                "packet_id,emit_time_s,src_lat,src_lon,dst_lat,dst_lon,bits\n"
+                "1,0,0,0,0,10,16000\n", encoding="utf-8")
+            with self.assertRaisesRegex(AuthorizationError, "trace identity mismatch"):
+                verify_authorization(root, authorization_path)
+            demand_path.write_text(demand_a, encoding="utf-8")
+            self.assertEqual(verify_authorization(root, authorization_path), authorization)
+
+            checkpoint_path.write_bytes(b"valid-checkpoint-B")
+            with self.assertRaisesRegex(
+                    AuthorizationError, "learning checkpoint SHA-256 does not match"):
+                verify_authorization(root, authorization_path)
 
 
 if __name__ == "__main__":

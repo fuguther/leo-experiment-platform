@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from CODE.leo_sim import kernel, learning, receipt
+from CODE.leo_sim.control import CacheEntry
 from CODE.leo_sim.tests.helpers import StaticGeometry, cell, make_cfg, row
 
 
@@ -94,6 +95,57 @@ def test_recompute_bumps_state_version_and_stales_snapshots():
     assert snap2["state_version"] == v0 + 1
     # the rematch is visible in the snapshot content, not just the counter
     assert snap2["topology"] != snap["topology"]
+
+
+def test_isl_generation_and_received_history_survive_only_same_resource_ticks():
+    def at(sat, dirs, t):
+        if t < 0.5:
+            nb = {0: {"E": 1}, 1: {"W": 0}}
+        elif t < 1.0:
+            nb = {0: {"E": 2}, 2: {"W": 0}}
+        else:
+            nb = {0: {"E": 1}, 1: {"W": 0}}
+        return {d: n for d, n in nb.get(sat, {}).items() if d in dirs}
+
+    geo = StaticGeometry(
+        3, neighbors_map={0: {"E": 1}, 1: {"W": 0}},
+        neighbors_at_fn=at)
+    k = kernel.Kernel(_cfg(), [], geometry=geo,
+                      decision_sink=[], timeline_sink=[])
+    original = k.isls[0]["E"]
+    original_generation = original.gen
+    k.caches[1].put(CacheEntry(
+        0, {"isl_queue_bits": {"E": {
+            "peer": 1, "generation": original_generation,
+            "value": 100, "rate_bps": 5_000_000.0,
+            "work_ahead_bits_proxy": 100.0}}},
+        generated_at=0.0, received_at=0.01, ttl_s=10.0, hops=1))
+
+    k._recompute_topology(0.25)
+    assert k.isls[0]["E"] is original
+    same_resource_history = k._advertisement_history(1, 0, 0.25, force=True)
+    assert same_resource_history[-1]["advertised_isl_generation"]["E"] == \
+        original_generation
+
+    k._recompute_topology(0.5)
+    assert k.topo[0]["E"] == 2
+    assert k.isls[0]["E"].gen != original_generation
+    mismatched_peer_history = k._advertisement_history(
+        1, 0, 0.75, force=True)
+    assert len(mismatched_peer_history) == 1
+    assert mismatched_peer_history[0]["advertised_isl_generation"] == {}
+
+    k._recompute_topology(1.0)
+    assert k.topo[0]["E"] == 1
+    replacement = k.isls[0]["E"]
+    assert replacement is not original
+    assert replacement.gen != original_generation
+    reappeared_peer_history = k._advertisement_history(
+        1, 0, 1.1, force=True)
+    assert reappeared_peer_history[-1]["advertised_isl_generation"]["E"] == \
+        original_generation
+    assert replacement.gen != reappeared_peer_history[-1][
+        "advertised_isl_generation"]["E"]
 
 
 def test_learning_rematch_requeue_discards_open_forward_transition():

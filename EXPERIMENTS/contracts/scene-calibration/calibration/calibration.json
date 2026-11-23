@@ -1,0 +1,458 @@
+{
+ "alternatives": {
+  "median_alternative_stretch": 1.2323027958781674,
+  "pairs_with_no_alternative": 0,
+  "per_pair": {
+   "43->10": {
+    "alternative_s": 0.059290767577848257,
+    "reference_s": 0.04811379782320164,
+    "stretch": 1.2323027958781672,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "43->59": {
+    "alternative_s": 0.05151872378539898,
+    "reference_s": 0.020437026316139355,
+    "stretch": 2.5208522506385407,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "74->10": {
+    "alternative_s": 0.0596150189033453,
+    "reference_s": 0.029806313293420296,
+    "stretch": 2.0000802620733786,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "74->58": {
+    "alternative_s": 0.05699717596066866,
+    "reference_s": 0.01490315664671016,
+    "stretch": 3.8245035808068666,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "91->58": {
+    "alternative_s": 0.05929076757784826,
+    "reference_s": 0.04811379782320164,
+    "stretch": 1.2323027958781674,
+    "windows": 12,
+    "windows_with_alternative": 12
+   },
+   "91->74": {
+    "alternative_s": 0.03885364886573946,
+    "reference_s": 0.033212357343280825,
+    "stretch": 1.1698551976949603,
+    "windows": 12,
+    "windows_with_alternative": 1
+   },
+   "91->82": {
+    "alternative_s": 0.02855082698216512,
+    "reference_s": 0.02575906285313641,
+    "stretch": 1.1083798795377677,
+    "windows": 12,
+    "windows_with_alternative": 11
+   }
+  },
+  "routed_pairs": 7
+ },
+ "checks": {
+  "access": {
+   "downlink_mbps": 10000.0,
+   "per_cell_destination_share": {
+    "beijing": 0.166667,
+    "london": 0.416667,
+    "newyork": 0.416667
+   },
+   "per_cell_source_share": {
+    "beijing": 0.666667,
+    "london": 0.166667,
+    "newyork": 0.166667
+   },
+   "tiers": [
+    {
+     "R_bit_s": 299520000.0000001,
+     "downlink_binding_cell": "london",
+     "target_rho": 0.2,
+     "uplink_binding_cell": "beijing",
+     "worst_downlink_util": 0.012480000000000005,
+     "worst_gateway_downlink_bit_s": 124800000.00000004,
+     "worst_gateway_uplink_bit_s": 199680000.00000006,
+     "worst_uplink_util": 0.019968000000000007
+    },
+    {
+     "R_bit_s": 749520000.0000002,
+     "downlink_binding_cell": "london",
+     "target_rho": 0.5,
+     "uplink_binding_cell": "beijing",
+     "worst_downlink_util": 0.031230000000000004,
+     "worst_gateway_downlink_bit_s": 312300000.00000006,
+     "worst_gateway_uplink_bit_s": 499680000.0000001,
+     "worst_uplink_util": 0.04996800000000001
+    },
+    {
+     "R_bit_s": 1049520000.0000004,
+     "downlink_binding_cell": "london",
+     "target_rho": 0.7,
+     "uplink_binding_cell": "beijing",
+     "worst_downlink_util": 0.04373000000000001,
+     "worst_gateway_downlink_bit_s": 437300000.0000001,
+     "worst_gateway_uplink_bit_s": 699680000.0000002,
+     "worst_uplink_util": 0.06996800000000003
+    },
+    {
+     "R_bit_s": 1274520000.0000005,
+     "downlink_binding_cell": "london",
+     "target_rho": 0.85,
+     "uplink_binding_cell": "beijing",
+     "worst_downlink_util": 0.05310500000000002,
+     "worst_gateway_downlink_bit_s": 531050000.0000002,
+     "worst_gateway_uplink_bit_s": 849680000.0000002,
+     "worst_uplink_util": 0.08496800000000003
+    },
+    {
+     "R_bit_s": 1424520000.0000005,
+     "downlink_binding_cell": "london",
+     "target_rho": 0.95,
+     "uplink_binding_cell": "beijing",
+     "worst_downlink_util": 0.05935500000000001,
+     "worst_gateway_downlink_bit_s": 593550000.0000001,
+     "worst_gateway_uplink_bit_s": 949680000.0000002,
+     "worst_uplink_util": 0.09496800000000002
+    },
+    {
+     "R_bit_s": 1649520000.0000007,
+     "downlink_binding_cell": "london",
+     "target_rho": 1.1,
+     "uplink_binding_cell": "beijing",
+     "worst_downlink_util": 0.06873000000000003,
+     "worst_gateway_downlink_bit_s": 687300000.0000002,
+     "worst_gateway_uplink_bit_s": 1099680000.0000005,
+     "worst_uplink_util": 0.10996800000000005
+    }
+   ],
+   "uplink_mbps": 10000.0
+  },
+  "buffer": {
+   "0.005": {
+    "bits": 5000000.0,
+    "bytes": 625000.0,
+    "drain_time_s": 0.005,
+    "fits_declared_queue_bits": true,
+    "packets": 416.6666666666667
+   },
+   "0.02": {
+    "bits": 20000000.0,
+    "bytes": 2500000.0,
+    "drain_time_s": 0.02,
+    "fits_declared_queue_bits": true,
+    "packets": 1666.6666666666667
+   },
+   "0.1": {
+    "bits": 100000000.0,
+    "bytes": 12500000.0,
+    "drain_time_s": 0.1,
+    "fits_declared_queue_bits": false,
+    "packets": 8333.333333333334
+   }
+  },
+  "compute": {
+   "max_lambda_per_satellite": 103095.00000000003,
+   "mean_hops": 3.444444444444442,
+   "nodes_with_decisions": 12,
+   "servers": 1,
+   "service_capacity_per_satellite": 1000000.0,
+   "service_s": 1e-06,
+   "tiers": [
+    {
+     "hotspot_satellite": 90,
+     "max_lambda_per_satellite": 18720.000000000004,
+     "mean_lambda_all_satellites": 895.5555555555557,
+     "network_packets_s": 24960.00000000001,
+     "rho_cpu_hotspot": 0.018720000000000004,
+     "target_rho": 0.2
+    },
+    {
+     "hotspot_satellite": 90,
+     "max_lambda_per_satellite": 46845.00000000001,
+     "mean_lambda_all_satellites": 2241.0416666666665,
+     "network_packets_s": 62460.00000000002,
+     "rho_cpu_hotspot": 0.046845000000000005,
+     "target_rho": 0.5
+    },
+    {
+     "hotspot_satellite": 90,
+     "max_lambda_per_satellite": 65595.00000000001,
+     "mean_lambda_all_satellites": 3138.0324074074074,
+     "network_packets_s": 87460.00000000003,
+     "rho_cpu_hotspot": 0.06559500000000001,
+     "target_rho": 0.7
+    },
+    {
+     "hotspot_satellite": 90,
+     "max_lambda_per_satellite": 79657.50000000001,
+     "mean_lambda_all_satellites": 3810.7754629629635,
+     "network_packets_s": 106210.00000000004,
+     "rho_cpu_hotspot": 0.0796575,
+     "target_rho": 0.85
+    },
+    {
+     "hotspot_satellite": 90,
+     "max_lambda_per_satellite": 89032.50000000001,
+     "mean_lambda_all_satellites": 4259.270833333333,
+     "network_packets_s": 118710.00000000004,
+     "rho_cpu_hotspot": 0.08903250000000001,
+     "target_rho": 0.95
+    },
+    {
+     "hotspot_satellite": 90,
+     "max_lambda_per_satellite": 103095.00000000003,
+     "mean_lambda_all_satellites": 4932.01388888889,
+     "network_packets_s": 137460.00000000006,
+     "rho_cpu_hotspot": 0.10309500000000002,
+     "target_rho": 1.1
+    }
+   ]
+  },
+  "max_control_bit_s": 640000.0,
+  "max_control_util": 0.00064,
+  "per_hop_propagation_s": 0.018307331800855378,
+  "serialization_over_propagation": 0.0006554750921944464,
+  "serialization_s": 1.2e-05
+ },
+ "definitions": {
+  "R_semantics": "network-wide total injection rate (bit/s); equals demand.offered_mbps * 1e6 in the simulator",
+  "capacity": "per-window effective capacity = rate * window; a link present for only part of a window contributes only that part",
+  "criterion": "R(rho) = min over (window, directed edge with b_e>0) of (rho*C_e - c_e)/b_e",
+  "reference_routing": "single minimum-propagation-delay path per OD; predecessor tie-break = smallest satellite id; no equal-cost multipath splitting"
+ },
+ "inputs": {
+  "cells": 3,
+  "control": {
+   "interval_s": 0.05,
+   "packet_bits": 8000,
+   "vis_k": 2
+  },
+  "horizon_s": 12.0,
+  "num_nodes": 96,
+  "od_pairs": 6,
+  "packet_bits": 12000,
+  "rate_mbps": 1000.0,
+  "window_s": 1.0,
+  "windows": 12
+ },
+ "link_coefficients": {
+  "directed_edges": 16,
+  "max_b_e": 0.6666666666666664,
+  "max_b_e_edge": [
+   91,
+   90
+  ],
+  "max_c_e_bit_s": 640000.0,
+  "sum_b_e": 3.4444444444444438
+ },
+ "od_sum": 1.0,
+ "schema": "scene-load-calibration/v1",
+ "spec_digest": "78095b74c4c48fae025be9ada84efae5d093609dddf8dbb9e2338513940e2b4d",
+ "tiers": [
+  {
+   "R_bit_s": 299520000.0000001,
+   "R_mbps": 299.5200000000001,
+   "bottleneck_b_e": 0.6666666666666664,
+   "bottleneck_c_e_bit_s": 320000.0,
+   "bottleneck_capacity_bit_s": 1000000000.0,
+   "bottleneck_control_util": 0.00032,
+   "bottleneck_edge": [
+    91,
+    90
+   ],
+   "feasible": true,
+   "infeasible_link_count": 0,
+   "infeasible_links": [],
+   "packet_rate_bottleneck": 16640.0,
+   "packet_rate_network": 24960.00000000001,
+   "target_rho": 0.2
+  },
+  {
+   "R_bit_s": 749520000.0000002,
+   "R_mbps": 749.5200000000002,
+   "bottleneck_b_e": 0.6666666666666664,
+   "bottleneck_c_e_bit_s": 320000.0,
+   "bottleneck_capacity_bit_s": 1000000000.0,
+   "bottleneck_control_util": 0.00032,
+   "bottleneck_edge": [
+    91,
+    90
+   ],
+   "feasible": true,
+   "infeasible_link_count": 0,
+   "infeasible_links": [],
+   "packet_rate_bottleneck": 41639.99999999999,
+   "packet_rate_network": 62460.00000000002,
+   "target_rho": 0.5
+  },
+  {
+   "R_bit_s": 1049520000.0000004,
+   "R_mbps": 1049.5200000000004,
+   "bottleneck_b_e": 0.6666666666666664,
+   "bottleneck_c_e_bit_s": 320000.0,
+   "bottleneck_capacity_bit_s": 1000000000.0,
+   "bottleneck_control_util": 0.00032,
+   "bottleneck_edge": [
+    91,
+    90
+   ],
+   "feasible": true,
+   "infeasible_link_count": 0,
+   "infeasible_links": [],
+   "packet_rate_bottleneck": 58306.666666666664,
+   "packet_rate_network": 87460.00000000003,
+   "target_rho": 0.7
+  },
+  {
+   "R_bit_s": 1274520000.0000005,
+   "R_mbps": 1274.5200000000004,
+   "bottleneck_b_e": 0.6666666666666664,
+   "bottleneck_c_e_bit_s": 320000.0,
+   "bottleneck_capacity_bit_s": 1000000000.0,
+   "bottleneck_control_util": 0.00032,
+   "bottleneck_edge": [
+    91,
+    90
+   ],
+   "feasible": true,
+   "infeasible_link_count": 0,
+   "infeasible_links": [],
+   "packet_rate_bottleneck": 70806.66666666667,
+   "packet_rate_network": 106210.00000000004,
+   "target_rho": 0.85
+  },
+  {
+   "R_bit_s": 1424520000.0000005,
+   "R_mbps": 1424.5200000000004,
+   "bottleneck_b_e": 0.6666666666666664,
+   "bottleneck_c_e_bit_s": 320000.0,
+   "bottleneck_capacity_bit_s": 1000000000.0,
+   "bottleneck_control_util": 0.00032,
+   "bottleneck_edge": [
+    91,
+    90
+   ],
+   "feasible": true,
+   "infeasible_link_count": 0,
+   "infeasible_links": [],
+   "packet_rate_bottleneck": 79140.0,
+   "packet_rate_network": 118710.00000000004,
+   "target_rho": 0.95
+  },
+  {
+   "R_bit_s": 1649520000.0000007,
+   "R_mbps": 1649.5200000000007,
+   "bottleneck_b_e": 0.6666666666666664,
+   "bottleneck_c_e_bit_s": 320000.0,
+   "bottleneck_capacity_bit_s": 1000000000.0,
+   "bottleneck_control_util": 0.00032,
+   "bottleneck_edge": [
+    91,
+    90
+   ],
+   "feasible": true,
+   "infeasible_link_count": 0,
+   "infeasible_links": [],
+   "packet_rate_bottleneck": 91640.0,
+   "packet_rate_network": 137460.00000000006,
+   "target_rho": 1.1
+  }
+ ],
+ "traffic_split": {
+  "mean_isl_hops": 3.444444444444442,
+  "routed_weight": 1.0000000000000007,
+  "unroutable_weight": 0.0,
+  "zero_hop_weight": 0.0
+ },
+ "windows": [
+  {
+   "edges": 384,
+   "end": 1.0,
+   "od_pairs": 6,
+   "start": 0.0,
+   "window": 0
+  },
+  {
+   "edges": 384,
+   "end": 2.0,
+   "od_pairs": 6,
+   "start": 1.0,
+   "window": 1
+  },
+  {
+   "edges": 384,
+   "end": 3.0,
+   "od_pairs": 6,
+   "start": 2.0,
+   "window": 2
+  },
+  {
+   "edges": 384,
+   "end": 4.0,
+   "od_pairs": 6,
+   "start": 3.0,
+   "window": 3
+  },
+  {
+   "edges": 384,
+   "end": 5.0,
+   "od_pairs": 6,
+   "start": 4.0,
+   "window": 4
+  },
+  {
+   "edges": 384,
+   "end": 6.0,
+   "od_pairs": 6,
+   "start": 5.0,
+   "window": 5
+  },
+  {
+   "edges": 384,
+   "end": 7.0,
+   "od_pairs": 6,
+   "start": 6.0,
+   "window": 6
+  },
+  {
+   "edges": 384,
+   "end": 8.0,
+   "od_pairs": 6,
+   "start": 7.0,
+   "window": 7
+  },
+  {
+   "edges": 384,
+   "end": 9.0,
+   "od_pairs": 6,
+   "start": 8.0,
+   "window": 8
+  },
+  {
+   "edges": 384,
+   "end": 10.0,
+   "od_pairs": 6,
+   "start": 9.0,
+   "window": 9
+  },
+  {
+   "edges": 384,
+   "end": 11.0,
+   "od_pairs": 6,
+   "start": 10.0,
+   "window": 10
+  },
+  {
+   "edges": 384,
+   "end": 12.0,
+   "od_pairs": 6,
+   "start": 11.0,
+   "window": 11
+  }
+ ]
+}

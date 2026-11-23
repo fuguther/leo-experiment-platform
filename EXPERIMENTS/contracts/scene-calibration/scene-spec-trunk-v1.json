@@ -1,0 +1,66 @@
+{
+ "provider": "constellation",
+ "geometry": {
+  "num_satellites": 96,
+  "num_planes": 12,
+  "altitude_km": 800,
+  "inclination_deg": 53,
+  "min_elevation_deg": 10,
+  "max_isl_km": 6000,
+  "geometry_epoch_s": 0,
+  "dynamic": true
+ },
+ "cells": [
+  {
+   "id": "beijing",
+   "lat": 39.9,
+   "lon": 116.4,
+   "weight": 4
+  },
+  {
+   "id": "london",
+   "lat": 51.5,
+   "lon": -0.13,
+   "weight": 1
+  },
+  {
+   "id": "newyork",
+   "lat": 40.7,
+   "lon": -74,
+   "weight": 1
+  }
+ ],
+ "od_weights": {
+  "beijing,london": 0.3333333333333333,
+  "beijing,newyork": 0.3333333333333333,
+  "london,beijing": 0.08333333333333333,
+  "london,newyork": 0.08333333333333333,
+  "newyork,beijing": 0.08333333333333333,
+  "newyork,london": 0.08333333333333333
+ },
+ "packet_bits": 12000,
+ "links": {
+  "rate_mbps": 1000,
+  "queue_bits": 20000000
+ },
+ "control_plane": {
+  "packet_bits": 8000,
+  "interval_s": 0.05,
+  "vis_k": 2
+ },
+ "access_layer": {
+  "uplink_mbps": 10000,
+  "downlink_mbps": 10000,
+  "gateways": 3
+ },
+ "compute_delay_s": 0.001,
+ "compute_servers_per_satellite": 128,
+ "buffer_taus_s": [
+  0.005,
+  0.02,
+  0.1
+ ],
+ "horizon_s": 12,
+ "window_s": 1,
+ "representative_hop_km": 5488.4
+}

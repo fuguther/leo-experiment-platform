@@ -1,7 +1,7 @@
 """V6 receipt: the decision stream joins the trust chain.
 
 Covers the criteria frozen in
-CODE/work/WP-LEO-V2-T1-TRUST-CHAIN-V6/criteria.json (C3-C5, C8, C9, C11) and
+the historical trust-chain review criteria (C3-C5, C8, C9, C11) and
 guards the failure that the first V6 attempt actually hit: receipt_schema is
 dispatched at several sites, and a new version that is added to only one of
 them falls through to the legacy branch.
@@ -70,9 +70,25 @@ def test_the_v6_receipt_binds_the_streams_it_was_given(runs):
 
 def test_the_v6_receipt_verifies(runs):
     """C9.  This is the regression guard for the dispatch fall-through: a V6
-    receipt used to reach the legacy identity/v1 branch and fail."""
-    verdict = _verify(runs["both"])
-    assert verdict["status"] == "verified", verdict.get("errors")
+    receipt used to reach the legacy identity/v1 branch and fail.
+
+    This fixture streams the two logs OUTSIDE the run directory and the
+    receipt records digests only, not paths, so a bare `receipt verify` cannot
+    recompute them. It must say so instead of reporting "verified"; supplying
+    the paths must then produce a real verification.
+    """
+    bare = _run("CODE.leo_sim", "receipt", "verify", str(runs["both"]))
+    assert bare.returncode == 2, bare.stdout + bare.stderr
+    verdict = json.loads(bare.stdout)
+    assert verdict["status"] == "PARTIAL", verdict
+    assert sorted(verdict["unverified_stream_bindings"]) == [
+        "decision_log_sha256", "timeline_log_sha256"]
+
+    checked = _run("CODE.leo_sim", "receipt", "verify", str(runs["both"]),
+                   "--decision-log", str(runs["dir"] / "d.jsonl"),
+                   "--timeline-log", str(runs["dir"] / "t.jsonl"))
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+    assert json.loads(checked.stdout)["status"] == "verified"
 
 
 def test_every_schema_version_belongs_to_exactly_one_family():
@@ -112,7 +128,7 @@ def test_the_decision_row_contract_matches_what_a_run_writes(runs):
     for row in rows:
         decision_ledger.validate_decision_row(row)
     assert set(rows[0]) == set(decision_ledger.DECISION_ROW_KEYS)
-    assert len(decision_ledger.DECISION_ROW_KEYS) == 19
+    assert len(decision_ledger.DECISION_ROW_KEYS) == 21
 
 
 def test_the_contract_refuses_an_unknown_key():
@@ -137,3 +153,39 @@ def test_the_contract_refuses_a_non_object_row():
     from CODE.leo_sim import decision_ledger
     with pytest.raises(decision_ledger.DecisionRowError):
         decision_ledger.validate_decision_row(["not", "a", "dict"])
+
+
+def test_passing_only_one_stream_flag_does_not_report_verified(runs):
+    """Supplying one stream path must not skip the other binding.
+
+    The per-stream resolution used to be gated on "neither flag was given", so
+    `--decision-log` alone left the timeline digest unchecked and the command
+    still printed verified.
+    """
+    done = _run("CODE.leo_sim", "receipt", "verify", str(runs["both"]),
+                "--decision-log", str(runs["dir"] / "d.jsonl"))
+    verdict = json.loads(done.stdout)
+    assert done.returncode == 2, verdict
+    assert verdict["status"] == "PARTIAL", verdict
+    assert verdict["unverified_stream_bindings"] == ["timeline_log_sha256"]
+
+
+def test_an_in_directory_stream_is_verified_even_when_the_other_is_absent(
+        runs, tmp_path):
+    """One missing stream must not stop the present one from being checked.
+
+    The whole auto-resolution was skipped as soon as any file was absent, so a
+    tampered decision stream inside the run directory was never recomputed.
+    """
+    import shutil
+    copied = tmp_path / "copied"
+    shutil.copytree(runs["both"], copied)
+    shutil.copy(runs["dir"] / "d.jsonl", copied / "decisions.jsonl")
+    tampered = copied / "decisions.jsonl"
+    tampered.write_bytes(tampered.read_bytes() + b'{"tampered": 1}\n')
+    # timeline.jsonl deliberately left absent
+    done = _run("CODE.leo_sim", "receipt", "verify", str(copied))
+    verdict = json.loads(done.stdout)
+    assert done.returncode == 2, verdict
+    assert verdict["status"] == "FAILED", verdict
+    assert any("decision_log_sha256" in e for e in verdict["errors"]), verdict

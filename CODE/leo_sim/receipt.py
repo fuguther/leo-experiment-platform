@@ -72,6 +72,15 @@ SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 #: through to the legacy identity/v1 branch and fail every V6 receipt.
 RECEIPT_SCHEMAS_V5_FAMILY = frozenset({RECEIPT_SCHEMA, RECEIPT_SCHEMA_V6})
 
+#: The two stream identities a V6 receipt can name, and the file each one is
+#: the digest OF.  Inside the run directory, so a pulled-back result set either
+#: contains both files or is provably incomplete.
+STREAM_FILES = {
+    "decision_log_sha256": "decisions.jsonl",
+    "timeline_log_sha256": "timeline.jsonl",
+}
+FORMAL_WITNESS_FILE = "formal_run.json"
+
 
 def _family_label(schema: str) -> str:
     """Operator-facing label for a receipt schema in an error message.
@@ -91,6 +100,12 @@ REQUESTED_KEYS = {"policy", "association", "ge_enabled", "control_enabled", "mon
                   "topology_recompute_interval_s", "topology_matching"}
 REQUESTED_KEYS |= {"rate_model"}
 REQUESTED_KEYS |= {"forward_step_penalty"}
+#: A1: WHICH policy actually chose the actions.  Without it, a fixed-inference
+#: checkpoint run and a deterministic-scorer run would carry the same
+#: requested block and the receipt could not tell them apart.
+REQUESTED_KEYS |= {"learning_policy"}
+LEARNING_POLICIES = ("deterministic_scorer", "training_learner",
+                     "fixed_inference_checkpoint")
 EFFECTIVE_KEYS = {"control_plane", "mcs", "ge", "mbb", "learning",
                    "dynamic_topology"}
 
@@ -111,6 +126,13 @@ MECHANISM_COUNTER_KEYS = {
     "ge_gsl_queries", "ge_isl_queries", "ge_waits", "ge_failures",
     "control_snapshots", "control_registered", "control_entered_queue",
     "control_tx_started", "control_tx_completed", "control_initialized",
+    # 645e8c0 added event-triggered advertisement (an announcement emitted on a
+    # serving change, off the periodic grid) and Kernel.mech records both
+    # counters unconditionally.  This set IS the schema the exact-key check
+    # below enforces, so omitting them made every receipt written after that
+    # commit fail self-verification.  Both are plain non-negative integers; no
+    # research mechanism, field or value changes by declaring them here.
+    "event_adverts_emitted", "serving_changes_seen",
     "ge_initialized", "mbb_events", "learning_initialized",
     "learning_decisions", "learning_transitions", "learning_train_steps",
     "learning_discarded_at_stop", "learning_discarded_at_rematch",
@@ -177,6 +199,15 @@ def dependency_versions(with_tensorflow: bool = False) -> dict:
     return deps
 
 
+def requested_learning_policy(cfg: dict) -> str:
+    """Which policy drives the action choice, rebuilt from the config alone."""
+    learning = cfg.get("learning") or {}
+    if str(learning.get("algorithm", "none")) == "none":
+        return "deterministic_scorer"
+    return ("fixed_inference_checkpoint" if learning.get("fixed_inference")
+            else "training_learner")
+
+
 def requested_from_config(cfg: dict) -> dict:
     """Requested mechanisms, rebuilt from the resolved config alone."""
     return {
@@ -188,6 +219,7 @@ def requested_from_config(cfg: dict) -> dict:
         "monitor": bool(cfg["execution"]["monitor"]),
         "learning_algorithm": cfg["learning"]["algorithm"],
         "learning_mode": cfg["learning"]["mode"],
+        "learning_policy": requested_learning_policy(cfg),
         # Bind the safe learning objective to the receipt; the resolved config
         # hash alone is not enough for human-readable mechanism audits.
         "forward_step_penalty": cfg["learning"]["forward_step_penalty"],
@@ -245,7 +277,11 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
     }
     manifest_schema = manifest.get("schema")
     is_v1 = manifest_schema == trace_mod.TRACE_MANIFEST_SCHEMA_V1
-    is_v2 = manifest_schema == trace_mod.TRACE_MANIFEST_SCHEMA
+    is_v3 = manifest_schema == trace_mod.TRACE_MANIFEST_SCHEMA
+    is_v2 = manifest_schema in {
+        trace_mod.TRACE_MANIFEST_SCHEMA_V2,
+        trace_mod.TRACE_MANIFEST_SCHEMA,
+    }
     if is_v2:
         base_keys |= {"simulation_horizon_s", "emission_end_s", "drain_s"}
     proxy_keys = {"not_calibrated_user_demand", "provenance_note"}
@@ -262,13 +298,22 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
             f"missing={sorted(expected_keys - set(manifest))}")
     if not (is_v1 or is_v2):
         errors.append("manifest schema mismatch")
-    if manifest.get("trace_schema") != trace_mod.TRACE_SCHEMA:
+    trace_schema = manifest.get("trace_schema")
+    if trace_schema not in {
+            trace_mod.TRACE_SCHEMA, trace_mod.TRACE_SCHEMA_V2}:
         errors.append("manifest trace schema mismatch")
+    if (resolved_cfg is not None
+            and resolved_cfg["demand"].get("research_deadline_s") is not None
+            and trace_schema != trace_mod.TRACE_SCHEMA_V2):
+        errors.append(
+            "configured research deadline requires trace schema v2")
     if manifest.get("packet_id_contract") != trace_mod.PACKET_ID_CONTRACT:
         errors.append("manifest packet_id_contract mismatch")
     provenance_contract = manifest.get("provenance_contract")
-    provenance_schema = (trace_mod.TRACE_PROVENANCE_SCHEMA
-                         if is_v2 else trace_mod.TRACE_PROVENANCE_SCHEMA_V1)
+    provenance_schema = (
+        trace_mod.TRACE_PROVENANCE_SCHEMA if is_v3 else
+        trace_mod.TRACE_PROVENANCE_SCHEMA_V2 if is_v2 else
+        trace_mod.TRACE_PROVENANCE_SCHEMA_V1)
     provenance_keys = {
         "schema", "source", "units", "od_mapping", "offered_load",
         "traffic_transform", "measurement_summary"}
@@ -283,8 +328,10 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
         if not isinstance(source, dict) or set(source) != {"type", "path", "sha256"}:
             errors.append("manifest provenance source keys mismatch")
         units = provenance_contract.get("units")
-        if not isinstance(units, dict) or set(units) != {
-                "emit_time", "deadline", "coordinates", "bits"}:
+        expected_units = {"emit_time", "deadline", "coordinates", "bits"}
+        if is_v3:
+            expected_units.add("research_deadline")
+        if not isinstance(units, dict) or set(units) != expected_units:
             errors.append("manifest provenance units keys mismatch")
         od_mapping = provenance_contract.get("od_mapping")
         if not isinstance(od_mapping, dict) or set(od_mapping) != {
@@ -331,11 +378,16 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
     mode = resolved_cfg["demand"]["mode"]
     if manifest.get("mode") != mode:
         errors.append("manifest mode != resolved config demand mode")
+    # CSV manifests historically recorded top-level provenance as "synthetic"
+    # even though provenance_contract.source.type is csv_input.  Accept the
+    # historical label and the explicitly external label so old evidence remains
+    # verifiable; the current producer's label is covered separately by tests.
     expected_provenance = {
-        "mlab": "measurement_proxy",
-        "population_gravity": "population_proxy",
-    }.get(mode, "synthetic")
-    if manifest.get("provenance") != expected_provenance:
+        "mlab": {"measurement_proxy"},
+        "population_gravity": {"population_proxy"},
+        "csv": {"external_input", "synthetic"},
+    }.get(mode, {"synthetic"})
+    if manifest.get("provenance") not in expected_provenance:
         errors.append("manifest provenance mismatch")
     # rng_streams: reconstruct the exact config feature branch.  Legacy and
     # non-nested traces keep only the canonical demand mapping; nested
@@ -382,7 +434,9 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
             "destination_population_exponent", "distance_exponent",
             "distance_floor_km",
         }
-        if not isinstance(pop, dict) or set(pop) != expected_pop_keys:
+        if (not isinstance(pop, dict)
+                or set(pop) not in (expected_pop_keys,
+                                    expected_pop_keys | {"region_center_filter"})):
             errors.append("population manifest metadata keys mismatch")
         else:
             if pop.get("source_sha256") != input_sha:
@@ -406,6 +460,20 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
             if not _is_nonneg_int(pop.get("candidate_regions")) \
                     or pop.get("candidate_regions", 0) < 2:
                 errors.append("population candidate_regions must be >= 2")
+            lat_bounds = resolved_cfg["endpoints"]["region_lat_bounds_deg"]
+            expected_filter = (None if lat_bounds is None else {
+                "latitude_deg": list(lat_bounds),
+                "longitude_deg": list(
+                    resolved_cfg["endpoints"]["region_lon_bounds_deg"]),
+                "intervals": "half_open",
+                "selection": "aggregate_cell_center",
+            })
+            if lat_bounds is not None and pop.get(
+                    "region_center_filter") != expected_filter:
+                errors.append("population region filter missing or mismatched")
+            if "region_center_filter" in pop and pop.get(
+                    "region_center_filter") != expected_filter:
+                errors.append("population region_center_filter mismatch")
     if isinstance(provenance_contract, dict):
         source = provenance_contract.get("source", {})
         units = provenance_contract.get("units", {})
@@ -421,10 +489,16 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
         }.get(mode, "synthetic_generator")
         if source.get("type") != expected_source_type:
             errors.append("provenance source type mismatch")
-        if units != {
-                "emit_time": "seconds_since_run_start",
-                "deadline": "seconds_since_run_start_or_empty",
-                "coordinates": "degrees_wgs84", "bits": "bits"}:
+        expected_unit_values = {
+            "emit_time": "seconds_since_run_start",
+            "deadline": "seconds_since_run_start_or_empty",
+            "coordinates": "degrees_wgs84",
+            "bits": "bits",
+        }
+        if is_v3:
+            expected_unit_values["research_deadline"] = (
+                "seconds_since_run_start_or_empty")
+        if units != expected_unit_values:
             errors.append("provenance units mismatch")
         if od_mapping.get("grid_deg") != resolved_cfg["endpoints"]["grid_deg"] \
                 or od_mapping.get("aggregation_deg") != resolved_cfg["endpoints"]["aggregation_deg"]:
@@ -437,6 +511,8 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
                 resolved_cfg["scenario"]["duration_s"]
                 if expected_emission_for_rate is None
                 else expected_emission_for_rate)
+            expected_emission_for_rate -= float(
+                resolved_cfg["demand"]["emission_start_s"])
             expected_realized = (float(manifest.get("offered_bits", 0))
                                  / float(expected_emission_for_rate)
                                  / 1_000_000.0)
@@ -516,7 +592,7 @@ def _validate_manifest(manifest: dict, resolved_cfg: dict | None,
         elif measurement_summary is not None:
             errors.append("non-M-Lab manifest must not contain measurement_summary")
         expected_burst = None
-        if mode in {"burst", "mlab"} \
+        if mode in {"burst", "mlab", "population_gravity"} \
                 and resolved_cfg["demand"]["burst_start_s"] is not None:
             expected_burst = {
                 "start_s": float(resolved_cfg["demand"]["burst_start_s"]),
@@ -871,9 +947,70 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
     learning = ledgers.get("learning")
     requested_learning = receipt.get("mechanisms", {}).get(
         "requested", {}).get("learning_algorithm")
-    if requested_learning == "none":
+    learning_policy = receipt.get("mechanisms", {}).get(
+        "requested", {}).get("learning_policy")
+    if learning_policy not in LEARNING_POLICIES:
+        errors.append(f"unknown learning_policy {learning_policy!r}")
+    elif learning_policy == "deterministic_scorer":
+        # the no-policy case: the ledger must be exactly the algorithm marker
+        if requested_learning != "none":
+            errors.append(
+                "learning_policy=deterministic_scorer requires "
+                "learning_algorithm=none")
         if learning != {"algorithm": "none"}:
             errors.append("non-learning ledger must be exactly {'algorithm': 'none'}")
+    elif learning_policy == "fixed_inference_checkpoint":
+        if requested_learning != "ddqn":
+            errors.append(
+                "learning_policy=fixed_inference_checkpoint requires "
+                "learning_algorithm=ddqn")
+        # A1: a FIXED-INFERENCE run reads a real artifact and never trains.
+        # It is verified on its own terms: no replay buffer, no gradient step,
+        # no saved training bundle, and the artifact identity it ran against
+        # must be the one the resolved config pinned.
+        if not isinstance(learning, dict):
+            errors.append("fixed-inference run must have a model ledger")
+        else:
+            expected_contract = ((resolved_cfg or {}).get("routing", {})
+                                 .get("contract"))
+            if expected_contract is not None \
+                    and learning.get("contract") != expected_contract:
+                errors.append("model.contract != resolved routing.contract")
+            if learning.get("kind") != "checkpoint_fixed_inference_policy":
+                errors.append("model ledger is not a fixed-inference read")
+            if learning.get("training") is not False \
+                    or learning.get("updates") != 0 \
+                    or learning.get("grad_steps") != 0:
+                errors.append(
+                    "fixed-inference run must not train (training=false, "
+                    "updates=0, grad_steps=0)")
+            if learning.get("transitions") != 0 \
+                    or learning.get("replay_size") != 0:
+                errors.append(
+                    "fixed-inference run must build no replay buffer")
+            if not _is_nonneg_int(learning.get("calls")):
+                errors.append("model.calls must be a non-negative integer")
+            if learning.get("shape_checked") is not True \
+                    or learning.get("finite_probe_checked") is not True:
+                errors.append(
+                    "fixed-inference read must be shape-checked and "
+                    "finite-probe-checked")
+            for key in ("parameter_sha256", "observation_contract_id"):
+                value = learning.get(key)
+                if not (isinstance(value, str) and SHA256_HEX.match(value)):
+                    errors.append(f"model.{key} must be a lowercase sha256")
+            expected_ckpt = (resolved_cfg or {}).get("learning", {}).get(
+                "checkpoint_sha256")
+            if expected_ckpt is not None \
+                    and learning.get("checkpoint_sha256") != expected_ckpt:
+                errors.append(
+                    "model.checkpoint_sha256 != resolved config pin")
+            expected_meta = (resolved_cfg or {}).get("learning", {}).get(
+                "checkpoint_metadata_sha256")
+            if expected_meta is not None \
+                    and learning.get("metadata_sha256") != expected_meta:
+                errors.append(
+                    "model.metadata_sha256 != resolved config pin")
     elif requested_learning == "ddqn":
         if not isinstance(learning, dict):
             errors.append("DDQN run must have a learning ledger")
@@ -1168,6 +1305,14 @@ def _verify_stream_bindings(out_dir: str, *, decision_log: str | None,
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return [f"receipt.json is unreadable: {exc}"]
+    # A well-formed JSON document need not be an OBJECT.  Without this guard a
+    # receipt.json holding a list/str/number reached the .get() below and
+    # raised AttributeError, so "receipt verify --decision-log ..." exited 1
+    # with a traceback instead of the FAILED verdict the bare form gives.
+    # That breaks this module's own invariant: corrupted JSON must never
+    # crash verify.  (Found in round 3.)
+    if not isinstance(receipt, dict):
+        return [f"{receipt_path} must be a JSON object"]
     if receipt.get("schema") not in RECEIPT_SCHEMAS_V5_FAMILY:
         return [f"{receipt_path} has an unsupported receipt schema"]
     if receipt.get("schema") != RECEIPT_SCHEMA_V6:
@@ -1179,16 +1324,197 @@ def _verify_stream_bindings(out_dir: str, *, decision_log: str | None,
                      ("timeline_log_sha256", timeline_log)):
         if raw is None:
             continue
-        path = Path(raw)
-        if path.is_symlink() or not path.is_file():
-            errors.append(f"{key}: missing or symbolic stream file: {path}")
-            continue
-        actual = hashlib.sha256(path.read_bytes()).hexdigest()
-        if receipt.get(key) != actual:
-            errors.append(
-                f"{key} does not match {path}: receipt says "
-                f"{receipt.get(key)}, file is {actual}")
+        errors.extend(_stream_digest_errors(receipt, Path(raw), key))
     return errors
+
+
+def _stream_digest_errors(receipt: dict, path: Path, key: str) -> list[str]:
+    """Recompute one recorded stream digest against the file it names.
+
+    Shared by the caller-supplied form (verify_receipt_dir, which is handed
+    paths that may live anywhere) and the run-directory form
+    (verify_receipt_streams, which resolves them from STREAM_FILES), so the two
+    entry points can never disagree about what a matching digest means.
+    """
+    if path.is_symlink() or not path.is_file():
+        return [f"{key}: missing or symbolic stream file: {path}"]
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if receipt.get(key) != actual:
+        return [f"{key} does not match {path}: receipt says "
+                f"{receipt.get(key)}, file is {actual}"]
+    return []
+
+
+def _nonblank_lines(path: Path) -> int:
+    with path.open(encoding="utf-8") as handle:
+        return sum(1 for line in handle if line.strip())
+
+
+def verify_formal_stream_binding(out_dir: str) -> list[str]:
+    """Verify the formal witness's optional-but-authoritative timeline digest.
+
+    A zero-decision formal run is intentionally signed as a V5 receipt, whose
+    four-key stream binding is absent.  The formal witness still records the
+    digest of ``timeline.jsonl`` so the timeline cannot be changed after the
+    run.  Callers that accept a FORMAL result must therefore verify this field;
+    an old witness without the field is unbound evidence and fails closed here
+    rather than being reported as a fully verified stream set.
+    """
+    out = Path(out_dir)
+    witness_path = out / FORMAL_WITNESS_FILE
+    if witness_path.is_symlink() or not witness_path.is_file():
+        return [f"formal stream binding is missing: {witness_path}"]
+    try:
+        witness = json.loads(witness_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return [f"{witness_path} is unreadable: {exc}"]
+    if not isinstance(witness, dict):
+        return [f"{witness_path} must be a JSON object"]
+    if witness.get("schema") != "leo-sim-formal-run/v1":
+        return [f"{witness_path} formal witness schema mismatch"]
+    bound = witness.get("timeline_log_sha256")
+    if not isinstance(bound, str) or SHA256_HEX.fullmatch(bound) is None:
+        return [
+            f"{witness_path} does not bind timeline.jsonl with a well-formed "
+            "timeline_log_sha256"]
+    return _stream_digest_errors(witness, out / "timeline.jsonl",
+                                 "timeline_log_sha256")
+
+
+def verify_receipt_streams(out_dir: str, *,
+                           require_streams: bool = False,
+                           require_formal_witness: bool = False) -> list[str]:
+    """Recompute a run DIRECTORY's stream contract from its own files.
+
+    verify_receipt_dir can only check the digests a caller hands it, so the
+    caller has to already know which streams to pass -- and a caller that
+    passes them unconditionally gets a false failure on any run whose receipt
+    is v5 (a v5 receipt carries no stream binding, and supplying paths for one
+    is an explicit refusal, not a silent skip).  This function removes that
+    fork: the receipt itself says what must be recomputed.
+
+      * v6 -- the receipt NAMES both streams, so both files must be present in
+        the run directory and their sha256 must equal the recorded digests.
+        There is no switch that skips this.
+      * v5 -- nothing is bound, so there is no digest to recompute; what is
+        checked instead is that the directory does not CONTRADICT the receipt.
+
+    The v5 rules come from the signing condition, not from a guess.  A run is
+    signed v6 exactly when BOTH streams were requested (each writes a
+    <stream>.manifest.json sidecar, so "requested" is observable) AND the
+    decision stream has rows (__main__._cmd_run drops the decision identity
+    when row_count == 0).  So under a v5 receipt, "both sidecars present" and
+    "decision stream non-empty" cannot both hold.  That single implication is
+    checked unconditionally, which is what catches a swapped or appended
+    decision stream even in a directory nobody claims is formal.
+
+    require_streams=True additionally demands that the downgrade be PRESENT and
+    PROVEN, which is the formal route's case because its command always asks
+    for both streams: both files and both sidecars must exist, and the decision
+    stream must have zero rows.  require_streams=False is the historical
+    behaviour for every existing caller and adds no error for a stream that was
+    simply never requested.
+
+    require_formal_witness=True is used by the formal VM, pullback and analyzer
+    gates.  It also requires formal_run.json to bind timeline.jsonl by the exact
+    timeline_log_sha256 digest.  A v5 receipt itself has no timeline digest, so
+    omitting this second check would leave a formal timeline mutable.
+
+    Neither branch reports a receipt-level digest comparison for v5: the
+    receipt binding does not exist.  In the formal path the timeline digest is
+    instead recomputed from the formal witness, and the absence of that field
+    is an explicit failure rather than an unverified pass.
+    """
+    out = Path(out_dir)
+    receipt_path = out / "receipt.json"
+    if receipt_path.is_symlink() or not receipt_path.is_file():
+        return [f"missing or symbolic artifact: {receipt_path}"]
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"receipt.json is unreadable: {exc}"]
+    if not isinstance(receipt, dict):
+        return [f"{receipt_path} must be a JSON object"]
+    schema = receipt.get("schema")
+    if schema not in RECEIPT_SCHEMAS_V5_FAMILY:
+        return [f"{receipt_path} has an unsupported receipt schema"]
+    if schema == RECEIPT_SCHEMA_V6:
+        errors: list[str] = []
+        for key, name in sorted(STREAM_FILES.items()):
+            errors.extend(_stream_digest_errors(receipt, out / name, key))
+        if require_formal_witness:
+            errors.extend(verify_formal_stream_binding(str(out)))
+        return errors
+    errors = []
+
+    def present(path: Path) -> bool:
+        return not path.is_symlink() and path.is_file()
+
+    streams = {key: out / name for key, name in STREAM_FILES.items()}
+    sidecars = {key: out / (name + ".manifest.json")
+                for key, name in STREAM_FILES.items()}
+    both_requested = all(present(path) for path in sidecars.values())
+    if both_requested:
+        # Contradiction check, valid for EVERY v5 directory.
+        decision = streams["decision_log_sha256"]
+        if not present(decision):
+            errors.append(
+                f"{receipt_path} is a v5 receipt whose sidecar manifests say "
+                f"both streams were requested, but {decision} is missing")
+        else:
+            rows = _nonblank_lines(decision)
+            if rows:
+                errors.append(
+                    f"{receipt_path} is a v5 receipt but {decision} holds "
+                    f"{rows} row(s) while both stream sidecars are present; a "
+                    "run with recorded decisions and both streams requested is "
+                    "signed v6, so this receipt contradicts its own run "
+                    "directory")
+    if not require_streams:
+        return errors
+    # The formal route: the downgrade must be present and PROVEN.
+    for key in ("decision_log_sha256", "timeline_log_sha256"):
+        if not present(sidecars[key]):
+            errors.append(
+                f"formal run result set is incomplete: {sidecars[key]} is "
+                "missing, so the requested streams cannot be identified")
+        if not present(streams[key]):
+            errors.append(
+                f"formal run result set is incomplete: {streams[key]} is "
+                "missing")
+    decision = streams["decision_log_sha256"]
+    if present(decision) and not present(sidecars["decision_log_sha256"]):
+        rows = _nonblank_lines(decision)
+        if rows:
+            errors.append(
+                f"{receipt_path} is a v5 receipt but its decision stream holds "
+                f"{rows} row(s); the formal route signs v6 whenever decisions "
+                "are recorded, so the empty-decision downgrade is not proven")
+    if require_formal_witness:
+        errors.extend(verify_formal_stream_binding(str(out)))
+    return errors
+
+
+def verify_run_artifacts(out_dir: str) -> tuple[list[str], dict]:
+    """Artifact integrity for a run directory whose runtime was NOT this
+    checkout.
+
+    Public wrapper over the unbound primitive: it recomputes every hash the
+    receipt binds to files in the directory (trace/manifest/ledgers/config,
+    fates, totals, conservation, mechanisms) but does NOT require the local
+    analyzer source and dependency versions to equal the recorded run-time
+    identity.  That local-equality gate is a statement about the verifying
+    checkout, so applying it to a result produced on another machine (the VM)
+    can only ever fail.
+
+    An empty error list from this function is therefore NOT a trust-chain
+    verdict and NOT authorization to use the run: it says the artifact set is
+    internally consistent with the receipt, nothing more.  Run-identity
+    binding (authorization + formal witness + governance receipt + external
+    launch witness) is what v2_analysis adds on top; pull-back acceptance adds
+    the stream contract via verify_receipt_streams.
+    """
+    return _verify_receipt_dir_impl(out_dir, require_local_runtime_identity=False)
 
 
 def _verify_receipt_dir_artifacts_unbound(
@@ -1247,8 +1573,10 @@ def _verify_receipt_dir_impl(out_dir: str, *,
         metrics_contract = METRICS_V2_SCHEMA
         if receipt.get("congestion_metrics_contract") != metrics_contract:
             errors.append("v5 congestion_metrics_contract must be v2")
-        if receipt.get("trace_manifest_contract") != trace_mod.TRACE_MANIFEST_SCHEMA:
-            errors.append("v5 trace_manifest_contract must be manifest/v2")
+        if receipt.get("trace_manifest_contract") not in {
+                trace_mod.TRACE_MANIFEST_SCHEMA_V2,
+                trace_mod.TRACE_MANIFEST_SCHEMA}:
+            errors.append("v5 trace_manifest_contract must be manifest/v2 or v3")
         if receipt.get("trace_identity_contract") not in {
                 config_mod.TRACE_IDENTITY_VERSION_V2,
                 config_mod.TRACE_IDENTITY_VERSION}:
@@ -1259,8 +1587,10 @@ def _verify_receipt_dir_impl(out_dir: str, *,
         metrics_contract = METRICS_V2_SCHEMA
         if receipt.get("congestion_metrics_contract") != metrics_contract:
             errors.append("v6 congestion_metrics_contract must be v2")
-        if receipt.get("trace_manifest_contract") != trace_mod.TRACE_MANIFEST_SCHEMA:
-            errors.append("v6 trace_manifest_contract must be manifest/v2")
+        if receipt.get("trace_manifest_contract") not in {
+                trace_mod.TRACE_MANIFEST_SCHEMA_V2,
+                trace_mod.TRACE_MANIFEST_SCHEMA}:
+            errors.append("v6 trace_manifest_contract must be manifest/v2 or v3")
         if receipt.get("trace_identity_contract") not in {
                 config_mod.TRACE_IDENTITY_VERSION_V2,
                 config_mod.TRACE_IDENTITY_VERSION}:
@@ -1384,12 +1714,55 @@ def _verify_receipt_dir_impl(out_dir: str, *,
             errors.append(
                 f"{_family_label(receipt_schema)} receipt raw resolved config "
                 "must include emission_end_s")
-        if legacy_contract and not has_emission:
+        v2_identity_contract = (
+            receipt_schema in RECEIPT_SCHEMAS_V5_FAMILY
+            and receipt.get("trace_identity_contract")
+            == config_mod.TRACE_IDENTITY_VERSION_V2)
+        if (legacy_contract or v2_identity_contract):
+            # Old resolved configs predate the optional demand defaults below.
+            # Normalize only for current semantic validation; the artifact
+            # hash and identity reconstruction continue to use the untouched
+            # raw_resolved_cfg bytes/object.
             resolved_cfg = json.loads(json.dumps(raw_resolved_cfg))
-            resolved_cfg.setdefault("demand", {})["emission_end_s"] = None
+            demand = resolved_cfg.setdefault("demand", {})
+            if legacy_contract and not has_emission:
+                demand["emission_end_s"] = None
+            for field in config_mod.V2_REMOVED_DEMAND_FIELDS:
+                if field not in demand:
+                    demand[field] = config_mod.DEFAULTS["demand"][field]
+        else:
+            # An old identity/v2 artifact can be deliberately relabelled v3
+            # to test that the persisted contract is authoritative. Normalize
+            # removed demand defaults for safe semantic/manifest checks; the
+            # identity builder still receives this normalized config and must
+            # then reject the old stored v2 digest under a v3 contract.
+            demand = resolved_cfg.setdefault("demand", {})
+            missing_v2_fields = [field for field in
+                                 config_mod.V2_REMOVED_DEMAND_FIELDS
+                                 if field not in demand]
+            if missing_v2_fields:
+                resolved_cfg = json.loads(json.dumps(resolved_cfg))
+                demand = resolved_cfg.setdefault("demand", {})
+                for field in missing_v2_fields:
+                    demand[field] = config_mod.DEFAULTS["demand"][field]
         try:
             validated = config_mod.resolve_config(resolved_cfg)
-            if validated["config"] != resolved_cfg:
+            normalized_for_compare = json.loads(json.dumps(
+                validated["config"]))
+            raw_demand = (resolved_cfg.get("demand")
+                          if isinstance(resolved_cfg, dict) else None)
+            if isinstance(raw_demand, dict):
+                for field in config_mod.V2_REMOVED_DEMAND_FIELDS:
+                    if field not in raw_demand:
+                        normalized_for_compare.get("demand", {}).pop(
+                            field, None)
+            raw_cp = (resolved_cfg.get("control_plane")
+                      if isinstance(resolved_cfg, dict) else None)
+            if (isinstance(raw_cp, dict)
+                    and "advertisement_protocol_version" not in raw_cp):
+                normalized_for_compare.get("control_plane", {}).pop(
+                    "advertisement_protocol_version", None)
+            if normalized_for_compare != resolved_cfg:
                 raise ValueError("artifact is not a complete resolved config")
             if resolved_version != validated["version"]:
                 raise ValueError("resolved config schema version mismatch")
@@ -1416,14 +1789,24 @@ def _verify_receipt_dir_impl(out_dir: str, *,
                     trace_list,
                     horizon_s=float(emission_horizon),
                     max_packets=int(resolved_cfg["execution"]["max_packets"]))
+                if (manifest is not None
+                        and manifest.get("trace_schema")
+                        == trace_mod.TRACE_SCHEMA
+                        and any(r.get("research_deadline_at_s") is not None
+                                for r in trace_list)):
+                    errors.append(
+                        "trace schema v1 cannot carry research deadlines")
             except Exception as exc:
                 errors.append(f"trace violates resolved config: {exc}")
     if manifest is not None:
         if receipt_schema in RECEIPT_SCHEMAS_V5_FAMILY \
-                and manifest.get("schema") != trace_mod.TRACE_MANIFEST_SCHEMA:
+                and manifest.get("schema") not in {
+                    trace_mod.TRACE_MANIFEST_SCHEMA_V2,
+                    trace_mod.TRACE_MANIFEST_SCHEMA,
+                }:
             errors.append(
                 f"{_family_label(receipt_schema)} receipt requires trace "
-                "manifest contract v2")
+                "manifest contract v2 or v3")
         if receipt_schema in {LEGACY_RECEIPT_SCHEMA, LEGACY_RECEIPT_SCHEMA_V4} \
                 and manifest.get("schema") != trace_mod.TRACE_MANIFEST_SCHEMA_V1:
             errors.append("legacy receipt requires trace manifest contract v1")
@@ -1599,21 +1982,59 @@ def _verify_receipt_dir_impl(out_dir: str, *,
         c_counts = {f: 0 for f in fates.CONTROL_FATES}
         valid_ci = {}
         for iid, pair in ci.items():
-            if not (isinstance(pair, list) and len(pair) == 3
+            if not (isinstance(pair, list) and len(pair) in (3, 4)
                     and isinstance(pair[0], str)
                     and isinstance(pair[1], int) and not isinstance(pair[1], bool)
                     and pair[1] > 0):
                 errors.append(f"control_instances[{iid}] must be "
-                              "[fate, positive int bits, received_at|None]")
+                              "[fate, positive int bits, received_at|None, "
+                              "optional wire_cost]")
                 continue
-            fate, bits, received_at = pair
+            fate, bits, received_at = pair[:3]
             if resolved_cfg is not None:
-                expected = (resolved_cfg.get("control_plane") or {}).get(
-                    "packet_bits")
-                if expected is not None and bits != expected:
+                cp = resolved_cfg.get("control_plane") or {}
+                base_bits = cp.get("packet_bits")
+                protocol = cp.get("advertisement_protocol_version", 1)
+                if protocol == 2:
+                    wire = pair[3] if len(pair) == 4 else None
+                    if not isinstance(wire, dict):
+                        errors.append(
+                            f"control_instances[{iid}] packet_bits require a "
+                            "protocol-v2 wire_cost descriptor")
+                    else:
+                        isl_count = wire.get("isl_resource_records")
+                        gsl_count = wire.get("gsl_resource_records")
+                        if (wire.get("schema") != "leo-control-ad-wire/v2"
+                                or wire.get("base_packet_bits") != base_bits
+                                or wire.get("isl_record_bits") != 192
+                                or wire.get("gsl_record_bits") != 200
+                                or wire.get("processing_fields_bits") != 416
+                                or not _is_nonneg_int(isl_count)
+                                or isl_count > len(
+                                    (resolved_cfg.get("links") or {}).get(
+                                        "isl_dirs", ()))
+                                or not _is_nonneg_int(gsl_count)
+                                or gsl_count > int(cp.get("max_advertised_gsl_records",
+                                                         100_000))):
+                            errors.append(
+                                f"control_instances[{iid}] wire_cost descriptor "
+                                "is invalid for resolved packet_bits/schema")
+                        else:
+                            expected = (int(base_bits)
+                                        + int(isl_count) * 192
+                                        + int(gsl_count) * 200 + 416)
+                            if bits != expected:
+                                errors.append(
+                                    f"control_instances[{iid}] packet_bits "
+                                    f"{bits} != recomputed wire cost {expected}")
+                elif len(pair) == 4:
                     errors.append(
-                        f"control_instances[{iid}] bits {bits} != resolved "
-                        f"control_plane.packet_bits {expected}")
+                        f"control_instances[{iid}] wire_cost descriptor is "
+                        "not permitted by legacy advertisement protocol")
+                elif base_bits is not None and bits != base_bits:
+                    errors.append(
+                        f"control_instances[{iid}] packet_bits {bits} != "
+                        f"resolved control_plane.packet_bits {base_bits}")
             if not (received_at is None or _is_nonneg_num(received_at)):
                 errors.append(f"control_instances[{iid}] received_at must be "
                               "None or a finite non-negative number")

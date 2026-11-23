@@ -1,0 +1,639 @@
+{
+ "schema": "load-calibration-contract/v1",
+ "base_profile": "CODE/leo_sim/profiles/t1_scene_trunk_v1.yaml",
+ "deadline_s": 4,
+ "max_packets": 100000,
+ "max_duration_s": 160,
+ "cells": [
+  {
+   "id": "tk-r020-s111",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "offered_mbps": 299.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r020-s112",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 112
+    },
+    "demand": {
+     "offered_mbps": 299.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r020-s113",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 113
+    },
+    "demand": {
+     "offered_mbps": 299.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r050-s111",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "offered_mbps": 749.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r050-s112",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 112
+    },
+    "demand": {
+     "offered_mbps": 749.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r050-s113",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 113
+    },
+    "demand": {
+     "offered_mbps": 749.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r070-s111",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "offered_mbps": 1049.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r070-s112",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 112
+    },
+    "demand": {
+     "offered_mbps": 1049.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r070-s113",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 113
+    },
+    "demand": {
+     "offered_mbps": 1049.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r085-s111",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "offered_mbps": 1274.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r085-s112",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 112
+    },
+    "demand": {
+     "offered_mbps": 1274.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r085-s113",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 113
+    },
+    "demand": {
+     "offered_mbps": 1274.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r095-s111",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "offered_mbps": 1424.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r095-s112",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 112
+    },
+    "demand": {
+     "offered_mbps": 1424.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r095-s113",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 113
+    },
+    "demand": {
+     "offered_mbps": 1424.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r110-s111",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "offered_mbps": 1649.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r110-s112",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 112
+    },
+    "demand": {
+     "offered_mbps": 1649.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r110-s113",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 113
+    },
+    "demand": {
+     "offered_mbps": 1649.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r095-buf005ms-s111",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "offered_mbps": 1424.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 5000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r095-buf100ms-s111",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 12.0,
+     "seed": 111
+    },
+    "demand": {
+     "offered_mbps": 1424.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 100000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  },
+  {
+   "id": "tk-r095-long30-s111",
+   "arms": [
+    "now"
+   ],
+   "overrides": {
+    "scenario": {
+     "duration_s": 30.0,
+     "seed": 111
+    },
+    "demand": {
+     "offered_mbps": 1424.52,
+     "packet_bits": 12000,
+     "emission_start_s": 2.0,
+     "emission_end_s": 2.7
+    },
+    "links": {
+     "isl_rate_mbps": 1000.0,
+     "isl_queue_bits": 20000000,
+     "rate_model": "constant"
+    },
+    "control_plane": {
+     "advertise_interval_s": 0.05,
+     "vis_k": 2
+    },
+    "routing": {
+     "policy": "known_serving"
+    }
+   }
+  }
+ ]
+}

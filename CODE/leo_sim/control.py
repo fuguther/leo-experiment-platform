@@ -54,18 +54,43 @@ class CacheEntry:
         return now - self.generated_at
 
 
-class LocalCache:
-    """Per-satellite cache of arrived control information, keyed by origin."""
+#: how many actually-arrived advertisements per origin are retained for the
+#: T1 state-time predictor.  The CURRENT cache entry is what routing may use;
+#: this bounded history is output-only evidence for bounded_linear, which needs
+#: at least two ordered source measurements of the SAME resource.  It never
+#: enters a routing decision.
+HISTORY_LIMIT = 64
 
-    def __init__(self) -> None:
+
+class LocalCache:
+    """Per-satellite cache of arrived control information, keyed by origin.
+
+    Besides the current entry (the only thing routing may read), each origin
+    keeps a bounded history of the advertisements that ACTUALLY ARRIVED, in
+    arrival order.  The history records what was received even when it is stale
+    or duplicated, so a predictor cannot pretend the sequence did not happen;
+    consumers must order and deduplicate it by (resource, source time).
+    """
+
+    def __init__(self, history_limit: int = HISTORY_LIMIT) -> None:
         self._entries: dict[int, CacheEntry] = {}
         self.expirations = 0
+        self.history_limit = int(history_limit)
+        self.history: dict[int, list[CacheEntry]] = {}
 
     def put(self, entry: CacheEntry) -> None:
+        bucket = self.history.setdefault(entry.origin, [])
+        bucket.append(entry)
+        if len(bucket) > self.history_limit:
+            del bucket[:len(bucket) - self.history_limit]
         old = self._entries.get(entry.origin)
         if old is not None and old.generated_at >= entry.generated_at:
             return  # stale or duplicate arrival: keep the fresher one
         self._entries[entry.origin] = entry
+
+    def history_for(self, origin: int) -> list[CacheEntry]:
+        """Advertisements that actually arrived from origin, arrival order."""
+        return list(self.history.get(origin, ()))
 
     def valid_entries(self, now: float) -> dict[int, CacheEntry]:
         out = {}

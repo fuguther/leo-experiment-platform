@@ -2,14 +2,13 @@
 
 | 字段 | 值 |
 | --- | --- |
-| MAIN_SHA | `549acd8b7cb7a1bb573e7146653f55273999086d` |
-| 审计分支 | `agent/20260924-platform-audit` |
-| 日期 | 2026-09-24 |
-| 方法 | 逐行阅读代码 + 实跑取证。**本文所有结论以代码行号为准，不以本文件叙述为准。** |
-| 权威代码 | `CODE/leo_sim/kernel.py`（4615 行） |
+| 初始审计基线 | `549acd8b7cb7a1bb573e7146653f55273999086d`（`agent/20260924-platform-audit`，2026-09-24） |
+| 最近整理 | 2026-11-22：补充异步计算、安装和当前执行模式边界 |
+| 方法 | 源码符号、原始事件与回归测试共同取证；下文行号只作历史审计锚点，代码可能已经移动 |
+| 权威来源 | 当前 `CODE/leo_sim/`、`CODE/experiment_platform/` 源码及其测试；固定 run 以自身 receipt/code identity 为准 |
 
 > 本文件只回答一个问题：**当前代码到底实现了什么事件链**。
-> 凡本文与代码冲突，以代码为准；发现冲突应报缺陷，不得静默融合（AGENTS.md 规则 15）。
+> 凡本文与当前代码冲突，以代码和测试为准；发现冲突应修复文档或代码并留回归，不能静默选择任一说法。
 
 ---
 
@@ -80,6 +79,33 @@ isl / downlink（由 _metric_link_id 1564-1570 命名）
 **归属规则（R8-A8，kernel.py:1541-1551）**：`decision_id` **必须由调用方显式传入**，禁止用 `pkt.decision_id` 反推。
 由 commit 直接造成的入队传已提交 id；链路 stall/retire 造成的重入队传 `None`；holding 入队传"这次 hold 尝试"的 id。
 该规则有专门回归测试 `test_holding_queue.py` 与 `test_transmit_retirement.py`。
+
+### 1.2 计算、安装和生效不是同一个时刻
+
+平台支持 `per_packet`、`per_flow`、`precomputed`、`async_point` 和
+`async_window` 五种执行模式。它们只改变策略结果何时被计算和复用，不改变
+数据包的物理服务链。涉及计算时必须分别记录：
+
+| 时刻/事件 | 含义 | 事实字段 |
+| --- | --- | --- |
+| decision start | 策略开始读取冻结观测 | `t_decision_start` |
+| compute request | 计算作业请求共享的每星计算池 | `compute_request.at` + `compute_job_id` |
+| compute wait | 因有界计算池而等待 | `compute_wait.wait_s` |
+| compute start/finish | 作业实际开始和结束服务 | `compute_start.at`、`compute_finish.started_at/finished_at` |
+| decision commit | 合法动作被提交 | `t_decision_commit` / decision row `t` |
+| schedule install | 异步结果真正替换旧版本 | `AsyncScheduleManager.install` 的 `install_at` |
+| action use | 后续决策读取该已安装版本 | decision 的 observation/audit 版本字段 |
+
+异步 scope 的状态机是
+`UNINITIALIZED → COMPUTING → INSTALL_PENDING → ACTIVE`：
+
+- 一个 scope 最多有一个后台作业在算和一个 pending 触发；后续触发合并，不能无限堆积。
+- snapshot 在 request 时冻结；实际完成或安装延迟不能反过来改写当时可用的观测。
+- 旧表在新表实际安装前继续服务；版本号单调，旧结果不能覆盖新版本。
+- `per_flow` 命中、`precomputed` 和异步已安装表都是查表，不得伪记成一次免费或不存在的计算。
+
+这些是平台执行机制，不是“异步策略更好”的性能证据。计算开始事件缺失时，统计层必须区分
+“事件确实没有记录”和“开始时刻只能从 finish 的 `started_at` 恢复”，不能用 0 代替未知。
 
 ---
 
@@ -184,7 +210,6 @@ N 个包全部被报成 `declared delivered but has no delivered event`，`check
 ## 6. 本文件的取证方式（可复现）
 
 ```bash
-cd <repo>            # MAIN_SHA = 549acd8b7cb7a1bb573e7146653f55273999086d
 git rev-parse HEAD
 grep -n "def _node_process" -A 42 CODE/leo_sim/kernel.py     # §3
 grep -n "decision_compute_s = math.fsum" CODE/leo_sim/metrics_independent.py   # §5.2

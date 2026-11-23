@@ -1,0 +1,4 @@
+# Required by the currently imported core runtime, measured on T1.
+numpy==1.24.3
+PyYAML==6.0.2
+simpy==4.0.1

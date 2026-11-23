@@ -1,0 +1,1674 @@
+from __future__ import annotations
+
+import subprocess
+import json
+import os
+import stat
+import tarfile
+import io
+import fcntl
+import hashlib
+import re
+from datetime import datetime, timezone, timedelta
+from pathlib import PurePosixPath
+from pathlib import Path
+
+import pytest
+
+from CODE.scripts.remote.release_protocol import _lock_identity, build_release
+
+
+def test_release_manifest_recognizes_platform_specific_explicit_conda_lock() -> None:
+    records = [
+        {"path": "CODE/dependencies/t1-vm-linux-aarch64/conda-linux-aarch64.explicit.lock",
+         "sha256": "a" * 64},
+        {"path": "CODE/dependencies/t1-vm-linux-aarch64/requirements.lock",
+         "sha256": "b" * 64},
+    ]
+
+    identity = _lock_identity(records)
+
+    assert identity == {
+        "status": "pinned",
+        "files": [
+            {"path": records[0]["path"], "sha256": "a" * 64},
+            {"path": records[1]["path"], "sha256": "b" * 64},
+        ],
+    }
+
+
+def _git(path: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(path), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _repo(path: Path, *, include_docs: bool = True) -> tuple[Path, str]:
+    path.mkdir()
+    _git(path, "init", "-q")
+    _git(path, "config", "user.name", "release test")
+    _git(path, "config", "user.email", "release-test@example.invalid")
+    directories = ["ANALYSIS", "CODE", "EXPERIMENTS"]
+    if include_docs:
+        directories.append("docs")
+    for name in directories:
+        directory = path / name
+        directory.mkdir()
+        (directory / ".keep").write_text(f"{name}\n", encoding="utf-8")
+    for name in (".gitignore", "AGENTS.md", "README.md",
+                 "STATUS.md", "pytest.ini"):
+        (path / name).write_text(f"{name}\n", encoding="utf-8")
+    (path / "README.md").write_text("from commit\n", encoding="utf-8")
+    (path / "CODE" / "payload.py").write_text(
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['TMPDIR'], 'result.txt').write_text('diagnostic output\\n')\n"
+        "print('safe diagnostic')\n"
+        "print('API_TOKEN=' + ('verylong' + 'credential'), file=sys.stderr)\n",
+        encoding="utf-8",
+    )
+    helper = path / "CODE" / "scripts" / "remote" / "release_protocol.py"
+    helper.parent.mkdir(parents=True)
+    helper.write_text("release helper in commit\n", encoding="utf-8")
+    (helper.parent / "deployment_guard.py").write_text("guard helper in commit\n", encoding="utf-8")
+    _git(path, "add", ".")
+    _git(path, "commit", "-q", "-m", "release base")
+    return path, _git(path, "rev-parse", "HEAD")
+
+
+def _remote_proof(commit: str, repository: str = "example/release-test",
+                  checked_at: str | None = None) -> dict:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    proof = {
+        "schema": protocol.MAIN_REF_PROOF_SCHEMA,
+        "status": "verified",
+        "repository": repository,
+        "ref": "refs/heads/main",
+        "commit": commit,
+        "checked_at": checked_at or datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    proof["proof_sha256"] = protocol.sha256_bytes(protocol.canonical_json(proof))
+    return proof
+
+
+def _legacy_release_bundle(path: Path) -> tuple[Path, str]:
+    """Create the exact legacy pre-cleanup release layout without old code."""
+    from CODE.scripts.remote import deployment_guard as guard
+    from CODE.scripts.remote import release_protocol as protocol
+
+    commit = "1" * 40
+    directories = ["ANALYSIS", "CODE", "EXPERIMENTS", "lines", "docs",
+                   "CODE/scripts", "CODE/scripts/remote"]
+    files = {
+        ".deployment_commit": (commit + "\n").encode("ascii"),
+        ".gitignore": b".gitignore\n",
+        "AGENTS.md": b"AGENTS.md\n",
+        "BACKLOG.md": b"BACKLOG.md\n",
+        "CHARTER.md": b"CHARTER.md\n",
+        "README.md": b"legacy release\n",
+        "SOURCE-COMMIT.txt": b"legacy source\n",
+        "STATUS.md": b"STATUS.md\n",
+        "WORKING-MODEL.md": b"WORKING-MODEL.md\n",
+        "CODE/scripts/remote/release_protocol.py": b"legacy verifier\n",
+    }
+    records = [
+        {
+            "path": name,
+            "size": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+        }
+        for name, data in sorted(files.items())
+    ]
+    manifest = {
+        "schema": protocol.MANIFEST_SCHEMA,
+        "repository": "example/release-test",
+        "source_git_commit": commit,
+        "source_git_dirty": False,
+        "deployment_roots": ["ANALYSIS", "CODE", "EXPERIMENTS", "lines", "docs"],
+        "deployed_files": records,
+        "dependency_lock": {"status": "unpinned", "files": []},
+        "source_audit": {"status": "passed"},
+    }
+    manifest["source_tree_sha256"] = guard.tree_sha256(records)
+    manifest["manifest_sha256"] = protocol.sha256_bytes(
+        protocol.canonical_json(manifest))
+    manifest_bytes = protocol.canonical_json(manifest) + b"\n"
+
+    path.mkdir()
+    archive_path = path / "release.tar"
+    with tarfile.open(archive_path, "w", format=tarfile.PAX_FORMAT) as archive:
+        for name in directories:
+            info = tarfile.TarInfo(name + "/")
+            info.type = tarfile.DIRTYPE
+            info.mode = 0o755
+            archive.addfile(info)
+        for name, data in sorted(files.items()):
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mode = 0o444
+            archive.addfile(info, io.BytesIO(data))
+        info = tarfile.TarInfo(protocol.MANIFEST_NAME)
+        info.size = len(manifest_bytes)
+        info.mode = 0o444
+        archive.addfile(info, io.BytesIO(manifest_bytes))
+
+    release_id = f"{commit}-{manifest['source_tree_sha256']}"
+    artifact = {
+        "schema": protocol.ENVELOPE_SCHEMA,
+        "release_id": release_id,
+        "repository": manifest["repository"],
+        "source_git_commit": commit,
+        "source_git_branch": "legacy-branch",
+        "source_tree_sha256": manifest["source_tree_sha256"],
+        "archive_sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+        "manifest_sha256": manifest["manifest_sha256"],
+        "dependency_lock": manifest["dependency_lock"],
+    }
+    artifact_identity = {
+        key: value for key, value in artifact.items()
+        if key != "source_git_branch"
+    }
+    envelope = {
+        **artifact,
+        "artifact_sha256": protocol.sha256_bytes(
+            protocol.canonical_json(artifact_identity)),
+        "remote_backup": {"status": "remote_backup_pending"},
+    }
+    envelope["envelope_sha256"] = protocol.sha256_bytes(
+        protocol.canonical_json(envelope))
+    (path / "release.json").write_bytes(
+        json.dumps(envelope, sort_keys=True).encode("utf-8") + b"\n")
+    return path, release_id
+
+
+def test_head_verifier_accepts_exact_legacy_pre_cleanup_release(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import verify_release_bundle
+
+    bundle, release_id = _legacy_release_bundle(tmp_path / "legacy-bundle")
+
+    assert verify_release_bundle(bundle)["release_id"] == release_id
+
+
+def test_current_release_includes_root_pytest_configuration(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import build_release
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+
+    build_release(repo, commit, bundle, remote_refs=[])
+
+    with tarfile.open(bundle / "release.tar", "r:") as archive:
+        assert "pytest.ini" in {member.name for member in archive.getmembers()}
+
+
+def test_release_build_accepts_repository_without_optional_docs_root(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import build_release, verify_release_bundle
+
+    repo, commit = _repo(tmp_path / "repo", include_docs=False)
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+
+    built = build_release(repo, commit, bundle, remote_refs=[])
+    verified = verify_release_bundle(bundle)
+
+    assert built["release_id"] == verified["release_id"]
+    with tarfile.open(bundle / "release.tar", "r:") as archive:
+        assert all(not member.name.startswith("docs/") for member in archive.getmembers())
+
+
+def test_release_uses_exact_clean_git_commit_and_marks_dirty_checkout_rejected(
+    tmp_path: Path,
+) -> None:
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+
+    built = build_release(
+        repo,
+        commit,
+        bundle,
+        remote_refs=[],
+    )
+
+    assert built["source_git_commit"] == commit
+    assert built["remote_backup"]["status"] == "remote_backup_pending"
+    (repo / "CODE" / "payload.py").write_text("dirty bytes must not ship\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="dirty"):
+        build_release(repo, commit, tmp_path / "dirty-bundle", remote_refs=[])
+
+
+def test_bundle_is_byte_stable_and_records_exact_remote_ref(tmp_path: Path) -> None:
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "git@github.com:example/release-test.git")
+    first = build_release(repo, commit, tmp_path / "first", remote_refs=[(commit, "refs/heads/release")])
+    second = build_release(repo, commit, tmp_path / "second", remote_refs=[(commit, "refs/heads/release")])
+
+    assert first["release_id"] == second["release_id"]
+    assert first["archive_sha256"] == second["archive_sha256"]
+    assert first["remote_backup"]["status"] == "verified"
+    assert first["remote_backup"]["ref"] == "refs/heads/release"
+
+
+def test_release_artifact_identity_does_not_change_with_local_branch_name(tmp_path: Path) -> None:
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    first = build_release(repo, commit, tmp_path / "first", remote_refs=[])
+    _git(repo, "branch", "-m", "codex/second-name")
+    second = build_release(repo, commit, tmp_path / "second", remote_refs=[])
+
+    assert first["release_id"] == second["release_id"]
+    assert first["artifact_sha256"] == second["artifact_sha256"]
+    assert first["source_git_branch"] != second["source_git_branch"]
+
+
+def test_untracked_changes_are_rejected_and_ignored_files_never_enter_release(
+    tmp_path: Path,
+) -> None:
+    from CODE.scripts.remote.release_protocol import build_release, verify_release_bundle
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    (repo / "CODE" / "untracked.py").write_text("must not ship\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="dirty"):
+        build_release(repo, commit, tmp_path / "untracked", remote_refs=[])
+    (repo / "CODE" / "untracked.py").unlink()
+    (repo / ".git" / "info" / "exclude").write_text(".env\n", encoding="utf-8")
+    (repo / ".env").write_text("REMOTE_TOKEN=not-a-real-token-value\n", encoding="utf-8")
+
+    bundle = tmp_path / "bundle"
+    build_release(repo, commit, bundle, remote_refs=[])
+    envelope = verify_release_bundle(bundle)
+    with tarfile.open(bundle / "release.tar", "r:") as archive:
+        paths = {member.name for member in archive.getmembers()}
+    assert ".env" not in paths
+    assert envelope["source_git_commit"] == commit
+
+
+def test_release_envelope_tampering_is_rejected(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import build_release, verify_release_bundle
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+    build_release(repo, commit, bundle, remote_refs=[])
+    envelope_path = bundle / "release.json"
+    envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
+    envelope["source_git_commit"] = "0" * 40
+    envelope_path.write_text(json.dumps(envelope), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="hash mismatch"):
+        verify_release_bundle(bundle)
+
+
+def test_archive_tampering_is_rejected_before_install(tmp_path: Path) -> None:
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+    build_release(repo, commit, bundle, remote_refs=[])
+
+    archive = bundle / "release.tar"
+    contents = bytearray(archive.read_bytes())
+    contents[-1] ^= 1
+    archive.write_bytes(contents)
+
+    from CODE.scripts.remote.release_protocol import verify_release_bundle
+
+    with pytest.raises(ValueError, match="archive SHA-256"):
+        verify_release_bundle(bundle)
+
+
+def test_install_is_idempotent_read_only_and_preserves_existing_release(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import install_release, verify_installed_release
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(repo, commit, bundle, remote_refs=[])
+    releases = tmp_path / "vm" / "releases"
+
+    first = install_release(bundle, releases, bootstrap=repo / "CODE/scripts/remote/release_protocol.py")
+    published = releases / envelope["release_id"]
+    assert first["status"] == "published"
+    assert verify_installed_release(published)["artifact_sha256"] == envelope["artifact_sha256"]
+    assert not (published / "CODE/payload.py").stat().st_mode & stat.S_IWUSR
+
+    second = install_release(bundle, releases)
+    assert second["status"] == "already_present"
+    assert "diagnostic output" in (published / "CODE/payload.py").read_text(encoding="utf-8")
+
+
+def test_install_refuses_invalid_existing_id_without_overwriting_it(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import install_release
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(repo, commit, bundle, remote_refs=[])
+    releases = tmp_path / "vm" / "releases"
+    target = releases / envelope["release_id"]
+    target.mkdir(parents=True)
+    marker = target / "preserve.txt"
+    marker.write_text("existing bytes\n", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        install_release(bundle, releases)
+    assert marker.read_text(encoding="utf-8") == "existing bytes\n"
+
+
+def test_new_release_coexists_with_old_release_for_rollback(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import build_release, install_release, verify_installed_release
+
+    repo, first_commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    first_bundle = tmp_path / "first-bundle"
+    first = build_release(repo, first_commit, first_bundle, remote_refs=[])
+    releases = tmp_path / "vm" / "releases"
+    install_release(first_bundle, releases)
+    first_file = releases / first["release_id"] / "CODE/payload.py"
+    first_bytes = first_file.read_bytes()
+
+    (repo / "CODE" / "next.py").write_text("NEXT = True\n", encoding="utf-8")
+    _git(repo, "add", "CODE/next.py")
+    _git(repo, "commit", "-q", "-m", "next release")
+    second_commit = _git(repo, "rev-parse", "HEAD")
+    second_bundle = tmp_path / "second-bundle"
+    second = build_release(repo, second_commit, second_bundle, remote_refs=[])
+    install_release(second_bundle, releases)
+
+    assert first["release_id"] != second["release_id"]
+    assert verify_installed_release(releases / first["release_id"])["release_id"] == first["release_id"]
+    assert verify_installed_release(releases / second["release_id"])["release_id"] == second["release_id"]
+    assert first_file.read_bytes() == first_bytes
+
+
+def test_cli_install_cannot_target_the_formal_workspace_or_an_arbitrary_release_root(
+    tmp_path: Path,
+) -> None:
+    from CODE.scripts.remote.release_protocol import build_release, main
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+    build_release(repo, commit, bundle, remote_refs=[])
+    wrong_root = tmp_path / "formal" / "releases"
+
+    result = main(["install", "--bundle", str(bundle), "--releases-root", str(wrong_root)])
+
+    assert result == 2
+    assert not wrong_root.exists()
+
+
+def test_interrupted_release_partial_is_quarantined_before_retry(tmp_path: Path, monkeypatch) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    root = tmp_path / "T1"
+    root.mkdir()
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", root / "releases")
+    release_id = "a" * 40 + "-" + "b" * 64
+    attempt = protocol.prepare_incoming(release_id, t1_root=root)
+    (attempt / "release.tar").write_bytes(b"incomplete transfer")
+
+    quarantined = protocol.quarantine_incoming(release_id, t1_root=root)
+    next_attempt = protocol.prepare_incoming(release_id, t1_root=root)
+
+    preserved = Path(quarantined["path"])
+    assert quarantined["status"] == "partial_preserved_in_quarantine"
+    assert (preserved / "release.tar").read_bytes() == b"incomplete transfer"
+    assert next_attempt.is_dir()
+
+
+def test_bootstrap_only_interruption_can_be_quarantined_before_same_id_retry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    root = tmp_path / "T1"
+    root.mkdir()
+    releases = root / "releases"
+    bootstrap = releases / ".bootstrap" / ("a" * 40 + "-" + "b" * 64)
+    bootstrap.mkdir(parents=True)
+    (bootstrap / "release_protocol.py").write_text("partial bootstrap\n", encoding="utf-8")
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases)
+
+    result = protocol.quarantine_incoming(bootstrap.name, t1_root=root)
+
+    preserved = Path(result["path"])
+    assert (preserved / "release_protocol.py").read_text(encoding="utf-8") == "partial bootstrap\n"
+    assert not bootstrap.exists()
+    (releases / ".bootstrap" / bootstrap.name).mkdir(mode=0o700)
+    assert protocol.prepare_incoming(bootstrap.name, t1_root=root).is_dir()
+
+
+def test_quarantine_preserves_incoming_and_bootstrap_before_same_id_retry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    root = tmp_path / "T1"
+    root.mkdir()
+    release_id = "c" * 40 + "-" + "d" * 64
+    releases = root / "releases"
+    incoming = releases / "incoming" / f"{release_id}.partial"
+    incoming.mkdir(parents=True)
+    (incoming / "release.tar").write_bytes(b"partial archive")
+    bootstrap = releases / ".bootstrap" / release_id
+    bootstrap.mkdir(parents=True)
+    (bootstrap / "release_protocol.py").write_text("partial helper\n", encoding="utf-8")
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases)
+
+    result = protocol.quarantine_incoming(release_id, t1_root=root)
+
+    preserved_incoming = Path(result["path"])
+    preserved_bootstrap = Path(result["bootstrap_path"])
+    assert (preserved_incoming / "release.tar").read_bytes() == b"partial archive"
+    assert (preserved_bootstrap / "release_protocol.py").read_text(encoding="utf-8") == "partial helper\n"
+    assert not incoming.exists()
+    assert not bootstrap.exists()
+    (releases / ".bootstrap" / release_id).mkdir(mode=0o700)
+    assert protocol.prepare_incoming(release_id, t1_root=root).is_dir()
+
+
+def test_cleanup_interruption_with_installed_release_can_quarantine_leftover_bootstrap(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(repo, commit, bundle, remote_refs=[])
+    root = tmp_path / "T1"
+    root.mkdir()
+    releases = root / "releases"
+    protocol.install_release(bundle, releases)
+    bootstrap = releases / ".bootstrap" / envelope["release_id"]
+    bootstrap.mkdir(parents=True)
+    (bootstrap / "deployment_guard.py").write_text("left after cleanup interruption\n", encoding="utf-8")
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases)
+
+    result = protocol.quarantine_incoming(envelope["release_id"], t1_root=root)
+
+    preserved = Path(result["path"])
+    assert (preserved / "deployment_guard.py").read_text(encoding="utf-8") == "left after cleanup interruption\n"
+    assert not bootstrap.exists()
+    assert protocol.verify_installed_release(releases / envelope["release_id"])["release_id"] == envelope["release_id"]
+    (releases / ".bootstrap" / envelope["release_id"]).mkdir(mode=0o700)
+    assert protocol.prepare_incoming(envelope["release_id"], t1_root=root).is_dir()
+
+
+def test_cleanup_refuses_bootstrap_parent_symlink_before_deleting_anything(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(repo, commit, bundle, remote_refs=[])
+    root = tmp_path / "T1"
+    root.mkdir()
+    releases = root / "releases"
+    protocol.install_release(bundle, releases)
+    incoming = releases / "incoming" / f"{envelope['release_id']}.partial"
+    incoming.mkdir(parents=True)
+    (incoming / "release.tar").write_bytes(b"preserve incoming")
+    outside = tmp_path / "outside-bootstrap"
+    external_attempt = outside / envelope["release_id"]
+    external_attempt.mkdir(parents=True)
+    victim = external_attempt / "valuable-marker.txt"
+    victim.write_text("outside the release root\n", encoding="utf-8")
+    (releases / ".bootstrap").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases)
+    installed_hash = protocol.verify_installed_release(releases / envelope["release_id"])["artifact_sha256"]
+
+    with pytest.raises(ValueError, match="unsafe|symbolic"):
+        protocol.cleanup_incoming(envelope["release_id"], t1_root=root)
+
+    assert victim.read_text(encoding="utf-8") == "outside the release root\n"
+    assert (incoming / "release.tar").read_bytes() == b"preserve incoming"
+    assert protocol.verify_installed_release(releases / envelope["release_id"])["artifact_sha256"] == installed_hash
+
+
+def test_quarantine_second_move_failure_keeps_both_sources_discoverable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    root = tmp_path / "T1"
+    root.mkdir()
+    release_id = "e" * 40 + "-" + "f" * 64
+    releases = root / "releases"
+    incoming = releases / "incoming" / f"{release_id}.partial"
+    incoming.mkdir(parents=True)
+    (incoming / "release.tar").write_bytes(b"partial archive")
+    bootstrap = releases / ".bootstrap" / release_id
+    bootstrap.mkdir(parents=True)
+    (bootstrap / "release_protocol.py").write_text("partial helper\n", encoding="utf-8")
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases)
+
+    real_replace = os.replace
+
+    def fail_bootstrap_move(source, destination, *args, **kwargs):
+        if source == release_id:
+            raise OSError("injected bootstrap quarantine interruption")
+        return real_replace(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(protocol.os, "replace", fail_bootstrap_move)
+    with pytest.raises(RuntimeError, match="incoming was preserved at"):
+        protocol.quarantine_incoming(release_id, t1_root=root)
+
+    assert not incoming.exists()
+    assert bootstrap.is_dir()
+    assert (bootstrap / "release_protocol.py").read_text(encoding="utf-8") == "partial helper\n"
+    quarantined_incoming = list((releases / ".quarantine").glob(f"{release_id}.*.partial"))
+    assert len(quarantined_incoming) == 1
+    assert (quarantined_incoming[0] / "release.tar").read_bytes() == b"partial archive"
+
+
+def test_quarantine_parent_swap_cannot_redirect_bootstrap_into_external_tree(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    root = tmp_path / "T1"
+    root.mkdir()
+    release_id = "1" * 40 + "-" + "2" * 64
+    releases = root / "releases"
+    incoming_root = releases / "incoming"
+    bootstrap_root = releases / ".bootstrap"
+    attempt = incoming_root / f"{release_id}.partial"
+    attempt.mkdir(parents=True)
+    (attempt / "partial.txt").write_text("partial upload", encoding="utf-8")
+    bootstrap = bootstrap_root / release_id
+    bootstrap.mkdir(parents=True)
+    (bootstrap / "bootstrap.txt").write_text("owned bootstrap", encoding="utf-8")
+    outside = tmp_path / "outside"
+    external_attempt = outside / release_id
+    external_attempt.mkdir(parents=True)
+    victim = external_attempt / "victim.txt"
+    victim.write_text("external data", encoding="utf-8")
+
+    monkeypatch.setattr(protocol, "T1_ROOT", root)
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases)
+    real_replace = os.replace
+    swapped = False
+
+    def replace_then_swap(source, destination, *args, **kwargs):
+        nonlocal swapped
+        result = real_replace(source, destination, *args, **kwargs)
+        source_name = Path(source).name
+        if source_name == attempt.name and not swapped:
+            swapped = True
+            os.rename(bootstrap_root, releases / ".bootstrap.original")
+            bootstrap_root.symlink_to(outside, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(protocol.os, "replace", replace_then_swap)
+    result = protocol.quarantine_incoming(release_id, t1_root=root)
+
+    assert swapped
+    assert victim.read_text(encoding="utf-8") == "external data"
+    assert external_attempt.is_dir()
+    preserved_bootstraps = list((releases / ".quarantine").glob(f"{release_id}.*.bootstrap"))
+    assert len(preserved_bootstraps) == 1
+    assert (preserved_bootstraps[0] / "bootstrap.txt").read_text(encoding="utf-8") == "owned bootstrap"
+    assert result["status"] == "partial_preserved_in_quarantine"
+
+
+def test_safe_release_extractor_rejects_path_escape_and_links(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import safe_extract_tar
+
+    archive_path = tmp_path / "unsafe.tar"
+    with tarfile.open(archive_path, "w") as archive:
+        member = tarfile.TarInfo("../escape.txt")
+        member.size = 1
+        import io
+        archive.addfile(member, io.BytesIO(b"x"))
+    destination = tmp_path / "out"
+    destination.mkdir()
+    with tarfile.open(archive_path, "r:") as archive:
+        with pytest.raises(ValueError, match="unsafe archive member"):
+            safe_extract_tar(archive, destination)
+    assert not (tmp_path / "escape.txt").exists()
+
+
+@pytest.mark.parametrize("name", [
+    ".env", ".env.production", "remote.env", "secrets/service.key", "private.pem",
+    "model.ckpt", "weights.pth", "weights.safetensors", "raw/map.pdf",
+    "raw/table.docx", "raw/slides.pptx", "data/population.tif", "data/population.png",
+    "data/measurements.parquet", "data/input.npz",
+])
+def test_deployment_exclusions_cover_secrets_and_non_source_assets(name: str) -> None:
+    from CODE.scripts.remote.release_protocol import t1_excluded
+
+    assert t1_excluded(PurePosixPath(name))
+
+
+def test_t1_exclusions_do_not_change_formal_deployment_policy() -> None:
+    from CODE.scripts.remote.deployment_guard import excluded
+    from CODE.scripts.remote.release_protocol import t1_excluded
+
+    for name in ("raw/map.pdf", "CODE/population_map/world.tif", "docs/figure.png"):
+        relative = PurePosixPath(name)
+        assert not excluded(relative)
+        assert t1_excluded(relative)
+
+
+@pytest.mark.parametrize("name", [
+    "CODE/data/traffic/mlab_2026-05-27.csv",
+    "CODE/data/traffic/mlab_sample.csv",
+    "CODE/data/traffic/t1_step5_micro_ab.csv",
+    "CODE/data/traffic/diurnal_mlab_2026-05-27.json",
+    "CODE/data/geoip/sites.json",
+])
+def test_t1_release_excludes_locally_registered_unverified_mlab_assets(
+        name: str) -> None:
+    from CODE.scripts.remote.release_protocol import t1_excluded
+
+    assert t1_excluded(PurePosixPath(name))
+
+
+@pytest.mark.parametrize("name", [
+    "remote.env.template", ".env.template", ".env.example", "CODE/scripts/remote/deployment_guard.py",
+])
+def test_deployment_exclusions_keep_templates_and_source_code(name: str) -> None:
+    from CODE.scripts.remote.deployment_guard import excluded
+
+    assert not excluded(PurePosixPath(name))
+
+
+def test_secret_scan_reports_location_without_disclosing_value() -> None:
+    from CODE.scripts.remote.release_protocol import _redact_argv, scan_secret_text
+
+    secret = "ghp_" + "A" * 36
+    findings = scan_secret_text({"CODE/settings.py": f"API_TOKEN = '{secret}'\n".encode()})
+
+    assert findings == [{"path": "CODE/settings.py", "line": 1, "rule": "github_token"}]
+    assert secret not in repr(findings)
+    credential_url = "https://" + "user:" + "private-value" + "@example.invalid"
+    redacted = _redact_argv(["--api_key", "sensitive-value-123", credential_url])
+    assert "sensitive-value-123" not in repr(redacted)
+    assert "private-value" not in repr(redacted)
+
+
+def test_release_refuses_tracked_secret_paths_and_detected_secret_content(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import build_release
+
+    repo, _commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    env_file = repo / "CODE" / "remote.env"
+    env_file.write_text("REMOTE_TOKEN=filled-secret\n", encoding="utf-8")
+    _git(repo, "add", "-f", "CODE/remote.env")
+    _git(repo, "commit", "-q", "-m", "unsafe tracked env fixture")
+    commit = _git(repo, "rev-parse", "HEAD")
+
+    with pytest.raises(ValueError, match="tracked credential file") as error:
+        build_release(repo, commit, tmp_path / "bundle", remote_refs=[])
+    assert "filled-secret" not in str(error.value)
+
+    _git(repo, "rm", "-q", "--cached", "CODE/remote.env")
+    env_file.unlink()
+    source = repo / "CODE" / "payload.py"
+    secret = "ghp_" + "B" * 36
+    source.write_text(f"API_TOKEN = '{secret}'\n", encoding="utf-8")
+    _git(repo, "add", "CODE/payload.py")
+    _git(repo, "commit", "-q", "-m", "unsafe tracked token fixture")
+    commit = _git(repo, "rev-parse", "HEAD")
+    with pytest.raises(ValueError, match="secret scan") as error:
+        build_release(repo, commit, tmp_path / "second-bundle", remote_refs=[])
+    assert secret not in str(error.value)
+
+
+def _add_runtime_contract(repo: Path, runtime_identity: dict) -> None:
+    lock_dir = repo / "CODE" / "dependencies" / "t1-vm-linux-aarch64"
+    lock_dir.mkdir(parents=True)
+    pip_lock = lock_dir / "requirements.lock"
+    conda_lock = lock_dir / "conda-linux-aarch64.explicit.lock"
+    pip_lock.write_text("fixture-package==1.2.3\n", encoding="utf-8")
+    conda_lock.write_text(
+        "@EXPLICIT\nhttps://conda.example.invalid/linux-aarch64/python-3.11.15-build.conda\n",
+        encoding="utf-8",
+    )
+    hash_file = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+    contract = {
+        "schema": "leo-t1-runtime-identity/v1",
+        "python": runtime_identity["python"],
+        "platform": runtime_identity["platform"],
+        "machine": runtime_identity["machine"],
+        "installed_packages_sha256": runtime_identity["installed_packages_sha256"],
+        "dependency_lock_sha256s": {
+            "CODE/dependencies/t1-vm-linux-aarch64/requirements.lock": hash_file(pip_lock),
+            "CODE/dependencies/t1-vm-linux-aarch64/conda-linux-aarch64.explicit.lock": hash_file(conda_lock),
+        },
+    }
+    contract_path = lock_dir / "runtime-identity.json"
+    contract_path.write_text(json.dumps(contract, sort_keys=True) + "\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "add T1 runtime identity contract")
+
+
+def _installed_fixture(tmp_path: Path) -> tuple[Path, Path, str]:
+    from CODE.scripts.remote import release_protocol as protocol
+    from CODE.scripts.remote.release_protocol import build_release, install_release
+
+    repo, _commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    _add_runtime_contract(repo, protocol._runtime_identity())
+    commit = _git(repo, "rev-parse", "HEAD")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(repo, commit, bundle,
+                             remote_refs=[(commit, "refs/heads/main")])
+    releases_root = tmp_path / "vm" / "releases"
+    install_release(bundle, releases_root, bootstrap=repo / "CODE/scripts/remote/release_protocol.py")
+    protocol.write_current_pointer(
+        envelope["release_id"], releases_root,
+        remote_proof=_remote_proof(commit))
+    return repo, releases_root, envelope["release_id"]
+
+
+def _installed_fixture_with_runtime_contract(tmp_path: Path):
+    from CODE.scripts.remote import release_protocol as protocol
+    from CODE.scripts.remote.release_protocol import build_release, install_release
+
+    repo, _commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    _add_runtime_contract(repo, {
+        "python": "3.11.15", "platform": "linux", "machine": "aarch64",
+        "installed_packages_sha256": "a" * 64,
+    })
+    commit = _git(repo, "rev-parse", "HEAD")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(repo, commit, bundle,
+                             remote_refs=[(commit, "refs/heads/main")])
+    releases_root = tmp_path / "vm" / "releases"
+    install_release(bundle, releases_root,
+                   bootstrap=repo / "CODE/scripts/remote/release_protocol.py")
+    protocol.write_current_pointer(
+        envelope["release_id"], releases_root,
+        remote_proof=_remote_proof(commit))
+    return repo, releases_root, envelope["release_id"]
+
+
+def _canonical_installed_fixture(tmp_path: Path) -> tuple[Path, Path, str]:
+    from CODE.scripts.remote.release_protocol import build_release, install_release
+
+    repo, _commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    commit = _git(repo, "rev-parse", "HEAD")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(
+        repo,
+        commit,
+        bundle,
+        remote_refs=[(commit, "refs/heads/main")],
+    )
+    releases_root = tmp_path / "vm" / "releases"
+    install_release(
+        bundle,
+        releases_root,
+        bootstrap=repo / "CODE/scripts/remote/release_protocol.py",
+    )
+    return repo, releases_root, envelope["release_id"]
+
+
+def test_current_pointer_requires_and_roundtrips_a_verified_main_release(tmp_path: Path) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _canonical_installed_fixture(tmp_path)
+
+    pointer = protocol.write_current_pointer(
+        release_id, releases_root,
+        remote_proof=_remote_proof(release_id.split("-", 1)[0]))
+    current = protocol.verify_current_release(releases_root)
+
+    assert pointer["schema"] == protocol.CURRENT_POINTER_SCHEMA
+    assert pointer["source_git_commit"] == release_id.split("-", 1)[0]
+    assert pointer["remote_ref"] == "refs/heads/main"
+    assert current["release_id"] == release_id
+    pointer_path = releases_root.parent / protocol.CURRENT_POINTER_NAME
+    assert stat.S_IMODE(pointer_path.stat().st_mode) == 0o444
+    assert pointer["remote_proof_sha256"] == pointer["remote_proof"]["proof_sha256"]
+
+
+def test_remote_main_proof_roundtrip_and_expiry(tmp_path: Path) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    proof_path = tmp_path / "proof.json"
+    proof = _remote_proof("a" * 40)
+    protocol._write_json_atomic(proof_path, proof)
+    assert protocol.read_remote_ref_proof(proof_path)["commit"] == "a" * 40
+
+    stale = _remote_proof(
+        "a" * 40,
+        checked_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds"))
+    with pytest.raises(ValueError, match="stale"):
+        protocol.verify_remote_ref_proof(
+            stale,
+            expected_repository="example/release-test",
+            expected_commit="a" * 40,
+            expected_ref="refs/heads/main",
+            max_age_seconds=60,
+        )
+
+    tampered = dict(proof)
+    tampered["commit"] = "b" * 40
+    with pytest.raises(ValueError, match="proof hash mismatch"):
+        protocol.verify_remote_ref_proof(
+            tampered,
+            expected_repository="example/release-test",
+            expected_commit="a" * 40,
+            expected_ref="refs/heads/main",
+        )
+
+    wrong_binding = _remote_proof("b" * 40)
+    with pytest.raises(ValueError, match="commit mismatch"):
+        protocol.verify_remote_ref_proof(
+            wrong_binding,
+            expected_repository="example/release-test",
+            expected_commit="a" * 40,
+            expected_ref="refs/heads/main",
+        )
+
+    proof_path.chmod(0o644)
+    tampered_file = json.loads(proof_path.read_text(encoding="utf-8"))
+    tampered_file["repository"] = "other/repository"
+    proof_path.write_text(json.dumps(tampered_file), encoding="utf-8")
+    with pytest.raises(ValueError, match="hash mismatch"):
+        protocol.read_remote_ref_proof(proof_path)
+
+
+def test_staged_proof_is_exclusive_under_incoming_and_cleanup_is_verified(
+    tmp_path: Path,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    releases_root = tmp_path / "vm" / "releases"
+    incoming = releases_root / "incoming"
+    incoming.mkdir(parents=True)
+    proof_path = incoming / ("a" * 40 + "-" + "b" * 64 + ".attempt.remote-proof.json")
+    data = json.dumps(_remote_proof("a" * 40)).encode("utf-8")
+
+    staged = protocol.stage_remote_proof(proof_path, data, releases_root=releases_root)
+    assert staged["status"] == "staged"
+    assert stat.S_IMODE(proof_path.stat().st_mode) == 0o600
+    with pytest.raises(ValueError, match="already exists"):
+        protocol.stage_remote_proof(proof_path, data, releases_root=releases_root)
+
+    removed = protocol.remove_staged_proof(proof_path, releases_root=releases_root)
+    assert removed["status"] == "removed"
+    assert not proof_path.exists()
+
+    outside = tmp_path / "outside.remote-proof.json"
+    with pytest.raises(ValueError, match="direct remote-proof"):
+        protocol.stage_remote_proof(outside, data, releases_root=releases_root)
+
+
+def test_staged_proof_refuses_symlink_target(tmp_path: Path) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    releases_root = tmp_path / "vm" / "releases"
+    incoming = releases_root / "incoming"
+    incoming.mkdir(parents=True)
+    victim = tmp_path / "victim.txt"
+    victim.write_text("preserve", encoding="utf-8")
+    proof_path = incoming / ("a" * 40 + "-" + "b" * 64 + ".attempt.remote-proof.json")
+    proof_path.symlink_to(victim)
+
+    with pytest.raises(ValueError, match="exists or is unsafe"):
+        protocol.stage_remote_proof(
+            proof_path, json.dumps(_remote_proof("a" * 40)).encode("utf-8"),
+            releases_root=releases_root)
+    assert victim.read_text(encoding="utf-8") == "preserve"
+
+
+def test_set_current_cli_accepts_publisher_proof_without_live_access(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _canonical_installed_fixture(tmp_path)
+    commit = release_id.split("-", 1)[0]
+    proof_path = tmp_path / "remote-proof.json"
+    proof_path.write_text(json.dumps(_remote_proof(commit)), encoding="utf-8")
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases_root)
+    monkeypatch.setattr(
+        protocol, "_live_remote_ref_matches",
+        lambda *args: (_ for _ in ()).throw(AssertionError("VM must not query GitHub")))
+
+    rc = protocol.main([
+        "set-current", "--release-id", release_id,
+        "--releases-root", str(releases_root),
+        "--remote-proof-file", str(proof_path),
+    ])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["release_id"] == release_id
+    assert protocol.verify_current_release(releases_root)["release_id"] == release_id
+
+
+def test_current_pointer_refuses_release_not_backed_by_main(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import build_release, install_release
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, _commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    commit = _git(repo, "rev-parse", "HEAD")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(
+        repo,
+        commit,
+        bundle,
+        remote_refs=[(commit, "refs/heads/topic")],
+    )
+    releases_root = tmp_path / "vm" / "releases"
+    install_release(bundle, releases_root)
+
+    with pytest.raises(ValueError, match="refs/heads/main"):
+        protocol.write_current_pointer(
+            envelope["release_id"], releases_root,
+            remote_proof=_remote_proof(commit))
+    assert not (releases_root.parent / protocol.CURRENT_POINTER_NAME).exists()
+
+
+def test_current_pointer_requires_an_explicit_main_proof(tmp_path: Path) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _canonical_installed_fixture(tmp_path)
+
+    with pytest.raises(TypeError, match="remote_proof"):
+        protocol.write_current_pointer(release_id, releases_root)
+    assert not (releases_root.parent / protocol.CURRENT_POINTER_NAME).exists()
+
+
+def test_current_pointer_tamper_is_rejected(tmp_path: Path) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _canonical_installed_fixture(tmp_path)
+    protocol.write_current_pointer(
+        release_id, releases_root,
+        remote_proof=_remote_proof(release_id.split("-", 1)[0]))
+    pointer_path = releases_root.parent / protocol.CURRENT_POINTER_NAME
+    pointer_path.chmod(0o644)
+    pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+    pointer["release_id"] = "f" * 40 + "-" + "e" * 64
+    pointer_path.write_text(json.dumps(pointer), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="hash mismatch"):
+        protocol.verify_current_release(releases_root)
+
+
+def test_canonical_build_rejects_wrong_remote_or_local_branch(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import build_release
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+
+    with pytest.raises(ValueError, match="local branch"):
+        build_release(
+            repo,
+            commit,
+            tmp_path / "wrong-local",
+            remote_refs=[(commit, "refs/heads/main")],
+            required_local_branch="release-main",
+        )
+    with pytest.raises(ValueError, match="refs/heads/main"):
+        build_release(
+            repo,
+            commit,
+            tmp_path / "wrong-remote",
+            remote_refs=[(commit, "refs/heads/topic")],
+            required_remote_ref="refs/heads/main",
+        )
+
+
+def test_build_cli_passes_expected_repository_into_the_builder(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "branch", "-M", "main")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    monkeypatch.setattr(
+        protocol, "_remote_commit_state",
+        lambda *args, **kwargs: {
+            "status": "verified", "ref": "refs/heads/main",
+            "checked_at": "2026-11-23T00:00:00+00:00",
+        })
+    out = tmp_path / "bundle"
+
+    rc = protocol.main([
+        "build", "--repo", str(repo), "--commit", commit, "--out", str(out),
+        "--expected-repository", "example/release-test",
+        "--required-local-branch", "main",
+        "--required-remote-ref", "refs/heads/main",
+    ])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["repository"] == "example/release-test"
+
+
+def test_verify_source_cli_passes_expected_repository(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "branch", "-M", "main")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    monkeypatch.setattr(
+        protocol, "_remote_commit_state",
+        lambda *args, **kwargs: {
+            "status": "verified", "ref": "refs/heads/main",
+            "checked_at": "2026-11-23T00:00:00+00:00",
+        })
+
+    rc = protocol.main([
+        "verify-source", "--repo", str(repo), "--commit", commit,
+        "--required-local-branch", "main",
+        "--required-remote-ref", "refs/heads/main",
+        "--expected-repository", "example/release-test",
+    ])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["repository"] == "example/release-test"
+
+
+def test_build_remote_proof_cli_writes_a_self_hashed_live_binding(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    monkeypatch.setattr(
+        protocol, "_remote_commit_state",
+        lambda *args, **kwargs: {
+            "status": "verified", "ref": "refs/heads/main",
+            "checked_at": "2026-11-23T00:00:00+00:00",
+        })
+    out = tmp_path / "remote-proof.json"
+
+    rc = protocol.main([
+        "build-remote-proof", "--repo", str(repo), "--commit", commit,
+        "--ref", "refs/heads/main",
+        "--expected-repository", "example/release-test", "--out", str(out),
+    ])
+
+    assert rc == 0
+    emitted = json.loads(capsys.readouterr().out)
+    proof = json.loads(out.read_text(encoding="utf-8"))
+    assert emitted["proof_sha256"] == proof["proof_sha256"]
+    assert proof["commit"] == commit
+    assert proof["repository"] == "example/release-test"
+
+
+def test_require_remote_ref_rechecks_the_live_branch_tip(tmp_path: Path, monkeypatch) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    monkeypatch.setattr(
+        protocol,
+        "_remote_commit_state",
+        lambda *args, **kwargs: {
+            "status": "verified",
+            "ref": "refs/heads/main",
+            "checked_at": "2026-11-23T00:00:00+00:00",
+        },
+    )
+
+    assert protocol.require_remote_ref(repo, commit, "refs/heads/main")["ref"] == "refs/heads/main"
+    monkeypatch.setattr(
+        protocol,
+        "_remote_commit_state",
+        lambda *args, **kwargs: {"status": "remote_backup_pending"},
+    )
+    with pytest.raises(ValueError, match="live tip"):
+        protocol.require_remote_ref(repo, commit, "refs/heads/main")
+
+
+def test_verify_source_commit_requires_clean_main_and_live_remote(tmp_path: Path, monkeypatch) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "branch", "-M", "main")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    monkeypatch.setattr(
+        protocol,
+        "_remote_commit_state",
+        lambda *args, **kwargs: {
+            "status": "verified",
+            "ref": "refs/heads/main",
+            "checked_at": "2026-11-23T00:00:00+00:00",
+        },
+    )
+
+    verified = protocol.verify_source_commit(
+        repo, commit, required_local_branch="main",
+        required_remote_ref="refs/heads/main",
+        expected_repository="example/release-test")
+    assert verified["status"] == "verified"
+    assert verified["repository"] == "example/release-test"
+    assert verified["remote_backup"]["ref"] == "refs/heads/main"
+
+    with pytest.raises(ValueError, match="source origin must be"):
+        protocol.verify_source_commit(
+            repo, commit, required_local_branch="main",
+            required_remote_ref="refs/heads/main",
+            expected_repository="fuguther/leo-experiment-platform")
+
+    monkeypatch.setattr(
+        protocol, "_remote_commit_state",
+        lambda *args, **kwargs: {"status": "remote_backup_pending"})
+    with pytest.raises(ValueError, match="live tip"):
+        protocol.verify_source_commit(
+            repo, commit, required_local_branch="main",
+            required_remote_ref="refs/heads/main")
+
+    _git(repo, "remote", "set-url", "origin", str(tmp_path / "local-origin.git"))
+    with pytest.raises(ValueError, match="origin must identify a GitHub repository"):
+        protocol.verify_source_commit(
+            repo, commit, required_local_branch="main",
+            required_remote_ref="refs/heads/main",
+            expected_repository="fuguther/leo-experiment-platform")
+
+
+def test_run_rejects_release_installed_under_a_different_release_id_directory(
+    tmp_path: Path,
+) -> None:
+    from CODE.scripts.remote.release_protocol import run_release
+
+    _repo_path, releases_root, release_id = _installed_fixture(tmp_path)
+    mismatched_id = "f" * 40 + "-" + "e" * 64
+    (releases_root / release_id).rename(releases_root / mismatched_id)
+    runs_root = tmp_path / "vm" / "runs"
+
+    with pytest.raises(ValueError, match="identity mismatch"):
+        run_release(
+            mismatched_id,
+            "mismatched-release-001",
+            release_root=releases_root,
+            runs_root=runs_root,
+            mode="diagnostic",
+            argv=["python3", "CODE/payload.py"],
+        )
+
+    assert not (runs_root / "mismatched-release-001").exists()
+
+
+def test_run_requires_current_pointer_before_creating_a_run_directory(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import run_release
+
+    _repo_path, releases_root, release_id = _installed_fixture(tmp_path)
+    (releases_root.parent / "CURRENT.json").unlink()
+    runs_root = tmp_path / "vm" / "runs"
+
+    with pytest.raises(ValueError, match="CURRENT.json"):
+        run_release(
+            release_id,
+            "missing-current-001",
+            release_root=releases_root,
+            runs_root=runs_root,
+            mode="diagnostic",
+            argv=["python3", "CODE/payload.py"],
+        )
+
+    assert not (runs_root / "missing-current-001").exists()
+
+
+def test_run_rejects_runtime_identity_mismatch_before_creating_run_directory(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _installed_fixture_with_runtime_contract(tmp_path)
+    monkeypatch.setattr(protocol, "_runtime_identity", lambda: {
+        "python": "3.11.15", "platform": "linux", "machine": "x86_64",
+        "installed_packages_sha256": "a" * 64,
+    })
+    runs_root = tmp_path / "vm" / "runs"
+    with pytest.raises(ValueError, match="runtime identity mismatch"):
+        protocol.run_release(
+            release_id,
+            "wrong-runtime-001",
+            release_root=releases_root,
+            runs_root=runs_root,
+            mode="diagnostic",
+            argv=["python3", "CODE/payload.py"],
+        )
+
+    assert not (runs_root / "wrong-runtime-001").exists()
+
+
+def test_run_enforces_runtime_contract_when_called_directly(tmp_path: Path) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _installed_fixture_with_runtime_contract(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+
+    with pytest.raises(ValueError, match="runtime identity mismatch"):
+        protocol.run_release(
+            release_id,
+            "direct-runtime-mismatch-001",
+            release_root=releases_root,
+            runs_root=runs_root,
+            mode="diagnostic",
+            argv=["python3", "CODE/payload.py"],
+        )
+
+    assert not (runs_root / "direct-runtime-mismatch-001").exists()
+
+
+def test_run_accepts_matching_runtime_contract_and_binds_its_hash(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _installed_fixture_with_runtime_contract(tmp_path)
+    release_dir = releases_root / release_id
+    runtime = {
+        "python": "3.11.15", "platform": "linux", "machine": "aarch64",
+        "installed_packages_sha256": "a" * 64,
+    }
+    monkeypatch.setattr(protocol, "_runtime_identity", lambda: runtime)
+    runs_root = tmp_path / "vm" / "runs"
+
+    result = protocol.run_release(
+        release_id,
+        "matching-runtime-001",
+        release_root=releases_root,
+        runs_root=runs_root,
+        mode="diagnostic",
+        argv=["python3", "CODE/payload.py"],
+    )
+
+    contract_path = release_dir / "CODE/dependencies/t1-vm-linux-aarch64/runtime-identity.json"
+    manifest = json.loads(
+        (runs_root / "matching-runtime-001" / "run-manifest.json").read_text(
+            encoding="utf-8"))
+    assert result["status"] == "completed"
+    assert manifest["current_release_status"] == "verified_current"
+    assert re.fullmatch(r"[0-9a-f]{64}", manifest["current_release_pointer_sha256"])
+    assert manifest["environment"]["machine"] == "aarch64"
+    assert manifest["runtime_contract"] == {
+        "path": "CODE/dependencies/t1-vm-linux-aarch64/runtime-identity.json",
+        "sha256": hashlib.sha256(contract_path.read_bytes()).hexdigest(),
+    }
+    assert protocol.verify_run_directory(
+        runs_root / "matching-runtime-001",
+        expected_run_id="matching-runtime-001",
+        expected_release_id=release_id,
+        release_dir=release_dir,
+    )["release_id"] == release_id
+
+
+def test_runtime_contract_rejects_dependency_lock_hash_mismatch(tmp_path: Path) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _installed_fixture_with_runtime_contract(tmp_path)
+    release_dir = releases_root / release_id
+    lock_path = release_dir / "CODE/dependencies/t1-vm-linux-aarch64/requirements.lock"
+    lock_path.chmod(0o644)
+    lock_path.write_text("fixture-package==9.9.9\n", encoding="utf-8")
+    runtime = {
+        "python": "3.11.15", "platform": "linux", "machine": "aarch64",
+        "installed_packages_sha256": "a" * 64,
+    }
+
+    with pytest.raises(ValueError, match="runtime dependency lock mismatch"):
+        protocol._verify_runtime_contract(
+            release_dir,
+            "CODE/dependencies/t1-vm-linux-aarch64/runtime-identity.json",
+            runtime,
+        )
+
+
+def test_run_cli_rejects_runtime_mismatch_before_creating_run_directory(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    _repo_path, releases_root, release_id = _installed_fixture_with_runtime_contract(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+    monkeypatch.setattr(protocol, "RELEASE_ROOT", releases_root)
+    monkeypatch.setattr(protocol, "RUN_ROOT", runs_root)
+    result = protocol.main([
+        "run", "--release-id", release_id,
+        "--run-id", "runtime-contract-cli-001", "--mode", "diagnostic",
+            "--allow-historical-release",
+        "--", "python3", "CODE/payload.py",
+    ])
+
+    assert result == 2
+    assert "runtime identity mismatch" in capsys.readouterr().err
+    assert not (runs_root / "runtime-contract-cli-001").exists()
+
+
+def test_run_binds_release_inputs_runtime_and_unique_run_id(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import run_release, verify_run_directory
+
+    repo, releases_root, release_id = _installed_fixture(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+    receipt = run_release(
+        release_id,
+        "diagnostic-001",
+        release_root=releases_root,
+        runs_root=runs_root,
+        mode="diagnostic",
+        config="README.md",
+        inputs=["fixture=CODE/payload.py"],
+        seed=17,
+        argv=["python3", "CODE/payload.py"],
+    )
+
+    run_dir = runs_root / "diagnostic-001"
+    assert receipt["status"] == "completed"
+    assert receipt["source_git_commit"] == _git(repo, "rev-parse", "HEAD")
+    verified = verify_run_directory(run_dir, expected_run_id="diagnostic-001",
+                                    expected_release_id=release_id)
+    manifest = json.loads((run_dir / "run-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["random_seed"] == 17
+    assert manifest["config"]["sha256"]
+    assert manifest["inputs"][0]["name"] == "fixture"
+    assert manifest["environment"]["installed_packages_sha256"]
+    assert verified["receipt_sha256"] == receipt["receipt_sha256"]
+    assert (run_dir / "tmp" / "result.txt").read_text(encoding="utf-8") == "diagnostic output\n"
+    assert (run_dir / "stdout.log").read_text(encoding="utf-8") == "safe diagnostic\n"
+    stderr_log = (run_dir / "stderr.log").read_text(encoding="utf-8")
+    assert "verylongcredential" not in stderr_log
+    assert "REDACTED" in stderr_log
+
+    with pytest.raises(ValueError, match="already exists"):
+        run_release(release_id, "diagnostic-001", release_root=releases_root,
+                    runs_root=runs_root, mode="diagnostic", argv=["python3", "CODE/payload.py"])
+
+
+def test_run_uses_an_immutable_input_snapshot_after_source_path_changes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, _commit = _repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    reader = repo / "CODE" / "consume_input.py"
+    reader.write_text(
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        "value = Path(sys.argv[1]).read_text(encoding='utf-8')\n"
+        "env_value = Path(os.environ['T1_INPUT_DATASET']).read_text(encoding='utf-8')\n"
+        "assert value == env_value\n"
+        "Path(os.environ['TMPDIR'], 'consumed.txt').write_text(value, encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "CODE/consume_input.py")
+    _git(repo, "commit", "-q", "-m", "add declared input reader")
+    _add_runtime_contract(repo, protocol._runtime_identity())
+    commit = _git(repo, "rev-parse", "HEAD")
+    bundle = tmp_path / "bundle"
+    envelope = build_release(repo, commit, bundle,
+                             remote_refs=[(commit, "refs/heads/main")])
+    releases_root = tmp_path / "vm" / "releases"
+    protocol.install_release(bundle, releases_root, bootstrap=reader.parent / "scripts/remote/release_protocol.py")
+    protocol.write_current_pointer(
+        envelope["release_id"], releases_root,
+        remote_proof=_remote_proof(commit))
+    source = tmp_path / "input.txt"
+    source.write_text("version A\n", encoding="utf-8")
+    real_drain = protocol._drain_child
+
+    def mutate_source_then_run(argv, cwd, run_dir, timeout_seconds, *args, **kwargs):
+        source.write_text("version B\n", encoding="utf-8")
+        return real_drain(argv, cwd, run_dir, timeout_seconds, *args, **kwargs)
+
+    monkeypatch.setattr(protocol, "_drain_child", mutate_source_then_run)
+    runs_root = tmp_path / "vm" / "runs"
+    receipt = protocol.run_release(
+        envelope["release_id"], "snapshot-001", release_root=releases_root,
+        runs_root=runs_root, config=str(source), inputs=[f"dataset={source}"], mode="diagnostic",
+        argv=["python3", "CODE/consume_input.py", str(source)],
+    )
+
+    run_dir = runs_root / "snapshot-001"
+    manifest = json.loads((run_dir / "run-manifest.json").read_text(encoding="utf-8"))
+    input_record = manifest["inputs"][0]
+    assert receipt["status"] == "completed"
+    assert (run_dir / "tmp" / "consumed.txt").read_text(encoding="utf-8") == "version A\n"
+    assert (run_dir / input_record["snapshot_path"]).read_bytes() == b"version A\n"
+    assert hashlib.sha256((run_dir / input_record["snapshot_path"]).read_bytes()).hexdigest() == input_record["sha256"]
+    config_record = manifest["config"]
+    assert (run_dir / config_record["snapshot_path"]).read_bytes() == b"version A\n"
+    assert protocol.verify_run_directory(
+        run_dir, expected_run_id="snapshot-001", expected_release_id=envelope["release_id"]
+    )["receipt_sha256"] == receipt["receipt_sha256"]
+
+
+def test_run_rejects_formal_mode_and_non_python_command_without_execution(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import run_release
+
+    _, releases_root, release_id = _installed_fixture(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+    with pytest.raises(ValueError, match="formal runs stay"):
+        run_release(release_id, "formal-001", release_root=releases_root,
+                    runs_root=runs_root, mode="formal", argv=["python3", "-c", "pass"])
+    with pytest.raises(ValueError, match="entrypoint"):
+        run_release(release_id, "shell-001", release_root=releases_root,
+                    runs_root=runs_root, mode="diagnostic", argv=["python3", "-c", "pass"])
+    with pytest.raises(ValueError, match="Python entrypoint"):
+        run_release(release_id, "outside-001", release_root=releases_root,
+                    runs_root=runs_root, mode="diagnostic", argv=["sh", "-c", "touch pwned"])
+    assert not (runs_root / "formal-001").exists()
+    assert not (runs_root / "shell-001").exists()
+    assert not (runs_root / "outside-001").exists()
+
+
+def test_two_runs_share_read_only_release_without_sharing_outputs(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    from CODE.scripts.remote.release_protocol import run_release, verify_run_directory, verify_installed_release
+
+    _, releases_root, release_id = _installed_fixture(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        receipts = list(executor.map(
+            lambda run_id: run_release(
+                release_id, run_id, release_root=releases_root, runs_root=runs_root,
+                mode="diagnostic", argv=["python3", "CODE/payload.py"],
+            ),
+            ("parallel-a", "parallel-b"),
+        ))
+    assert {item["run_id"] for item in receipts} == {"parallel-a", "parallel-b"}
+    for run_id in ("parallel-a", "parallel-b"):
+        receipt = verify_run_directory(runs_root / run_id, expected_release_id=release_id)
+        assert receipt["status"] == "completed"
+        assert (runs_root / run_id / "tmp" / "result.txt").is_file()
+    assert verify_installed_release(releases_root / release_id)["release_id"] == release_id
+
+
+def test_concurrent_verified_index_appends_keep_both_complete_records(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    from CODE.scripts.remote.release_protocol import append_deployment_index, run_release
+
+    repo, releases_root, release_id = _installed_fixture(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+    receipts = [
+        run_release(release_id, run_id, release_root=releases_root, runs_root=runs_root,
+                    mode="diagnostic", argv=["python3", "CODE/payload.py"])
+        for run_id in ("index-parallel-a", "index-parallel-b")
+    ]
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(
+            lambda receipt: append_deployment_index(
+                repo, receipt, runs_root / receipt["run_id"]
+            ),
+            receipts,
+        ))
+
+    index = repo / "ANALYSIS" / "DEPLOYMENT-INDEX.jsonl"
+    rows = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines()]
+    assert {row["run_id"] for row in rows} == {"index-parallel-a", "index-parallel-b"}
+    assert all(row["pullback_status"] == "VERIFIED" for row in rows)
+
+
+def test_busy_resource_group_fails_without_consuming_run_id(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import run_release
+
+    _, releases_root, release_id = _installed_fixture(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+    lock_dir = runs_root / ".locks"
+    lock_dir.mkdir(parents=True)
+    lock_path = lock_dir / "gpu.lock"
+    with lock_path.open("a+b") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(ValueError, match="already in use"):
+            run_release(release_id, "resource-001", release_root=releases_root,
+                        runs_root=runs_root, mode="diagnostic", resource_group="gpu",
+                        argv=["python3", "CODE/payload.py"])
+    assert not (runs_root / "resource-001").exists()
+
+
+def test_verified_pullback_is_atomic_and_refuses_identity_or_content_mismatch(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import pullback_run, run_release
+
+    _, releases_root, release_id = _installed_fixture(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+    run_release(release_id, "pull-001", release_root=releases_root,
+                runs_root=runs_root, mode="diagnostic", argv=["python3", "CODE/payload.py"])
+    run_dir = runs_root / "pull-001"
+    archive_path = tmp_path / "run.tar.gz"
+    with tarfile.open(archive_path, "w:gz") as archive:
+        archive.add(run_dir, arcname=".", recursive=True)
+    evidence_root = tmp_path / "evidence"
+
+    result = pullback_run(archive_path.open("rb"), evidence_root,
+                          expected_run_id="pull-001", expected_release_id=release_id)
+
+    assert result["status"] == "verified"
+    assert (evidence_root / "pull-001" / "run-receipt.json").is_file()
+    repeated = pullback_run(archive_path.open("rb"), evidence_root,
+                            expected_run_id="pull-001", expected_release_id=release_id)
+    assert repeated["status"] == "already_verified"
+    with pytest.raises(ValueError, match="unexpected run ID"):
+        pullback_run(archive_path.open("rb"), tmp_path / "other-evidence",
+                     expected_run_id="different-id", expected_release_id=release_id)
+
+    original = (evidence_root / "pull-001" / "run.log").read_bytes()
+    candidate = tmp_path / "tampered.tar.gz"
+    with tarfile.open(candidate, "w:gz") as archive:
+        for path in sorted(run_dir.rglob("*")):
+                if path.is_file():
+                    data = path.read_bytes()
+                    info = tarfile.TarInfo(path.relative_to(run_dir).as_posix())
+                    payload = data + b"tampered" if info.name == "run.log" else data
+                    info.size = len(payload)
+                    archive.addfile(info, io.BytesIO(payload))
+    with pytest.raises(ValueError, match="file set or hash mismatch"):
+        pullback_run(candidate.open("rb"), tmp_path / "tampered-evidence",
+                     expected_run_id="pull-001", expected_release_id=release_id)
+    assert (evidence_root / "pull-001" / "run.log").read_bytes() == original
+
+
+def test_verified_pullback_appends_one_small_idempotent_index_record(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import (
+        append_deployment_index,
+        run_release,
+        verify_run_directory,
+    )
+
+    repo, releases_root, release_id = _installed_fixture(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+    run_release(release_id, "index-001", release_root=releases_root,
+                runs_root=runs_root, mode="diagnostic", argv=["python3", "CODE/payload.py"])
+    run_dir = runs_root / "index-001"
+    receipt = verify_run_directory(run_dir)
+    evidence_path = tmp_path / "external-evidence" / "index-001"
+    evidence_path.parent.mkdir()
+    import shutil
+    shutil.copytree(run_dir, evidence_path)
+
+    append_deployment_index(repo, receipt, evidence_path)
+    append_deployment_index(repo, receipt, evidence_path)
+
+    index = repo / "ANALYSIS" / "DEPLOYMENT-INDEX.jsonl"
+    lines = index.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["run_id"] == "index-001"
+    assert record["release_id"] == release_id
+    assert record["pullback_status"] == "VERIFIED"
+    assert record["analysis_commit"] is None
+    assert record["evidence_uri"] == "evidence://t1/index-001"
+
+
+def test_failed_pullback_is_quarantined_before_a_clean_retry(tmp_path: Path) -> None:
+    from CODE.scripts.remote.release_protocol import pullback_run, run_release
+
+    _, releases_root, release_id = _installed_fixture(tmp_path)
+    runs_root = tmp_path / "vm" / "runs"
+    run_release(release_id, "retry-001", release_root=releases_root,
+                runs_root=runs_root, mode="diagnostic", argv=["python3", "CODE/payload.py"])
+    run_dir = runs_root / "retry-001"
+    good_archive = tmp_path / "good.tar.gz"
+    with tarfile.open(good_archive, "w:gz") as archive:
+        archive.add(run_dir, arcname=".", recursive=True)
+    evidence_root = tmp_path / "evidence"
+    with pytest.raises((tarfile.ReadError, EOFError, ValueError)):
+        pullback_run(io.BytesIO(b"truncated transfer"), evidence_root,
+                     expected_run_id="retry-001", expected_release_id=release_id)
+    partial = evidence_root / ".incoming" / "retry-001.partial"
+    assert partial.exists()
+
+    result = pullback_run(good_archive.open("rb"), evidence_root,
+                          expected_run_id="retry-001", expected_release_id=release_id)
+
+    assert result["status"] == "verified"
+    quarantined = list((evidence_root / ".quarantine").glob("retry-001.*.partial"))
+    assert len(quarantined) == 1
+    assert quarantined[0].is_dir()
+
+
+def test_run_exits_non_zero_when_the_child_did_not_complete(monkeypatch):
+    """A recorded failure must reach the caller's exit code.
+
+    run_release writes status/exit_code into the receipt, but the CLI printed
+    the result and returned 0, so run-release-remote.sh (which only checks
+    `|| die`) treated a failed attempt as success.
+    """
+    from CODE.scripts.remote import release_protocol as protocol
+
+    monkeypatch.setattr(protocol, "run_release", lambda *a, **k: {
+        "schema": protocol.RUN_RECEIPT_SCHEMA,
+        "run_id": "run-x",
+        "status": "failed",
+        "exit_code": 17,
+    })
+    argv = ["run", "--release-id", "r1", "--run-id", "run-x",
+            "--mode", "diagnostic", "--", "python", "-c", "raise SystemExit(17)"]
+    assert protocol.main(argv) == 3
+
+
+def test_run_exits_zero_only_when_the_child_completed(monkeypatch):
+    from CODE.scripts.remote import release_protocol as protocol
+
+    monkeypatch.setattr(protocol, "run_release", lambda *a, **k: {
+        "schema": protocol.RUN_RECEIPT_SCHEMA,
+        "run_id": "run-y",
+        "status": "completed",
+        "exit_code": 0,
+    })
+    argv = ["run", "--release-id", "r1", "--run-id", "run-y",
+            "--mode", "diagnostic", "--", "python", "-c", "pass"]
+    assert protocol.main(argv) == 0

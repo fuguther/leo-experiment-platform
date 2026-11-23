@@ -386,8 +386,12 @@ def test_population_local_diurnal_cli_run_verifies_receipt(tmp_path, capsys,
         source_sha256="d" * 64, source_shape=(720, 1440),
         source_resolution_deg=(0.25, 0.25), aggregation_deg=5.0,
         total_population=13.0)
+    # The loader also receives the declared region bounds and source_root (the
+    # same kwargs test_trace's regional fixture captures); this fake only has to
+    # return the table, so it must accept them instead of pinning the old
+    # two-argument signature.
     monkeypatch.setattr(pop_mod, "load_population_regions",
-                        lambda path, aggregation_deg: table)
+                        lambda path, aggregation_deg, **kwargs: table)
 
     cfg = tmp_path / "cfg.yaml"
     cfg.write_text(
