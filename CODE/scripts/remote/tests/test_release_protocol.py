@@ -890,6 +890,59 @@ def test_canonical_build_rejects_wrong_remote_or_local_branch(tmp_path: Path) ->
         )
 
 
+def test_build_cli_passes_expected_repository_into_the_builder(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "branch", "-M", "main")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    monkeypatch.setattr(
+        protocol, "_remote_commit_state",
+        lambda *args, **kwargs: {
+            "status": "verified", "ref": "refs/heads/main",
+            "checked_at": "2026-11-23T00:00:00+00:00",
+        })
+    out = tmp_path / "bundle"
+
+    rc = protocol.main([
+        "build", "--repo", str(repo), "--commit", commit, "--out", str(out),
+        "--expected-repository", "example/release-test",
+        "--required-local-branch", "main",
+        "--required-remote-ref", "refs/heads/main",
+    ])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["repository"] == "example/release-test"
+
+
+def test_verify_source_cli_passes_expected_repository(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    from CODE.scripts.remote import release_protocol as protocol
+
+    repo, commit = _repo(tmp_path / "repo")
+    _git(repo, "branch", "-M", "main")
+    _git(repo, "remote", "add", "origin", "https://github.com/example/release-test.git")
+    monkeypatch.setattr(
+        protocol, "_remote_commit_state",
+        lambda *args, **kwargs: {
+            "status": "verified", "ref": "refs/heads/main",
+            "checked_at": "2026-11-23T00:00:00+00:00",
+        })
+
+    rc = protocol.main([
+        "verify-source", "--repo", str(repo), "--commit", commit,
+        "--required-local-branch", "main",
+        "--required-remote-ref", "refs/heads/main",
+        "--expected-repository", "example/release-test",
+    ])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["repository"] == "example/release-test"
+
+
 def test_require_remote_ref_rechecks_the_live_branch_tip(tmp_path: Path, monkeypatch) -> None:
     from CODE.scripts.remote import release_protocol as protocol
 

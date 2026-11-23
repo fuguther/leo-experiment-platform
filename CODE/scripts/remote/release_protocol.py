@@ -616,7 +616,8 @@ def _envelope_payload(manifest: dict[str, Any], archive_path: Path, branch: str,
 def build_release(repo: Path, commit: str, bundle_dir: Path, *,
                   remote_refs: Iterable[tuple[str, str]] | None = None,
                   required_local_branch: str = "",
-                  required_remote_ref: str = "") -> dict[str, Any]:
+                  required_remote_ref: str = "",
+                  expected_repository: str = "") -> dict[str, Any]:
     repo = Path(os.path.abspath(repo))
     bundle_dir = Path(os.path.abspath(bundle_dir))
     commit = _verify_full_commit(repo, commit)
@@ -627,6 +628,10 @@ def build_release(repo: Path, commit: str, bundle_dir: Path, *,
             f"checkout is on {branch!r}"
         )
     repository = _repo_identity(repo)
+    if expected_repository and repository != expected_repository.lower():
+        raise ValueError(
+            f"source origin must be {expected_repository}; observed {repository}"
+        )
     _check_gitlinks(repo, commit)
     tracked_credentials = _tracked_credential_paths(repo, commit)
     if tracked_credentials:
@@ -1947,8 +1952,6 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "build":
-            if args.expected_repository and _repo_identity(Path(os.path.abspath(args.repo))) != args.expected_repository.lower():
-                raise ValueError("source origin does not match the expected T1 repository")
             result = build_release(
                 args.repo, args.commit, args.out,
                 required_local_branch=args.required_local_branch,
@@ -1964,6 +1967,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.repo, args.commit,
                 required_local_branch=args.required_local_branch,
                 required_remote_ref=args.required_remote_ref,
+                expected_repository=args.expected_repository,
             )
         elif args.command == "install":
             if Path(os.path.abspath(args.releases_root)) != RELEASE_ROOT:
