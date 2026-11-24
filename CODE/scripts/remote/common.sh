@@ -4,7 +4,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_WORKSPACE_DIR="${LOCAL_WORKSPACE_DIR_OVERRIDE:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 LOCAL_CODE_DIR="$LOCAL_WORKSPACE_DIR/CODE"
-CONFIG_FILE="${REMOTE_CONFIG_FILE:-$SCRIPT_DIR/remote.env}"
+if [[ -n "${REMOTE_CONFIG_FILE:-}" ]]; then
+    CONFIG_FILE="$REMOTE_CONFIG_FILE"
+else
+    if [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
+        CONFIG_HOME="$XDG_CONFIG_HOME"
+    elif [[ -n "${HOME:-}" ]]; then
+        CONFIG_HOME="$HOME/.config"
+    else
+        echo "[remote] HOME or XDG_CONFIG_HOME is required to locate remote.env" >&2
+        exit 1
+    fi
+    DEFAULT_CONFIG_FILE="$CONFIG_HOME/leo-experiment-platform/remote.env"
+    CONFIG_FILE="$DEFAULT_CONFIG_FILE"
+fi
 SSH_BIN="${SSH_BIN:-/usr/bin/ssh}"
 RSYNC_BIN="${RSYNC_BIN:-/usr/bin/rsync}"
 TAR_BIN="${TAR_BIN:-/usr/bin/tar}"
@@ -19,7 +32,7 @@ die() {
 
 load_remote_config() {
     if [[ ! -f "$CONFIG_FILE" ]]; then
-        die "missing config: $CONFIG_FILE (copy $SCRIPT_DIR/remote.env.template to remote.env and fill the placeholders)"
+        die "missing config: $CONFIG_FILE (copy $SCRIPT_DIR/remote.env.template to $CONFIG_FILE, fill the placeholders, and chmod 600)"
     fi
 
     # shellcheck disable=SC1090

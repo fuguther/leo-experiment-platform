@@ -278,8 +278,11 @@ def test_untracked_changes_are_rejected_and_ignored_files_never_enter_release(
     with pytest.raises(ValueError, match="dirty"):
         build_release(repo, commit, tmp_path / "untracked", remote_refs=[])
     (repo / "CODE" / "untracked.py").unlink()
-    (repo / ".git" / "info" / "exclude").write_text(".env\n", encoding="utf-8")
+    (repo / ".git" / "info" / "exclude").write_text(".env\nremote.env\n", encoding="utf-8")
     (repo / ".env").write_text("REMOTE_TOKEN=not-a-real-token-value\n", encoding="utf-8")
+    (repo / "CODE" / "remote.env").write_text(
+        "REMOTE_HOST_ALIAS=not-a-real-host\n", encoding="utf-8"
+    )
 
     bundle = tmp_path / "bundle"
     build_release(repo, commit, bundle, remote_refs=[])
@@ -287,6 +290,7 @@ def test_untracked_changes_are_rejected_and_ignored_files_never_enter_release(
     with tarfile.open(bundle / "release.tar", "r:") as archive:
         paths = {member.name for member in archive.getmembers()}
     assert ".env" not in paths
+    assert "CODE/remote.env" not in paths
     assert envelope["source_git_commit"] == commit
 
 
