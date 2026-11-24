@@ -182,6 +182,15 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "packet_bits": int,
         "advertisement_protocol_version": int,
         "priority": str,  # nonpreemptive_priority (only supported mode)
+        # Make broadcasts wait in the same FIFO as data on the egress link, so their age
+        # tracks the backlog (paper Section III-B derives the lag from propagation while
+        # this platform's separate control queue pins it at interval/2 + one hop).
+        "control_shares_queue": bool,
+        # Base bits of a state broadcast (the paper's O_i = {L_i, P_i}: four queue
+        # lengths + own/neighbour/destination positions).  It is NOT a data packet;
+        # using the 8 KB payload size here made arrival-triggered control traffic
+        # (4.4x more adverts) choke 30 Mbit links and worsen E2E.
+        "advertise_state_bits": (int, type(None)),
         # CONTROL-INIT (optional): emit one extra report per satellite at this
         # instant, on its OWN schedule, without shifting the periodic grid.
         # Real control packets on real links, wire cost included.
@@ -258,6 +267,20 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "paper_masked_queue": (int, float, type(None)),
         "paper_mask_dir_progress": (bool, type(None)),
         "paper_strict": (bool, type(None)),
+        # Route the PAPER contract through the multi-head GAT encoder instead of the
+        # flat 2x64 MLP.  The paper pairs prediction compensation with
+        # "an attention-based network to aggregate neighborhood information";
+        # without attention the queue dims are swamped by the position dims
+        # (~1,460x dynamic-range gap) and Schemes 2/3/4 become indistinguishable.
+        "paper_graph_encoder": (bool, type(None)),
+        # Whether the derived 4-dim "direction progress" block is computed.  The paper's
+        # observation O_i = {L_i, P_i} contains absolute positions only, so this is an
+        # ADDITION; making it switchable lets the addition be measured rather than assumed.
+        "observation_dir_progress": (bool, type(None)),
+        # Trained weights for the proactive prediction compensation unit (paper
+        # eq.13-20).  When set, Scheme 3 uses the learned T-LSTM instead of the
+        # two-sample secant fallback.
+        "tlstm_weights_path": (str, type(None)),
         "init_from": (str, type(None)),
         "init_from_sha256": (str, type(None)),
         "checkpoint_path": (str, type(None)),
@@ -597,9 +620,29 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "vis_k": 2,
         "ttl_s": 10.0,
         "advertise_interval_s": 1.0,
+        # ARRIVAL-TRIGGERED ADVERTISEMENT THROTTLE.
+        #
+        # The paper triggers broadcasts on packet arrival, so the advert rate is set by
+        # the packet rate.  The kernel implements a per-satellite floor for exactly this
+        # ("a packet burst must not flood the control plane"), but the parameter had no
+        # default: `cfg.get(...) or 0.0` made the floor 0.0 and the guard
+        # `now - last < floor` never fired.
+        #
+        # Measured on Telesat 351 with the floor disabled: 35,579 adverts became 157,760
+        # control packets (x4 directions) against a 100,000-packet data budget -- 1.6
+        # control packets per data packet.  At ~600 bit each that is 95 Mbit of signalling
+        # through 30 Mbit links inside a 1 s run, which starved data: ISL_QUEUE_OVERFLOW
+        # 16% and NO_ROUTE 21%, PDR pinned at 0.56.
+        #
+        # 0.05 s is the same order as the paper's prediction time constant
+        # (PAPER_PREDICT_TAU_S) and one hop of propagation: frequent enough to track the
+        # queue, rare enough that the control plane stays a small share of the link.
+        "event_advert_min_interval_s": 0.05,
         "packet_bits": 8_000,
         "advertisement_protocol_version": 1,
         "priority": "nonpreemptive_priority",
+        "control_shares_queue": False,
+        "advertise_state_bits": 400,
     },
     "routing": {"policy": "hop", "max_hops": 16, "learning_enabled": False,
                 "min_remaining_hop_only": False,
@@ -617,6 +660,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "paper_masked_queue": None,
         "paper_mask_dir_progress": None,
         "paper_strict": None,
+        "paper_graph_encoder": None,
         "init_from": None,
         "init_from_sha256": None,
         "checkpoint_path": None,

@@ -105,6 +105,10 @@ OVERRIDE_FIELDS = {
     "control_plane": {
         # paper: broadcasts follow packet arrivals, not a fixed timer
         "paper_arrival_advert","advertise_interval_s", "vis_k",
+                      # whether broadcasts queue behind data on the egress link; the
+                      # paper derives state lag from propagation, while a separate
+                      # high-priority control queue pins the lag at interval/2 + 1 hop
+                      "control_shares_queue",
                       "initial_sync_burst_s", "event_advert_enabled",
                       "event_advert_min_interval_s",
                       # PROTOCOL PAYLOAD SIZE.  The advertisement's size is a
@@ -124,6 +128,14 @@ OVERRIDE_FIELDS = {
                "emission_start_s",
                "emission_end_s", "burst_start_s", "burst_duration_s",
                "burst_multiplier",
+               # TRAFFIC SPATIAL STRUCTURE.  Without these nothing but `uniform` could be
+               # expressed, and uniform traffic spreads a run's packets over ~663 origin-
+               # destination pairs at ~1.9 packets each -- measured on a 1,258-packet run.
+               # No link then carries a persistent backlog, so neighbour queue state has
+               # nothing predictable to reveal and every information arm can only add
+               # detour cost.  Hotspot traffic (a fraction of OD pairs carrying most of the
+               # load) is the regime the paper's queue-aware routing is designed for.
+               "hotspot_fraction", "hotspot_concentration",
                # inter-satellite background flow (generic capability)
                "sat_background_mbps", "sat_background_packet_bits",
                "sat_background_seed"},
@@ -171,6 +183,14 @@ OVERRIDE_FIELDS = {
                  # dir_progress -- the only configuration in which the four arms differ
                  # solely in the information the paper specifies
                  "paper_strict",
+                 "paper_graph_encoder",
+                 # Whether the derived 4-dim "direction progress" block is computed.
+                 # The paper's O_i = {L_i, P_i} holds absolute positions only, so this
+                 # block is an ADDITION to the paper's design; making it switchable turns
+                 # "does the policy need it?" from an assumption into a measurement.
+                 "observation_dir_progress",
+                 # Trained T-LSTM weights for the proactive prediction unit (eq.13-20).
+                 "tlstm_weights_path",
                  # opt-in hop cost for paper_eq9; non-zero is a deviation
                  "forward_step_penalty",
                  # which of the paper's four schemes this cell reproduces
@@ -204,7 +224,12 @@ OVERRIDE_FIELDS = {
                 # destination knowledge source (advertised vs known static
                 # table): an ADDRESSING knob, not a congestion-information one,
                 # so the four schemes can be compared with the same addresses.
-                "destination_source"},
+                "destination_source",
+                # Path-redundancy control.  The loop cap bounds how far a detour may
+                # travel; it is a TOPOLOGY constraint, identical for every arm, so
+                # varying it does not change what information an arm receives -- only
+                # how much freedom the policy has to act on it.
+                "max_hops"},
     "scenario": {"duration_s", "seed"},
     # Queue-state-age comparisons vary admissible measurement age
     # (min_observation_age_s) alongside time-alignment query behavior.  Keep

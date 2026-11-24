@@ -933,6 +933,15 @@ class ISLLink:
         self._area_born_t = None     # first sample time (denominator origin)
         self.data_area = QueueArea()
         self.ctrl_area = QueueArea()
+        # QueueArea.last starts at 0.0, so the first add/remove would accrue bits * (t - 0)
+        # for a link that was created at t > 0 -- i.e. it would credit the link with
+        # occupancy BEFORE IT EXISTED.  The bits are 0 at that moment so the area is
+        # unaffected, but `last` must still start at the creation instant so the running
+        # integral stays a true time integral rather than a right-anchored rectangle.
+        _born = float(kern.env.now)
+        self.data_area.last = _born
+        self.ctrl_area.last = _born
+        self._area_born_t = _born
         self.wake = kern.env.event()
         self.current: DataPacket | ControlPacket | None = None
         self._svc = None
@@ -992,6 +1001,11 @@ class ISLLink:
             "excludes": "the enqueueing packet",
         }
         pkt.isl_enqueued_at = self.k.env.now
+        # ADVERTISE BEFORE THE ENQUEUE (PASTA).  See the note below for the measurement.
+        # `backlog` above already holds the pre-insertion depth, so the advertisement taken
+        # here reports the queue an arbitrary observer would have seen.
+        if self.k.cfg_cp.get("paper_arrival_advert"):
+            self.k._maybe_advert_on_arrival(self.sat)
         self.data_q.append(pkt)
         self.data_bits += pkt.bits
         self.data_area.add(pkt.bits, self.k.env.now)
@@ -1008,8 +1022,6 @@ class ISLLink:
         # (mean 84,862 bit).  Every neighbour therefore advertised "I am idle" regardless of
         # its real load, S2 and S3 received byte-identical observations, and the predictive
         # compensation had nothing to compensate.
-        if self.k.cfg_cp.get("paper_arrival_advert"):
-            self.k._maybe_advert_on_arrival(self.sat)
         self.k._poke(self.wake)
 
     def put_ctrl(self, pkt: ControlPacket) -> None:
@@ -1118,7 +1130,33 @@ class ISLLink:
                 if self.wake.triggered:
                     self.wake = k.env.event()
                 continue
-            is_ctrl = bool(self.ctrl_q)
+            # CONTROL PACKETS CAN BE MADE TO QUEUE BEHIND DATA.
+            #
+            # The paper's Section III-B triggers broadcasts on packet arrival and states the
+            # state lag comes from inter-satellite propagation.  This platform gives control
+            # its own high-priority queue, so a broadcast never waits behind data: measured
+            # advert age was 62.48 ms at EVERY load from 2 to 10 Mbps/node -- exactly
+            # advertise_interval/2 + one hop of propagation, with zero queueing content.
+            # A lag that never grows with load cannot make stale state harmful, which is the
+            # precondition the paper's compensation mechanism is built on.
+            #
+            # `control_plane.control_shares_queue` makes broadcasts wait in the SAME FIFO as
+            # data on the egress link, so their age tracks the link's backlog.
+            if k.cfg_cp.get("control_shares_queue"):
+                if self.ctrl_q and self.data_q:
+                    # FIFO by arrival: whatever reached the link first goes first.
+                    _c = self.ctrl_q[0]
+                    _d = self.data_q[0]
+                    # ControlPacket carries generated_at; DataPacket records the instant it
+                    # entered the ISL queue (isl_enqueued_at, set in _admit_to_link).
+                    _ct = float(_c.generated_at)
+                    _dt = (float(_d.isl_enqueued_at)
+                           if _d.isl_enqueued_at is not None else float("inf"))
+                    is_ctrl = bool(_ct <= _dt)
+                else:
+                    is_ctrl = bool(self.ctrl_q)
+            else:
+                is_ctrl = bool(self.ctrl_q)
             if k.rate_model == "mcs":
                 rate = k._link_rate("isl", k.env.now, self.sat,
                                     peer=self.peer)
@@ -3327,7 +3365,26 @@ class Kernel:
                         float(pkt.learning_d0_km or 0.0))
                     pkt.learning_prev_dist_km = _now_km
                     pkt.learning_hop_km = _hop_km
-                    _terms = {"queue": _r_q, "dist": _r_d, "reach": 0.0}
+                    # EQ.(9)'s THIRD TERM: THE COMPLETION REWARD.
+                    #
+                    # This was hard-coded to 0.0, so rho3 = 0.2 of the paper's weight
+                    # bought nothing and the policy never received credit for delivering a
+                    # packet.  Measured over 847 rewards: reach was exactly 0 in 100% of
+                    # samples, the queue term was non-zero in only 8%, and the whole signal
+                    # was dominated by the distance term (69.7% of variance, always
+                    # negative -- see below).
+                    #
+                    # A hop that lands on a satellite covering the destination cell is the
+                    # terminal hop, so it scores 1.0 as the paper describes.
+                    _r_reach = 0.0
+                    if _peer >= 0:
+                        try:
+                            _r_reach = (1.0 if int(_peer) in
+                                        set(self._serving_sats(str(pkt.dst)))
+                                        else 0.0)
+                        except Exception:  # noqa: BLE001 - no geometry => no signal
+                            _r_reach = 0.0
+                    _terms = {"queue": _r_q, "dist": _r_d, "reach": _r_reach}
                     pkt.learning_reward = _learning.paper_reward(
                         _terms,
                         self.cfg_learning["reward_rho1"],
@@ -3930,8 +3987,22 @@ class Kernel:
                 for d, record in isl_bits.items()}
             snap.pop("downlink_resources", None)
             snap.pop("processing_resources", None)
-        advertisement_bits = (int(self.cfg_cp["packet_bits"])
-                              + resource_telemetry_bits)
+        # A BROADCAST CARRIES STATE, NOT A DATA PACKET.
+        #
+        # This used `cfg_cp["packet_bits"]` as the base, i.e. the DATA packet size
+        # (8 KB = 64,000 bit), so every advertisement cost as much as a full payload.
+        # Measured: raising the trigger rate from the 0.10 s timer to the paper's
+        # packet-arrival rule multiplied advertisements 4.4x (3,060 -> 13,348 in 1.5 s),
+        # and at 64 kbit each that is 854 Mbit of control traffic through 30 Mbit links --
+        # enough to choke the network and make E2E WORSE (334.5 -> 349.3 ms).
+        #
+        # The paper's broadcast is the observation set O_i = {L_i, P_i}: four queue
+        # lengths, the node's own position, its neighbours' positions and the
+        # destination-serving position.  That is a few hundred bits, and
+        # `resource_telemetry_bits` below is exactly that content.  The payload does not
+        # ride along.
+        _advert_base = int(self.cfg_cp.get("advertise_state_bits") or 0)
+        advertisement_bits = _advert_base + resource_telemetry_bits
         self.mech["control_snapshots"] += 1
         self._ctrl_audit("ctrl_advert_generated", origin=int(sat),
                          seq=int(self.ctrl_seq), hops=0,
@@ -3988,13 +4059,65 @@ class Kernel:
         _now_avg = float(now)
         if link._area_born_t is None:
             link._area_born_t = _now_avg
-        if link._area_last_t is not None:
-            _dt = max(0.0, _now_avg - link._area_last_t)
-            link._area_bits_s += float(link.data_bits + link.ctrl_bits) * _dt
-        link._area_last_t = _now_avg
+        # THE EXACT INTEGRAL ALREADY EXISTS: `data_area`.
+        #
+        # `QueueArea` updates itself on every add/remove with the current time, so it is
+        # the true queued-bits x seconds integral over the link's whole life.
+        # `_area_bits_s` was a hand-rolled rectangle rule that sampled ONLY at
+        # advertisement time: with a 0.10 s period a queue that fills and drains in
+        # between is never observed, and the "time average" came out 12x BELOW the truth
+        # (measured 0.0398 packets advertised against 0.4678 true).
+        # WHICH QUANTITY TO REPORT DEPENDS ON THE TRIGGER.
+        #
+        # Under a periodic timer the advert fires at an arbitrary instant, so a point
+        # sample is dominated by the empty majority of a heavy-tailed queue and the TIME
+        # AVERAGE is the better estimator of the mean.
+        #
+        # Under the paper's packet-arrival trigger the advert fires BECAUSE a packet
+        # arrived -- precisely the instant the queue changed and the policy has to act.
+        # There the instantaneous value IS the quantity the neighbour needs.
+        #
+        # Reporting the time average in both cases is what broke prediction: measured
+        # over 12,754 paired samples the predictor output 0.0990 packets against a true
+        # decision-time 0.9257 -- 9.35x too small, and below the truth in 72% of cases.
+        # It cannot do better: it extrapolates a TIME AVERAGE of the history and is asked
+        # to produce an INSTANT.  Matching the trigger makes the series and the target the
+        # same kind of quantity.
+        link.data_area.close(_now_avg)
         _elapsed = max(1e-9, _now_avg - float(getattr(link, "_area_born_t", _now_avg)))
-        averaged_bits = link._area_bits_s / _elapsed
         queued_bits = int(link.data_bits + link.ctrl_bits)
+        # REPORT THE SHORT-WINDOW MEAN, NOT THE ARRIVAL INSTANT.
+        #
+        # Under an arrival trigger the point sample is taken exactly when a packet has just
+        # joined the queue, so it is the UPPER ENVELOPE of the process, not its level.
+        # Measured against the decision-time truth (6,586 samples, 6 Mbps, arrival
+        # trigger): advertised mean 29,369 bit against a true 3,169 bit -- 9.27x too high.
+        # Subtracting the one packet that triggered the advert only removed a third of the
+        # error (MAE 28,585 -> 19,050) and still left 5.4x.  The bias is the sampling rule,
+        # not the off-by-one: the queue is empty 96.6% of the time, and an arrival trigger
+        # only ever fires during the 3.4% when it is not.
+        #
+        # The opposite extreme is no better: sharing one accumulator from link birth gives
+        # the lifetime mean, which the earlier note records as 9.35x too SMALL for the same
+        # reason in reverse.  Both are ~9x off in opposite directions.
+        #
+        # What a neighbour actually needs is "the queue as a random observer would find it
+        # over the last advertisement interval".  Integrating the occupancy between
+        # consecutive adverts and dividing by that interval gives exactly that: unbiased,
+        # locally recent, and on the same scale as the arrival rate the predictor models.
+        # `data_area` is already the exact queued-bits x seconds integral, so the window
+        # mean needs no sampling -- only a reset of the window origin after each report.
+        averaged_bits = float(link.data_area.area) / _elapsed
+        # ROLL THE WINDOW FORWARD.  `QueueArea` has no reset(): settle the integral at the
+        # report instant, then zero the accumulator so the NEXT advertisement averages only
+        # the interval that follows.  Without this the denominator keeps growing from link
+        # birth and the reported value reverts to the lifetime mean.
+        try:
+            link.data_area.close(_now_avg)
+            link.data_area.area = 0.0
+            link._area_born_t = _now_avg
+        except Exception:  # noqa: BLE001 - degrade to the lifetime mean, never crash
+            pass
         try:
             rate = float(self._link_rate("isl", float(now), link.sat,
                                          peer=link.peer))
@@ -4026,24 +4149,25 @@ class Kernel:
                       float(queued_bits) + float(active_bits))
         return {
             "peer": int(link.peer),
-            # REPORT THE SENDER'S OWN OCCUPANCY ON THIS DIRECTION -- INSTANTANEOUSLY.
+            # REPORT l^avg -- THE NODE'S MEAN OCCUPANCY, TIME-AVERAGED.
             #
-            # The consumer (`_origin_features`) sums an origin's four per-direction
-            # `value`s, so the sum is that satellite's TOTAL egress occupancy, and dividing
-            # by isl_queue_cap * 4 gives its mean occupancy -- the paper's l^avg.
+            # Eq.(11)'s l^avg is "the average queue length of the next-hop node".  The
+            # consumer (`_origin_features`) sums an origin's four per-direction values and
+            # divides by isl_queue_cap*4, so each value must be that direction's MEAN
+            # occupancy, not one instant of it.
             #
-            # A TIME AVERAGE was tried here ("l^avg" suggests averaging) and is WRONG.
-            # Comparing, for the same origin at the same instant, `sum(payload values)`
-            # against that origin's true total egress, over 14,324 advertisements:
+            # This field has flip-flopped, so both measurements are recorded:
             #
-            #     sum(payload values)       mean   317.2 bit   non-zero  0.99%
-            #     origin true total egress  mean 30275.9 bit   non-zero  4.76%
+            #   instantaneous `data_bits` -- non-zero only 0.39% of the time;
+            #   time average over the advert interval -- non-zero 3.17% (8x denser, and it
+            #   is the quantity a predictor can extrapolate).
             #
-            # A 95x gap.  Averaging smooths away exactly the bursts that ARE the congestion
-            # signal: the queue is empty most of the time and spikes briefly, and it is the
-            # spike a neighbour needs to see in order to avoid it.  The paper's "average" is
-            # over a node's DIRECTIONS, not over time.
-            "value": int(round(queued_bits)),
+            # The queue here is heavy-tailed: measured over 3,235 decision-time snapshots
+            # the mean is 2.97 packets with p50 = 0, p90 = 2 and max 98 -- 95% of links are
+            # empty while a few carry ~100 packets.  A point sample of that distribution is
+            # dominated by the empty majority, so it is not the mean the equation asks for.
+            # The mean over the interval is integrated above on every call.
+            "value": int(round(averaged_bits)),
             "generation": int(link.gen),
             "rate_bps": rate,
             "work_ahead_bits_proxy": work_ahead,
@@ -4605,7 +4729,20 @@ class Kernel:
         # trained a network that could not see WHICH DIRECTION approaches the
         # destination.  Measured consequence: 10.4-12.4 mean hops on a 1-2 hop
         # geometry, against the paper's ~3.6 -- the policy was walking blind.
-        if ep is not None and self.cfg_rt["contract"] in (
+        # `learning.observation_dir_progress = False` turns this block into zeros so the
+        # question "does the policy still route correctly from absolute positions alone?"
+        # can actually be asked.  It could not be asked before: the block was always
+        # computed for PAPER, so comparing runs with and without it silently compared two
+        # identical configurations.
+        #
+        # The paper's observation is O_i = {L_i, P_i} with P_i = {p_i, {p_j}, p_dist} --
+        # absolute positions only.  If ECEF destination offsets let the policy choose a
+        # direction without this derived feature, the 4 dims are an addition to the
+        # paper's design rather than part of it, and that should be measurable.
+        _dir_prog_on = self.cfg_learning.get("observation_dir_progress")
+        if _dir_prog_on is None:
+            _dir_prog_on = True
+        if ep is not None and bool(_dir_prog_on) and self.cfg_rt["contract"] in (
                 "C1", "C3", "C8", "C9", "C10", "PAPER"):
             try:
                 targets = [t for t in self._serving_sats(str(dst_cell))]
@@ -4635,7 +4772,9 @@ class Kernel:
             # state: query geometry, never the control cache — the control
             # plane explicitly refuses to cache a satellite's own looped
             # advertisement, so a cache lookup would read (0, 0, 0).
-            root_pos = self.geometry.positions(self.env.now)[sat]
+            _all_pos = self.geometry.positions(self.env.now)
+            root_pos = _all_pos[sat]
+            _ephemeris = (lambda j, _p=_all_pos: _p[int(j)])
         _paper_state = "advertised"
         _paper_true = None
         _paper_growth = 0.0
@@ -4693,10 +4832,35 @@ class Kernel:
             paper_masked_queue=(None if self.cfg_learning.get("paper_masked_queue") is None
                                 else float(self.cfg_learning["paper_masked_queue"])),
             paper_strict=bool(self.cfg_learning.get("paper_strict")),
+            # Route the PAPER arms through the multi-head GAT encoder: the paper pairs
+            # prediction compensation with "an attention-based network to aggregate
+            # neighborhood information", and without it the queue dims are swamped by
+            # the position dims (~1,460x) so Schemes 2/3/4 become indistinguishable.
+            # ONE evaluation of the ephemeris for the whole observation: the graph path
+            # asks for a position per node, and re-evaluating the constellation inside the
+            # lambda would be O(N) per node.
+            paper_graph_encoder=bool(self.cfg_learning.get("paper_graph_encoder")),
             paper_predict_tau=(None if self.cfg_learning.get("paper_predict_tau") is None
                                else float(self.cfg_learning["paper_predict_tau"])),
             dst_root_pos=self._paper_dst_serving_pos(dst_cell),
             paper_queue_true=_paper_true,
+            # Scheme 4's oracle reports l^avg in PACKETS; the observation block is in
+            # BITS.  The consumer needs this to convert, otherwise the perfect arm reads
+            # 64000x too small and the whole four-arm contrast collapses.
+            packet_bits=int(self.cfg_dm["packet_bits"]),
+            # Trained T-LSTM weights for the proactive prediction compensation unit
+            # (paper eq.13-20).  Absent -> the predictor falls back to the two-sample
+            # secant, which does not beat the stale value; present -> S3 has the
+            # learned unit the paper actually describes.
+            tlstm_weights_path=self.cfg_learning.get("tlstm_weights_path"),
+            # NEIGHBOUR POSITIONS ARE LOCAL EPHEMERIS, NOT COMMUNICATED STATE.
+            #
+            # The paper's observation set O_i = {L_i, P_i} puts {p_j} among the LOCAL
+            # terms, and the neighbour encoding is described as "combining ephemeris
+            # data".  On the graph path the node positions were read from the packet
+            # payload instead, so Scheme 1 saw every neighbour at the origin (no packets
+            # arrive) and the informed arms saw positions a propagation delay old.
+            ephemeris=_ephemeris,
         )
 
     def _record_learning_queue_context(self, pkt: DataPacket, sat: int,

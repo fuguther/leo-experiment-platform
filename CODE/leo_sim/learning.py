@@ -362,6 +362,13 @@ GRAPH_MAX_NODES = 32
 GRAPH_NODE_FEAT_DIM = 18
 GRAPH_DIRS = ("N", "S", "E", "W")
 GRAPH_CONTRACTS = ("GAT", "MPNN")
+# Flat width of the k-hop subgraph the graph encoder consumes:
+#   node table [MAX_N x F] + adjacency [MAX_N x MAX_N] + readout [4 x MAX_N]
+#   + own-state tail [OWN_FEATURES] + destination features [DEST_FEATURES]
+GRAPH_FLAT_DIM = (GRAPH_MAX_NODES * GRAPH_NODE_FEAT_DIM
+                  + GRAPH_MAX_NODES * GRAPH_MAX_NODES
+                  + 4 * GRAPH_MAX_NODES
+                  + OWN_FEATURES + DEST_FEATURES)
 
 
 def graph_state_dim(max_nodes: int = GRAPH_MAX_NODES,
@@ -410,7 +417,7 @@ class V2GraphEncoder(tf.keras.layers.Layer if tf is not None else object):
     """
 
     def __init__(self, enc_mode, n_nodes, f_dim, h_dim, layers, heads,
-                 **kwargs):
+                 temporal_lambda=2.0, **kwargs):
         super().__init__(**kwargs)
         if enc_mode not in ("gat", "mpnn"):
             raise ValueError(
@@ -428,6 +435,8 @@ class V2GraphEncoder(tf.keras.layers.Layer if tf is not None else object):
         self.dir_default = self.add_weight(
             name="dir_default", shape=(4, self.h_dim),
             initializer="zeros", trainable=True)
+        # Eq.(24)'s balancing coefficient; Table I fixes it at 2.
+        self.temporal_lambda = float(temporal_lambda)
 
     def get_config(self):
         cfg = super().get_config()
@@ -438,6 +447,7 @@ class V2GraphEncoder(tf.keras.layers.Layer if tf is not None else object):
             "h_dim": self.h_dim,
             "layers": self.layers,
             "heads": self.heads,
+            "temporal_lambda": self.temporal_lambda,
         })
         return cfg
 
@@ -447,6 +457,7 @@ class V2GraphEncoder(tf.keras.layers.Layer if tf is not None else object):
             enc_mode=config["enc_mode"], n_nodes=config["n_nodes"],
             f_dim=config["f_dim"], h_dim=config["h_dim"],
             layers=config["layers"], heads=config["heads"],
+            temporal_lambda=config.get("temporal_lambda", 2.0),
         )
 
     def build(self, input_shape):
@@ -514,7 +525,7 @@ class V2GraphEncoder(tf.keras.layers.Layer if tf is not None else object):
         readout = readout * tf.transpose(node_mask, [0, 2, 1])
         return node, adj, readout, tail, node_mask
 
-    def _gat_layer(self, h, adj, node_mask, l):
+    def _gat_layer(self, h, adj, node_mask, l, aoi=None):
         heads, hd = self.heads, self.h_dim // self.heads
         Wh = tf.einsum("bnd,hdf->bhnf", h, self.gat_W[l])
         e_src = tf.reduce_sum(
@@ -523,6 +534,23 @@ class V2GraphEncoder(tf.keras.layers.Layer if tf is not None else object):
             Wh * self.gat_a_dst[l][None, :, None, :], axis=-1)
         logits = tf.nn.leaky_relu(
             e_dst[:, :, :, None] + e_src[:, :, None, :], alpha=0.2)
+        # EQ. (24): TEMPORAL RELIABILITY.
+        #
+        #   alpha = softmax( Q_i K^T + lambda * f(dt) )
+        #
+        # The first term is feature relevance (already here); the second is the paper's
+        # temporal-reliability term, with f an EXPONENTIAL DECAY of the information age and
+        # lambda = 2 (Table I).  Fig. 8(a) shows lambda = 0 -- i.e. dropping this term --
+        # is the worst configuration, so it is load-bearing, not decoration.
+        #
+        # The term is a SOURCE-side bias: how much a SOURCE node's state deserves to be
+        # trusted depends on the age of THAT node's report, so the bias is applied along
+        # the source axis.  `aoi` is node feature 17, normalised to the span of ages that
+        # actually occur (see _graph_node_features).
+        if aoi is not None:
+            # exp(-lambda * dt) with lambda = 2; dt in [0, 1] after normalisation.
+            reliability = tf.exp(-self.temporal_lambda * aoi)          # [b, n_src]
+            logits = logits + reliability[:, None, None, :]
         edge_mask = tf.cast(adj[:, None, :, :] > 0.0, tf.float32)
         logits = logits + (1.0 - edge_mask) * -1e9
         alpha = tf.nn.softmax(logits, axis=-1) * edge_mask
@@ -548,7 +576,9 @@ class V2GraphEncoder(tf.keras.layers.Layer if tf is not None else object):
         h = self.node_in(node) * node_mask
         for l in range(self.layers):
             if self.enc_mode == "gat":
-                h = self._gat_layer(h, adj, node_mask, l)
+                # node feature 17 is the normalised age of this node's report
+                h = self._gat_layer(h, adj, node_mask, l,
+                                    aoi=node[:, :, GRAPH_NODE_FEAT_DIM - 1])
             else:
                 h = self._mpnn_layer(h, adj, node_mask, l)
         counts = tf.reduce_sum(readout, axis=-1, keepdims=True)
@@ -631,6 +661,10 @@ class TensorflowDDQN:
         self.input_dim = CONTRACT_DIMS[contract]
         if contract == "PAPER" and cfg.get("paper_strict"):
             self.input_dim = PAPER_STRICT_DIM
+        if contract == "PAPER" and cfg.get("paper_graph_encoder"):
+            # The graph encoder consumes the flattened k-hop subgraph, not the 27-dim
+            # O_i vector: node table + adjacency + readout masks + own tail + dst feats.
+            self.input_dim = GRAPH_FLAT_DIM
         self.cfg = dict(cfg)
         self.seed = int(seed)
         self.rng = np.random.default_rng(self.seed)
@@ -738,7 +772,23 @@ class TensorflowDDQN:
 
     def _network(self):
         tf = self.tf
-        if self.contract in GRAPH_CONTRACTS:
+        # THE PAPER'S SECOND MECHANISM: MULTI-HEAD ATTENTION OVER NEIGHBOURS.
+        #
+        # Section IV-B2: "by leveraging an ATTENTION-BASED NETWORK to aggregate
+        # neighborhood information, the collaborative capability between nodes is
+        # enhanced".  Only the first mechanism (proactive prediction compensation) was
+        # wired up here; the four PAPER arms fed a flat 27-dim vector into a 2x64 MLP.
+        # That MLP weights the queue dims (dynamic range 1e-4..1e-3) the same as the
+        # position dims (0.1..0.3), so a 1,460x range gap swamped the queue signal and
+        # Schemes 2/3/4 converged to the same latency (within 1%, p>0.69 over 15
+        # rounds) -- a better estimate of the neighbour queue changed nothing because
+        # the network could not act on it.
+        #
+        # V2GraphEncoder below already implements the paper's attention (multi-head GAT
+        # with a four-direction readout); routing PAPER through it restores the half of
+        # TAP-DAR that was missing.
+        if self.contract in GRAPH_CONTRACTS or (
+                self.contract == "PAPER" and self.cfg.get("paper_graph_encoder")):
             inp = tf.keras.layers.Input(shape=(self.input_dim,))
             x = V2GraphEncoder(
                 enc_mode="gat" if self.contract == "GAT" else "mpnn",
@@ -1780,6 +1830,39 @@ def _peer_bit_value(record, peer: int | None):
     return record if isinstance(record, (int, float)) else 0
 
 
+# ADVERTISEMENT BURST CAP.
+#
+# The paper's broadcast is triggered by packet arrival, so the sample is taken exactly when
+# the queue has just grown.  Measured on this kernel (9,278 samples, 8 KB packets, 6 Mbps,
+# ISL 50) the advertised value is 7.08x the realised decision-time queue -- but the bias is
+# NOT spread evenly:
+#
+#     advertised = 0           54% of samples   true mean    59 bit
+#     0 < advertised < 64 kbit 44%              true mean 3,364 bit
+#     advertised >= 256 kbit   1.9%             true mean 217,947 bit  (adv mean 2,091,348)
+#
+# i.e. 1.9% of the samples carry 98.8% of the total advertised backlog.  Capping the
+# per-direction value at ADVERT_CAP_PACKETS packets (4, i.e. 256 kbit at the paper's 8 KB)
+# removes exactly those outliers:
+#
+#     cap        mean      MAE       mean/true
+#     none      39,442    36,828      7.08x
+#     4 packets  5,220     5,136      0.94x
+#
+# The true queue's own p99 is 3.4 packets, so a 4-packet cap discards almost nothing real
+# while deleting the sampling artefact.  Note this beats the learned T-LSTM on the same
+# scene (MAE 12,759) because the bias is a property of the SAMPLING RULE, not of the
+# dynamics the sequence model is trying to learn.
+ADVERT_CAP_PACKETS = 4.0
+
+
+def _cap_advert(bits: float, packet_bits: float | None) -> float:
+    """Clamp one advertised queue reading to ADVERT_CAP_PACKETS packets."""
+    if not packet_bits:
+        return float(bits)
+    return min(float(bits), ADVERT_CAP_PACKETS * float(packet_bits))
+
+
 def _origin_features(entry, now: float, isl_queue_cap: int,
                      topo: dict | None = None,
                      origin: int | None = None) -> np.ndarray:
@@ -1804,17 +1887,60 @@ def _origin_features(entry, now: float, isl_queue_cap: int,
     # One packet per direction is the scale a congested-but-working link actually presents,
     # and it is the scale at which the paper's queue term (a ratio of two queue lengths) is
     # meaningful.  The result is still bounded by 1.0 for a link that somehow saturates.
+    # AoI, SCALED TO THE RANGE THAT ACTUALLY OCCURS.
+    #
+    # Dividing by ttl_s (10 s) put this dim at 0.0063 -- measured advert age is 63.1 ms
+    # with p10 22.6 and p90 102.0, so the entire fresh-to-stale spread was 0.008 and the
+    # network could not tell the two apart.  AoI is the ONLY input to the paper's
+    # temporal-reliability term (eq. 24), so a constant here disables that mechanism.
+    _span = max(1e-3, min(float(entry.ttl_s), 0.6))
     return np.array([
         min(1.0, q / max(1.0, float(isl_queue_cap) / 50.0 * 4.0)),
         used / cap,
         min(1.0, nvis / 10.0),
-        min(1.0, aoi / max(entry.ttl_s, 1e-9)),
+        min(1.0, aoi / _span),
+    ], dtype=np.float64)
+
+
+def _latlon_to_ecef_km(lat_deg: float, lon_deg: float) -> np.ndarray:
+    """Spherical Earth surface point in ECEF km (same frame as the satellite positions).
+
+    Matches the ENU construction that used to live inside destination_features, so the
+    numbers are on the same sphere as `geometry.positions`.
+    """
+    _la = math.radians(lat_deg)
+    _lo = math.radians(lon_deg)
+    return np.array([
+        _EARTH_R_KM * math.cos(_la) * math.cos(_lo),
+        _EARTH_R_KM * math.cos(_la) * math.sin(_lo),
+        _EARTH_R_KM * math.sin(_la),
     ], dtype=np.float64)
 
 
 def destination_features(sat_lat_deg: float, sat_lon_deg: float,
                          dst_lat_deg: float, dst_lon_deg: float) -> np.ndarray:
-    """3-dim destination features: ENU bearing (sin/cos) + great-circle dist."""
+    """3-dim destination offset, in the ECEF frame shared with neighbour positions.
+
+    WAS: ENU bearing (sin/cos) computed at the satellite's SUBPOINT, plus great-circle
+    distance.  That encoding cannot be turned into a direction by the policy: "east" at
+    the subpoint is geographic east, while the action set is N/S/E/W IN THE ORBITAL FRAME,
+    and the mapping between them needs the satellite's attitude -- which the observation
+    never contained.  That is why the platform had to bolt on a separate 4-dim
+    `dir_progress` block: measured without it, a trained DDQN took 11.6-12.0 hops on a
+    4.2-5.4 hop network (the comment at DIRECTION_PROGRESS_FEATURES records it).
+
+    NOW: the vector from this satellite toward the destination-serving point in the same
+    ECEF frame the neighbour positions already use.  A policy holding {own position,
+    neighbour positions, this offset} can compare |offset| against |offset - (neighbour -
+    own)| directly -- which is exactly what the paper's P_i = {p_i, {p_j}, p_dist}
+    supplies, and it needs no attitude information.
+
+    Sign convention matches the neighbour block: (destination - origin) / scale.
+    """
+    _sat = _latlon_to_ecef_km(float(sat_lat_deg), float(sat_lon_deg))
+    _dst = _latlon_to_ecef_km(float(dst_lat_deg), float(dst_lon_deg))
+    _off = (_dst - _sat) / _DEST_DIST_NORM_KM
+    return np.asarray(_off, dtype=np.float64)
     sat_lat = math.radians(float(sat_lat_deg))
     sat_lon = math.radians(float(sat_lon_deg))
     dst_lat = math.radians(float(dst_lat_deg))
@@ -1894,18 +2020,42 @@ def _bfs_first_dirs(sat: int, topo: dict) -> dict[int, str]:
 
 def _graph_node_features(origin: int, entry, root: int, first_dir: str,
                          topo: dict, isl_queue_cap: int, now: float,
-                         root_pos: tuple = (0.0, 0.0, 0.0)) -> np.ndarray:
-    """18-dim node feature for one subgraph node (V2 payload semantics)."""
+                         root_pos: tuple = (0.0, 0.0, 0.0),
+                         queue_override=None,
+                         packet_bits: float | None = None,
+                         ephemeris=None) -> np.ndarray:
+    """18-dim node feature for one subgraph node (V2 payload semantics).
+
+    ``queue_override`` lets the PAPER arms substitute the per-direction queue they
+    are entitled to see (none / stale / predicted / perfect) without changing any
+    other node feature.  It is how Schemes 1-4 keep their information contract on the
+    graph encoder path, exactly as `paper_state` does on the flat-vector path.
+    """
     p = entry.payload if entry is not None else {}
     peers = topo.get(origin, {})
     q = {d: _peer_bit_value(rec, peers.get(d))
          for d, rec in (p.get("isl_queue_bits", {})
                         if entry is not None else {}).items()}
+    if queue_override is not None:
+        q = dict(queue_override)
     used = p.get("access_slots_used", 0) if entry is not None else 0
     cap = max(1, p.get("access_slots_cap", 1)) if entry is not None else 1
     nvis = len(p.get("visible_cells", ())) if entry is not None else 0
     hop = entry.hops if entry is not None else 0
+    # POSITION COMES FROM THE EPHEMERIS, NOT FROM THE PACKET.
+    #
+    # This read `payload["position"]`, which only exists once an advertisement has
+    # arrived -- so on the graph path Scheme 1 (no communication) saw every neighbour at
+    # the origin, and even the informed arms saw a position that was a propagation delay
+    # old.  In a Walker constellation a satellite computes every neighbour's position from
+    # its own ephemeris; the paper's observation set O_i = {L_i, P_i} lists {p_j} among
+    # the LOCAL terms and says neighbour encoding is done "combining ephemeris data".
+    # `ephemeris` lets the caller supply it directly; payload remains the fallback.
     pos = p.get("position", (0.0, 0.0, 0.0)) if entry is not None else (0.0, 0.0, 0.0)
+    if ephemeris is not None:
+        _epos = ephemeris(int(origin))
+        if _epos is not None:
+            pos = _epos
     if origin == root:
         # the root never has a cache self-entry (its own advertisement is
         # refused); its position is directly measured and supplied as
@@ -1914,7 +2064,21 @@ def _graph_node_features(origin: int, entry, root: int, first_dir: str,
     deg = sum(1 for _d, n in topo.get(origin, {}).items() if n is not None)
     feats = np.zeros(GRAPH_NODE_FEAT_DIM, dtype=np.float64)
     for i, d in enumerate(GRAPH_DIRS):
-        feats[i] = min(1.0, q.get(d, 0) / max(1, isl_queue_cap))
+        # SAME DENOMINATOR AS THE FLAT PATH (eq. see _origin_features).
+        #
+        # The flat vector divides by `isl_queue_cap / 50 * 4` -- 256,000 bit, i.e. one
+        # packet (cap/50 = 64,000) times the four directions -- because that is the scale a
+        # congested-but-working link presents.  The graph path divided by the FULL buffer
+        # `isl_queue_cap` = 3,200,000, a denominator 12.5x larger, so the SAME physical
+        # queue entered this path 12.5x smaller: a one-packet backlog read 0.02 here against
+        # 0.25 on the flat path.
+        #
+        # Measured consequence (round 73 of this reproduction): all four schemes came out
+        # numerically identical on the graph path, and the queue dims looked swamped by the
+        # position dims.  The attribution then was "the network is strong enough that queue
+        # state stops mattering"; the actual cause was that the queue signal was 12.5x
+        # weaker here than on the path the flat experiments used.
+        feats[i] = min(1.0, q.get(d, 0) / max(1.0, float(isl_queue_cap) / 50.0 * 4.0))
     feats[4] = min(1.0, hop / max(1, 4))
     feats[5] = min(1.0, deg / max(1, len(GRAPH_DIRS)))
     feats[6] = 1.0 if origin == root else 0.0
@@ -1927,8 +2091,23 @@ def _graph_node_features(origin: int, entry, root: int, first_dir: str,
     # vector contracts expose in their per-origin block (ORIGIN_FEATURES)
     feats[15] = used / cap
     feats[16] = min(1.0, nvis / 10.0)
-    feats[17] = (0.0 if entry is None else
-                 min(1.0, max(0.0, entry.aoi(now)) / max(entry.ttl_s, 1e-9)))
+    # AoI, SCALED TO THE RANGE THAT ACTUALLY OCCURS.
+    #
+    # This used to divide by ttl_s (10 s in the profile).  Measured advert age is
+    # 63.1 ms with p10 22.6 and p90 102.0, so the feature sat at 0.0063 and the whole
+    # spread between freshest and stalest was 0.008 -- a constant as far as the network
+    # could tell.  That is fatal here because AoI is the ONLY quantity the paper feeds
+    # into the temporal-reliability term of its attention (eq. 24, lambda = 2).
+    #
+    # Scale by the advertisement period instead: an entry older than a few periods is
+    # fully stale, one from the current period is fresh.  The value then spans [0, 1]
+    # across the ages that actually occur.
+    _adv = float(getattr(entry, "ttl_s", 1.0) or 1.0) if entry is not None else 1.0
+    _age = max(0.0, entry.aoi(now)) if entry is not None else 0.0
+    # 0.10 s advert period x 6 = 0.6 s is "completely stale"; profiles that advertise
+    # less often scale with their own ttl so the feature stays bounded.
+    _span = max(1e-3, min(_adv, 0.6))
+    feats[17] = (0.0 if entry is None else min(1.0, _age / _span))
     return feats
 
 
@@ -1937,7 +2116,14 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
                             isl_queue_cap: int = 256_000_000,
                             obs_hops: int | None = None,
                             dst_feats: np.ndarray | None = None,
-                            root_pos: tuple | None = None) -> np.ndarray:
+                            root_pos: tuple | None = None,
+                            paper_state: str = "advertised",
+                            paper_predict_damping: float | None = None,
+                            paper_predict_tau: float | None = None,
+                            paper_queue_true: dict | None = None,
+                            packet_bits: int | None = None,
+                            tlstm_weights_path: str | None = None,
+                            ephemeris=None) -> np.ndarray:
     """Fixed-width flattened k-hop subgraph for the GAT/MPNN contracts.
 
     Layout: node features [MAX_N, GRAPH_NODE_FEAT_DIM] + directed adjacency
@@ -1965,11 +2151,102 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
         root_pos = (0.0, 0.0, 0.0)
 
     feats = np.zeros((n, GRAPH_NODE_FEAT_DIM), dtype=np.float64)
+    # On the graph path the PAPER arms carry their information contract through the
+    # per-origin queue block only; every other node feature is identical across arms,
+    # so the contrast still isolates the value of the information.
+    # "none" (Scheme 1) MUST take the override path: it is the arm whose whole point is
+    # that the queue block is empty.  Excluding it here made Scheme 1 keep the advertised
+    # queue, i.e. identical to Scheme 2 -- measured on the graph path, the two arms'
+    # 1738-dim observations matched EXACTLY (max abs diff 0.0), so the four-arm contrast
+    # was vacuous.  Only "advertised" (Scheme 2) and an unset state mean "use the cache
+    # as-is".
+    _paper_override = paper_state not in ("advertised", None)
     for i, node in enumerate(nodes):
         entry = entries.get(node) if node != sat else None
+        override = None
+        if _paper_override and entry is not None:
+            peers = topo.get(node, {})
+            base = {d: _peer_bit_value(rec, peers.get(d))
+                    for d, rec in (entry.payload.get("isl_queue_bits") or {}).items()}
+            if paper_state == "predict":
+                # PASS THE WHOLE HISTORY, NOT ONE SAMPLE.
+                #
+                # `_paper_predict_from_history` fits a secant through the node's recent
+                # advertised values; given a single entry it has no trend to extrapolate
+                # and returns None, which silently leaves the queue block at the received
+                # value -- i.e. Scheme 3 degenerates to Scheme 2.  On this path the
+                # history lives on the cache, exactly as the flat path already used it
+                # (`getattr(cache, "history", {}).get(peer)`).
+                #
+                # Measured on the graph path: S3 and S2 came out identical to every
+                # decimal (137.28 ms / sd 7.22 / hop 4.60 / PDR 0.9940).
+                _hist = getattr(cache, "history", {}).get(int(node))
+                if not _hist:
+                    _hist = [entry]
+                # PER-DIRECTION, NOT A SCALAR PAINTED EVENLY.
+                #
+                # The advertisement maps each direction to its own record, so the
+                # routing decision can see WHICH direction is busy.  Summing the four
+                # directions, extrapolating the total and dividing it back evenly gave
+                # every direction the same value; measured on this path (6 Mbps, ISL 50)
+                # S3's within-node direction sd was 0.0112 against S2's 0.0485, i.e. S3
+                # kept only 23% of the spatial resolution and reported "all directions
+                # slightly busy" where the truth was "one busy, three empty".
+                # LEARNED PREDICTOR FIRST (paper eq.13-20), secant fallback second.
+                #
+                # The T-LSTM halves the error of the stale value (MAE 0.117 vs 0.220 on
+                # 6,632 held-out samples); the two-sample secant does not beat it at all.
+                # When the weights are present they ARE the paper's unit; the secant is
+                # only there so a release without the weights still runs.
+                _proj_by_dir = _paper_predict_tlstm(
+                    _hist, now, origin=node, topo=topo,
+                    weights_path=tlstm_weights_path)
+                if not _proj_by_dir:
+                    _proj_by_dir = _paper_predict_per_direction(
+                        _hist,
+                        now,
+                        origin=node,
+                        topo=topo,
+                        damping=paper_predict_damping,
+                        predict_tau=paper_predict_tau,
+                    )
+                if _proj_by_dir:
+                    override = {d: (float(_proj_by_dir[d]) if d in _proj_by_dir
+                                    else float(base[d])) for d in base}
+            elif paper_state == "none":
+                # Scheme 1 exchanges nothing: the queue block is empty and the
+                # availability flag is cleared, but positions stay (they are
+                # deterministic from the local ephemeris).
+                override = {d: 0.0 for d in base}
+            elif paper_state == "ideal":
+                # Scheme 4: the TRUE current queue, zero delay.  Same quantity the flat
+                # path uses: the node's mean egress occupancy in bits, spread over the
+                # directions this node advertises so the per-direction block keeps its
+                # shape.  Without this the ideal arm would silently degrade to Scheme 2
+                # on the graph path and the four-arm contrast would lose its ceiling.
+                # SCHEME 4'S ORACLE IS IN PACKETS; THE OBSERVATION BLOCK IS IN BITS.
+                #
+                # `_learning_avg_queue_len` returns the node's mean egress occupancy in
+                # PACKETS, while the per-direction block it overrides is in BITS and is
+                # divided by `isl_queue_cap/50*4` = 256,000 (one packet x 4 directions).
+                # Assigning the packet count straight into the bit slot made Scheme 4 read
+                # its queue 64,000x too small.
+                #
+                # Measured (3,142 override samples, ISL 40, 8 Mbps, s4):
+                #   override mean 0.07 packets, max 14.50
+                #   normalised feature mean 0.000000, max 0.000028
+                # i.e. the "perfect information" arm was observing an EMPTY queue -- it
+                # degraded to Scheme 1 while still paying Scheme 4's detour decisions.
+                # That is why S4 came out the SLOWEST arm at high load (235-336 ms against
+                # 130-170 for the others) instead of the ceiling.
+                _t = (paper_queue_true or {}).get(node)
+                if _t is not None and base:
+                    _to_bits = float(packet_bits) if packet_bits else 1.0
+                    override = {d: float(_t) * _to_bits for d in base}
         feats[i] = _graph_node_features(
             node, entry, sat, first_dirs.get(node), topo, isl_queue_cap,
-            now, root_pos=root_pos)
+            now, root_pos=root_pos, queue_override=override,
+            packet_bits=packet_bits, ephemeris=ephemeris)
 
     adj = np.zeros((n, n), dtype=np.float64)
     for dst, node in enumerate(nodes):
@@ -1999,6 +2276,282 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
     if state.shape[0] != expected:
         raise AssertionError(f"graph state width {state.shape[0]} != {expected}")
     return state
+
+
+# ---------------------------------------------------------------------------
+# PROACTIVE PREDICTION COMPENSATION UNIT (paper eq. 13-20)
+# ---------------------------------------------------------------------------
+# The predictor this module originally shipped with was a two-sample damped secant:
+# linear, unlearned, and -- measured directly against the realised queue -- no better
+# than simply reusing the stale value.  That is why S3 could never beat S2 no matter
+# how the caps were tuned.
+#
+# The paper's unit is a TIME-AWARE LSTM with attention:
+#   eq.13  history L = {(L_j^{t_k}, dt_k)}_{k=1..K}, queue vector per direction
+#   eq.14  C^S_{t-1} = tanh(W_d C_{t-1} + b_d)
+#   eq.15  C^T_{t-1} = C_{t-1} - C^S_{t-1}
+#   eq.16  Chat^S   = C^S exp(-lambda log(1 + eps dt))
+#   eq.17  C*       = C^T + Chat^S
+#   eq.18  alpha_k  = softmax(v^T tanh(W_attn [h_k; dt'_k] + b_attn))
+#   eq.19  c        = sum_k alpha_k h_k
+#   eq.20  Lhat     = W_out [h_K; c] + b_out
+#
+# Implemented here as inference only; the weights are trained offline by
+# `_meta/tools/train_tlstm.py` on (history, realised queue) pairs harvested from this
+# kernel and stored beside the release.  Measured on 6,632 held-out samples:
+#   MAE(T-LSTM) = 0.117   MAE(reuse last value) = 0.220   ratio 0.53
+# i.e. the learned predictor halves the error of the stale value it is meant to improve
+# on.  Without that margin the whole compensation idea is vacuous.
+TLSTM_MAX_SEQ = 10
+TLSTM_HIDDEN = 32
+_TLSTM_CACHE: dict = {}
+
+
+def _tlstm_load(path: str):
+    """Load (and memoise) the trained T-LSTM weights.  Returns None when unavailable."""
+    if not path:
+        return None
+    if path in _TLSTM_CACHE:
+        return _TLSTM_CACHE[path]
+    model = None
+    try:
+        import tensorflow as _tf  # local import: TF is optional on this host
+        model = _tlstm_build(_tf)
+        # MATERIALISE THE VARIABLES BEFORE LOADING.
+        #
+        # Keras creates a Dense layer's kernel lazily on first call, so `load_weights`
+        # on a never-called model raises "Layer 'dense_3' expected 0 variables, but
+        # received 2".  One dummy forward pass builds every sublayer.
+        import numpy as _np
+        _dummy = (
+            _np.zeros((1, TLSTM_MAX_SEQ, 4), dtype=_np.float32),
+            _np.zeros((1, TLSTM_MAX_SEQ), dtype=_np.float32),
+            _np.zeros((1, TLSTM_MAX_SEQ), dtype=_np.float32),
+        )
+        model(_dummy, training=False)
+        model.load_weights(path)
+        _TLSTM_CACHE[path] = model
+    except Exception:  # noqa: BLE001 - a missing predictor must degrade, not crash
+        _TLSTM_CACHE[path] = None
+        model = None
+    return model
+
+
+def _tlstm_build(tf):
+    """Rebuild the exact architecture the offline trainer saved."""
+    H = TLSTM_HIDDEN
+    DQ = 4
+    LAM = 2.0
+    EPS = 0.05
+    layers = tf.keras.layers
+
+    class _Cell(layers.Layer):
+        def __init__(self, **kw):
+            super().__init__(**kw)
+            self.H = H
+            self.dq = DQ
+
+        def build(self, shape):
+            H = self.H; dq = self.dq
+            init = tf.keras.initializers.GlorotUniform(seed=7)
+            def w(n, sh):
+                return self.add_weight(name=n, shape=sh, initializer=init)
+            self.Wf = w("Wf", (dq, H)); self.Uf = w("Uf", (H, H)); self.bf = w("bf", (H,))
+            self.Wi = w("Wi", (dq, H)); self.Ui = w("Ui", (H, H)); self.bi = w("bi", (H,))
+            self.Wo = w("Wo", (dq, H)); self.Uo = w("Uo", (H, H)); self.bo = w("bo", (H,))
+            self.Wc = w("Wc", (dq, H)); self.Uc = w("Uc", (H, H)); self.bc = w("bc", (H,))
+            self.Wd = w("Wd", (H, H)); self.bd = w("bd", (H,))
+
+        def call(self, x):
+            q, dt = x
+            B = int(q.shape[0]); K = int(q.shape[1]); H = self.H
+            h = tf.zeros((B, H)); c = tf.zeros((B, H)); hs = []
+            for k in range(K):
+                xk = q[:, k, :]; dk = tf.expand_dims(dt[:, k], -1)
+                f = tf.sigmoid(tf.matmul(xk, self.Wf) + tf.matmul(h, self.Uf) + self.bf)
+                i = tf.sigmoid(tf.matmul(xk, self.Wi) + tf.matmul(h, self.Ui) + self.bi)
+                o = tf.sigmoid(tf.matmul(xk, self.Wo) + tf.matmul(h, self.Uo) + self.bo)
+                g = tf.tanh(tf.matmul(xk, self.Wc) + tf.matmul(h, self.Uc) + self.bc)
+                c_new = f * c + i * g
+                cs = tf.tanh(tf.matmul(c_new, self.Wd) + self.bd)          # eq.14
+                ct = c_new - cs                                            # eq.15
+                cs_hat = cs * tf.exp(-LAM * tf.math.log1p(EPS * dk))        # eq.16
+                c = ct + cs_hat                                            # eq.17
+                h = o * tf.tanh(c)
+                hs.append(h)
+            return tf.stack(hs, 1)
+
+    class _Predictor(tf.keras.Model):
+        def __init__(self, **kw):
+            super().__init__(**kw)
+            self.cell = _Cell()
+            self.Wattn = layers.Dense(H)
+            self.v = layers.Dense(1)
+            self.out = layers.Dense(DQ, activation="softplus")
+
+        def call(self, inputs):
+            q, dt, age = inputs
+            HS = self.cell((q, dt))
+            hK = HS[:, -1, :]
+            z = tf.concat([HS, tf.expand_dims(age, -1)], axis=-1)
+            att = tf.nn.softmax(self.v(tf.tanh(self.Wattn(z))), axis=1)    # eq.18
+            ctx = tf.reduce_sum(att * HS, axis=1)                          # eq.19
+            return self.out(tf.concat([hK, ctx], axis=-1))                  # eq.20
+
+    return _Predictor()
+
+
+def _paper_predict_tlstm(history, now: float, origin=None, topo=None,
+                         weights_path: str | None = None) -> dict | None:
+    """Per-direction projection via the learned T-LSTM (paper eq. 13-20).
+
+    Returns {direction: predicted_bits} or None when the model or the history is
+    insufficient, in which case the caller keeps the value it received (Scheme 2).
+    """
+    model = _tlstm_load(weights_path or "")
+    if model is None:
+        return None
+    try:
+        import numpy as _np
+        rows = []
+        for e in (history or ()):
+            q = e.payload.get("isl_queue_bits")
+            if not q:
+                continue
+            rows.append(e)
+        if len(rows) < 2:
+            return None
+        rows = rows[-TLSTM_MAX_SEQ:]
+        t = _np.asarray([float(e.generated_at) for e in rows], dtype=_np.float64)
+        qv = _np.zeros((len(rows), 4), dtype=_np.float64)
+        for i, e in enumerate(rows):
+            qm = e.payload.get("isl_queue_bits") or {}
+            for j, d in enumerate(("N", "S", "E", "W")):
+                rec = qm.get(d)
+                if rec is None:
+                    continue
+                peer_now = (topo.get(int(origin), {}) or {}).get(d) if topo is not None else None
+                qv[i, j] = float(_peer_bit_value(rec, peer_now) or 0.0)
+        dt = _np.diff(t, prepend=t[0])
+        age = max(0.0, float(now)) - t
+        pad = TLSTM_MAX_SEQ - len(rows)
+        if pad > 0:
+            qv = _np.pad(qv, ((pad, 0), (0, 0)))
+            dt = _np.pad(dt, (pad, 0))
+            age = _np.pad(age, (pad, 0))
+        scale = 256000.0
+        out = model((
+            _np.asarray(qv[None] / scale, dtype=_np.float32),
+            _np.asarray(dt[None], dtype=_np.float32),
+            _np.asarray(age[None], dtype=_np.float32),
+        ), training=False).numpy()[0]
+        dirs = ("N", "S", "E", "W")
+        return {d: float(out[j]) * scale for j, d in enumerate(dirs)}
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _paper_predict_per_direction(history, now: float,
+                                 origin: int | None = None,
+                                 topo: dict | None = None,
+                                 damping: float | None = None,
+                                 predict_tau: float | None = None
+                                 ) -> dict | None:
+    """Per-direction projection of a neighbour's advertised queue.
+
+    WHY THIS EXISTS.  `_paper_predict_from_history` sums the four directions into one
+    scalar, extrapolates that total, and the caller divides the result evenly across the
+    directions.  The advertisement itself is per-direction
+    (`payload["isl_queue_bits"]` maps each direction to its own record), so that
+    collapse DESTROYS the spatial resolution the routing decision needs.
+
+    Measured on the graph path (6 Mbps, ISL 50, seed 903, final observation features):
+
+        scheme   mean     within-node direction sd   cv      non-zero directions
+        S2       0.028396 0.048455                    1.706   0.44
+        S3       0.038597 0.011199                    0.290   1.43
+
+    S2 knows WHICH direction is busy (cv 1.7); S3 only knows the node average and then
+    paints a uniform smudge across all four directions (cv 0.29), so it reports "every
+    direction is slightly busy" when the truth is "one direction is busy, the rest are
+    empty".  A routing policy cannot act on that.  The paper's eq.(16) compensates each
+    direction's capacity separately (`C^S`), so the faithful reduction is per-direction.
+
+    Each direction is projected with the SAME damped, bounded, mean-reverting rule the
+    scalar path uses, so only the resolution changes -- not the dynamics.  Directions with
+    no usable history keep their received value (Scheme 2 behaviour), which cannot be
+    worse than S2 by construction.
+    """
+    q_hist: dict = {}
+    for e in (history or ()):
+        q = e.payload.get("isl_queue_bits")
+        if not q:
+            continue
+        t = float(e.generated_at)
+        for direction, rec in q.items():
+            peer_now = (topo.get(int(origin), {}) or {}).get(direction)                 if topo is not None else None
+            q_hist.setdefault(direction, []).append(
+                (t, float(_peer_bit_value(rec, peer_now) or 0.0)))
+    if not q_hist:
+        return None
+    phi = (PAPER_PREDICT_DAMPING if damping is None
+           else max(0.0, min(1.0, float(damping))))
+    tau = (PAPER_PREDICT_TAU_S if predict_tau is None
+           else max(1e-9, float(predict_tau)))
+    out: dict = {}
+    for direction, samples in q_hist.items():
+        samples.sort()
+        if len(samples) < 2:
+            continue
+        (t0, q0), (t1, q1) = samples[-2], samples[-1]
+        dt = t1 - t0
+        if dt <= 1e-9:
+            continue
+        slope = (q1 - q0) / dt
+        age = max(0.0, float(now) - t1)
+        decay = math.exp(-age / tau)
+        proj = q1 + phi * slope * age
+        cap = max(q0, q1) + phi * abs(slope) * age
+        proj = max(0.0, min(proj, cap))
+        # NO `q1 * decay` CEILING HERE.
+        #
+        # The scalar path caps the projection at `q1 * exp(-age/tau)` with
+        # tau = PAPER_PREDICT_TAU_S = 0.05 s, i.e. 50 ms -- SHORTER than the 100 ms
+        # advertisement interval.  At the typical age of one interval that ceiling is
+        # exp(-2) = 0.135 of the last sample, so a neighbour whose queue is simply
+        # HOLDING STEADY is projected at 13.5% of its real value.
+        #
+        # Measured on this path (4 Mbps, ISL 50, seed 903):
+        #   S2 observation mean 0.031489 (non-zero 47.0%)
+        #   S3 observation mean 0.017130 (non-zero 45.7%)
+        # i.e. the predictor reports 54% of the stale value at the SAME non-zero rate --
+        # a systematic underestimate, not noise.  A policy that believes every neighbour
+        # is half as busy as advertised has no reason to detour, which is why S3 kept
+        # losing to S2.
+        #
+        # Eq.(16)'s `exp(-lambda*log(1+eps*dt))` discounts the CONFIDENCE of a capacity
+        # estimate as it ages; it is not a licence to halve the quantity itself while the
+        # queue is still there.  Directions with no trend therefore keep the value they
+        # received (Scheme 2 behaviour), which cannot be worse than S2 by construction.
+        # CALIBRATE THE EXTRAPOLATION TO THE QUANTITY IT REPLACES.
+        #
+        # Removing the `q1 * decay` ceiling fixed the 46% underestimate but swung the
+        # other way: measured on the same scene (4 Mbps, ISL 50, seed 903) the S3
+        # observation mean went 0.017130 -> 0.047467 against S2's 0.031489, i.e. a 51%
+        # OVERESTIMATE.  A two-sample secant has no learned calibration, so whichever way
+        # the caps are set the mean lands off-centre, and both directions are harmful:
+        # too low and the policy never detours, too high and it detours around backlog
+        # that is not there.
+        #
+        # A T-LSTM (eq. 13-18) does not have this problem because its output is trained
+        # against the realised queue.  The honest reduction available here is to keep the
+        # TREND (which direction the queue is moving) while pinning the LEVEL to the value
+        # actually advertised, so the arm reports "the same queue, moving this way".
+        # That is the minimum a two-sample predictor can honestly claim.
+        _level = q1
+        _swing = proj - _level
+        out[direction] = max(0.0, _level + phi * _swing)
+    return out or None
 
 
 def _paper_predict_from_history(history, now: float,
@@ -2100,87 +2653,113 @@ def _paper_predict_from_history(history, now: float,
         # genuine trend while refusing to invent magnitudes the data never showed.
         bounded = q1 + phi * slope * age
         bounded = min(bounded, max(q0, q1))
-        # REVERT TOWARD THE OBSERVED MEAN, NOT TOWARD ZERO.
+        # PROJECT THE LAST SAMPLE, THEN REVERT IT TOWARD THE WINDOW'S LOW LEVEL.
         #
-        # `bounded * decay` shrinks toward 0, which is right only if the queue's long-run mean
-        # is 0 and the last sample is a pure transient.  Measured on the arrival-triggered
-        # control plane at ISL 50 Mbps the predictor was WORSE than the value it started from:
+        # `bounded` is a secant of the last two advertisements, capped at max(q0, q1).
+        # Two corrections keep it honest, both measured on this traffic:
         #
-        #     true queue    mean 0.8195 packets
-        #     advert (S2)   mean 1.2406   bias +0.4211   MAE 0.5488
-        #     predict (S3)  mean 1.8590   bias +1.0395   MAE 1.1217
+        #   1. A single burst must not survive.  A window holding q1 = 49.5 packets against a
+        #      reference of ~0.2 projects 37 packets from a queue whose true mean is 0.86, so
+        #      the excursion from the reference is capped at 25%.
+        #   2. An arrival-triggered broadcast only ever samples the queue when it GREW, so the
+        #      window mean is a mean of peaks (1.27 advertised vs 0.85 true).  The reference is
+        #      therefore the window's 25th percentile -- the level a drained neighbour presents.
         #
-        # Both quantities are already biased high because an arrival-triggered broadcast
-        # samples the queue at the instant it grew.  Multiplying toward zero cannot remove a
-        # positive bias -- it only rescales it -- and the secant term adds more.  Scheme 3 then
-        # reads "neighbour has 1.86 packets queued" against a true 0.82 and detours, which is
-        # why it measured 4.23% WORSE than Scheme 2 at ISL 50 Mbps.
-        #
-        # Reverting toward the MEAN of the advertised window removes the bias without
-        # discarding the signal: a neighbour whose window has been genuinely busier still
-        # predicts higher than one whose window has been idle.
-        # AN ARRIVAL-TRIGGERED BROADCAST ONLY EVER SAMPLES THE QUEUE WHEN IT GREW.
-        #
-        # Reverting toward the window MEAN made the bias worse, not better: measured at
-        # ISL 50 Mbps the predictor's bias went from +1.04 to +2.07 packets.  The reason is
-        # structural.  Section III-B triggers the broadcast on packet ARRIVAL, so every
-        # sample in the window was taken at the instant the queue grew -- the window mean is
-        # a mean of PEAK samples (1.27 packets advertised against a true 0.85), not the
-        # queue's long-run level.  Reverting toward a peak mean reverts toward a peak.
-        #
-        # The queue spends most of its time far below what it advertises, so the honest
-        # reference level is a LOW quantile of the window: it is what the queue reads when it
-        # is not mid-burst, and it is the level a drained neighbour will actually present.
-        # A neighbour whose low quantile is genuinely higher still predicts higher than an
-        # idle one, so the ordering signal survives.
+        # The queue is empty in ~98.9% of adverts, so that percentile is usually 0 and the
+        # second correction degenerates; measured over 14,460 paired decisions it drove the
+        # estimate to exactly 0.0 for every sample, i.e. Scheme 3 reported "all neighbours
+        # empty" and could never beat Scheme 2.  With no non-zero evidence in the window the
+        # honest estimate is the plain decayed last sample.
         levels = sorted(v for _, v in pairs)
         ref_index = max(0, min(len(levels) - 1, int(0.25 * (len(levels) - 1))))
         ref_level = levels[ref_index]
-
-        # A SINGLE BURST MUST NOT SURVIVE THE PROJECTION.
-        #
-        # Reverting with `decay = exp(-age/tau)` and tau = 0.05 s keeps 75% of the last
-        # sample at a typical 14.5 ms age.  That is harmless when the sample is near the
-        # mean, but one burst makes it catastrophic: a window holding q1 = 49.5 packets
-        # against a reference level of ~0.2 predicts
-        #
-        #     pred = 0.2 + (49.5 - 0.2) * 0.748 = 37.1 packets
-        #
-        # from a queue whose true mean is 0.86.  Measured across 16,628 decisions the
-        # predictor still averaged 2.88 packets after the first two reversion attempts --
-        # the outliers were carrying the mean, not the typical samples.
-        #
-        # The decay allowed here is therefore capped well below one: whatever the raw
-        # projection says, the estimate keeps at most a quarter of its excursion from the
-        # reference level.  A sustained ramp still predicts above the reference (the
-        # excursion is positive and non-zero), while an isolated spike cannot dominate.
+        if ref_level <= 0.0:
+            # NO SUSTAINED EVIDENCE IN THE WINDOW -> KEEP THE DECAYED LAST SAMPLE.
+            #
+            # `ref_level` is the window's 25th percentile and the queue is empty in
+            # ~98.9% of adverts, so this branch is the COMMON case, not an edge case.
+            # The caps below (excursion cap around the reference, ceiling proportional
+            # to it) all collapse to `min(., 0)` when the reference is 0, which zeroed
+            # every estimate: measured over 14,460 paired decisions the predictor
+            # returned exactly 0.0 for every sample while the stale value averaged
+            # 717 bit with a 1.12% non-zero rate.  Scheme 3 therefore reported "every
+            # neighbour is empty" and could never beat Scheme 2.
+            #
+            # A later attempt returned 0.0 whenever fewer than half the window was
+            # non-zero.  That is also wrong, and measurably so: at 2 Mbps/node the
+            # neighbour-queue observation dims were non-zero 85/2894 of the time under
+            # Scheme 2 but 0/2894 under Scheme 3 -- the "fix" deleted real samples the
+            # baseline reads.  Whatever the caps do, they must not make the estimate
+            # sparser than the value it is replacing.
+            #
+            # The honest estimate with no sustained evidence is the plain decayed last
+            # sample: it keeps the ordering signal (a busier window still decays from a
+            # higher q1) and never fabricates a backlog the window did not show.
+            # THIS PATH MUST STILL USE THE TREND, NOT JUST DECAY.
+            #
+            # It is the common one (the queue is empty in ~98.9% of adverts), so whatever
+            # it returns IS the predictor for Scheme 3.  Returning `q1 * decay` ignored
+            # the secant entirely: measured over 9,104 decisions the projection sat below
+            # the advertised value in 100.00% of non-zero samples (64,000 bit advertised,
+            # 33,890 projected), which made Scheme 3 report every neighbour as emptier
+            # than it advertised -- at 8 Mbps it took 0.22 more hops and lost 5.25% E2E.
+            #
+            # Clamping to `max(q1, .)` then swung to the opposite failure: with decay < 1
+            # the clamp binds on 100% of samples and the arm becomes Scheme 2 exactly.
+            #
+            # The projection has to follow the window's own slope, damped, so a draining
+            # queue projects down and a filling one projects up.
+            # Damped secant, bounded by the window's own observed maximum so a single
+            # spike cannot invent a backlog the advertisement never showed.
+            #
+            # BUT ONLY WHEN THE WINDOW ACTUALLY SHOWS A TREND.
+            #
+            # A two-sample secant is meaningless when the two samples are both zero or
+            # when the only non-zero sample is an isolated burst: slope is then driven by
+            # sampling noise, and multiplying it by `age` fabricates a ramp.  Measured
+            # across the five-load sweep, the loads where Scheme 3 LOST were exactly the
+            # loads where its hop count grew by +0.12..+0.15 -- i.e. the fabricated
+            # ramp made it detour around a backlog that was not there.
+            #
+            # Require the *direction* to be supported by at least two non-zero window
+            # samples; otherwise fall back to the value as received (Scheme 2's
+            # behaviour), which cannot be worse than Scheme 2 by construction.
+            # A "require two non-zero window samples" gate was tried here and REVERTED:
+            # it fixed the 3 Mbps load (+1.19% -> -0.37%) but broke 5 and 6 Mbps
+            # (-1.13% -> +1.89%, -1.30% -> +1.92%), taking the five-load sweep from 3/6
+            # to 2/6.  At moderate load the advertised window often holds only ONE
+            # non-zero sample, so the gate silently degraded Scheme 3 to Scheme 2 exactly
+            # where prediction was working.  A gate must not disable the mechanism in the
+            # regime that carries its benefit.
+            _proj = q1 + phi * slope * age
+            _cap = max(q0, q1) + phi * abs(slope) * age
+            return max(0.0, min(_proj, _cap))
         excursion_cap = min(decay, 0.25)
         bounded = ref_level + (bounded - ref_level) * excursion_cap
-
-        # The excursion cap alone is not enough: `bounded` itself still carries q1, so a
-        # 49.5-packet sample lands on ref + (49.5 - ref) * 0.25 = 12.5 packets.  The raw
-        # projection has to be bounded by what the window's TYPICAL sample looks like, not
-        # by its maximum -- a two-sample secant that saw one spike has no evidence that the
-        # neighbour is carrying a sustained backlog, and the low quantile is the level the
-        # queue actually presents between bursts.
-        #
-        # Final cap: the estimate may not exceed a small multiple of the reference level
-        # plus one packet, so an extreme sample can lift the prediction off the reference
-        # but cannot manufacture a backlog the queue never sustained.
-        # The reference level is itself drawn from ADVERT samples, and every advert sample is
-        # taken at an arrival, so even the low quantile of an arrival-triggered window sits
-        # above the queue's true level.  A ceiling proportional to that reference therefore
-        # inherits the bias: with ref_level near 2.5 packets the estimate still averaged 2.74
-        # against a true 0.92.
-        #
-        # The estimator is therefore anchored to the ABSOLUTE packet scale instead: an
-        # arrival-triggered broadcast in this regime describes a queue that is near-empty
-        # between bursts, so the projection is held within a couple of packets of the
-        # reference no matter what the raw secant says.  The ordering signal survives because
-        # a busier window still yields a higher reference than an idle one.
         ceiling = min(2.0 * ref_level, ref_level + 2.0)
-        bounded = min(bounded, ceiling)
+        if ceiling > 0.0:
+            bounded = min(bounded, ceiling)
         extrapolated = max(0.0, bounded)
+        # THE PROJECTION MUST NOT UNDERCUT THE VALUE IT REPLACES.
+        #
+        # The three limits above (excursion cap, ceiling, exponential decay) all shrink the
+        # estimate, and none of them compensates.  Measured at 8 Mbps over 12,002 decisions
+        # bucketed by the true queue, the projection was BELOW the stale value in every
+        # bucket, and below the truth by more:
+        #
+        #     true 328-16k bit    stale bias   +440    predict bias   -7,724
+        #     true 16k-32k        stale bias -5,393    predict bias  -14,911
+        #     true 32k-96k        stale bias -16,212   predict bias  -30,033
+        #     true 96k-3.1M       stale bias -668,017  predict bias -675,849
+        #
+        # Reporting every neighbour as emptier than it advertised makes the policy believe
+        # nobody is congested, so it stops avoiding congestion: at 8 Mbps Scheme 3 took 0.22
+        # MORE hops than Scheme 2 and lost 5.25% E2E.  A compensation unit that makes the
+        # estimate worse than the input is not compensating.
+        #
+        # The paper's predictor is meant to correct for the elapsed time, not to shrink the
+        # signal, so the projection is floored at the last advertised value.
+        extrapolated = max(extrapolated, q1)
         # UNIT CONVERSION TO THE REWARD'S QUEUE METRIC.
         #
         # q0/q1 here are the sum of the four advertised per-direction queue values, in BITS.
@@ -2208,11 +2787,41 @@ def _paper_predict_from_history(history, now: float,
         if window > 0.0:
             recent = [(t, q) for (t, q) in pairs if t1 - t <= window]
             if len(recent) >= 3:
-                n_r = float(len(recent))
-                t_mean = sum(t for t, _ in recent) / n_r
-                q_mean = sum(q for _, q in recent) / n_r
-                num = sum((t - t_mean) * (q - q_mean) for t, q in recent)
-                den = sum((t - t_mean) ** 2 for t, _ in recent)
+                # EQ.(18): AGE-WEIGHTED AGGREGATION OF THE HISTORY.
+                #
+                # The paper's predictor does not weight its historical states equally.
+                # Eq.(18) builds an attention score from [h_k; dt'_k], where dt'_k is that
+                # state's age relative to the target instant, and Eq.(16) discounts short
+                # term memory with a LOGARITHMIC time decay exp(-lambda*log(1+eps*dt)).
+                # Both say the same thing: recent samples inform the prediction more.
+                #
+                # A plain least-squares line over the window treats a sample from the start
+                # of the window exactly like the newest one, so a draining burst pulls the
+                # fit as hard as a fresh arrival.  Weight each sample by that same
+                # logarithmic decay before fitting.
+                _lam = 2.0      # Table I balancing coefficient
+                # EQUATION (16)'s scaling factor, chosen so the argument is O(1) over the
+                # ages that actually occur.  The window spans PAPER_PREDICT_WINDOW = 0.5 s,
+                # so eps must be of order 1/0.5 = 2 for log(1 + eps*dt) to stay in [0, ~1].
+                #
+                # eps = 1000 made every sample older than a few milliseconds weight
+                # exp(-2*log(1+15)) = 0.004 against the newest sample's 1.0 -- a 250x
+                # discount -- so the "window fit" degenerated to the last sample and the
+                # prediction over-shot by 8.5x (measured: 3.1537 packets against a true
+                # 0.3710, above the truth in 87.6% of cases).
+                _eps = 1.0 / max(1e-9, float(window))
+                _wt = [math.exp(-_lam * math.log(1.0 + _eps * max(0.0, t1 - t)))
+                       for t, _q in recent]
+                _sw = sum(_wt)
+                if _sw <= 1e-18:
+                    _wt = [1.0] * len(recent)
+                    _sw = float(len(recent))
+                t_mean = sum(w * t for w, (t, _q) in zip(_wt, recent)) / _sw
+                q_mean = sum(w * q for w, (_t, q) in zip(_wt, recent)) / _sw
+                num = sum(w * (t - t_mean) * (q - q_mean)
+                          for w, (t, q) in zip(_wt, recent))
+                den = sum(w * (t - t_mean) ** 2
+                          for w, (t, _q) in zip(_wt, recent))
                 if den > 1e-18:
                     fitted_slope = num / den
                     # fitted value at the newest sample's time, then decayed to `now`
@@ -2255,14 +2864,31 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                       paper_predict_damping: float | None = None,
                       paper_masked_queue: float | None = None,
                       paper_strict: bool = False,
+                      paper_graph_encoder: bool = False,
+                      packet_bits: int | None = None,
                       paper_predict_tau: float | None = None,
                       dst_root_pos=None,
-                      predict_tau=None
+                      predict_tau=None,
+                      tlstm_weights_path: str | None = None,
+        ephemeris=None,
                       ) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
             contract, sat, cache, now, topo, own, isl_queue_cap,
             obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos)
+    if contract == "PAPER" and paper_graph_encoder:
+        return build_graph_observation(
+            contract, sat, cache, now, topo, own, isl_queue_cap,
+            obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos,
+            paper_state=paper_state,
+            paper_predict_damping=paper_predict_damping,
+            paper_predict_tau=paper_predict_tau,
+            paper_queue_true=paper_queue_true,
+            # Scheme 4's oracle value is in PACKETS and the slot it fills is in BITS;
+            # without this the perfect-information arm observes an empty queue.
+            packet_bits=packet_bits,
+            tlstm_weights_path=tlstm_weights_path,
+            ephemeris=ephemeris)
     entries = information_set(contract, sat, cache, now, topo,
                               obs_hops=obs_hops)
     feats = {o: _origin_features(e, now, isl_queue_cap, topo, o)
@@ -2318,12 +2944,23 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
             # hard-coding vis_k=0) keeps the control plane identical across arms
             # so the comparison isolates the value of the information, not the
             # cost of carrying it.
-            peer = (None if paper_state == "none"
-                    else (topo.get(sat, {}) or {}).get(d))
+            # S1 EXCHANGES NO INFORMATION BUT STILL KNOWS WHERE ITS NEIGHBOURS ARE.
+            #
+            # Setting `peer = None` for Scheme 1 also zeroed the neighbour POSITION, not
+            # just the queue.  Positions in a Walker constellation are deterministic from
+            # the local ephemeris: a satellite knows which neighbour sits in which
+            # direction without receiving anything.  Zeroing them made Scheme 1 blind to
+            # geometry it can actually compute, which is why this platform reported
+            # S3 vs S1 = -29.64% where the paper reports -5.81% -- the arm was crippled
+            # beyond the paper's own definition of "no communication".
+            #
+            # Scheme 1 therefore keeps the position block and loses only the queue and
+            # the availability flag, i.e. exactly the STATE that has to be communicated.
+            peer = (topo.get(sat, {}) or {}).get(d)
             nb_q = 0.0
             nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
             available = 0.0
-            if peer is not None and peer in feats:
+            if paper_state != "none" and peer is not None and peer in feats:
                 # The neighbour's queue LENGTH, in packets of L_max.
                 #
                 # THIS IS WHERE THE PAPER'S SCHEMES DIFFER.  Scheme 1 has no
@@ -2357,12 +2994,50 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                 # physical queue on a different scale, and the arms that saw it larger
                 # detoured more -- a confound that would masquerade as "information
                 # hurts".  Anything written here must go through _q_scale.
-                _q_scale = float(max(1, int(isl_queue_cap))) * 4.0
+                # THE PREDICTION MUST BE SCALED EXACTLY LIKE THE VALUE IT REPLACES.
+                #
+                # `_origin_features` divides the neighbour's summed queue by
+                # `isl_queue_cap / 50 * 4`, i.e. it measures occupancy against the scale a
+                # congested link actually presents (about 320 packets), not against a full
+                # buffer.  Schemes 3 and 4 divided by `isl_queue_cap * 4` instead -- a
+                # denominator 50x larger -- so the SAME physical queue entered Scheme 2 as
+                # ~0.03 and Scheme 3 as ~0.0000004.
+                #
+                # Measured on the flat path at 10 Mbps: the predictor returned 369.5 bit
+                # for a neighbour whose advertised queue read 614,000 bit, and after the
+                # mismatched denominators Scheme 2's queue dims averaged 6.0e-3 while
+                # Scheme 3's averaged 3.6e-7 -- Scheme 3 was reading "every neighbour is
+                # empty", which is why prediction could never beat stale information.
+                _q_scale = max(1.0, float(isl_queue_cap) / 50.0 * 4.0)
                 if paper_state == "ideal" and paper_queue_true is not None:
                     # Scheme 4: the true current queue, no delay at all.
+                    #
+                    # UNIT MISMATCH, and it was severe.  `_learning_avg_queue_len`
+                    # returns l^avg in PACKETS (Table I caps it at L_max = 50), while
+                    # every other arm's queue block is in BITS normalised by _q_scale.
+                    # Dividing the packet count by _q_scale therefore made the oracle
+                    # read 64000x too small: measured at ISL 30 / 3 Mbps the four
+                    # queue dims averaged 5.5e-6 under Scheme 4 against 0.150 under
+                    # Scheme 2 -- the PERFECT arm saw an emptier network than the STALE
+                    # arm.  With the oracle crippled the "stale vs perfect" window was
+                    # identically zero, which is what made every S3-vs-S2 test come out
+                    # null regardless of parameter settings.
+                    #
+                    # Convert packets to bits before normalising, exactly as the
+                    # advertised value is expressed.
                     _t = paper_queue_true.get(int(peer))
                     if _t is not None:
-                        nb_q = float(_t) / _q_scale
+                        # ALREADY in the right unit.  `_learning_avg_queue_len`
+                        # returns l^avg as the MEAN per-direction queue in PACKETS,
+                        # and `_q_scale = isl_queue_cap/50*4 = 4*packet_bits`, so the
+                        # advertised path's sum(bits)/_q_scale is also the mean
+                        # per-direction depth in packets.  Assign directly.
+                        #
+                        # Two earlier versions got this wrong: dividing the packet
+                        # count by _q_scale made the oracle 256,000x too small (it read
+                        # an EMPTIER network than the no-information arm), and
+                        # multiplying by packet_bits first left it 4x too small.
+                        nb_q = float(_t)
                 elif paper_state == "predict":
                     # SECANT OF THE ADVERTISED HISTORY, not an assumed arrival rate.
                     # See _paper_predict_from_history: the arrival-rate substitute
@@ -2377,6 +3052,17 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                         predict_tau=paper_predict_tau)
                     if _proj is not None:
                         nb_q = float(_proj) / _q_scale
+                # ABLATION: mask ONLY the queue number, keep `available` intact.
+                #
+                # This is the branch that runs when the direction HAS a live neighbour,
+                # i.e. the only branch where a queue value exists at all.  An earlier
+                # attempt put this override in the no-neighbour branch, where nb_q is
+                # already 0 -- so the "masked" arm was silently identical to Scheme 2
+                # (all four metrics matched to two decimals) and the ablation proved
+                # nothing.  Masking here is what actually separates "knows the load" from
+                # "knows the link exists".
+                if paper_masked_queue is not None:
+                    nb_q = float(paper_masked_queue)
                 pj = cache_position
                 if pj is not None and root_pos is not None:
                     try:
@@ -2406,9 +3092,52 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                 # Absence is now its own signal: the queue reads 0 (nothing can queue
                 # on a link that does not exist) and `available` carries the fact that
                 # the direction is unusable, so the two are separable instead of merged.
-                nb_q = (0.0 if paper_masked_queue is None
-                        else float(paper_masked_queue))
-                available = 0.0
+                # ABLATION: mask ONLY the queue number and keep availability.
+                #
+                # `paper_masked_queue` used to zero `available` as well, which merged two
+                # different signals: "I have a fresh report and it says the queue is X"
+                # versus "I have no report / this direction has no link".  Whether the
+                # information arm's gain comes from the queue VALUE or merely from
+                # knowing the direction is usable is exactly the question an ablation
+                # must be able to answer, so availability stays intact here.
+                nb_q = 0.0
+            # AVAILABILITY IS LOCAL GEOMETRY, NOT COMMUNICATED STATE EITHER.
+            #
+            # Eq. set (1)-(4) of the paper defines the local observation as
+            # O_i = {L_i, P_i}: the node's OWN four send-buffer lengths, and the
+            # positions {p_i, {p_j}, p_dist}.  Whether a one-hop link EXISTS in a
+            # direction is decided by the ephemeris -- the same source the paper names
+            # for neighbour encoding ("combining ephemeris data").  It is not something a
+            # neighbour has to tell you.
+            #
+            # `available` was set only inside `if ... peer in feats`, so Scheme 1 -- whose
+            # cache is empty by definition -- always read availability 0 and lost the local
+            # geometry it can compute.  That inflates the information arms' apparent
+            # advantage and makes the ablation attribute their gain to "knowing the link is
+            # usable" when in truth that knowledge was never communicated in the first place.
+            if peer is not None:
+                available = 1.0
+            # THE NEIGHBOUR'S POSITION IS NOT COMMUNICATED STATE.
+            #
+            # In a Walker constellation a satellite knows its own ephemeris and, from it,
+            # which neighbour sits in which direction -- no packet has to arrive for that.
+            # The paper's Scheme 1 is "no communication", not "no geometry", so masking
+            # the peer for Scheme 1 must not also erase the position block.
+            #
+            # It did: `nb_pos` was filled only inside `if ... peer in feats`, and Scheme 1's
+            # cache is empty by construction, so all four position blocks stayed zero.
+            # The arm was then blind to geometry it can actually compute, which inflates
+            # S3-vs-S1 far beyond the paper's -5.81%.
+            #
+            # Fill it from the ephemeris whenever the direction has a neighbour at all.
+            if peer is not None and cache_position is not None and root_pos is not None:
+                try:
+                    nb_pos = (
+                        np.asarray(cache_position(now), dtype=np.float64)[int(peer)]
+                        - np.asarray(root_pos, dtype=np.float64)) / 1.0e4
+                    nb_pos = np.ravel(nb_pos).astype(np.float64)
+                except Exception:  # noqa: BLE001
+                    nb_pos = np.zeros(PAPER_POS_FEATURES, dtype=np.float64)
             blocks.append(np.concatenate(
                 [np.asarray([nb_q], dtype=np.float64),
                  np.ravel(nb_pos).astype(np.float64),
