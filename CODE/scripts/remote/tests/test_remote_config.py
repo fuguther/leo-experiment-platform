@@ -7,6 +7,7 @@ import textwrap
 from pathlib import Path
 
 COMMON = Path(__file__).resolve().parents[1] / "common.sh"
+STATUS_REMOTE = Path(__file__).resolve().parents[1] / "status-remote.sh"
 
 VALID_CONFIG = textwrap.dedent(
     """\
@@ -111,3 +112,31 @@ def test_remote_config_requires_home_or_xdg_when_no_override(tmp_path: Path) -> 
 
     assert result.returncode != 0
     assert "HOME or XDG_CONFIG_HOME is required" in result.stderr
+
+
+def test_status_help_does_not_require_home_xdg_or_remote_config() -> None:
+    env = os.environ.copy()
+    env.pop("HOME", None)
+    env.pop("XDG_CONFIG_HOME", None)
+    env.pop("REMOTE_CONFIG_FILE", None)
+    result = subprocess.run(
+        ["bash", str(STATUS_REMOTE), "--help"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Usage:" in result.stdout
+
+
+def test_relative_xdg_config_home_is_rejected(tmp_path: Path) -> None:
+    result = _run_with_config(
+        COMMON,
+        home=tmp_path / "home",
+        xdg_config_home=Path("relative/config"),
+    )
+
+    assert result.returncode != 0
+    assert "XDG_CONFIG_HOME must be an absolute path" in result.stderr

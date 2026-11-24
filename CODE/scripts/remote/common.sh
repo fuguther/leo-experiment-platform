@@ -4,20 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_WORKSPACE_DIR="${LOCAL_WORKSPACE_DIR_OVERRIDE:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 LOCAL_CODE_DIR="$LOCAL_WORKSPACE_DIR/CODE"
-if [[ -n "${REMOTE_CONFIG_FILE:-}" ]]; then
-    CONFIG_FILE="$REMOTE_CONFIG_FILE"
-else
-    if [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
-        CONFIG_HOME="$XDG_CONFIG_HOME"
-    elif [[ -n "${HOME:-}" ]]; then
-        CONFIG_HOME="$HOME/.config"
-    else
-        echo "[remote] HOME or XDG_CONFIG_HOME is required to locate remote.env" >&2
-        exit 1
-    fi
-    DEFAULT_CONFIG_FILE="$CONFIG_HOME/leo-experiment-platform/remote.env"
-    CONFIG_FILE="$DEFAULT_CONFIG_FILE"
-fi
+CONFIG_FILE="${REMOTE_CONFIG_FILE:-}"
+DEFAULT_CONFIG_FILE=""
 SSH_BIN="${SSH_BIN:-/usr/bin/ssh}"
 RSYNC_BIN="${RSYNC_BIN:-/usr/bin/rsync}"
 TAR_BIN="${TAR_BIN:-/usr/bin/tar}"
@@ -30,7 +18,26 @@ die() {
     exit 1
 }
 
+resolve_remote_config_file() {
+    if [[ -n "${REMOTE_CONFIG_FILE:-}" ]]; then
+        CONFIG_FILE="$REMOTE_CONFIG_FILE"
+        return
+    fi
+    if [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
+        [[ "$XDG_CONFIG_HOME" == /* ]] \
+            || die "XDG_CONFIG_HOME must be an absolute path"
+        CONFIG_HOME="$XDG_CONFIG_HOME"
+    elif [[ -n "${HOME:-}" ]]; then
+        CONFIG_HOME="$HOME/.config"
+    else
+        die "HOME or XDG_CONFIG_HOME is required to locate remote.env"
+    fi
+    DEFAULT_CONFIG_FILE="$CONFIG_HOME/leo-experiment-platform/remote.env"
+    CONFIG_FILE="$DEFAULT_CONFIG_FILE"
+}
+
 load_remote_config() {
+    resolve_remote_config_file
     if [[ ! -f "$CONFIG_FILE" ]]; then
         die "missing config: $CONFIG_FILE (copy $SCRIPT_DIR/remote.env.template to $CONFIG_FILE, fill the placeholders, and chmod 600)"
     fi
