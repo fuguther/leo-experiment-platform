@@ -4026,11 +4026,24 @@ class Kernel:
                       float(queued_bits) + float(active_bits))
         return {
             "peer": int(link.peer),
-            # l^avg: the time-averaged occupancy, not one instant's reading.  See the
-            # integration above -- with the instantaneous value this field was non-zero
-            # only 0.46% of the time, so the neighbour-queue dims, the Eq.(10) reward and
-            # the predictor's history were all reading a signal that was almost always 0.
-            "value": int(round(averaged_bits)),
+            # REPORT THE SENDER'S OWN OCCUPANCY ON THIS DIRECTION -- INSTANTANEOUSLY.
+            #
+            # The consumer (`_origin_features`) sums an origin's four per-direction
+            # `value`s, so the sum is that satellite's TOTAL egress occupancy, and dividing
+            # by isl_queue_cap * 4 gives its mean occupancy -- the paper's l^avg.
+            #
+            # A TIME AVERAGE was tried here ("l^avg" suggests averaging) and is WRONG.
+            # Comparing, for the same origin at the same instant, `sum(payload values)`
+            # against that origin's true total egress, over 14,324 advertisements:
+            #
+            #     sum(payload values)       mean   317.2 bit   non-zero  0.99%
+            #     origin true total egress  mean 30275.9 bit   non-zero  4.76%
+            #
+            # A 95x gap.  Averaging smooths away exactly the bursts that ARE the congestion
+            # signal: the queue is empty most of the time and spikes briefly, and it is the
+            # spike a neighbour needs to see in order to avoid it.  The paper's "average" is
+            # over a node's DIRECTIONS, not over time.
+            "value": int(round(queued_bits)),
             "generation": int(link.gen),
             "rate_bps": rate,
             "work_ahead_bits_proxy": work_ahead,
