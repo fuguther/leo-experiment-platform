@@ -81,23 +81,14 @@ python3 -B CODE/scripts/maintenance_check.py --repo .
 python3 -m pytest -q
 ```
 
-这些命令验证代码路径和本地行为。它们不授予 formal 运行资格，也不建立科研
-结论。正式实验还必须经过编译、独立审阅、明确授权、VM 运行和 receipt 重算。
+这些命令验证代码路径和本地行为。它们不授予 `formal` 运行资格，也不建立科研结论。
 
-只从干净、已提交、已推送的完整 commit 构造不可变 release。所有产生科研数值
-的仿真、压力测试、决策计时和训练在 VM 执行。
+只从干净、已提交、已推送的完整 commit 构造不可变 release。所有产生科研数值的仿真、压力测试、决策计时和训练在 VM `/data/论文/leo-t1-wt/` 执行：
 
-Canonical 发布默认要求本地 `main` HEAD、GitHub `refs/heads/main` 和发布 commit
-三者精确一致；安装并完整校验后才会原子更新 VM `/data/论文/leo-t1-wt/CURRENT.json`。
-VM 不要求能访问 GitHub：Mac 在 promotion 前生成自哈希 live-main proof，VM 校验
-proof 与 installed release 后将其嵌入 CURRENT。proof 过期、commit/ref 不符或
-release 身份不符都会拒绝 promotion。
-普通 `run-release-remote.sh` 默认拒绝非 current release；复现旧证据必须显式传
-`--allow-historical-release`。需要未合并诊断包时必须显式使用
-`publish-release-remote.sh --development-release`，该包不会成为 current。
-`CODE/experiment_platform/code_pointer.py` 仅为历史 execution-chain 身份兼容
-保留，canonical release/run 路径不得导入或使用它。
-旧 `push-remote.sh` 部署入口同样要求干净本地 `main` 且精确等于 live GitHub
-`refs/heads/main`，并在真正远端安装前再次复核，不能作为绕过 canonical release 的旁路。
+- **唯一活动 VM 部署/执行体系**：`CODE/scripts/remote/{publish-release-remote.sh, run-release-remote.sh, pull-release-results-remote.sh}`（支持 `diagnostic` 与 `development` 模式）。
+- Canonical 发布默认要求本地 `main` HEAD、GitHub `refs/heads/main` 和发布 commit 三者精确一致；安装并完整校验后才会原子更新 VM `/data/论文/leo-t1-wt/CURRENT.json`。VM 不要求能访问 GitHub：Mac 在 promotion 前生成自哈希 live-main proof，VM 校验 proof 与 installed release 后将其嵌入 CURRENT。proof 过期、commit/ref 不符或 release 身份不符都会拒绝 promotion。
+- 普通 `run-release-remote.sh` 默认拒绝非 current release；复现旧证据必须显式传 `--allow-historical-release`。需要未合并诊断包时必须显式使用 `publish-release-remote.sh --development-release`，该包不会成为 current。
+- `CODE/experiment_platform/code_pointer.py` 仅为历史 execution-chain 身份兼容保留，canonical release/run 路径不得导入或使用它。
+- **已退役与待迁移入口**：旧 `/data/论文/leo-direct-sim` 在当前 VM 上已不存在；绑定该路径的 `push-remote.sh` / `run-remote.sh` 仅作只读兼容保留，现阶段 `formal` 执行链处于 **BLOCKED / 未迁移至 T1 release** 状态。旧 `t1-vm.sh` 已退役。
 
-`SOURCE-COMMIT.txt` 只记录固定的上游模拟器 pin，不是平台 release 身份；平台提交由 `.deployment_commit`、release manifest 和 run receipt 绑定。旧 `t1-vm.sh` 已退役，不能被当作新发布入口。
+`SOURCE-COMMIT.txt` 只记录固定的上游模拟器 pin，不是平台 release 身份；平台提交由 `.deployment_commit`、release manifest 和 run receipt 绑定。

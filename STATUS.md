@@ -1,11 +1,12 @@
 # leo-experiment-platform 当前状态
 
-最后对账：2026-11-23。topic 级研究现态仍见私有 Issue #3；本文件只记录平台当前事实、已知正确性缺口和下一步。
+最后对账：2026-11-26。topic 级研究现态仍见私有 Issue #3；本文件只记录平台当前事实、已知正确性缺口和下一步。
 
 ## 当前边界
 
-- 所有仿真、压力测试、决策计时和产生科研数值的运行在 VM 执行；本机测试只证明代码路径和本地行为。
+- 所有仿真、压力测试、决策计时和产生科研数值的运行在 VM `/data/论文/leo-t1-wt/` 执行；本机只做代码修改、单元/回归测试、静态检查、文档和已回传工件的只读复核。
 - 正式可执行路线是 `leo_sim_v2`。`legacy_gateway` 仅是外部旧平台兼容合同，本仓库不提供可独立完成的正式运行。
+- 当前活动 VM 发布/诊断链路唯一走 `CODE/scripts/remote/{publish,run,pull-release-results}-remote.sh` + `/data/论文/leo-t1-wt/CURRENT.json`。旧 `/data/论文/leo-direct-sim` 在 VM 上已退役不存在；绑定该路径的 `run-remote.sh` / `formal` 路径在未迁移至 T1 release 前处于 `BLOCKED / 未迁移` 状态。
 - 实验实例、历史工作包和一次性分析器不进入活动树。追溯旧内容时使用产生它的 Git commit/blob、run-id、manifest、receipt 和原始证据。
 - 长期契约与最小夹具位于 `EXPERIMENTS/contracts/`；运行实例不得写回该目录。
 - Canonical 执行身份只来自干净 `main`、GitHub `refs/heads/main` 与 VM `CURRENT.json` 指向的同一精确 commit；development release 和来源未知的历史 release 不能冒充 current。
@@ -29,8 +30,8 @@
 
 ## 活动研究边界
 
-- TAP-DAR baseline suite 是独立活动工作流（engineering-governance Issue #10），不由本仓库的活动树清理结果推断其完成或失败。
-- PCVR、TAP-DAR 训练实验、domain-map 中的 cohort/physics-residual 等候选属于算法或研究叶子；没有进入本平台主干，也不因分支存在而成为已选算法。
+- Issue #10（`2026-11-07-baseline-suite` TAP-DAR 基线与对照）已从根工作区归档至 `_archive/` 与 VM `/data/论文/leo-t1-wt/archive/`；不再属于活动工作树。
+- PCVR、TAP-DAR 训练实验、domain-map 中的 cohort/physics-residual、`AETHER-RL`、`CASPER-RL`、`TAVR` 等均属于待验证候选或历史研究叶子；尚未选定任何权威算法。
 - 历史 research 分支只能通过固定 commit、tag、run-id 和原始证据追溯；不得把其预测器、场景或分析器恢复为默认入口。
 
 ## 已知时间语义缺口
@@ -52,6 +53,7 @@
 ## 下一步
 
 1. 为上述时间语义缺口逐项先写最小失败回归，再单独修复；不得在同一次改动中改变路由算法或历史证据。
-2. 修复后从干净、已推送的 main 构造新 release；普通运行默认只能使用 CURRENT，历史复现必须显式覆盖。
-3. VM 仍有一个来源未知且有历史 run 引用的 release；其精确 ID 记录在 Issue #3，保持只读、禁止作为 current，不能因不在 GitHub 就删除唯一证据。
-4. 正式实验仍须编译、独立审阅、明确授权和 receipt 复核；当前 canonical release 不构成科研结论。
+2. 将正式执行编排从已退役的 `/data/论文/leo-direct-sim` 合同迁移至 T1 release 协议（并补齐 `remote_job.py` 的 `--timeline-log` 等缺口）；迁移完成前 `formal` 入口保持 `BLOCKED`。
+3. 修复后从干净、已推送的 main 构造新 release；普通运行默认只能使用 CURRENT，历史复现必须显式覆盖。
+4. VM 保留的唯一无 GitHub 来源历史 release（`7e022d7caa...`，见 `v2-single-action-pair` 回执）保持只读归档/历史复现用途、禁止作为 current。
+5. 正式实验仍须编译、独立审阅、明确授权和 receipt 复核；当前 canonical release 不构成科研结论。

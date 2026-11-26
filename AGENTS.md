@@ -6,7 +6,7 @@
 
 - 所有仿真、压力测试、决策计时及产生科研数值的实验在 VM 执行。本机只做代码修改、单元/回归测试、静态检查、文档和已回传工件的只读复核。
 - 本机旧实验产物是历史材料，不作为新 VM 实验结果。
-- 旧正式部署 `/data/论文/leo-direct-sim` 保持只读；不得把 T1 发布或清理指向它。
+- 旧正式部署 `/data/论文/leo-direct-sim` 在当前 VM（`cuda-liguang13`）上已不存在/退役；不得把 T1 发布、配置或清理指向它，当前 VM 唯一活跃运行与证据根为 `/data/论文/leo-t1-wt/`。
 - T1 根 `/data/论文/leo-t1-wt` 的旧 CODE/Results/launch.json 是历史流程。新发布只使用 `releases/<release-id>`，新运行只使用 `runs/<run-id>`；不得回到向共享 CODE 目录 rsync 覆盖的流程。
 - 主机连接、Python 路径和环境事实以当前配置及实查为准；不用历史磁盘余量或系统 Python 版本代替运行环境验证。
 
@@ -14,13 +14,13 @@
 
 1. 确认工作树归属、分支、HEAD 和修改状态；保护别的任务的 dirty/untracked 文件。同一文件指定一个写入负责人。
 2. 按用户已授权任务修改必要文件并验证，更新既有状态入口。禁止删测试、放宽断言或静默回退制造通过。
-3. canonical 发布必须来自干净 `main` 工作树的完整 commit SHA，使用 `CODE/scripts/remote/publish-release-remote.sh`；构建器同时要求该 commit 精确等于远端 `refs/heads/main`。Mac 在 promotion 前生成带时间、目标仓库、commit/ref 和自哈希的 live-main proof；VM 校验 proof 并把它嵌入 `CURRENT.json`，不要求 VM 能直连 GitHub。旧 `push-remote.sh` 部署入口复用同一 `verify-source` 门，不得从特性分支或未推送 commit 部署。未确认远端备份的包只能走显式 `--development-release`，不得成为 current。GitHub 备份、合并 main 与发布仍是不同动作，不能用本地 dirty 文件代替任一动作。
+3. canonical 发布必须来自干净 `main` 工作树的完整 commit SHA，使用 `CODE/scripts/remote/publish-release-remote.sh`；构建器同时要求该 commit 精确等于远端 `refs/heads/main`。Mac 在 promotion 前生成带时间、目标仓库、commit/ref 和自哈希的 live-main proof；VM 校验 proof 并把它嵌入 `CURRENT.json`，不要求 VM 能直连 GitHub。未确认远端备份的包只能走显式 `--development-release`，不得成为 current。GitHub 备份、合并 main 与发布仍是不同动作，不能用本地 dirty 文件代替任一动作。
 4. 有界诊断/开发运行使用 `CODE/scripts/remote/run-release-remote.sh`，指定已核验 release 和新 run-id；默认只接受与 VM `CURRENT.json` 完全一致的 release，旧的/来源未知的 release 只有显式 `--allow-historical-release` 才能复现。开始创建 run 目录前，runner 强制比较当前 Python、Linux 平台、机器架构和已安装 Python 包清单摘要与 release 内 `CODE/dependencies/t1-vm-linux-aarch64/runtime-identity.json`，并重算核对其中声明的 pip/Conda 锁哈希；不匹配时拒绝运行。成功的 run manifest 记录实际环境并绑定契约哈希，receipt 绑定 manifest 哈希。声明的数据、模型和配置会快照到该 run。`--config` 只登记并固化输入快照，不会自动补齐子命令的位置参数；例如 `config validate` 仍须在 `--` 后显式传入 release 相对路径，runner 会将其替换为 run 隔离快照。失败运行保留回执，不复用 run-id 掩盖失败。
 5. 回传使用 `CODE/scripts/remote/pull-release-results-remote.sh`：partial 暂存、校验、原子落盘、追加 `ANALYSIS/DEPLOYMENT-INDEX.jsonl`。不得手改 VERIFIED 或 receipt hash。
 6. 证据对照本次固定 release、配置和输入身份核验，不要求历史结果等于后来工作树的 HEAD。之后提交不会自动使旧证据失效，也不会使旧证据自动覆盖新代码。
 7. 发布中断时先确认该 release 没有活动上传，再检查 partial/bootstrap/staging；隔离残留并保留原因。不得盲目删目录或覆盖重试；已测试的恢复入口及限制见 STATUS。
 
-正式实验仍走编译 → 独立审阅 → 明确授权 → 既有 `CODE/scripts/remote/run-remote.sh` → 自然结束回执 → 分析重算。T1 新发布/诊断验证不授予 FORMAL_RUN，不证明科研收益。
+正式实验（`formal`）在原则上仍须走编译 → 独立审阅 → 明确授权 → 自然结束回执 → 分析重算；但当前绑定旧 `/data/论文/leo-direct-sim` 的 `CODE/scripts/remote/run-remote.sh` 尚未迁移到 `/data/论文/leo-t1-wt/releases`（参见 `ANALYSIS/CURRENT-EVENT-TIMELINE.md` B7 与 `run-release-remote.sh` 对 `formal` 的拒绝），因此现阶段 canonical `formal` 入口处于 **BLOCKED / 未迁移** 状态。T1 新发布与 `diagnostic`/`development` 验证不授予 `FORMAL_RUN`，不证明科研收益。
 
 ## 文件与维护规则
 
