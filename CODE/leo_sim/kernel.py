@@ -1239,7 +1239,8 @@ class Kernel:
                  learning_out_dir=None, decision_sink=None, timeline_sink=None,
                  forced_actions=None, control_audit=False,
                  inference_policy=None, target_probe_path=None,
-                 target_probe_max=None, target_probe_stride=None):
+                 target_probe_max=None, target_probe_stride=None,
+                 resource_sink=None):
         cfg = resolved["config"]
         self.resolved = resolved
         self.cfg_sc = cfg["scenario"]
@@ -1396,7 +1397,7 @@ class Kernel:
             self.learner = None
             self.policy_source = "fixed_inference_checkpoint"
             self.mech_fixed_policy_calls = 0
-        elif algorithm in ("ddqn", "qlearning"):
+        elif algorithm != "none":
             seed = (cfg["learning"]["seed"]
                     if cfg["learning"]["seed"] is not None
                     else self.cfg_sc["seed"])
@@ -1427,6 +1428,9 @@ class Kernel:
         # (cached values are the first-computed results for identical pure
         # queries), bounded LRU, filled only on demand — never reads future
         # times itself.
+        if self.cfg_links.get("scheduled_isl_outages"):
+            geometry = outage.ScheduledISLGeometry(
+                geometry, self.cfg_links["scheduled_isl_outages"])
         self.geometry = model.MemoizedGeometry(geometry)
         self.num_sats = geometry.num_satellites
         if self.cfg_ta["enabled"] and self._query_delay_s > 0:
@@ -1444,6 +1448,14 @@ class Kernel:
         # by shape and count in existing tests, so lifecycle milestones must
         # never be appended to decision_sink.  When None no row is built.
         self.timeline_sink = timeline_sink
+        self.resource_sink = resource_sink
+        self._planned_egress = {}
+        adapter = self.cfg_rt.get("local_forward_adapter")
+        if adapter is not None:
+            from .rl.local_forward import build_adapter
+            self.local_forward_adapter = build_adapter(adapter, self.cfg_sc["seed"])
+        else:
+            self.local_forward_adapter = None
         # SAME-RUN PREDICTION -> TRUTH PROBE (audit only, default off).
         # When a path is given, one probe object samples the live directed-ISL
         # resource at each decision's evaluation target instant.  It is created
@@ -1828,6 +1840,11 @@ class Kernel:
     def _record_isl_queue_state(self, link: ISLLink, event: str, *,
                                 pid=None, control_iid=None, outcome=None):
         """Exact post-transition queue/in-service state for offline replay."""
+        if self.resource_sink is not None:
+            self.resource_sink.append((
+                float(self.env.now), int(link.sat), str(link.dir), int(link.peer),
+                int(link.gen), bool(link.retired), int(link.data_bits), int(link.ctrl_bits),
+                link.current is not None, str(event), pid))
         if self.timeline_sink is None:
             return
         current = link.current
@@ -2183,6 +2200,10 @@ class Kernel:
                            fate="DELIVERED")
 
     def _build_routing_structures(self):
+        if self.resource_sink is not None:
+            self.resource_sink.append(("topology", float(self.env.now), tuple(
+                tuple(sorted(self.topo.get(sat, {}).values()))
+                for sat in range(self.num_sats))))
         self._routing_reverse_adj = routing._reverse_adj(self.topo)
         self._routing_sorted_rev_adj = {
             s: sorted(self._routing_reverse_adj.get(s, ()))
@@ -3721,6 +3742,9 @@ class Kernel:
         try:
             rate = float(self._link_rate("isl", float(now), link.sat,
                                          peer=link.peer))
+            if (self.cfg_rt.get("ephemeris_egress_fallback")
+                    and not self.geometry.isl_available(link.sat, link.peer, now)):
+                rate = 0.0
             if not math.isfinite(rate) or rate < 0.0:
                 rate = None
         except Exception:
@@ -4091,8 +4115,86 @@ class Kernel:
         """
         if self._effective_routing_policy() in ("oracle", "known_serving"):
             return [s for s in self._serving_sats(dst) if s != sat]
-        return routing.destinations_in_cache(self.caches[sat], dst, now,
-                                             max_cache_hops=cache_hops)
+        advertised = routing.destinations_in_cache(
+            self.caches[sat], dst, now, max_cache_hops=cache_hops)
+        if not self.cfg_rt.get("ephemeris_egress_fallback"):
+            return advertised
+        return [s for s in advertised if s != sat] or self._nominal_egress(sat, dst)
+
+    def _nominal_egress(self, sat: int, dst: str) -> list[int]:
+        """Fallback from a time-zero visibility plan, with no live GSL input."""
+        if dst not in self._planned_egress:
+            ep = self.endpoints[dst]
+            visible = [
+                (self.geometry.slant_range_km(s, ep.lat, ep.lon, 0.0), s)
+                for s in range(self.num_sats)
+                if self.geometry.ground_visible(s, ep.lat, ep.lon, 0.0)
+            ]
+            self._planned_egress[dst] = tuple(s for _, s in sorted(visible))
+        return [s for s in self._planned_egress[dst] if s != sat]
+
+    def _local_forward_view(self, sat, pkt, legal, shortest_candidates):
+        from .rl.local_forward import DIRS, EdgeReport, LocalForwardView, Port, distance_to_cell_km
+
+        now = float(self.env.now)
+        cap = float(self.cfg_links["isl_queue_bits"])
+        base_rate = max(1.0, self.isl_rate_bps)
+        ep = self.endpoints[pkt.dst]
+        sat_lat, sat_lon, _ = self.geometry.subpoint(sat, now)
+        dst_features = tuple(float(f) for f in _learning.destination_features(
+            sat_lat, sat_lon, ep.lat, ep.lon))
+        own_distance = distance_to_cell_km(self.geometry, sat, ep.lat, ep.lon, now)
+        entries = self.caches[sat].valid_entries(now)
+        targets = self._serving_source(sat, pkt.dst, now, 1)
+        distances = routing._multi_source_bfs(self._routing_reverse_adj, targets)
+        previous = pkt.path[-2] if len(pkt.path) >= 2 else None
+
+        def _ratio(value, scale, maximum):
+            return min(maximum, max(0.0, float(value or 0.0) / scale))
+
+        ports = []
+        for direction in DIRS:
+            link = self.isls[sat].get(direction)
+            if link is None:
+                ports.append(Port(None))
+                continue
+            peer = int(link.peer)
+            entry = entries.get(peer)
+            if entry is not None and entry.hops != 1:
+                entry = None
+            reports = []
+            for edge in DIRS:
+                reported = None
+                if entry is not None:
+                    q = entry.payload.get("isl_queue_bits", {}).get(edge)
+                    prop = entry.payload.get("isl_propagation_s", {}).get(edge)
+                    if isinstance(q, dict) and isinstance(prop, dict) and q["peer"] == prop["peer"]:
+                        reported = EdgeReport(
+                            int(q["peer"]), _ratio(q["value"], cap, 1.0),
+                            _ratio(q.get("work_ahead_bits_proxy"), cap, 2.0),
+                            _ratio(q.get("rate_bps"), base_rate, 4.0),
+                            _ratio(prop["value"], 0.025, 2.0))
+                reports.append(reported)
+            up = self.geometry.isl_available(sat, peer, now)
+            rate = self._link_rate("isl", now, sat, peer=peer) if up else 0.0
+            delay = model.propagation_delay_s(self.geometry.isl_range_km(sat, peer, now))
+            progress = own_distance - distance_to_cell_km(self.geometry, peer, ep.lat, ep.lon, now)
+            ports.append(Port(
+                peer, up, _ratio(link.data_bits + link.ctrl_bits, cap, 1.0),
+                _ratio(rate, base_rate, 4.0), _ratio(delay, 0.025, 2.0),
+                None if entry is None else entry.generated_at,
+                None if entry is None else entry.received_at,
+                None if entry is None else entry.expires_at, tuple(reports),
+                distances.get(peer), progress, peer == previous, int(link.gen)))
+        eligible = [p.hops for d, p in zip(DIRS, ports)
+                    if p.hops is not None and (not shortest_candidates or d in shortest_candidates)]
+        min_hops = min(eligible, default=None)
+        shortest = tuple(d for d, p in zip(DIRS, ports)
+                         if min_hops is not None and p.hops == min_hops)
+        return LocalForwardView(int(sat), now, pkt.pid, pkt.src, pkt.dst,
+                                pkt.emitted_at, pkt.bits, max(0, len(pkt.path) - 1),
+                                dst_features, len(targets), tuple(ports), tuple(legal),
+                                shortest, tuple(legal))
 
     def _effective_routing_policy(self) -> str:
         """Configured policy, or the staged one once its switch time passes."""
@@ -4135,7 +4237,12 @@ class Kernel:
 
     def _learner_remember(self, sat: int | None, state, action: str,
                           reward: float, next_state, next_mask: dict,
-                          done: bool) -> None:
+                          done: bool, *, terminal_cost: float = 0.0) -> None:
+        remember_with_cost = getattr(self.learner, "remember_with_cost", None)
+        if remember_with_cost is not None:
+            remember_with_cost(state, action, reward, next_state, next_mask, done,
+                               cost=terminal_cost)
+            return
         remember_for = getattr(self.learner, "remember_for", None)
         if remember_for is not None:
             if sat is None:
@@ -4158,6 +4265,11 @@ class Kernel:
 
     def _learning_observation(self, sat: int, dst_cell: str,
                               pkt: DataPacket | None = None) -> np.ndarray:
+        if self.cfg_rt["contract"] == "PRIMAL":
+            from .rl.local_forward import primal_observation
+            if pkt is None:
+                raise KernelError("PRIMAL observation needs a packet snapshot")
+            return primal_observation(self._local_forward_view(sat, pkt, (), ()))
         queues = {d: lnk.data_bits + lnk.ctrl_bits
                   for d, lnk in self.isls[sat].items()}
         visible = sum(
@@ -4257,7 +4369,8 @@ class Kernel:
                 next_mask = {action: False for action in _learning.ACTIONS}
             self._learner_remember(
                 pkt.learning_sat, pkt.learning_state, pkt.learning_action,
-                transition.reward, next_state, next_mask, transition.terminal)
+                transition.reward, next_state, next_mask, transition.terminal,
+                terminal_cost=float(transition.terminal and outcome != "delivered"))
         if transition is None or transition.terminal:
             pkt.learning_episode_closed = True
         pkt.learning_state = None
@@ -7117,7 +7230,9 @@ class Kernel:
                 (lambda prop_s: link_budget.mcs_rate_bps(
                     prop_s * model.C_KM_S, self.rf_isl, self.mcs_table))
                 if self.rate_model == "mcs" else None),
-            cache_hops=cache_hops)
+            cache_hops=cache_hops,
+            fallback_targets=(self._nominal_egress(sat, pkt.dst)
+                              if self.cfg_rt.get("ephemeris_egress_fallback") else ()))
         if status == "unreachable":
             if self.timeline_sink is not None:
                 direction_audit = self._four_direction_audit(
@@ -7216,6 +7331,11 @@ class Kernel:
                     raise KernelError(
                         f"learner selected action {action!r} outside the "
                         f"legal mask {sorted(legal)}")
+            elif self.local_forward_adapter is not None:
+                view = self._local_forward_view(sat, pkt, legal, loop_free_candidates)
+                action = self.local_forward_adapter.choose(view, decision_id)
+                if action not in legal:
+                    raise KernelError("local adapter chose outside the legal mask")
             else:
                 action = legal[0]
             action = self._apply_forced_action(pkt, sat, decision_id, action,
@@ -7367,6 +7487,16 @@ class Kernel:
             self._fail(pkt, "DATA_DEADLINE_EXPIRED")
             return
         pkt.path.append(sat)
+        if self.local_forward_adapter is not None:
+            ep = self.endpoints[pkt.dst]
+            now = self.env.now
+            from .rl.local_forward import distance_to_cell_km
+            prev_distance = distance_to_cell_km(
+                self.geometry, pkt.path[-2], ep.lat, ep.lon, now)
+            own_distance = distance_to_cell_km(self.geometry, sat, ep.lat, ep.lon, now)
+            inbound = self._learning_last_hop_dir(sat, pkt)
+            self.local_forward_adapter.arrive(sat, inbound, pkt.bits,
+                                              own_distance >= prev_distance - 50.0)
         self._note_busy(pkt.dst)  # new downlink demand may have appeared
         yield from self._node_process(pkt, sat, "isl")
         if self._deferred_enabled():
@@ -7585,6 +7715,12 @@ class Kernel:
         }
         learning_result = None
         if self.learner is not None:
+            finish_round = getattr(self.learner, "finish_round", None)
+            if finish_round is not None and self.learner.mode == "train" and not interrupted:
+                n = len(self.ledger._fates)
+                failures = sum(fate != "DELIVERED" for fate in self.ledger._fates.values())
+                if n:
+                    finish_round(failures / n)
             learning_result = self.learner.diagnostics()
             if self.learning_out_dir is not None:
                 learning_result = self.learner.save_and_verify(
@@ -7697,7 +7833,7 @@ def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
                          timeline_sink=None, forced_actions=None,
                          control_audit=False, inference_policy=None,
                          target_probe_path=None, target_probe_max=None,
-                         target_probe_stride=None) -> dict:
+                         target_probe_stride=None, resource_sink=None) -> dict:
     kern = Kernel(resolved, rows, geometry=geometry,
                   learning_out_dir=learning_out_dir,
                   decision_sink=decision_sink, timeline_sink=timeline_sink,
@@ -7705,8 +7841,11 @@ def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
                   inference_policy=inference_policy,
                   target_probe_path=target_probe_path,
                   target_probe_max=target_probe_max,
-                  target_probe_stride=target_probe_stride)
+                  target_probe_stride=target_probe_stride,
+                  resource_sink=resource_sink)
     result = kern.run()
+    if kern.local_forward_adapter is not None:
+        result["local_forward_adapter"] = kern.local_forward_adapter.audit()
     if kern.target_probe is not None:
         # Written AFTER the simulation stops, so an interrupted run still
         # carries whatever was sampled before the stop.
@@ -7734,7 +7873,7 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
                    timeline_sink=None, forced_actions=None,
                    control_audit=False, inference_policy=None,
                    target_probe_path=None, target_probe_max=None,
-                   target_probe_stride=None) -> dict:
+                   target_probe_stride=None, resource_sink=None) -> dict:
     """Run the kernel and, inside a metered T1 cell, record real call edges.
 
     The ledger is opt-in so ordinary library use stays unchanged.  A configured
@@ -7753,7 +7892,8 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
             inference_policy=inference_policy,
             target_probe_path=target_probe_path,
             target_probe_max=target_probe_max,
-            target_probe_stride=target_probe_stride)
+            target_probe_stride=target_probe_stride,
+            resource_sink=resource_sink)
 
     _SIMULATION_CALL_SEQUENCE += 1
     sequence = _SIMULATION_CALL_SEQUENCE
@@ -7774,7 +7914,8 @@ def run_simulation(resolved: dict, rows: list[dict], geometry=None,
             inference_policy=inference_policy,
             target_probe_path=target_probe_path,
             target_probe_max=target_probe_max,
-            target_probe_stride=target_probe_stride)
+            target_probe_stride=target_probe_stride,
+            resource_sink=resource_sink)
     except BaseException as exc:
         ended_ns = time.perf_counter_ns()
         _write_simulation_call_event(

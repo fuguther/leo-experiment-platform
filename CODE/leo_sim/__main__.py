@@ -550,7 +550,7 @@ def _cmd_run(args) -> int:
         result = kernel.run_simulation(
             resolved, rows,
             learning_out_dir=(Path(out_dir) / cfg["learning"]["algorithm"])
-            if cfg["learning"]["algorithm"] in ("ddqn", "qlearning") else None,
+            if cfg["learning"]["algorithm"] != "none" else None,
             decision_sink=decision_writer,
             # The timeline stream is the ONLY channel that can carry the F2
             # node-processing stage (kernel.py:4261-4302).  Passing it here

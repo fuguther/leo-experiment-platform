@@ -75,3 +75,66 @@ class GilbertElliott:
             return t
         self._advance(t)
         return self._next_flip if self._bad else t
+
+
+def validate_isl_windows(windows, satellites, horizon):
+    """Validate nonoverlapping, bidirectional half-open fault windows."""
+    by_link = {}
+    for row in windows:
+        if not isinstance(row, dict) or set(row) != {"a", "b", "start_s", "end_s"}:
+            raise ValueError("each window requires a, b, start_s and end_s")
+        a, b, start, end = (row[k] for k in ("a", "b", "start_s", "end_s"))
+        if type(a) is not int or type(b) is not int or not 0 <= a < b < satellites:
+            raise ValueError("window endpoints must satisfy 0 <= a < b < satellites")
+        if (type(start) not in (float, int) or type(end) not in (float, int)
+                or not 0 <= start < end <= horizon):
+            raise ValueError("window must satisfy 0 <= start < end <= horizon")
+        by_link.setdefault((a, b), []).append((float(start), float(end)))
+    for edge, spans in by_link.items():
+        spans.sort()
+        if any(left[1] >= right[0] for left, right in zip(spans, spans[1:])):
+            raise ValueError(f"adjacent or overlapping windows for {edge}")
+    return by_link
+
+
+class ScheduledISLGeometry:
+    """Combine nominal availability with fixed experimental link removals."""
+
+    compose_from_geometry = False
+
+    def __init__(self, inner, windows):
+        self._inner = inner
+        self.windows = validate_isl_windows(windows, inner.num_satellites, math.inf)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def _spans(self, a, b):
+        return self.windows.get((min(a, b), max(a, b)), ())
+
+    def isl_available(self, a, b, t):
+        return (not any(start <= t < end for start, end in self._spans(a, b))
+                and self._inner.isl_available(a, b, t))
+
+    def next_isl_change(self, a, b, t, limit):
+        spans = self._spans(a, b)
+        if not spans:
+            return self._inner.next_isl_change(a, b, t, limit)
+        cursor = t
+        for start, end in spans:
+            if end <= cursor:
+                continue
+            if limit < start:
+                break
+            if cursor < start:
+                nominal = self._inner.next_isl_change(a, b, cursor, min(limit, start))
+                if nominal is not None and nominal < start:
+                    return nominal
+                if self._inner.isl_available(a, b, math.nextafter(start, -math.inf)):
+                    return start
+            if end > limit:
+                return None
+            if self._inner.isl_available(a, b, end):
+                return end
+            cursor = end
+        return self._inner.next_isl_change(a, b, cursor, limit)

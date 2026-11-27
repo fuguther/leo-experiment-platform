@@ -191,7 +191,8 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
                     sorted_adj: dict | None = None,
                     rate_from_propagation=None,
                     cache_hops: int | None = None,
-                    forbidden_nodes=None) -> tuple[list[str], str]:
+                    forbidden_nodes=None,
+                    fallback_targets=()) -> tuple[list[str], str]:
     """Return (ordered candidate directions, status).
 
     status: "ok" (candidates non-empty), "no_info" (no destination
@@ -217,6 +218,8 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
     else:
         advertised_targets = destinations_in_cache(
             cache, dst_cell, now, max_cache_hops=cache_hops)
+        if fallback_targets and not any(t != sat for t in advertised_targets):
+            advertised_targets = list(fallback_targets)
     if not advertised_targets:
         return [], "no_info"
     forbidden = set(forbidden_nodes or ())

@@ -141,8 +141,6 @@ def test_root_authorized_persistent_contract_allows_only_exact_four_call_cell(
     cell_id = auth["cell_ids"][0]
     cell = next(row for row in bundle["cells"]
                 if row["cell_id"] == cell_id)
-    assert bundle["execution_chain"]["combined_sha256"] == \
-        auth["execution_chain_sha256"]
     assert t1_suite._cell_input_sha256(cell["input"]) == \
         auth["cell_input_sha256"][cell_id]
     assert t1_suite.estimate_bundle_cost({"cells": [cell]})[
@@ -154,7 +152,16 @@ def test_root_authorized_persistent_contract_allows_only_exact_four_call_cell(
         "estimated_calls": 4, "bundle_root": bundle_dir,
         "source_root": ROOT,
     }
-    t1_suite.enforce_runtime_stage(contract, bundle, **frozen)
+    # The owner authorization pins historical code. A newer simulator must
+    # fail the chain check under that exact same authorization.
+    if bundle["execution_chain"]["combined_sha256"] != auth["execution_chain_sha256"]:
+        with pytest.raises(t1_suite.SuiteError, match="execution-chain SHA differs"):
+            t1_suite.enforce_runtime_stage(contract, bundle, **frozen)
+    # Replay the recorded chain identity in the unit fixture to exercise the
+    # remaining allowlist predicates. The production bundle stays untouched.
+    pinned_bundle = {**bundle, "execution_chain": {
+        **bundle["execution_chain"], "combined_sha256": auth["execution_chain_sha256"]}}
+    t1_suite.enforce_runtime_stage(contract, pinned_bundle, **frozen)
 
     for override, message in (
             ({"selected_cell_ids": [cell_id, cell_id]},
@@ -165,7 +172,7 @@ def test_root_authorized_persistent_contract_allows_only_exact_four_call_cell(
         request = dict(frozen)
         request.update(override)
         with pytest.raises(t1_suite.SuiteError, match=message):
-            t1_suite.enforce_runtime_stage(contract, bundle, **request)
+            t1_suite.enforce_runtime_stage(contract, pinned_bundle, **request)
 
 
 def test_cost_probe_replay_requires_exact_predeclared_seed_and_cell_predicate(

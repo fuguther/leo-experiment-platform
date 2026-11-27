@@ -51,7 +51,7 @@ def _batch_worker_run(job: dict) -> dict:
     started = time.perf_counter()
     manifest, trace_bytes, rows = compile_run_trace(resolved, str(out_dir))
     alg = resolved["config"]["learning"]["algorithm"]
-    learn_dir = (out_dir / alg) if alg in ("ddqn", "qlearning") else None
+    learn_dir = (out_dir / alg) if alg != "none" else None
     result = kernel.run_simulation(resolved, rows, learning_out_dir=learn_dir)
     rcp = receipt_mod.write_run(
         str(out_dir), resolved, trace_bytes, manifest, result, rows)

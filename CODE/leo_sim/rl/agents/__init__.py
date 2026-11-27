@@ -6,3 +6,5 @@ __all__ = [
     "TensorflowDDQN", "PerSatelliteTensorflowDDQN",
     "TabularQLearning", "PerSatelliteTabularQLearning",
 ]
+
+from . import primal_cvar as _primal_cvar

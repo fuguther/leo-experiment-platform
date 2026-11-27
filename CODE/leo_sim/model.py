@@ -104,7 +104,8 @@ class MemoizedGeometry:
         self._no_change_suffix: dict[str, "OrderedDict"] = {}
         self._ground_station_ecef: "OrderedDict" = OrderedDict()
         self._compose = (
-            hasattr(inner, "ecef")
+            getattr(inner, "compose_from_geometry", True)
+            and hasattr(inner, "ecef")
             and hasattr(inner, "min_elevation_deg")
             and hasattr(inner, "max_isl_km")
         )

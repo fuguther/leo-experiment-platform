@@ -706,7 +706,7 @@ def build_receipt(resolved: dict, manifest: dict, result: dict,
         "code_sha256": code_sha256(),
         "ledgers_sha256": ledgers_sha256,
         "deps": dependency_versions(
-            with_tensorflow=requested["learning_algorithm"] == "ddqn"),
+            with_tensorflow=requested["learning_algorithm"] in {"ddqn", "primal_cvar"}),
         "seed": resolved["config"]["scenario"]["seed"],
         "horizon_s": result["horizon_s"],
         "natural_end": result["natural_end"],
@@ -1018,9 +1018,9 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
                     and learning.get("metadata_sha256") != expected_meta:
                 errors.append(
                     "model.metadata_sha256 != resolved config pin")
-    elif requested_learning == "ddqn":
+    elif requested_learning in ("ddqn", "primal_cvar"):
         if not isinstance(learning, dict):
-            errors.append("DDQN run must have a learning ledger")
+            errors.append(f"{requested_learning} run must have a learning ledger")
         else:
             expected_contract = ((resolved_cfg or {}).get("routing", {}).get("contract"))
             if expected_contract is not None and learning.get("contract") != expected_contract:
@@ -1028,7 +1028,7 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
             for key in ("decisions", "transitions", "train_steps", "replay_size"):
                 if not _is_nonneg_int(learning.get(key)):
                     errors.append(f"learning.{key} must be a non-negative integer")
-            if learning.get("algorithm") != "ddqn":
+            if learning.get("algorithm") != requested_learning:
                 errors.append("learning.algorithm mismatch")
             if learning.get("mode") not in {"train", "eval"}:
                 errors.append("learning.mode invalid")
@@ -1038,7 +1038,7 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
             if not (isinstance(sha, str) and len(sha) == 64
                     and all(c in "0123456789abcdef" for c in sha)):
                 errors.append("learning.checkpoint_sha256 invalid")
-            checkpoint = verify_root / "ddqn" / "online.keras"
+            checkpoint = verify_root / requested_learning / "online.keras"
             if not checkpoint.is_file() or checkpoint.is_symlink():
                 errors.append("learning checkpoint artifact missing")
             elif isinstance(sha, str) and _sha_file(checkpoint) != sha:
@@ -1061,6 +1061,18 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
             if expected_fast is not None \
                     and learning.get("fast_train") is not expected_fast:
                 errors.append("learning.fast_train != resolved config")
+            if requested_learning == "primal_cvar":
+                metadata = checkpoint.with_name("metadata.json")
+                if (not metadata.is_file() or metadata.is_symlink()
+                        or _sha_file(metadata) != learning.get("metadata_sha256")):
+                    errors.append("PRIMAL checkpoint metadata hash mismatch")
+                if learning.get("input_dim") != 50 or learning.get("schema") != "leo-sim-primal-cvar/v1":
+                    errors.append("PRIMAL observation or checkpoint schema mismatch")
+                if not _is_nonneg_num(learning.get("lambda_pd")):
+                    errors.append("PRIMAL multiplier must be finite and nonnegative")
+                if learning.get("mode") == "eval" and any(
+                        learning.get(k, 0) != 0 for k in ("dual_updates", "round_updates", "replay_size")):
+                    errors.append("PRIMAL eval mutated round, dual or replay state")
             if learning.get("mode") == "eval":
                 if learning.get("train_steps") != 0:
                     errors.append("learning eval mode performed training")
@@ -1874,7 +1886,7 @@ def _verify_receipt_dir_impl(out_dir: str, *,
             and all(ch in "0123456789abcdef" for ch in code_sha)):
         errors.append("receipt code_sha256 must be a lowercase SHA256")
     want_tf = bool(resolved_cfg) and (
-        (resolved_cfg.get("learning") or {}).get("algorithm") == "ddqn")
+        (resolved_cfg.get("learning") or {}).get("algorithm") in {"ddqn", "primal_cvar"})
     expected_dep_keys = DEP_KEYS | ({TF_DEP_KEY} if want_tf else set())
     deps = receipt.get("deps")
     if require_local_runtime_identity and code_sha256() != code_sha:

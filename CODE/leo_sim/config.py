@@ -152,6 +152,7 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "rf_downlink": dict,  # legacy Satellite.ngeo2gt (satellite -> ground)
         "isl_rate_mbps": (int, float),
         "isl_queue_bits": int,
+        "scheduled_isl_outages": list,
         "isl_dirs": list,  # subset of ["N","S","E","W"]
         "max_isl_km": (int, float),
         "geometry_loss": bool,
@@ -185,6 +186,9 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
     "routing": {
         "policy": str,  # hop|delay|capacity|oracle|info_queue|info_physical|known_serving
         "max_hops": int,  # data-packet loop cap
+        # Optional open-loop public ephemeris, never a live association query.
+        "ephemeris_egress_fallback": bool,
+        "local_forward_adapter": dict,
         # STAGED-POLICY (optional): the configured policy runs until
         # staged_policy_at_s, then the effective policy becomes staged_policy.
         # Two runs that differ only in staged_policy share an identical prefix,
@@ -366,8 +370,8 @@ VALID_POLICIES = {
     # runs keep their identity.
     "known_serving",
 }
-VALID_CONTRACTS = {"neighbor_1hop", "flat_mean", "GAT", "MPNN", "C1", "C3"}
-VALID_ALGORITHMS = {"none", "ddqn", "qlearning"}
+VALID_CONTRACTS = {"neighbor_1hop", "flat_mean", "GAT", "MPNN", "C1", "C3", "PRIMAL"}
+VALID_ALGORITHMS = {"none", "ddqn", "qlearning", "primal_cvar"}
 VALID_ISL_DIRS = {"N", "S", "E", "W"}
 VALID_RATE_MODELS = {"constant", "mcs"}
 # T1-COMPUTE-DELAY observation semantics.  "refresh" is the historical
@@ -1003,6 +1007,31 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(
             "routing.staged_policy must be known_serving or oracle, "
             f"got {staged!r}")
+    if rt.get("ephemeris_egress_fallback"):
+        if (rt["policy"] != "hop" or staged or not cp["enabled"] or cp["vis_k"] != 1
+                or ex["decision_observation_mode"] != "refresh"
+                or ta["state_source"] != "advertised"
+                or ta["execution_mode"] != "per_packet"):
+            raise ConfigError("ephemeris_egress_fallback requires hop, one-hop arrived control, "
+                              "refresh and advertised per-packet routing")
+    if "local_forward_adapter" in rt:
+        from .rl.local_forward import validate_adapter
+        try:
+            validate_adapter(rt["local_forward_adapter"])
+        except ValueError as exc:
+            raise ConfigError(f"routing.local_forward_adapter: {exc}") from exc
+        if not rt.get("ephemeris_egress_fallback") or lr["algorithm"] != "none":
+            raise ConfigError("local forward adapters require ephemeris fallback "
+                              "and an exclusive action selector")
+    if "scheduled_isl_outages" in lk:
+        from .outage import validate_isl_windows
+        try:
+            validate_isl_windows(lk["scheduled_isl_outages"], sc["num_satellites"],
+                                 sc["duration_s"])
+        except ValueError as exc:
+            raise ConfigError(f"links.scheduled_isl_outages: {exc}") from exc
+        if not lk["geometry_loss"]:
+            raise ConfigError("scheduled ISL outages require links.geometry_loss")
     if rt["max_hops"] < 1:
         raise ConfigError("routing.max_hops must be >= 1")
     if rt["contract"] not in VALID_CONTRACTS:
@@ -1017,6 +1046,14 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError("learning requires the real control plane and arrived local cache")
     if lr["algorithm"] not in VALID_ALGORITHMS:
         raise ConfigError(f"learning.algorithm must be one of {sorted(VALID_ALGORITHMS)}")
+    if (rt["contract"] == "PRIMAL") != (lr["algorithm"] == "primal_cvar"):
+        raise ConfigError("PRIMAL observation and primal_cvar must be selected together")
+    if lr["algorithm"] == "primal_cvar" and (
+            lr["agent_scope"] != "shared" or lr["reward"] != "deadline_loss_v1"
+            or lr["include_last_hop"] or rt["policy"] != "hop"
+            or ta["state_source"] != "advertised" or staged):
+        raise ConfigError("primal_cvar requires shared, local hop routing with "
+                          "deadline_loss_v1 and its fixed 50-field observation")
     if lr["mode"] not in {"train", "eval"}:
         raise ConfigError("learning.mode must be 'train' or 'eval'")
     if lr["seed"] is not None and (
@@ -1074,14 +1111,14 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             and (lr["checkpoint_path"] is None or lr["checkpoint_sha256"] is None):
         raise ConfigError(
             "learning.mode=eval requires checkpoint_path and checkpoint_sha256")
-    if lr["algorithm"] == "ddqn" and lr["mode"] == "eval" \
+    if lr["algorithm"] in {"ddqn", "primal_cvar"} and lr["mode"] == "eval" \
             and lr["checkpoint_metadata_sha256"] is None:
         # DDQN artifacts are opaque model files whose observation contract
         # lives only in the sibling metadata.json; that metadata must itself
         # be pinned, otherwise a C3/C4-same-width checkpoint can be relabeled
         # and silently loaded (learning provenance gate).
         raise ConfigError(
-            "learning.mode=eval with algorithm=ddqn requires "
+            f"learning.mode=eval with algorithm={lr['algorithm']} requires "
             "checkpoint_metadata_sha256 (sibling metadata trust anchor)")
     if lr["fixed_inference"]:
         # A1: the fixed-inference reader is a DIFFERENT execution path from the
