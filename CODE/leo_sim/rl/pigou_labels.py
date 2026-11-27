@@ -187,11 +187,22 @@ def merge_dataset(paths: list[tuple[Path, Path]]):
     for snapshots_path, packets_path in paths:
         with np.load(snapshots_path, allow_pickle=False) as snap, np.load(
                 packets_path, allow_pickle=False) as pkt:
+            snap_count = len(snap["x_2hop"])
+            ids = pkt["snap_id"]
+            if (ids.ndim != 1 or ids.dtype.kind not in "iu"
+                    or np.any(ids < 0) or np.any(ids >= snap_count)):
+                raise ValueError("packet snap_id is outside its own episode")
             for key in snap.files:
-                snapshots[key].append(snap[key])
+                values = snap[key]
+                if values.ndim == 0 or len(values) != snap_count:
+                    raise ValueError(f"snapshot table row count differs for {key}")
+                snapshots[key].append(values)
             for key in pkt.files:
-                decisions[key].append(pkt[key] + offset if key == "snap_id" else pkt[key])
-            offset += len(snap["x_2hop"])
+                values = pkt[key]
+                if values.ndim == 0 or len(values) != len(ids):
+                    raise ValueError(f"packet table row count differs for {key}")
+                decisions[key].append(values.astype(np.int64) + offset if key == "snap_id" else values)
+            offset += snap_count
     if offset == 0:
         raise ValueError("training requires at least one nonempty episode")
     return ({key: np.concatenate(values) for key, values in snapshots.items()},

@@ -419,9 +419,37 @@ def export_main():
     from tempfile import TemporaryDirectory
 
     from CODE.scripts.export_eval_artifacts import export
+    from CODE.scripts.remote.release_protocol import verify_run_directory
 
     root = _release_run_dir()
     index = json.loads(_input("index.json").read_text())
+    release_id = json.loads((root / "run-manifest.json").read_text())["release_id"]
+    verified = set()
+
+    def require_source(record, directory):
+        expected = root.parent / record["run_id"]
+        if expected.name != record["run_id"] or directory != expected:
+            raise ValueError(f"export row is outside its receipted source run: {record['run_id']}")
+        receipt_path = directory / "run-receipt.json"
+        if sha(receipt_path) != record["outer_receipt_sha256"]:
+            raise ValueError(f"export source receipt changed: {record['run_id']}")
+        if directory not in verified:
+            evidence = verify_run_directory(directory, expected_run_id=record["run_id"],
+                                            expected_release_id=release_id)
+            if evidence["status"] != "completed":
+                raise ValueError("plot sources must be completed runs")
+            verified.add(directory)
+
+    for item in index["cells"]:
+        sim = Path(item["run_dir"])
+        require_source(item, sim.parent.parent)
+        if sha(sim / "receipt.json") != item["receipt_sha256"]:
+            raise ValueError(f"plot source simulator receipt changed: {item['run_id']}")
+    for item in index["fit_index"]:
+        parent = Path(item["fit_path"]).parent
+        require_source(item, parent)
+        if sha(parent / "frozen.npz") != item["weights_sha256"]:
+            raise ValueError(f"plot source checkpoint changed: {item['run_id']}")
     cohorts = {}
     batches = defaultdict(list)
     for item in index["cells"]:

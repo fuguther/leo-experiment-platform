@@ -7,7 +7,7 @@ Failed attempts are preserved under their own IDs.
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 import fcntl
 import json
 from pathlib import Path
@@ -25,13 +25,23 @@ CALIBRATION_SEEDS = (9001, 9002)
 CALIBRATION_LOADS = (82.5, 93.0, 98.0, 100.0)
 ABLATIONS = ("no_ext", "mean", "frame", "no_ais", "argmax", "no_shield")
 FIT_ROUNDS = ((6, 2000, 5e-4), (6, 1500, 3e-4), (6, 1000, 1e-4))
+VARIANTS = {"A": ("full", "mean", "frame", "no_ais"), "B": ("full",)}
+BETA_GRID = (0.25, 0.50, 0.75, 1.00)
 
 
 def describe():
     learning_families = len(LEARNERS) + 1
     arms = len(ALGORITHMS) - learning_families + learning_families * len(TRAIN_SEEDS)
-    return {
+    model_chains = sum(map(len, VARIANTS.values())) * len(TRAIN_SEEDS)
+    jobs = {
         "calibration": len(CALIBRATION_LOADS) * len(CALIBRATION_SEEDS) * 2,
+        "static_guard_validation": 2 * len(VAL_SEEDS) * 3,
+        "hysteresis_plateaus": len(CADENCES) * (2 + 2 * len(TRAIN_SEEDS)),
+        "pigou_rollouts": 2 * len(TRAIN_SEEDS) * sum(r[0] for r in FIT_ROUNDS),
+        "pigou_fit_jobs": model_chains * len(FIT_ROUNDS),
+        "pigou_checkpoint_selection": model_chains * len(FIT_ROUNDS) * len(VAL_SEEDS),
+        "pigou_beta_validation": model_chains * len(BETA_GRID) * len(VAL_SEEDS),
+        "export_jobs": 3,
         "heldout_shock_diagnostic": 2 * 2 * 3,
         "native_training_cells": 2 * len(LEARNERS) * len(TRAIN_SEEDS) * 8,
         "native_validation_cells": 2 * len(LEARNERS) * len(TRAIN_SEEDS) * 4 * len(VAL_SEEDS),
@@ -40,6 +50,8 @@ def describe():
         "large_zero_shot": len(TEST_SEEDS) * arms,
         "ablation_comparisons": len(ABLATIONS) * 2 * len(TEST_SEEDS) * len(TRAIN_SEEDS),
         "compute_sensitivity": 3 * len(TEST_SEEDS) * (1 + len(TRAIN_SEEDS)),
+    }
+    return {**jobs, "total_jobs_excluding_validation_probes": sum(jobs.values()),
         "post_export_onset_censor_s": 3.2,
         "cadence_s": CADENCES,
         "train_seeds": TRAIN_SEEDS, "validation_seeds": VAL_SEEDS, "test_seeds": TEST_SEEDS,
@@ -76,6 +88,8 @@ class Matrix:
         lines = dict(line.split() for line in (limits / "memory.stat").read_text().splitlines())
         rss = int(lines["total_rss"])
         limit = int((limits / "memory.limit_in_bytes").read_text())
+        if rss >= 22 * 2**30:
+            raise RuntimeError("VM anonymous memory has reached the study's 22 GiB ceiling")
         if limit - rss < 14 * 2**30:
             raise RuntimeError("study has less than the reserved 14 GiB memory headroom")
 
@@ -136,6 +150,12 @@ class Matrix:
     def parallel(self, tasks, workers):
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = [pool.submit(fn, *args, **kwargs) for fn, args, kwargs in tasks]
+            finished, queued = wait(futures, return_when=FIRST_EXCEPTION)
+            for future in finished:
+                if future.exception() is not None:
+                    for pending in queued:
+                        pending.cancel()
+                    future.result()
             return [future.result() for future in futures]
 
     def record(self, items):
@@ -214,6 +234,8 @@ class Matrix:
         stats = _read(parent / "fit.json")
         self.fit_index.append({"scene": scene, "train_seed": train_seed, "round": number,
                                "variant": variant, "fit_path": str(parent / "fit.json"),
+                               "run_id": parent.name,
+                               "outer_receipt_sha256": sha(parent / "run-receipt.json"),
                                "weights_sha256": stats["weights_sha256"]})
         return parent / "frozen.npz"
 
@@ -228,7 +250,7 @@ class Matrix:
         return sum(row["val_score"] for _, row in vals) / len(vals)
 
     def pigou(self, scene):
-        arch_variants = ("full", "mean", "frame", "no_ais") if scene == "A" else ("full",)
+        arch_variants = VARIANTS[scene]
         for train_seed in TRAIN_SEEDS:
             data = []
             previous = {variant: None for variant in arch_variants}
@@ -256,7 +278,7 @@ class Matrix:
                 _, path = best[variant]
                 candidates = [(self._pigou_validation(
                     scene, train_seed, variant, 9, path, beta), beta)
-                    for beta in (0.25, 0.50, 0.75, 1.00)]
+                    for beta in BETA_GRID]
                 beta = max(candidates, key=lambda point: (point[0], -point[1]))[1]
                 self.models[(scene, "Ours", train_seed, variant)] = path, {"beta_ext": beta}
 
@@ -367,7 +389,7 @@ def main():
         raise RuntimeError("matrix requires a completed exact-release VM validation")
     # One study writer. Native release locks and independent run IDs protect
     # each trial. This lock carries no experiment authorization of its own.
-    lock = ROOT / "runs" / ".locks" / ("pigou-matrix-" + args.prefix + ".lock")
+    lock = ROOT / "runs" / ".locks" / "pigou-matrix.lock"
     with lock.open("a+b") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         Matrix(args.release, args.prefix, args.attempt).execute()

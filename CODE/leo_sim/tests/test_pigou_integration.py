@@ -121,3 +121,17 @@ def test_static_fallback_never_invents_an_admissible_port():
                             (Port(1, queue=0.99, hops=1), Port(2, hops=2), Port(None), Port(None)),
                             ("S",), ("N",), ("S",))
     assert LocalForwardAdapter({"kind": "static_guard"}, 13).choose(view, 4) == "S"
+
+
+def test_two_episode_merge_rejects_cross_episode_snapshot_alias(tmp_path):
+    from CODE.leo_sim.rl.pigou_labels import merge_dataset
+
+    paths = []
+    for episode, ids in enumerate(([0, 2], [0, 1])):
+        snap = tmp_path / f"snap-{episode}.npz"
+        pkt = tmp_path / f"pkt-{episode}.npz"
+        np.savez(snap, x_2hop=np.zeros((2, 4, 4, 8)))
+        np.savez(pkt, snap_id=np.asarray(ids))
+        paths.append((snap, pkt))
+    with pytest.raises(ValueError, match="outside its own episode"):
+        merge_dataset(paths)

@@ -236,6 +236,29 @@ def test_tensorflow_numpy_parity_after_export(tmp_path):
         tf_result["ext"].numpy()[0], numpy_ext, rtol=2e-5, atol=2e-6)
 
 
+def test_tensorflow_gat_masks_broadcast_over_heads_and_batch():
+    tf = _require_tensorflow_213()
+    rng = np.random.default_rng(201)
+    parameters = _training_initial_parameters(rng, "full")
+    tf_parameters = {
+        name: tf.constant(value, dtype=tf.float32)
+        for name, value in parameters.items()
+    }
+    x_2hop = rng.normal(size=(65, 4, 4, 8)).astype(np.float32)
+    x_2hop[:, 1] = 0.0
+    result = _tensorflow_forward(
+        tf, tf_parameters, "full",
+        tf.convert_to_tensor(x_2hop),
+        tf.convert_to_tensor(rng.normal(size=(65, 4, 8)).astype(np.float32)),
+        tf.convert_to_tensor(rng.normal(size=(65, 4, 8, 9)).astype(np.float32)),
+        tf.zeros((65, 10), tf.float32),
+        tf.zeros((65, 4, 10), tf.float32),
+        include_aux=True)
+    assert result["H"].shape == (65, 4, 32)
+    assert bool(tf.reduce_all(tf.math.is_finite(result["H"])).numpy())
+    assert bool(tf.reduce_all(tf.math.is_finite(result["ais"])).numpy())
+
+
 def test_tensorflow_ais_slope_channel_is_signed():
     tf = _require_tensorflow_213()
     rng = np.random.default_rng(200)

@@ -786,7 +786,7 @@ def _tf_local_attention(tf, x_2hop, snap_cur, parameters):
     v = tf.reshape(v, (-1, PORT_COUNT, 4, 2, ATTN_HEAD_DIM))
 
     valid = tf.reduce_any(tf.not_equal(x_2hop, 0.0), axis=-1)
-    valid_for_head = valid[:, :, tf.newaxis, tf.newaxis, :]
+    valid_for_head = valid[:, :, tf.newaxis, :]
     scores = tf.einsum("nphd,npkhd->nphk", q, k)
     scores = scores / tf.cast(math.sqrt(ATTN_HEAD_DIM), scores.dtype)
     scores = tf.where(valid_for_head, scores,
