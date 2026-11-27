@@ -18,7 +18,7 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: b5e4302c33fbeca891ecaf0cf78e81dbb57a2c8fe211ec57e72cb8a21bcc31e0
+    execution_chain_sha256: 590b5ea7d4ec6c3b4c026371ee1d94daf9d9f2d7e1b96093cc8039951e1db39b
     cell_input_sha256:
       b-bounded_population_cost_smoke-network-seed-7: 9595d6babaade0c6f3841825b14af70ab16bf85b9f965102444fe1fedc438b12
   release_ready: false
@@ -118,13 +118,18 @@ design_readiness:
     population raster, compiled trace, seed, arm order, four-call budget, and
     cell input digest (9595d6ba) are unchanged. No cost probe or performance
     simulation was run by this re-pin.
+    ROUND22 (2026-11-28) re-binds the same scope after removing unused
+    observation contracts C4-C7 and renaming C1/C3 to canonical names
+    neighbor_1hop/flat_mean (keeping C1/C3 aliases in config/observations;
+    b5e4302c -> 590b5ea7). Profile, population raster, compiled trace, seed,
+    arm order, four-call budget, and cell input digest (9595d6ba) are unchanged.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: b5e4302c33fbeca891ecaf0cf78e81dbb57a2c8fe211ec57e72cb8a21bcc31e0
+  source_execution_chain_sha256: 590b5ea7d4ec6c3b4c026371ee1d94daf9d9f2d7e1b96093cc8039951e1db39b
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:

@@ -4390,7 +4390,7 @@ class Kernel:
             contract = self.cfg_rt["contract"]
             return _learning.information_set(
                 contract, sat, self.caches[sat], now, self.topo,
-                obs_hops=(1 if contract == "C1"
+                obs_hops=(1 if contract in ("C1", "neighbor_1hop")
                           else self.cfg_learning.get("obs_hops")))
         if self.cfg_cp["enabled"]:
             # R8-A6: a non-learning run has no observation contract to crop
@@ -5540,7 +5540,7 @@ class Kernel:
         """
         if (self.decision_sink is None and not force) or not considered:
             return {}
-        cache_hops = (1 if self.cfg_rt["contract"] == "C1"
+        cache_hops = (1 if self.cfg_rt["contract"] in ("C1", "neighbor_1hop")
                       else self.cfg_learning.get("obs_hops")) \
             if self.learner is not None else None
         target_dst = pkt.dst if dst is None else dst
@@ -5760,7 +5760,7 @@ class Kernel:
         if peer is None:
             return None, "chosen_direction_has_no_peer"
         policy = self._effective_routing_policy()
-        cache_hops = (1 if self.cfg_rt["contract"] == "C1"
+        cache_hops = (1 if self.cfg_rt["contract"] in ("C1", "neighbor_1hop")
                       else self.cfg_learning.get("obs_hops")) \
             if self.learner is not None else None
         serving = self._serving_source(sat, pkt.dst, now, cache_hops)
@@ -7096,7 +7096,7 @@ class Kernel:
         # one-hop; other contracts use obs_hops=None for the full vis_k cache.
         cache_hops = None
         if self.learner is not None or self.fixed_policy is not None:
-            cache_hops = (1 if self.cfg_rt["contract"] == "C1"
+            cache_hops = (1 if self.cfg_rt["contract"] in ("C1", "neighbor_1hop")
                           else self.cfg_learning.get("obs_hops"))
         cands, status = routing.choose_next_hop(
             self.cfg_rt["policy"], sat, pkt.dst, now, self.geometry, self.topo,

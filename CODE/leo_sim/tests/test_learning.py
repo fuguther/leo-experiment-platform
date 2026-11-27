@@ -1,4 +1,4 @@
-"""Contract tests for C1/C3-C7 observations, action masks, canonical DDQN."""
+"""Contract tests for neighbor_1hop/flat_mean/GAT/MPNN observations, action masks, canonical DDQN."""
 import importlib.util
 
 import numpy as np
@@ -26,12 +26,30 @@ def _own():
     return learning.own_state(1, 4, {"E": 1000}, 256_000_000, 2, 10)
 
 
-def test_c3_to_c7_share_exactly_the_same_information_set():
+def test_flat_mean_and_graph_contracts_share_the_same_information_set():
     cache = _entries([(1, 5.0, 1), (2, 5.0, 2), (3, 5.0, 2)])
     sets = {c: set(learning.information_set(c, 0, cache, 6.0, TOPO))
-            for c in ("C3", "C4", "C5", "C6", "C7")}
+            for c in ("flat_mean", "C3", "GAT", "MPNN")}
     assert len({frozenset(s) for s in sets.values()}) == 1
-    assert sets["C3"] == {1, 2, 3}
+    assert sets["flat_mean"] == {1, 2, 3}
+
+
+def test_legacy_c1_c3_aliases_match_canonical_names_and_c4_c7_rejected():
+    cache = _entries([(1, 5.0, 1), (2, 4.0, 2)])
+    own = _own()
+    assert np.array_equal(
+        learning.build_observation("neighbor_1hop", 0, cache, 6.0, TOPO, own),
+        learning.build_observation("C1", 0, cache, 6.0, TOPO, own),
+    )
+    assert np.array_equal(
+        learning.build_observation("flat_mean", 0, cache, 6.0, TOPO, own),
+        learning.build_observation("C3", 0, cache, 6.0, TOPO, own),
+    )
+    for removed in ("C4", "C5", "C6", "C7"):
+        with pytest.raises(ValueError, match="unknown contract"):
+            learning.information_set(removed, 0, cache, 6.0, TOPO)
+        with pytest.raises(ValueError, match="unknown contract"):
+            learning.build_observation(removed, 0, cache, 6.0, TOPO, own)
 
 
 def test_c1_sees_only_direct_neighbors_arriving_within_one_hop():
@@ -147,32 +165,6 @@ def test_empty_cache_yields_zero_blocks():
             assert np.array_equal(o[:learning.OWN_FEATURES], own)
         # destination features are zeroed when no destination is supplied
         assert np.array_equal(o[-3:], np.zeros(learning.DEST_FEATURES))
-
-
-def test_c6_buckets_by_actual_hop_count():
-    # distinct access loads make the two hop buckets identifiable by value
-    c = control.LocalCache()
-    c.put(control.CacheEntry(
-        1, {"isl_queue_bits": {}, "access_slots_used": 1,
-            "access_slots_cap": 4, "visible_cells": []},
-        5.0, 5.01, 10.0, hops=1))
-    c.put(control.CacheEntry(
-        2, {"isl_queue_bits": {}, "access_slots_used": 3,
-            "access_slots_cap": 4, "visible_cells": []},
-        5.0, 5.01, 10.0, hops=2))
-    o = learning.build_observation("C6", 0, c, 6.0, TOPO, _own())
-    # hop buckets start after the own-state block, not at offset 4 (the
-    # OWN_FEATURES=7 block would be sliced mid-field at offset 4)
-    base = learning.OWN_FEATURES
-    h1 = o[base:base + learning.ORIGIN_FEATURES]
-    h2 = o[base + learning.ORIGIN_FEATURES:base + 2 * learning.ORIGIN_FEATURES]
-    # ORIGIN_FEATURES layout: [queue_ratio, access_load, n_visible, aoi]
-    assert h1[1] == pytest.approx(0.25)   # 1-hop bucket: origin 1 (used 1/4)
-    assert h2[1] == pytest.approx(0.75)   # 2-hop bucket: origin 2 (used 3/4)
-    assert np.array_equal(
-        o[base + 2 * learning.ORIGIN_FEATURES:
-          base + 4 * learning.ORIGIN_FEATURES],
-        np.zeros(2 * learning.ORIGIN_FEATURES))  # buckets 3-4 empty
 
 
 def test_action_mask_legality():
@@ -347,7 +339,7 @@ def _origin_entry_cache(origin, peer_claim, value):
     return c
 
 
-def test_c5_c7_validate_queue_bits_against_advertisement_origin():
+def test_flat_contracts_validate_queue_bits_against_advertisement_origin():
     """Peer-bound isl_queue_bits must be validated against the topology edge
     of the advertisement's ORIGIN, not the root satellite's own edges: after
     a rematch the two can differ, and using the root would zero a valid
@@ -358,14 +350,14 @@ def test_c5_c7_validate_queue_bits_against_advertisement_origin():
             3: {"W": 0}}
     c = _origin_entry_cache(origin=1, peer_claim=2, value=1000)
     own = _own()
-    for contract in ("C5", "C7"):
+    for contract in ("flat_mean", "neighbor_1hop"):
         o = learning.build_observation(contract, 0, c, 6.0, topo, own)
         q = o[learning.OWN_FEATURES]  # queue ratio is the 1st origin feature
         assert q > 0.0, f"{contract} must accept a peer-matching entry"
         assert o.shape == (learning.CONTRACT_DIMS[contract],), contract
 
 
-def test_c5_c7_reject_queue_bits_matching_only_root_edge():
+def test_flat_contracts_reject_queue_bits_matching_only_root_edge():
     """A record whose peer matches only the root satellite's edge (not the
     origin's) must read as 0: it is stale for the real advertisement origin."""
     # root 0 has E->2, but the entry from origin 1 measured E on peer 3
@@ -375,11 +367,13 @@ def test_c5_c7_reject_queue_bits_matching_only_root_edge():
             3: {"W": 0}}
     c = _origin_entry_cache(origin=1, peer_claim=2, value=1000)
     own = _own()
-    for contract in ("C5", "C7"):
+    for contract in ("flat_mean", "neighbor_1hop"):
         o = learning.build_observation(contract, 0, c, 6.0, topo, own)
         q = o[learning.OWN_FEATURES]
         assert q == 0.0, f"{contract} must reject a stale-peer record"
-def test_c5_c7_reject_queue_bits_after_direction_removed():
+
+
+def test_flat_contracts_reject_queue_bits_after_direction_removed():
     """A record whose origin no longer has the advertised direction at all
     (a rematch deleted it, so topo[origin] has no such key) must read as 0:
     the stale metric must not be accepted just because no peer is left to
@@ -389,7 +383,7 @@ def test_c5_c7_reject_queue_bits_after_direction_removed():
     topo = {0: {"E": 2, "N": 1}, 1: {"W": 0}, 2: {"W": 0}, 3: {"W": 0}}
     c = _origin_entry_cache(origin=1, peer_claim=2, value=1000)
     own = _own()
-    for contract in ("C5", "C7"):
+    for contract in ("flat_mean", "neighbor_1hop"):
         o = learning.build_observation(contract, 0, c, 6.0, topo, own)
         q = o[learning.OWN_FEATURES]
         assert q == 0.0, f"{contract} must reject a removed-direction record"
