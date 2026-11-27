@@ -1450,6 +1450,9 @@ class Kernel:
         self.timeline_sink = timeline_sink
         self.resource_sink = resource_sink
         self._planned_egress = {}
+        self._local_study = bool(self.cfg_rt.get("ephemeris_egress_fallback"))
+        self._control_wire_windows = []
+        self._neighbor_age_samples = []
         adapter = self.cfg_rt.get("local_forward_adapter")
         if adapter is not None:
             from .rl.local_forward import build_adapter
@@ -3173,14 +3176,16 @@ class Kernel:
                         pkt, metric_stage, metric_link_id,
                         metric_window_start, self.env.now,
                         metric_rate_bps, outcome)
-                elif (isinstance(pkt, ControlPacket)
-                      and self.timeline_sink is not None):
-                    _stage, _link_id = self._metric_link_id(link_ref,
-                                                           occ_key)
-                    self._timeline_ctrl("service_finish", pkt,
-                                        _link_id, queue=_stage,
-                                        priority="control",
-                                        outcome=outcome)
+                elif isinstance(pkt, ControlPacket):
+                    if self._local_study or self.timeline_sink is not None:
+                        stage, link_id = self._metric_link_id(link_ref, occ_key)
+                        if self._local_study and stage == "isl":
+                            self._control_wire_windows.append((
+                                link_id, t0, float(self.env.now), float(pkt.bits) / dur))
+                        if self.timeline_sink is not None:
+                            self._timeline_ctrl("service_finish", pkt, link_id,
+                                                queue=stage, priority="control",
+                                                outcome=outcome)
             if isinstance(pkt, ControlPacket):
                 self.mech["control_tx_started"] += 1
                 # S1-B/C: the service window of a control packet must be
@@ -7314,6 +7319,13 @@ class Kernel:
             if link.room(pkt.bits):
                 legal.append(d)
         if legal:
+            if self._local_study and pkt.pid % 19 == 0:
+                entries = self.caches[sat].valid_entries(now)
+                ages = []
+                for direction in legal:
+                    entry = entries.get(self.isls[sat][direction].peer)
+                    ages.append(entry.aoi(now) if entry is not None and entry.hops == 1 else None)
+                self._neighbor_age_samples.append((float(now), pkt.pid, int(sat), tuple(legal), ages))
             direction_audit = (
                 self._four_direction_audit(
                     pkt, sat, now, route_candidates=route_candidates,
@@ -7739,7 +7751,8 @@ class Kernel:
             learning_result = dict(self.fixed_policy.receipt())
             counters = self.fixed_policy.counters()
             learning_result.update(counters)
-            effective["learning"] = int(counters["calls"]) > 0
+            self.mech["learning_decisions"] = int(counters["calls"])
+            effective["learning"] = self.mech["learning_decisions"] > 0
         # A local kernel cannot self-authorize a scientific result. Mechanism
         # effectiveness is reported above; research eligibility requires an
         # externally anchored review/authorization/deployment receipt and is
@@ -7844,6 +7857,11 @@ def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
                   target_probe_stride=target_probe_stride,
                   resource_sink=resource_sink)
     result = kern.run()
+    if kern._local_study:
+        result["local_routing_measurements"] = {
+            "control_wire_windows": kern._control_wire_windows,
+            "neighbor_age_samples": kern._neighbor_age_samples,
+        }
     if kern.local_forward_adapter is not None:
         result["local_forward_adapter"] = kern.local_forward_adapter.audit()
     if kern.target_probe is not None:

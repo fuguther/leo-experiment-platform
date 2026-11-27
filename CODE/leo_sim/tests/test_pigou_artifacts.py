@@ -247,6 +247,8 @@ def test_zombie_work_includes_failed_downlink_and_expired_denominators(tmp_path)
         {"kind": "packet_emitted", "pid": 1, "at": 0.6, "bits": 100},
         {"kind": "packet_emitted", "pid": 2, "at": 0.7, "bits": 100},
         {"kind": "packet_emitted", "pid": 3, "at": 0.8, "bits": 100},
+        {"kind": "propagation_start", "pid": 2, "at": 0.85, "prop_id": 7,
+         "stage": "isl", "link_id": "isl:0:1"},
         {"kind": "propagation_arrival", "pid": 2, "at": 0.9, "prop_id": 7},
     ]
     windows = [
@@ -270,7 +272,7 @@ def test_zombie_work_includes_failed_downlink_and_expired_denominators(tmp_path)
     assert metrics["zombie_work_service_bits_ratio_pct"] == pytest.approx(60.0)
     assert metrics["dropped_arrival_hop_visits"] == 1
     assert metrics["dropped_hop_evidence_status"] == "COMPUTED"
-    assert metrics["path_hop_zwr_status"] == "MISSING_DROPPED_PACKET_PATHS"
+    assert metrics["path_hop_zwr_status"] == "COMPUTED_ISL_ARRIVALS"
 
 
 def test_dropped_hop_count_is_blank_if_emission_evidence_is_missing(tmp_path):

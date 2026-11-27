@@ -81,6 +81,7 @@ def cell_config(cfg, spec, checkpoint=None, metadata=None, resume=None):
             "checkpoint_sha256": sha(checkpoint), "beta_ext": spec.get("beta_ext", 0.50),
             "temperature": spec.get("temperature", 0.08), "shield": spec.get("shield", True),
             "argmax": spec.get("argmax", False), "capture": spec.get("capture", False),
+            "exploration": spec.get("exploration", 0.10),
         }
         if "telemetry_sat" in spec:
             options["telemetry_sat"] = spec["telemetry_sat"]
@@ -156,18 +157,76 @@ def _metric_components(rows, results, *, burst_end=3.5, recovery_end=7.5):
             "t_rec_censor_onset_s": recovery_end - burst_end - 0.8, "val_score": score}
 
 
+def _steady_utilization(result):
+    """Peak directed data plus control serialization relative to available ISL capacity."""
+    from collections import defaultdict
+
+    def clip(row):
+        return max(0.0, min(2.0, row["end"]) - max(0.5, row["start"]))
+
+    cap = defaultdict(float)
+    used = defaultdict(float)
+    for row in result["link_available_windows"]:
+        if row["stage"] == "isl":
+            cap[row["link_id"]] += clip(row) * row["rate_bps"]
+    for row in result["link_service_windows"]:
+        if row["stage"] == "isl":
+            used[row["link_id"]] += clip(row) * row["rate_bps"]
+    for link, start, end, rate in result["local_routing_measurements"]["control_wire_windows"]:
+        used[link] += max(0.0, min(2.0, end) - max(0.5, start)) * rate
+    return max((used[key] / bits for key, bits in cap.items() if bits > 0), default=None)
+
+
+def _nominal_hops(cfg, rows):
+    """Apply a fixed time-zero zero-queue graph to every offered OD."""
+    from collections import Counter
+
+    from CODE.leo_sim import grid, model, routing
+
+    sc = cfg["scenario"]
+    lk = cfg["links"]
+    geometry = model.Constellation(sc["num_satellites"], sc["num_planes"],
+        sc["altitude_km"], sc["inclination_deg"], sc["min_elevation_deg"],
+        max_isl_km=lk["max_isl_km"], geometry_epoch_s=sc["geometry_epoch_s"])
+    graph = routing.build_topology(geometry, sc["num_satellites"], lk["isl_dirs"], 0.0)
+    reverse = routing._reverse_adj({
+        sat: {d: peer for d, peer in ports.items() if geometry.isl_available(sat, peer, 0.0)}
+        for sat, ports in graph.items()
+    })
+    links = {}
+    by_od = Counter((row["src_grid_id"], row["dst_grid_id"]) for row in rows)
+    for cell in sorted({node for od in by_od for node in od}):
+        lat, lon = grid.grid_center(cell)
+        choices = [sat for sat in graph if geometry.ground_visible(sat, lat, lon, 0.0)]
+        if choices:
+            links[cell] = min(choices, key=lambda sat: (geometry.slant_range_km(sat, lat, lon, 0.0), sat))
+    distances = {cell: routing._multi_source_bfs(reverse, [sat]) for cell, sat in links.items()}
+    covered = total = 0
+    for (src, dst), n in by_od.items():
+        hops = distances.get(dst, {}).get(links.get(src))
+        if hops is not None:
+            total += n * hops
+            covered += n
+    return {"hops": total if covered == len(rows) else None, "covered_packets": covered,
+            "offered_packets": len(rows), "basis": "time_zero_nearest_nominal_egress_min_hops"}
+
+
 def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
     from CODE.leo_sim import config, kernel, receipt
     from CODE.leo_sim.batch import compile_run_trace
-    from CODE.scripts.build_three_phase_trace import build
+    from CODE.scripts.build_three_phase_trace import build, build_staircase
 
     start = time.monotonic()
     out = Path(out)
     sim = out / "sim"
     sim.mkdir(parents=True)
-    workload = build(out / "traffic", scene=spec["scene"], seed=spec["seed"],
-                     interval=spec.get("interval", 0.05), multiplier=spec.get("multiplier", 2.5),
-                     offered_mbps=spec.get("offered_mbps"))
+    if spec.get("sweep"):
+        workload = build_staircase(out / "traffic", seed=spec["seed"],
+                                   interval=spec["interval"], offered_mbps=spec["offered_mbps"])
+    else:
+        workload = build(out / "traffic", scene=spec["scene"], seed=spec["seed"],
+                         interval=spec.get("interval", 0.05), multiplier=spec.get("multiplier", 2.5),
+                         offered_mbps=spec.get("offered_mbps"))
     raw = cell_config(workload["config"], spec, checkpoint=checkpoint, metadata=metadata, resume=resume)
     raw["outputs"]["out_dir"] = str(sim)
     resolved = config.resolve_config(raw)
@@ -207,6 +266,15 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
         audit.update(snapshots_sha256=sha(out / "snaps.npz"),
                      packets_sha256=sha(out / "pkts.npz"),
                      raw_events_sha256=sha(out / "resource-events.jsonl.gz"))
+    import gzip
+    import statistics
+
+    measurements = result["local_routing_measurements"]
+    raw_measurements = sim / "routing-measurements.json.gz"
+    with gzip.open(raw_measurements, "wt", encoding="utf-8") as handle:
+        json.dump(measurements, handle, separators=(",", ":"), allow_nan=False)
+    samples = [age for row in measurements["neighbor_age_samples"] for age in row[4]]
+    ages = [age for age in samples if age is not None]
     vals = _metric_components(rows, result)
     if policy:
         _json_write(sim / "policy-audit.json", {
@@ -221,6 +289,14 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
                "fate_counts": rcp["fate_counts"], "audit": audit,
                "policy_calls": None if policy is None else policy["calls"],
                "control_bits": rcp["control"]["totals"].get("offered_bits"),
+               "steady_utilization_peak": _steady_utilization(result),
+               "measured_neighbor_aoi_p50_s": statistics.median(ages) if ages else None,
+               "measured_neighbor_aoi_p95_s": (sorted(ages)[int(0.95 * (len(ages) - 1))]
+                                               if ages else None),
+               "measured_neighbor_aoi_obs_fraction": len(ages) / len(samples) if samples else None,
+               "routing_measurements_sha256": sha(raw_measurements),
+               "nominal_shortest_hops": _nominal_hops(env, rows),
+               "plateaus": workload.get("plateaus"),
                "wall_seconds": time.monotonic() - start,
                "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (
                    1024 if sys.platform.startswith("linux") else 1)}
@@ -280,6 +356,14 @@ def _fit(out, bundles, spec, previous=None):
     after = restored.score(restored.encode(*obs), *fast)
     for original, saved in zip(before, after):
         np.testing.assert_array_equal(original, saved)
+    import tensorflow as tf
+
+    observed = pigou_model._tensorflow_forward(
+        tf, {k: tf.convert_to_tensor(v) for k, v in restored.parameters.items()},
+        restored.variant, *(tf.convert_to_tensor(v[None]) for v in (*obs, *fast)),
+        include_aux=False)
+    for name, numpy_value in zip(("ego", "ext"), after):
+        np.testing.assert_allclose(observed[name].numpy()[0], numpy_value, rtol=4e-5, atol=4e-6)
     stats.update(weights_sha256=sha(weights),
                  input_shas=[(sha(a), sha(b)) for a, b in bundles])
     _json_write(out / "fit.json", stats)
@@ -323,6 +407,65 @@ def preflight(spec):
                                          "fit_steps": stats["steps"], "arms": summaries})
 
 
+def export_main():
+    import csv
+    from collections import defaultdict
+    from tempfile import TemporaryDirectory
+
+    from CODE.scripts.export_eval_artifacts import export
+
+    root = _release_run_dir()
+    index = json.loads(_input("index.json").read_text())
+    cohorts = {}
+    batches = defaultdict(list)
+    for item in index["cells"]:
+        exp = item["exp"]
+        key = (exp, item["scene"], item["seed"], item["interval"],
+               item["multiplier"], item.get("offered_mbps"), item.get("outage"), item.get("large"))
+        if exp in {"exp2", "exp3_outage", "exp3_zeroshot", "exp4_ablation", "exp4_compute"}:
+            if cohorts.setdefault(key, item["trace_sha256"]) != item["trace_sha256"]:
+                raise ValueError(f"held-out cohorts differ by algorithm or checkpoint: {key}")
+        batches[(exp, item["scene"], item["alg"], item.get("train_seed"), item["interval"],
+                 item.get("variant"), item.get("compute_delay_s"))].append(item)
+
+    plots = root / "figures-data"
+    plots.mkdir()
+    by_file = defaultdict(list)
+    with TemporaryDirectory(dir=root / "tmp", prefix="plot-groups-") as tmp:
+        for i, group in enumerate(batches.values()):
+            # Bound memory by one policy/seed family and allow existing export
+            # code to perform the independent-seed summaries within the group.
+            directory = Path(tmp) / str(i)
+            info = export(directory, group)
+            for name, count in info["row_counts"].items():
+                if count:
+                    by_file[name].append(directory / name)
+        for name, group_files in sorted(by_file.items()):
+            columns = {}
+            for group_file in group_files:
+                with group_file.open(newline="") as source:
+                    columns.update(dict.fromkeys(csv.DictReader(source).fieldnames))
+            with (plots / name).open("x", newline="") as target:
+                writer = csv.DictWriter(target, columns)
+                writer.writeheader()
+                for group_file in group_files:
+                    with group_file.open(newline="") as source:
+                        writer.writerows(csv.DictReader(source))
+    if index["fit_index"]:
+        with (plots / "exp1_pigou_fit_steps.csv").open("x", newline="") as target:
+            fields = ("scene", "train_seed", "round", "variant", "step", "loss", "weights_sha256")
+            writer = csv.DictWriter(target, fields)
+            writer.writeheader()
+            for record in index["fit_index"]:
+                stats = json.loads(Path(record["fit_path"]).read_text())
+                for i, loss in enumerate(stats["loss_history"], 1):
+                    writer.writerow({**{key: record[key] for key in fields if key in record},
+                                     "step": i, "loss": loss})
+    _json_write(root / "figure-manifest.json",
+                {"files": {p.name: sha(p) for p in sorted(plots.iterdir())},
+                 "input_index_sha256": sha(_input("index.json")), "cells": len(index["cells"])})
+
+
 def _pinned_env():
     quota = Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
     limit = Path("/sys/fs/cgroup/memory/memory.limit_in_bytes")
@@ -334,7 +477,7 @@ def _pinned_env():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=("cell", "preflight", "fit"))
+    parser.add_argument("operation", choices=("cell", "preflight", "fit", "export"))
     parser.add_argument("--spec", default="{}")
     args = parser.parse_args()
     spec = json.loads(args.spec)
@@ -343,6 +486,8 @@ def main():
         _cell_main(spec)
     elif args.operation == "fit":
         fit_main(spec)
+    elif args.operation == "export":
+        export_main()
     else:
         preflight(spec)
 

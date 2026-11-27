@@ -74,12 +74,13 @@ import os
 import statistics
 import tempfile
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 
 EXPERIMENTS = frozenset({
-    "exp0", "exp0b", "exp1", "exp2", "exp3_outage", "exp3_zeroshot",
+    "exp0", "exp0_hysteresis", "exp0b", "exp1", "exp2", "exp3_outage", "exp3_zeroshot",
     "exp4_ablation", "exp4_compute",
 })
 TERMINAL_LOSS_FATES = frozenset({
@@ -163,7 +164,10 @@ SCENE_WINDOWS = {
         ("recovery", 3.5, 7.5),
     ),
     "B": (
-        ("emission_window", 0.2, 1.2),
+        ("emission_window", 0.2, 7.5),
+        ("steady_prepulse", 0.5, 2.0),
+        ("burst", 2.0, 3.5),
+        ("recovery", 3.5, 7.5),
         ("full", 0.2, 7.5),
     ),
 }
@@ -392,7 +396,7 @@ class RunEvidence:
         explicit = self.entry.get("run_id")
         return str(explicit) if explicit else self.run_dir.name
 
-    @property
+    @cached_property
     def fates(self) -> dict[int, str]:
         raw = (self.ledger or {}).get("packet_fates")
         out: dict[int, str] = {}
@@ -404,7 +408,7 @@ class RunEvidence:
                 out[pid] = str(value[0])
         return out
 
-    @property
+    @cached_property
     def deliveries(self) -> dict[int, dict[str, Any]]:
         raw = (self.ledger or {}).get("deliveries")
         if not isinstance(raw, dict):
@@ -422,7 +426,7 @@ class RunEvidence:
                 and self.hash_matches_receipt
                 and self.ledger_hash_status == "MATCH")
 
-    @property
+    @cached_property
     def trace_by_pid(self) -> dict[int, dict[str, Any]]:
         return {int(row["packet_id"]): row for row in self.trace}
 
@@ -815,20 +819,22 @@ def _recovery_metrics(evidence: RunEvidence) -> dict[str, Any]:
         rates.append(stats["goodput_pdr_fraction"])
         statuses.append(stats["status"])
     threshold = 0.95 * base
+    if base == 0.0:
+        result["t_rec_status"] = "ZERO_PREPULSE_GOODPUT"
     confirmation_bins = int(round(RECOVERY_CONFIRM_S / RECOVERY_BIN_S))
     found: float | None = None
     for index in range(0, len(rates) - confirmation_bins + 1):
         window = rates[index:index + confirmation_bins]
-        if all(rate is not None and rate + 1e-12 >= threshold for rate in window):
+        if base > 0 and all(rate is not None and rate + 1e-12 >= threshold for rate in window):
             found = SHOCK_END_S + index * RECOVERY_BIN_S
             break
-    if found is None:
+    if found is None and base > 0:
         result.update(
             t_rec_right_censor_s=RECOVERY_RIGHT_CENSOR_S,
             t_rec_display=f">{RECOVERY_RIGHT_CENSOR_S:.1f}",
             t_rec_status="RIGHT_CENSORED",
         )
-    else:
+    elif found is not None:
         result.update(
             t_rec_s=found - SHOCK_END_S,
             t_rec_display=f"{found - SHOCK_END_S:.1f}",
@@ -910,6 +916,13 @@ def _service_work_metrics(evidence: RunEvidence) -> dict[str, Any]:
     if not isinstance(events, list):
         return result
     emitted: set[int] = set()
+    # Arrival records carry a propagation ID but not its stage. Join them to
+    # starts so uplink/downlink propagations never count as ISL hops.
+    isl_starts = {(event.get("pid"), event.get("prop_id")): event.get("link_id")
+                  for event in events if isinstance(event, dict)
+                  and event.get("kind") == "propagation_start"
+                  and event.get("stage") == "isl"}
+    arrival_nodes: dict[int, list[int]] = {}
     arrival_visits: dict[int, set[Any]] = {}
     isl_service_visits: dict[int, int] = {}
     for event in events:
@@ -921,18 +934,29 @@ def _service_work_metrics(evidence: RunEvidence) -> dict[str, Any]:
         kind = event.get("kind")
         if kind == "packet_emitted":
             emitted.add(pid)
+        elif kind == "satellite_ingress" and event.get("satellite") is not None:
+            arrival_nodes.setdefault(pid, []).append(int(event["satellite"]))
         elif kind == "propagation_arrival":
             token = event.get("prop_id")
-            if token is None:
-                token = (pid, event.get("at"))
-            arrival_visits.setdefault(pid, set()).add(token)
+            edge = isl_starts.get((pid, token))
+            if isinstance(edge, str):
+                arrival_visits.setdefault(pid, set()).add(token)
+                arrival_nodes.setdefault(pid, []).append(int(edge.split(":")[-1]))
         elif kind == "service_start" and event.get("stage") == "isl":
             isl_service_visits[pid] = isl_service_visits.get(pid, 0) + 1
     dropped = {pid for pid, fate in evidence.fates.items()
                if fate in TERMINAL_LOSS_FATES}
-    if dropped <= emitted:
+    trace_ids = set(evidence.trace_by_pid)
+    if trace_ids <= emitted:
+        dropped_hops = sum(len(arrival_visits.get(pid, ())) for pid in dropped)
+        all_hops = sum(map(len, arrival_visits.values()))
         result.update(
-            dropped_arrival_hop_visits=sum(len(arrival_visits.get(pid, ())) for pid in dropped),
+            path_hop_zwr_status="COMPUTED_ISL_ARRIVALS" if all_hops else "ZERO_ISL_ARRIVALS",
+            path_hop_zwr_pct=100.0 * dropped_hops / all_hops if all_hops else None,
+            loop_revisit_rate_pct=100.0 * sum(len(path) != len(set(path))
+                                              for path in arrival_nodes.values()) / len(trace_ids)
+                                               if trace_ids else None,
+            dropped_arrival_hop_visits=dropped_hops,
             dropped_isl_service_visits=sum(isl_service_visits.get(pid, 0) for pid in dropped),
             dropped_hop_evidence_status="COMPUTED",
         )
@@ -1438,6 +1462,17 @@ def _apply_hop_reference(evidences: Sequence[RunEvidence], metrics_by_id: dict[i
             raise ExportValidationError(
                 f"ambiguous SP-Hop traces for cohort {key}: {sorted(str(x) for x in shas)}")
     for evidence in evidences:
+        nominal = evidence.entry.get("nominal_shortest_hops")
+        if nominal is not None:
+            actual = metrics_by_id[id(evidence)]["actual_isl_hop_work_attempts"]
+            denominator = nominal.get("hops")
+            if denominator is not None and denominator > 0 and actual is not None:
+                metrics_by_id[id(evidence)].update(sp_hop_reference_hops=denominator,
+                    hir_actual_over_sp_hop=actual / denominator,
+                    hir_status="COMPUTED_NOMINAL_ZERO_QUEUE")
+            else:
+                metrics_by_id[id(evidence)]["hir_status"] = "INCOMPLETE_NOMINAL_COHORT"
+            continue
         key = (
             evidence.scene, evidence.seed, evidence.interval_s,
             evidence.multiplier, str(evidence.entry.get("train_seed")),
@@ -1524,6 +1559,7 @@ def _victim_ratio(evidence: RunEvidence, baseline: RunEvidence) -> dict[str, Any
 
 
 def _attach_exp0b_pairs(evidences: Sequence[RunEvidence]) -> None:
+    sweeps = [evidence for evidence in evidences if evidence.exp == "exp0_hysteresis"]
     exp0b = [evidence for evidence in evidences if evidence.exp == "exp0b"]
     baselines: dict[tuple[Any, ...], RunEvidence] = {}
     for evidence in exp0b:
@@ -1751,7 +1787,8 @@ def _breakdown_rows(
         for metric in (
                 "zombie_work_service_bits_ratio_pct",
                 "zombie_work_numerator_capacity_bits",
-                "dropped_arrival_hop_visits", "dropped_isl_service_visits"):
+                "dropped_arrival_hop_visits", "dropped_isl_service_visits",
+                "path_hop_zwr_pct", "loop_revisit_rate_pct"):
             values = [
                 value for evidence in group
                 if (value := _metric_value(metrics_by_id[id(evidence)], metric)) is not None]
@@ -1998,6 +2035,7 @@ def export(root: Path | str, index: list[dict[str, Any]]) -> dict[str, Any]:
         metrics_by_id[id(evidence)].update(evidence.entry.get("_victim_result") or {})
 
     exp0 = [evidence for evidence in evidences if evidence.exp == "exp0"]
+    sweeps = [evidence for evidence in evidences if evidence.exp == "exp0_hysteresis"]
     exp0b = [evidence for evidence in evidences if evidence.exp == "exp0b"]
     exp1 = [evidence for evidence in evidences if evidence.exp == "exp1"]
     exp2 = [evidence for evidence in evidences if evidence.exp == "exp2"]
@@ -2018,8 +2056,9 @@ def export(root: Path | str, index: list[dict[str, Any]]) -> dict[str, Any]:
         "exp0_calibration.csv": [
             _metric_row(evidence, metrics_by_id[id(evidence)]) for evidence in exp0],
         "exp0_hysteresis_multi_alg.csv": [
-            row for evidence in exp0
-            for row in _series_rows(evidence, 0.5, 3.5, RECOVERY_BIN_S)],
+            {**_metadata(evidence), **step,
+             **_window_stats(evidence, step["start_s"] + 0.2, step["end_s"])}
+            for evidence in sweeps for step in evidence.entry["plateaus"]],
         "exp0b_shock_sweep_seed101.csv": exp0b_series,
         "exp2_main_raw.csv": [
             _metric_row(evidence, metrics_by_id[id(evidence)]) for evidence in exp2],

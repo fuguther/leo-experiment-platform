@@ -722,6 +722,45 @@ def _cli_summary(result: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def build_staircase(out_dir, *, seed, interval, offered_mbps):
+    """Matched ascending and descending load plateaus for the hysteresis figure."""
+    spec = _scene_spec("A")
+    _validate_inputs(scene=spec, seed=seed, multiplier=1.0,
+                     interval=interval, offered_mbps=offered_mbps)
+    out = Path(out_dir).resolve()
+    out.mkdir(parents=True)
+    path = out / TRACE_FILENAME
+    sites = {site.name: site for site in spec.sites}
+    hotspots = {(a, b) for a, b, _ in spec.hotspot_weights}
+    routes = tuple((a, b, w * 8.0 if (a, b) in hotspots else w)
+                   for a, b, w in _bidirectional_routes(spec.corridor_weights))
+    levels = (0.65, 0.80, 0.95, 1.10, 1.25, 1.10, 0.95, 0.80, 0.65)
+    rows = []
+    plateaus = []
+    for step, level in enumerate(levels):
+        start = round(0.2 + step, 9)
+        end = round(start + 1.0, 9)
+        rate = offered_mbps * level
+        n = _expected_packet_count(rate, spec.packet_bits, 1.0)
+        plateaus.append({"index": step, "start_s": start, "end_s": end,
+                         "offered_mbps": rate,
+                         "direction": "up" if step <= len(levels) // 2 else "down"})
+        for at in _midpoint_times(n, start, end):
+            pid = len(rows) + 1
+            src, dst = _choose_route(routes, seed=seed, stream="staircase", index=pid)
+            rows.append(_packet_row(packet_id=pid, emit_time_s=at, source=sites[src],
+                                    destination=sites[dst], packet_bits=spec.packet_bits,
+                                    hard_deadline_s=spec.hard_deadline_s, layer="background"))
+    _write_trace(path, rows)
+    cfg = _make_config(spec=spec, seed=seed, interval=interval, offered_mbps=offered_mbps,
+                       trace_path=path, max_packets=len(rows))
+    cfg["demand"]["emission_end_s"] = plateaus[-1]["end_s"]
+    cfg["scenario"]["duration_s"] = plateaus[-1]["end_s"] + 2.0
+    return {"config": cfg, "trace_path": path,
+            "background_packet_sha256": _layer_sha256(rows, "background"),
+            "plateaus": plateaus}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Build deterministic three-phase Pigou Scene A/B traffic")
