@@ -931,6 +931,7 @@ def _load_previous_parameters(previous_weights: Any, variant: str
 def _tf_quantile_loss(tf, prediction, target):
     taus = tf.constant(QUANTILE_LEVELS, dtype=prediction.dtype)
     taus = tf.reshape(taus, (1, EXT_DIM))
+    target = tf.reshape(target, (-1, 1))
     delta = target - prediction
     absolute = tf.abs(delta)
     huber = tf.where(absolute <= 1.0, 0.5 * tf.square(delta), absolute - 0.5)

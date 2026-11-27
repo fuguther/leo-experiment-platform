@@ -236,6 +236,17 @@ def test_tensorflow_numpy_parity_after_export(tmp_path):
         tf_result["ext"].numpy()[0], numpy_ext, rtol=2e-5, atol=2e-6)
 
 
+def test_tensorflow_quantile_loss_broadcasts_scalar_targets():
+    tf = _require_tensorflow_213()
+    from CODE.leo_sim.rl.pigou_model import _tf_quantile_loss
+
+    prediction = tf.zeros((7, 16), tf.float32)
+    target = tf.linspace(0.0, 3.0, 7)
+    loss = _tf_quantile_loss(tf, prediction, target)
+    assert loss.shape == (7, 16)
+    assert bool(tf.reduce_all(tf.math.is_finite(loss)).numpy())
+
+
 def test_tensorflow_gat_masks_broadcast_over_heads_and_batch():
     tf = _require_tensorflow_213()
     rng = np.random.default_rng(201)
