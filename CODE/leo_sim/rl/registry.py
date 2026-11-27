@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 _OBSERVATIONS: dict[str, Callable] = {}
 _MODELS: dict[str, Callable] = {}
-_AGENTS: dict[str, Callable] = {}
+_AGENTS: dict[tuple[str, str | None], Callable] = {}
 
 
 def _normalise(kind: str, name: str) -> str:
@@ -15,9 +15,7 @@ def _normalise(kind: str, name: str) -> str:
     return name.strip()
 
 
-def _register(kind: str, registry: dict[str, Callable], name: str):
-    key = _normalise(kind, name)
-
+def _register(kind: str, registry: dict, key):
     def decorator(value: Callable) -> Callable:
         if key in registry:
             raise ValueError(f"duplicate {kind} registration: {key!r}")
@@ -30,15 +28,18 @@ def _register(kind: str, registry: dict[str, Callable], name: str):
 
 
 def register_observation(name: str):
-    return _register("observation", _OBSERVATIONS, name)
+    return _register("observation", _OBSERVATIONS, _normalise("observation", name))
 
 
 def register_model(name: str):
-    return _register("model", _MODELS, name)
+    return _register("model", _MODELS, _normalise("model", name))
 
 
-def register_agent(algorithm: str):
-    return _register("agent", _AGENTS, algorithm)
+def register_agent(algorithm: str, *, scope: str | None = None):
+    key = _normalise("agent", algorithm)
+    if scope is not None:
+        scope = _normalise("agent scope", scope)
+    return _register("agent", _AGENTS, (key, scope))
 
 
 def _lookup(kind: str, registry: dict[str, Callable], name: str) -> Callable:
@@ -59,8 +60,19 @@ def get_model_builder(name: str) -> Callable:
     return _lookup("model", _MODELS, name)
 
 
-def get_agent_class(algorithm: str) -> Callable:
-    return _lookup("agent", _AGENTS, algorithm)
+def get_agent_class(algorithm: str,
+                    scope: str | None = None) -> Callable:
+    key = _normalise("agent", algorithm)
+    if scope is not None:
+        scoped = (key, _normalise("agent scope", scope))
+        if scoped in _AGENTS:
+            return _AGENTS[scoped]
+    default = (key, None)
+    if default in _AGENTS:
+        return _AGENTS[default]
+    available = ", ".join(sorted({name for name, _ in _AGENTS})) or "(none)"
+    raise ValueError(
+        f"unknown agent {key!r} for scope {scope!r}; registered: {available}")
 
 
 def registered_observations() -> tuple[str, ...]:
@@ -72,7 +84,7 @@ def registered_models() -> tuple[str, ...]:
 
 
 def registered_agents() -> tuple[str, ...]:
-    return tuple(sorted(_AGENTS))
+    return tuple(sorted({name for name, _ in _AGENTS}))
 
 
 __all__ = [

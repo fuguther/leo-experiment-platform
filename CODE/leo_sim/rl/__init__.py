@@ -1,6 +1,24 @@
 """Pluggable learning runtime for leo_sim."""
 from __future__ import annotations
 
+from .agents import (
+    PerSatelliteTabularQLearning,
+    PerSatelliteTensorflowDDQN,
+    TabularQLearning,
+    TensorflowDDQN,
+)
+from .models import (
+    _configure_tf_threads,
+    _effective_cpu_count,
+    _extract_dense_mlp,
+    _graph_custom_objects,
+    _numpy_mlp_forward,
+    build_model,
+    default_model_name,
+    require_tensorflow,
+    tf,
+    V2GraphEncoder,
+)
 from .observations import (
     _DEST_DIST_NORM_KM,
     _EARTH_R_KM,
@@ -68,11 +86,41 @@ from .registry import (
 )
 from .replay import _ReplayBuffer
 
+
+def create_learner(contract: str, learning_cfg: dict, seed: int):
+    """Construct the registered learner selected by algorithm and agent scope."""
+    if not isinstance(learning_cfg, dict):
+        raise TypeError("learning_cfg must be a mapping")
+    cfg = dict(learning_cfg)
+    algorithm = cfg.get("algorithm")
+    if algorithm in (None, "none"):
+        return None
+    scope = cfg.get("agent_scope", "shared")
+    learner_cls = get_agent_class(str(algorithm), scope=str(scope))
+    return learner_cls(contract, cfg, int(seed))
+
+
 __all__ = [
+    # Plugin API and factory.
+    "create_learner",
     "register_observation", "register_model", "register_agent",
     "get_observation_builder", "get_model_builder", "get_agent_class",
     "registered_observations", "registered_models", "registered_agents",
+    "build_model", "default_model_name",
+    # Runtime gate and models.
+    "tf", "require_tensorflow", "V2GraphEncoder", "_graph_custom_objects",
+    "_effective_cpu_count", "_configure_tf_threads", "_extract_dense_mlp",
+    "_numpy_mlp_forward",
+    # Built-in learners.
+    "TensorflowDDQN", "PerSatelliteTensorflowDDQN",
+    "TabularQLearning", "PerSatelliteTabularQLearning",
+    # Failure and persistence contracts.
     "LearningUnavailable", "_ReplayBuffer",
+    "_verify_checkpoint_metadata", "_read_json_bytes",
+    "_read_checkpoint_metadata", "_resume_json", "_resume_unjson",
+    "_resume_file_record", "_write_resume_manifest",
+    "_verify_resume_bundle", "_resume_identity", "_require_resume_identity",
+    # Observation/action contracts.
     "_DEST_DIST_NORM_KM", "_EARTH_R_KM", "_peer_bit_value",
     "_origin_features", "_bfs_first_dirs", "_graph_node_features",
     "CONTRACTS", "ORIGIN_FEATURES", "OWN_FEATURES", "DEST_FEATURES",
