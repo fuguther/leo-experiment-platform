@@ -10,6 +10,7 @@ import hashlib
 import multiprocessing as mp
 import os
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -112,8 +113,14 @@ def run_batch(
         raise ValueError("pass configs or config_path")
 
     cpus = learning._effective_cpu_count()
-    n_workers = int(workers) if workers is not None else min(len(jobs), max(1, cpus // 2))
+    n_workers = int(workers) if workers is not None else min(len(jobs), cpus)
     n_workers = max(1, min(n_workers, len(jobs)))
+    if n_workers > 1:
+        entrypoint = getattr(sys.modules.get("__main__"), "__file__", None)
+        if not isinstance(entrypoint, str) or not Path(entrypoint).is_file():
+            raise ValueError(
+                "multi-worker batch requires a file entrypoint or "
+                "'python -m CODE.leo_sim batch'")
     threads = (
         int(threads_per_worker)
         if threads_per_worker is not None

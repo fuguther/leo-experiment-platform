@@ -4,6 +4,8 @@ Control packets must occupy ISL service time, propagate at most vis_k actual
 hops, respect TTL/AoI, enjoy non-preemptive priority, and be the only source
 of remote state in a satellite's local cache.
 """
+import pytest
+
 from CODE.leo_sim import control, kernel
 from CODE.experiment_platform import t1_tasks
 from CODE.leo_sim.tests.helpers import StaticGeometry, cell, cell_center, make_cfg, row
@@ -39,7 +41,19 @@ def test_cache_entry_validity_and_aoi():
     assert e.valid_at(10.5)
     assert e.valid_at(12.0)
     assert not e.valid_at(12.1)  # expired
+    assert e.expires_at == 12.0
     assert abs(e.aoi(11.0) - 1.0) < 1e-12
+
+
+def test_local_cache_validates_now_once_and_uses_precomputed_expiry():
+    c = control.LocalCache()
+    c.put(control.CacheEntry(1, {"q": 1}, 10.0, 10.5, 2.0))
+    c.put(control.CacheEntry(2, {"q": 2}, 11.0, 11.5, 2.0))
+    assert set(c.valid_entries(10.5)) == {1}
+    assert set(c.valid_entries(11.5)) == {1, 2}
+    assert c.valid_entries(12.6) == {2: c.entry(2)}
+    with pytest.raises(ValueError, match="valid_entries: now must be finite"):
+        c.valid_entries(float("nan"))
 
 
 def test_cache_keeps_freshest_only():

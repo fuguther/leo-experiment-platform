@@ -21,7 +21,8 @@ class CacheEntry:
     expired. AoI is measured from generation.
     """
 
-    __slots__ = ("origin", "payload", "generated_at", "received_at", "ttl_s", "hops")
+    __slots__ = ("origin", "payload", "generated_at", "received_at", "ttl_s",
+                 "expires_at", "hops")
 
     def __init__(self, origin, payload, generated_at, received_at, ttl_s, hops=0):
         for name, v in (("generated_at", generated_at),
@@ -39,6 +40,7 @@ class CacheEntry:
         self.generated_at = float(generated_at)
         self.received_at = float(received_at)
         self.ttl_s = float(ttl_s)
+        self.expires_at = self.generated_at + self.ttl_s
         self.hops = hops  # actual ISL hops the advertisement travelled
 
     def valid_at(self, now: float) -> bool:
@@ -47,8 +49,7 @@ class CacheEntry:
         if not isinstance(now, (int, float)) or isinstance(now, bool) \
                 or not math.isfinite(now):
             raise ValueError(f"valid_at: now must be finite: {now!r}")
-        return self.generated_at <= self.received_at <= now \
-            <= self.generated_at + self.ttl_s
+        return self.generated_at <= self.received_at <= now <= self.expires_at
 
     def aoi(self, now: float) -> float:
         return now - self.generated_at
@@ -93,13 +94,13 @@ class LocalCache:
         return list(self.history.get(origin, ()))
 
     def valid_entries(self, now: float) -> dict[int, CacheEntry]:
-        out = {}
-        for origin, e in self._entries.items():
-            if e.valid_at(now):
-                out[origin] = e
-            else:
-                self.expirations += 0  # expiry is lazily observed, not an event
-        return out
+        if not isinstance(now, (int, float)) or isinstance(now, bool) \
+                or not math.isfinite(now):
+            raise ValueError(f"valid_entries: now must be finite: {now!r}")
+        return {
+            origin: e for origin, e in self._entries.items()
+            if e.received_at <= now <= e.expires_at
+        }
 
     def entry(self, origin: int) -> CacheEntry | None:
         return self._entries.get(origin)
