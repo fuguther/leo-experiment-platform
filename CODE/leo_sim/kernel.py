@@ -1396,22 +1396,12 @@ class Kernel:
             self.learner = None
             self.policy_source = "fixed_inference_checkpoint"
             self.mech_fixed_policy_calls = 0
-        elif algorithm == "ddqn":
+        elif algorithm in ("ddqn", "qlearning"):
             seed = (cfg["learning"]["seed"]
                     if cfg["learning"]["seed"] is not None
                     else self.cfg_sc["seed"])
-            cls = (_learning.PerSatelliteTensorflowDDQN
-                   if cfg["learning"].get("agent_scope") == "per_satellite"
-                   else _learning.TensorflowDDQN)
-            self.learner = cls(self.cfg_rt["contract"], cfg["learning"], seed)
-        elif algorithm == "qlearning":
-            seed = (cfg["learning"]["seed"]
-                    if cfg["learning"]["seed"] is not None
-                    else self.cfg_sc["seed"])
-            cls = (_learning.PerSatelliteTabularQLearning
-                   if cfg["learning"].get("agent_scope") == "per_satellite"
-                   else _learning.TabularQLearning)
-            self.learner = cls(self.cfg_rt["contract"], cfg["learning"], seed)
+            self.learner = _learning.create_learner(
+                self.cfg_rt["contract"], cfg["learning"], seed)
         else:
             self.learner = None
         if self.learner is not None:
