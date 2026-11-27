@@ -117,8 +117,10 @@ def test_scene_catalogs_and_native_config_contract(builder, tmp_path):
     assert cfg_a["demand"]["csv_path"] == str(scene_a["trace_path"])
     assert cfg_a["endpoints"]["mlab_auto"] is False
     assert cfg_a["demand"]["population_path"] is None
-    assert cfg_a["links"]["isl_rate_mbps"] == 100.0
-    assert cfg_a["links"]["isl_queue_bits"] == 2_000_000
+    assert cfg_a["links"]["isl_rate_mbps"] == 70.0
+    assert cfg_a["links"]["isl_queue_bits"] == 2_240_000
+    assert 0.030 <= (cfg_a["links"]["isl_queue_bits"]
+                      / (cfg_a["links"]["isl_rate_mbps"] * 1_000_000)) <= 0.035
     assert cfg_a["links"]["max_isl_km"] >= 6_000.0
     assert cfg_a["control_plane"]["vis_k"] == 1
     assert cfg_a["control_plane"]["ttl_s"] > 0

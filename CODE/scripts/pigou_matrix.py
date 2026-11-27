@@ -22,7 +22,12 @@ from CODE.scripts.pigou_study import (
 
 ROOT = Path("/data/论文/leo-t1-wt")
 CALIBRATION_SEEDS = (9001, 9002)
-CALIBRATION_LOADS = (82.5, 93.0, 98.0, 100.0)
+CALIBRATION_LOADS = {
+    "A": (70.0, 77.5, 82.5, 90.0),
+    "B": (45.0, 55.0, 65.0, 75.0),
+}
+TARGET_STEADY_UTILIZATION = 0.685
+UTILIZATION_TOLERANCE = 0.035
 ABLATIONS = ("no_ext", "mean", "frame", "no_ais", "argmax", "no_shield")
 FIT_ROUNDS = ((6, 2000, 5e-4), (6, 1500, 3e-4), (6, 1000, 1e-4))
 VARIANTS = {"A": ("full", "mean", "frame", "no_ais"), "B": ("full",)}
@@ -34,7 +39,7 @@ def describe():
     arms = len(ALGORITHMS) - learning_families + learning_families * len(TRAIN_SEEDS)
     model_chains = sum(map(len, VARIANTS.values())) * len(TRAIN_SEEDS)
     jobs = {
-        "calibration": len(CALIBRATION_LOADS) * len(CALIBRATION_SEEDS) * 2,
+        "calibration": sum(map(len, CALIBRATION_LOADS.values())) * len(CALIBRATION_SEEDS),
         "static_guard_validation": 2 * len(VAL_SEEDS) * 3,
         "hysteresis_plateaus": len(CADENCES) * (2 + 2 * len(TRAIN_SEEDS)),
         "pigou_rollouts": 2 * len(TRAIN_SEEDS) * sum(r[0] for r in FIT_ROUNDS),
@@ -161,23 +166,38 @@ class Matrix:
     def record(self, items):
         self.raw.extend(summary for _, summary in items)
 
-    def calibrate(self):
-        items = []
-        for alg in ("B1", "B2"):
-            for rate in CALIBRATION_LOADS:
+    def calibrate(self, scenes=("A", "B")):
+        for scene in scenes:
+            items = []
+            for rate in CALIBRATION_LOADS[scene]:
                 for seed in CALIBRATION_SEEDS:
-                    spec = _params("A", seed, alg, "exp0", rate, multiplier=1.0)
-                    items.append((self.cell, (f"cal-{alg}-l{int(round(rate*10))}-s{seed}", spec), {}))
-        cells = self.parallel(items, 4)
-        self.record(cells)
-        def loss(rate):
-            values = [
-                row["steady_utilization_peak"]
-                for _, row in cells if row["alg"] == "B1" and row["offered_mbps"] == rate]
-            if not values or any(value is None for value in values):
-                raise RuntimeError("no capacity-matched steady-load measurements")
-            return abs(sum(values) / len(values) - 0.685)
-        self.loads.update(A=min(CALIBRATION_LOADS, key=loss), B=85.0)
+                    spec = _params(scene, seed, "B1", "exp0", rate, multiplier=1.0)
+                    label = f"cal-{scene}-B1-l{int(round(rate * 10))}-s{seed}"
+                    items.append((self.cell, (label, spec), {}))
+            cells = self.parallel(items, 4)
+            self.record(cells)
+            by_rate = {}
+            for rate in CALIBRATION_LOADS[scene]:
+                values = [
+                    row["steady_utilization_peak"]
+                    for _, row in cells if row["offered_mbps"] == rate
+                ]
+                if not values or any(value is None for value in values):
+                    raise RuntimeError(
+                        f"no capacity-matched steady-load measurements for scene {scene}")
+                by_rate[rate] = sum(values) / len(values)
+            selected = min(
+                CALIBRATION_LOADS[scene],
+                key=lambda rate: abs(by_rate[rate] - TARGET_STEADY_UTILIZATION),
+            )
+            measured = float(by_rate[selected])
+            low = TARGET_STEADY_UTILIZATION - UTILIZATION_TOLERANCE
+            high = TARGET_STEADY_UTILIZATION + UTILIZATION_TOLERANCE
+            if not low <= measured <= high:
+                raise RuntimeError(
+                    f"scene {scene} calibration cannot reach target utilization "
+                    f"[{low:.3f}, {high:.3f}]; best {selected} Mbps gives {measured:.4f}")
+            self.loads[scene] = selected
         print(f"frozen offered Mbps {self.loads}", flush=True)
 
     def static_guard(self, scene):
@@ -213,9 +233,9 @@ class Matrix:
             self.raw.append(report)
         return alg, train_seed, best[1]
 
-    def native(self, scene):
+    def native(self, scene, train_seeds=TRAIN_SEEDS):
         tasks = [(self._native_seed, (scene, alg, train_seed), {})
-                 for alg in LEARNERS for train_seed in TRAIN_SEEDS]
+                 for alg in LEARNERS for train_seed in train_seeds]
         for alg, seed, path in self.parallel(tasks, 2):
             self.models[(scene, alg, seed, "full")] = path, {}
 
@@ -249,9 +269,12 @@ class Matrix:
             for s in VAL_SEEDS], 2)
         return sum(row["val_score"] for _, row in vals) / len(vals)
 
-    def pigou(self, scene):
-        arch_variants = VARIANTS[scene]
-        for train_seed in TRAIN_SEEDS:
+    def pigou(self, scene, train_seeds=TRAIN_SEEDS, variants=None):
+        arch_variants = tuple(variants or VARIANTS[scene])
+        unknown = set(arch_variants) - set(VARIANTS[scene])
+        if unknown:
+            raise ValueError(f"unsupported Pigou variants for scene {scene}: {sorted(unknown)}")
+        for train_seed in train_seeds:
             data = []
             previous = {variant: None for variant in arch_variants}
             best = {variant: None for variant in arch_variants}
@@ -282,12 +305,13 @@ class Matrix:
                 beta = max(candidates, key=lambda point: (point[0], -point[1]))[1]
                 self.models[(scene, "Ours", train_seed, variant)] = path, {"beta_ext": beta}
 
-    def _heldout_tasks(self, scene, experiment, intervals, seeds, algorithms=ALGORITHMS,
+    def _heldout_tasks(self, scene, experiment, intervals, seeds,
+                       algorithms=ALGORITHMS, train_seeds=TRAIN_SEEDS,
                        **options):
         variant = options.get("variant", "full")
         for alg in algorithms:
             learning = alg in LEARNERS or alg == "Ours"
-            for train_seed in TRAIN_SEEDS if learning else (None,):
+            for train_seed in train_seeds if learning else (None,):
                 selected = self.models.get((scene, alg, train_seed,
                     variant if variant in {"full", "mean", "frame", "no_ais"} else "full"))
                 if learning and selected is None:
@@ -331,6 +355,68 @@ class Matrix:
             }, sort_keys=True) + "\n")
             self.run("export-" + suffix, "export", {"snapshot": suffix}, [("index.json", path)])
 
+    def exp0(self):
+        self.calibrate()
+        self.static_guard("A")
+        self.heldout("A", "exp0", (0.05,), (101,), ("B1", "B2"),
+                     multiplier=1.0, tag="workpoint")
+        for multiplier in (1.0, 1.6, 2.5):
+            self.heldout("A", "exp0b", (0.05,), (101,), ("B1", "B2"),
+                         multiplier=multiplier, tag=f"m{round(multiplier * 10)}")
+        self.heldout("A", "exp0_hysteresis", (0.05,), (9003,), ("B1", "B2"),
+                     sweep=True, multiplier=1.0, tag="step")
+        self._export("wave0")
+
+    def pilot(self):
+        self.calibrate()
+        for scene in ("A", "B"):
+            self.static_guard(scene)
+            self.native(scene, train_seeds=(11,))
+            self.pigou(scene, train_seeds=(11,), variants=("full",))
+            self.heldout(scene, "exp2", (0.05,), (101,), ALGORITHMS,
+                         train_seeds=(11,), tag="pilot")
+        self._export("pilot")
+
+    def core(self):
+        self.calibrate()
+        for scene in ("A", "B"):
+            self.static_guard(scene)
+            self.native(scene)
+            self.pigou(scene)
+            self.heldout(scene, "exp2", (0.05,), TEST_SEEDS, ALGORITHMS, tag="main")
+        self._export("core")
+
+    def extras(self):
+        self.calibrate()
+        for scene in ("A", "B"):
+            self.static_guard(scene)
+            self.native(scene)
+            self.pigou(scene)
+            self.heldout(scene, "exp2", (0.010, 0.100), TEST_SEEDS,
+                         ALGORITHMS, tag="main")
+        self.heldout("A", "exp0_hysteresis", CADENCES, (9003,),
+                     ("B1", "B2", "B4", "Ours"), sweep=True,
+                     multiplier=1.0, tag="step")
+        self.raw.extend({**row, "exp": "exp4_ablation", "variant": "full"}
+            for row in list(self.raw) if row["exp"] == "exp2"
+            and row["scene"] == "A" and row["interval"] in (0.05, 0.1)
+            and row["alg"] == "Ours")
+        self.raw.extend({**row, "exp": "exp4_compute", "compute_delay_s": 0.0}
+            for row in list(self.raw) if row["exp"] == "exp2"
+            and row["scene"] == "A" and row["interval"] == 0.05
+            and row["alg"] in ("B2", "Ours"))
+        for variant in ABLATIONS:
+            self.heldout("A", "exp4_ablation", (0.05, 0.10), TEST_SEEDS,
+                         ("Ours",), variant=variant, tag=variant)
+        for delay in (0.000010, 0.000050, 0.000100):
+            self.heldout("A", "exp4_compute", (0.05,), TEST_SEEDS,
+                         ("B2", "Ours"), compute_delay_s=delay,
+                         tag=f"us{round(delay * 1e6)}")
+        self.heldout("A", "exp3_outage", (0.05,), TEST_SEEDS,
+                     outage=True, multiplier=1.0)
+        self.heldout("A", "exp3_zeroshot", (0.05,), TEST_SEEDS, large=True)
+        self._export("extras")
+
     def execute(self):
         self.calibrate()
         for scene in ("A", "B"):
@@ -370,6 +456,8 @@ def main():
     parser.add_argument("--prefix")
     parser.add_argument("--preflight")
     parser.add_argument("--attempt", type=int, default=0)
+    parser.add_argument("--wave", choices=("exp0", "pilot", "core", "extras", "all"),
+                        default="all")
     args = parser.parse_args()
     if args.describe:
         print(json.dumps(describe(), indent=2))
@@ -392,7 +480,11 @@ def main():
     lock = ROOT / "runs" / ".locks" / "pigou-matrix.lock"
     with lock.open("a+b") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        Matrix(args.release, args.prefix, args.attempt).execute()
+        matrix = Matrix(args.release, args.prefix, args.attempt)
+        if args.wave == "all":
+            matrix.execute()
+        else:
+            getattr(matrix, args.wave)()
 
 
 if __name__ == "__main__":
