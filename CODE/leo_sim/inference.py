@@ -388,6 +388,11 @@ class ScorerPolicy(InferencePolicy):
 #: owned by that function; a checkpoint trained against any other order must be
 #: refused, never fed a vector whose meaning silently changed.
 OBSERVATION_FEATURE_ORDER = "leo_sim.learning.build_observation/v1"
+OBSERVATION_FEATURE_ORDER_LAST_HOP = "leo_sim.learning.build_observation/v2_last_hop"
+VALID_FEATURE_ORDERS = (
+    OBSERVATION_FEATURE_ORDER,
+    OBSERVATION_FEATURE_ORDER_LAST_HOP,
+)
 CONTRACT_SCHEMA = "leo-sim-observation-contract/v1"
 CHECKPOINT_SCHEMA = "leo-sim-ddqn/v1"
 #: "test_weights" marks an interface-validation export; it must never be
@@ -442,7 +447,9 @@ def observation_contract_fields(*, contract, feature_width,
 
 
 def validate_observation_contract(metadata, *, expected_contract=None,
-                                  expected_width=None, actions=ACTIONS) -> dict:
+                                  expected_width=None,
+                                  expected_feature_order=None,
+                                  actions=ACTIONS) -> dict:
     """Fail-closed validation of a declared observation contract.
 
     Order matters: the width is checked before anything else so a width-only
@@ -480,11 +487,15 @@ def validate_observation_contract(metadata, *, expected_contract=None,
         raise FixedInferenceError(
             "checkpoint metadata does not declare feature_order: the feature "
             "ORDER is part of the contract and cannot be assumed")
-    if str(order) != OBSERVATION_FEATURE_ORDER:
+    if str(order) not in VALID_FEATURE_ORDERS:
         raise FixedInferenceError(
             f"checkpoint feature_order {order!r} is not the kernel "
             f"observation order {OBSERVATION_FEATURE_ORDER!r}; refusing to "
             "feed a differently ordered vector")
+    if expected_feature_order is not None and str(order) != str(expected_feature_order):
+        raise FixedInferenceError(
+            f"checkpoint feature_order {order!r} != expected "
+            f"{expected_feature_order!r}")
     norm = metadata.get("normalisation")
     if not isinstance(norm, dict) or norm.get("mode") not in NORMALISATION_MODES:
         raise FixedInferenceError(
@@ -851,6 +862,7 @@ def load_fixed_adapter_from_checkpoint(checkpoint_path, checkpoint_sha256,
                                        metadata_path, metadata_sha256,
                                        *, expected_width=None,
                                        expected_contract=None,
+                                       expected_feature_order=None,
                                        name="checkpoint-model",
                                        require_weights_purpose=None):
     """HARD-GATED READ of a real repository checkpoint.
@@ -873,7 +885,8 @@ def load_fixed_adapter_from_checkpoint(checkpoint_path, checkpoint_sha256,
     metadata = report.get("metadata") or {}
     declared = validate_observation_contract(
         metadata, expected_contract=expected_contract,
-        expected_width=expected_width)
+        expected_width=expected_width,
+        expected_feature_order=expected_feature_order)
     if require_weights_purpose is not None \
             and declared["weights_purpose"] != str(require_weights_purpose):
         raise FixedInferenceError(

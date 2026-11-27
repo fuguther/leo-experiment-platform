@@ -479,3 +479,41 @@ def test_v2_and_v3_identity_hashes_differ():
         config.trace_identity_sha256(cfg)
     assert len(config.trace_identity_sha256_v2(cfg)) == 64
     assert len(config.trace_identity_sha256(cfg)) == 64
+
+
+def test_learning_wave2_options_validation():
+    defaults = config.resolve_config()["config"]["learning"]
+    assert defaults["agent_scope"] == "shared"
+    assert defaults["clip_norm"] is None
+    assert defaults["include_last_hop"] is False
+
+    custom = config.resolve_config({
+        "learning": {
+            "agent_scope": "per_satellite",
+            "clip_norm": 1.5,
+            "include_last_hop": True,
+        }
+    })["config"]["learning"]
+    assert custom["agent_scope"] == "per_satellite"
+    assert custom["clip_norm"] == 1.5
+    assert custom["include_last_hop"] is True
+
+    with pytest.raises(config.ConfigError, match="agent_scope"):
+        config.resolve_config({"learning": {"agent_scope": "federated"}})
+
+    for bad_clip in (0.0, -2.0, True, float("inf")):
+        with pytest.raises(config.ConfigError, match="clip_norm"):
+            config.resolve_config({"learning": {"clip_norm": bad_clip}})
+
+    for extra in (
+        {"mode": "eval", "fixed_inference": True, "checkpoint_path": "/tmp/x.keras",
+         "checkpoint_sha256": "0" * 64, "checkpoint_metadata_sha256": "0" * 64},
+        {"resume_path": "/tmp/res", "resume_sha256": "0" * 64},
+    ):
+        with pytest.raises(config.ConfigError, match="per_satellite"):
+            config.resolve_config({
+                "control_plane": {"enabled": True},
+                "routing": {"policy": "hop", "learning_enabled": True},
+                "learning": {"algorithm": "ddqn", "agent_scope": "per_satellite",
+                             **extra},
+            })

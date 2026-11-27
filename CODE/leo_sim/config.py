@@ -240,6 +240,9 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "fast_train": bool,
         "train_every_steps": int,
         "warmup_steps": int,
+        "agent_scope": str,
+        "clip_norm": (int, float, type(None)),
+        "include_last_hop": bool,
     },
     "execution": {
         "max_events": int,
@@ -540,6 +543,9 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "fast_train": True,
         "train_every_steps": 1,
         "warmup_steps": 0,
+        "agent_scope": "shared",
+        "clip_norm": None,
+        "include_last_hop": False,
     },
     "execution": {
         "max_events": 1_000_000,
@@ -1139,6 +1145,20 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError("learning.train_every_steps must be >= 1")
     if lr["warmup_steps"] < 0:
         raise ConfigError("learning.warmup_steps must be >= 0")
+    if lr["agent_scope"] not in ("shared", "per_satellite"):
+        raise ConfigError(
+            "learning.agent_scope must be 'shared' or 'per_satellite'")
+    clip_norm = lr["clip_norm"]
+    if clip_norm is not None:
+        if isinstance(clip_norm, bool) or not math.isfinite(float(clip_norm)) \
+                or float(clip_norm) <= 0:
+            raise ConfigError("learning.clip_norm must be null or finite and > 0")
+    if lr["agent_scope"] == "per_satellite":
+        if lr["fixed_inference"] or lr["checkpoint_path"] is not None \
+                or lr["resume_path"] is not None:
+            raise ConfigError(
+                "learning.agent_scope=per_satellite does not yet support "
+                "checkpoint_path, resume_path, or fixed_inference")
     if lr["epsilon_decay_s"] <= 0:
         raise ConfigError("learning.epsilon_decay_s must be > 0")
     if not 0 <= lr["gamma"] <= 1:

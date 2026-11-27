@@ -171,7 +171,7 @@ class CapExceeded(KernelError):
 class DataPacket:
     __slots__ = ("pid", "src", "dst", "bits", "deadline", "emitted_at", "path",
                  "assigned_sat", "learning_state", "learning_action",
-                 "learning_reward", "learning_episode_closed",
+                 "learning_reward", "learning_sat", "learning_episode_closed",
                  "research_deadline_at", "isl_enqueued_at", "holding_until",
                  "metric_queue_id", "metric_prop_id", "metric_ingress_at",
                  "decision_id", "decision_ordinal", "current_hop_index")
@@ -189,6 +189,7 @@ class DataPacket:
         self.learning_state = None
         self.learning_action = None
         self.learning_reward = None
+        self.learning_sat: int | None = None
         self.learning_episode_closed = False
         self.research_deadline_at = research_deadline_at
         # enqueue time on the current ISL egress queue; the realized queue
@@ -1376,28 +1377,41 @@ class Kernel:
         self.fixed_policy = None
         self.policy_source = "deterministic_scorer"
         if algorithm != "none" and self.cfg_learning.get("fixed_inference"):
+            include_lh = bool(self.cfg_learning.get("include_last_hop", False))
+            expected_fo = (
+                _inference.OBSERVATION_FEATURE_ORDER_LAST_HOP
+                if include_lh
+                else _inference.OBSERVATION_FEATURE_ORDER
+            )
             self.fixed_policy = _inference.load_fixed_adapter_from_checkpoint(
                 self.cfg_learning["checkpoint_path"],
                 self.cfg_learning["checkpoint_sha256"],
                 self._fixed_policy_metadata_path(),
                 self.cfg_learning["checkpoint_metadata_sha256"],
                 expected_contract=self.cfg_rt["contract"],
+                expected_width=_learning.contract_dim(
+                    self.cfg_rt["contract"], include_lh),
+                expected_feature_order=expected_fo,
                 name="checkpoint-ddqn")
             self.learner = None
             self.policy_source = "fixed_inference_checkpoint"
             self.mech_fixed_policy_calls = 0
         elif algorithm == "ddqn":
-            self.learner = _learning.TensorflowDDQN(
-                self.cfg_rt["contract"], cfg["learning"],
-                cfg["learning"]["seed"]
-                if cfg["learning"]["seed"] is not None
-                else self.cfg_sc["seed"])
+            seed = (cfg["learning"]["seed"]
+                    if cfg["learning"]["seed"] is not None
+                    else self.cfg_sc["seed"])
+            cls = (_learning.PerSatelliteTensorflowDDQN
+                   if cfg["learning"].get("agent_scope") == "per_satellite"
+                   else _learning.TensorflowDDQN)
+            self.learner = cls(self.cfg_rt["contract"], cfg["learning"], seed)
         elif algorithm == "qlearning":
-            self.learner = _learning.TabularQLearning(
-                self.cfg_rt["contract"], cfg["learning"],
-                cfg["learning"]["seed"]
-                if cfg["learning"]["seed"] is not None
-                else self.cfg_sc["seed"])
+            seed = (cfg["learning"]["seed"]
+                    if cfg["learning"]["seed"] is not None
+                    else self.cfg_sc["seed"])
+            cls = (_learning.PerSatelliteTabularQLearning
+                   if cfg["learning"].get("agent_scope") == "per_satellite"
+                   else _learning.TabularQLearning)
+            self.learner = cls(self.cfg_rt["contract"], cfg["learning"], seed)
         else:
             self.learner = None
         if self.learner is not None:
@@ -2496,6 +2510,7 @@ class Kernel:
                         pkt.learning_state = None
                         pkt.learning_action = None
                         pkt.learning_reward = None
+                        pkt.learning_sat = None
                         self.mech["learning_discarded_at_rematch"] += 1
                     self._hold_packet(s, pkt)
                     self._record_isl_queue_state(
@@ -4107,7 +4122,52 @@ class Kernel:
         path = Path(str(self.cfg_learning["checkpoint_path"]))
         return str(path.with_name("metadata.json"))
 
-    def _learning_observation(self, sat: int, dst_cell: str) -> np.ndarray:
+    def _learning_state_dim(self) -> int:
+        if self.learner is not None:
+            dim = getattr(self.learner, "input_dim", None)
+            if dim is not None:
+                return int(dim)
+        if self.fixed_policy is not None:
+            dim = getattr(self.fixed_policy, "input_dim", None)
+            if dim is not None:
+                return int(dim)
+        return _learning.contract_dim(
+            self.cfg_rt["contract"],
+            bool(self.cfg_learning.get("include_last_hop", False)),
+        )
+
+    def _learner_choose(self, sat: int, state: np.ndarray,
+                        mask: dict, now: float) -> str:
+        choose_for = getattr(self.learner, "choose_for", None)
+        if choose_for is not None:
+            return choose_for(sat, state, mask, now)
+        return self.learner.choose(state, mask, now)
+
+    def _learner_remember(self, sat: int | None, state, action: str,
+                          reward: float, next_state, next_mask: dict,
+                          done: bool) -> None:
+        remember_for = getattr(self.learner, "remember_for", None)
+        if remember_for is not None:
+            if sat is None:
+                raise KernelError(
+                    "per-satellite transition missing originating sat id")
+            remember_for(sat, state, action, reward, next_state, next_mask, done)
+            return
+        self.learner.remember(
+            state, action, reward, next_state, next_mask, done)
+
+    def _learning_last_hop_dir(self, sat: int,
+                               pkt: DataPacket | None) -> str | None:
+        if pkt is None or len(pkt.path) < 2:
+            return None
+        prev_sat = pkt.path[-2]
+        for direction, peer in self.topo.get(sat, {}).items():
+            if peer == prev_sat:
+                return direction
+        return None
+
+    def _learning_observation(self, sat: int, dst_cell: str,
+                              pkt: DataPacket | None = None) -> np.ndarray:
         queues = {d: lnk.data_bits + lnk.ctrl_bits
                   for d, lnk in self.isls[sat].items()}
         visible = sum(
@@ -4141,11 +4201,15 @@ class Kernel:
             if first_dirs is None:
                 first_dirs = _learning._bfs_first_dirs(sat, self.topo)
                 self._learning_first_dirs[sat] = first_dirs
+        include_lh = bool(self.cfg_learning.get("include_last_hop", False))
+        last_hop_dir = (self._learning_last_hop_dir(sat, pkt)
+                        if include_lh else None)
         return _learning.build_observation(
             self.cfg_rt["contract"], sat, self.caches[sat], self.env.now,
             self.topo, own, self.cfg_links["isl_queue_bits"],
             obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos,
-            first_dirs=first_dirs,
+            first_dirs=first_dirs, include_last_hop=include_lh,
+            last_hop_dir=last_hop_dir,
         )
 
     def _finish_learning_transition(self, pkt: DataPacket, next_state,
@@ -4165,13 +4229,14 @@ class Kernel:
                 f"(pid={pkt.pid})")
         reward = (pkt.learning_reward if terminal_reward is None
                   else float(terminal_reward))
-        self.learner.remember(
-            pkt.learning_state, pkt.learning_action, reward,
-            next_state, next_mask, done,
+        self._learner_remember(
+            pkt.learning_sat, pkt.learning_state, pkt.learning_action,
+            reward, next_state, next_mask, done,
         )
         pkt.learning_state = None
         pkt.learning_action = None
         pkt.learning_reward = None
+        pkt.learning_sat = None
         self._learning_open.discard(pkt)
 
     def _finish_deadline_transition(self, pkt: DataPacket, outcome: str, *,
@@ -4197,18 +4262,18 @@ class Kernel:
             episode_closed=False)
         if transition is not None and pkt.learning_state is not None:
             if next_state is None:
-                next_state = np.zeros(
-                    _learning.CONTRACT_DIMS[self.cfg_rt["contract"]])
+                next_state = np.zeros(self._learning_state_dim())
             if next_mask is None:
                 next_mask = {action: False for action in _learning.ACTIONS}
-            self.learner.remember(
-                pkt.learning_state, pkt.learning_action, transition.reward,
-                next_state, next_mask, transition.terminal)
+            self._learner_remember(
+                pkt.learning_sat, pkt.learning_state, pkt.learning_action,
+                transition.reward, next_state, next_mask, transition.terminal)
         if transition is None or transition.terminal:
             pkt.learning_episode_closed = True
         pkt.learning_state = None
         pkt.learning_action = None
         pkt.learning_reward = None
+        pkt.learning_sat = None
         self._learning_open.discard(pkt)
         if transition is not None and transition.terminal \
                 and self.timeline_sink is not None:
@@ -4243,6 +4308,7 @@ class Kernel:
             pkt.learning_state = None
             pkt.learning_action = None
             pkt.learning_reward = None
+            pkt.learning_sat = None
             self.mech["learning_discarded_at_stop"] += 1
         self._learning_open.clear()
 
@@ -4267,7 +4333,7 @@ class Kernel:
         return action
 
     def _learning_action(self, pkt: DataPacket, sat: int, mask: dict) -> str:
-        state = self._learning_observation(sat, pkt.dst)
+        state = self._learning_observation(sat, pkt.dst, pkt=pkt)
         if self.fixed_policy is not None:
             # A1 fixed-inference path.  The observation contract, the mask and
             # the tie-break are the SAME as the learner path; what is absent is
@@ -4280,15 +4346,16 @@ class Kernel:
             if pkt.learning_episode_closed:
                 # Physical routing continues after research D, but this
                 # packet cannot create more replay transitions.
-                return self.learner.choose(state, mask, self.env.now)
+                return self._learner_choose(sat, state, mask, self.env.now)
             if pkt.learning_state is not None:
                 self._finish_deadline_transition(
                     pkt, "intermediate", next_state=state,
                     next_mask=mask)
-            action = self.learner.choose(state, mask, self.env.now)
+            action = self._learner_choose(sat, state, mask, self.env.now)
             pkt.learning_state = state
             pkt.learning_action = action
             pkt.learning_reward = None
+            pkt.learning_sat = sat
             self._learning_open.add(pkt)
             return action
         if pkt.learning_state is not None and pkt.learning_reward is None:
@@ -4305,7 +4372,7 @@ class Kernel:
                 pkt, state, mask, False, terminal_reward=0.0)
         else:
             self._finish_learning_transition(pkt, state, mask, False)
-        action = self.learner.choose(state, mask, self.env.now)
+        action = self._learner_choose(sat, state, mask, self.env.now)
         # No reward is known at decision time by construction: a forward
         # action's M1 queue reward is settled when its ISL service actually
         # starts (_transmit); the deliver arrival reward is settled at real
@@ -4313,6 +4380,7 @@ class Kernel:
         pkt.learning_state = state
         pkt.learning_action = action
         pkt.learning_reward = None
+        pkt.learning_sat = sat
         self._learning_open.add(pkt)
         return action
 
@@ -7332,7 +7400,7 @@ class Kernel:
                 self._finish_deadline_transition(pkt, "delivered")
         else:
             self._finish_learning_transition(
-                pkt, np.zeros(_learning.CONTRACT_DIMS[self.cfg_rt["contract"]]),
+                pkt, np.zeros(self._learning_state_dim()),
                 {a: False for a in _learning.ACTIONS}, True,
                 # The legacy arrival reward exists only at real delivery.
                 terminal_reward=float(self.cfg_learning["arrive_reward"]),
@@ -7372,8 +7440,7 @@ class Kernel:
             else:
                 self._finish_learning_transition(
                     pkt,
-                    np.zeros(_learning.CONTRACT_DIMS[
-                        self.cfg_rt["contract"]]),
+                    np.zeros(self._learning_state_dim()),
                     {a: False for a in _learning.ACTIONS}, True,
                     terminal_reward=(None
                                      if pkt.learning_reward is not None

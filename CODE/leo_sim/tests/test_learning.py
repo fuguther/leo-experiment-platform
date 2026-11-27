@@ -525,3 +525,280 @@ def test_ddqn_train_every_steps_warmup_and_numpy_mlp_equivalence():
     np_q = learning._numpy_mlp_forward(agent._current_np_mlp_layers(), probe)
     tf_q = agent.online(probe, training=False).numpy()
     assert np.allclose(np_q, tf_q, atol=1e-5)
+
+
+def test_replay_buffer_dynamic_growth_and_wraparound():
+    buf = learning._ReplayBuffer(maxlen=150, state_dim=3, n_actions=5)
+    assert buf._cap == 64
+    mask = np.array([True, False, True, False, False], dtype=bool)
+    for i in range(70):
+        buf.append((np.full(3, float(i)), i % 5, -float(i),
+                    np.full(3, float(i + 1)), mask, i % 2 == 0))
+    assert buf._cap == 128
+    assert len(buf) == 70
+    s, a, r, ns, m, d = buf.to_arrays()
+    assert np.array_equal(s[:, 0], np.arange(70, dtype=np.float32))
+    assert float(buf[-1][2]) == -69.0
+
+    for i in range(70, 190):
+        buf.append((np.full(3, float(i)), i % 5, -float(i),
+                    np.full(3, float(i + 1)), mask, i % 2 == 0))
+    assert buf._cap == 150
+    assert len(buf) == 150
+    s2, *_ = buf.to_arrays()
+    assert np.array_equal(s2[:, 0], np.arange(40, 190, dtype=np.float32))
+    assert float(buf[0][0][0]) == 40.0
+    assert float(buf[-1][0][0]) == 189.0
+
+
+def test_include_last_hop_encoding_for_vector_graph_and_kernel():
+    assert learning.contract_dim("C3", False) == learning.CONTRACT_DIMS["C3"]
+    assert learning.contract_dim("C3", True) == learning.CONTRACT_DIMS["C3"] + 4
+    assert learning.contract_dim("GAT", True) == learning.CONTRACT_DIMS["GAT"] + 4
+
+    cache = _entries([(1, 5.0, 1)])
+    for c in ("C3", "GAT"):
+        ingress = learning.build_observation(
+            c, 0, cache, 6.0, TOPO, _own(), include_last_hop=True,
+            last_hop_dir=None)
+        from_south = learning.build_observation(
+            c, 0, cache, 6.0, TOPO, _own(), include_last_hop=True,
+            last_hop_dir="S")
+        assert ingress.shape == (learning.contract_dim(c, True),)
+        assert np.array_equal(ingress[-4:], [0.0, 0.0, 0.0, 0.0])
+        assert np.array_equal(from_south[-4:], [0.0, 1.0, 0.0, 0.0])
+
+    # Two-sat topology: 0 --E--> 1, 1 --W--> 0.
+    from CODE.leo_sim.tests.helpers import cell_center
+    ac, bc = cell_center(A), cell_center(B)
+
+    class _TwoSatGeo(StaticGeometry):
+        def subpoint(self, sat_id, t):
+            return (0.5, 0.5 + float(sat_id) * 10.0, 550.0)
+
+    geo = _TwoSatGeo(
+        2,
+        neighbors_map={0: {"E": 1}, 1: {"W": 0}},
+        visible=lambda s, lat, lon, t: (
+            (s == 0 and (lat, lon) == ac) or (s == 1 and (lat, lon) == bc)
+        ),
+    )
+    cfg = make_cfg({
+        "scenario": {"num_satellites": 2, "num_planes": 1, "duration_s": 5.0},
+        "control_plane": {"enabled": True},
+        "routing": {"policy": "hop", "learning_enabled": True, "contract": "C3"},
+        "learning": {
+            "algorithm": "qlearning", "mode": "train",
+            "agent_scope": "per_satellite", "include_last_hop": True,
+        },
+    })
+    pkt = kernel.DataPacket(1, A, B, 1000, 5.0, 0.0)
+    k = kernel.Kernel(cfg, [row(1, 0.0, A, B)], geometry=geo)
+    pkt.path = [0]
+    s0 = k._learning_observation(0, B, pkt=pkt)
+    assert np.array_equal(s0[-4:], [0.0, 0.0, 0.0, 0.0])
+    pkt.path = [0, 1]
+    s1 = k._learning_observation(1, B, pkt=pkt)
+    assert np.array_equal(s1[-4:], [0.0, 0.0, 0.0, 1.0])
+
+
+def _compile_two_sat_run(tmp_path, overrides: dict):
+    import hashlib
+    from CODE.leo_sim import trace
+    from CODE.leo_sim.tests.helpers import cell_center
+
+    cfg = make_cfg({
+        "endpoints": {"sites": [
+            {"name": "a", "lat": 0.0, "lon": 0.0},
+            {"name": "b", "lat": 0.0, "lon": 10.0},
+        ]},
+        "demand": {"offered_mbps": 20.0, "packet_bits": 1_000_000},
+        "control_plane": {"enabled": True},
+        "routing": {"policy": "hop", "learning_enabled": True},
+        **overrides,
+    })
+    tdir = tmp_path / "compiled"
+    manifest = trace.compile_trace(cfg, str(tdir))
+    tbytes = (tdir / "trace.csv").read_bytes()
+    manifest["__trace_sha256"] = hashlib.sha256(tbytes).hexdigest()
+    manifest["__sha256"] = hashlib.sha256(
+        (tdir / "manifest.json").read_bytes()).hexdigest()
+    rows = trace.load_trace(
+        str(tdir / "trace.csv"),
+        horizon_s=cfg["config"]["scenario"]["duration_s"],
+        max_packets=cfg["config"]["execution"]["max_packets"])
+    ac, bc = cell_center(A), cell_center(B)
+
+    class _TwoSatGeo(StaticGeometry):
+        def subpoint(self, sat_id, t):
+            return (0.5, 0.5 + float(sat_id) * 10.0, 550.0)
+
+    geo = _TwoSatGeo(
+        2,
+        neighbors_map={0: {"E": 1}, 1: {"W": 0}},
+        visible=lambda s_id, lat, lon, t: (
+            (s_id == 0 and (lat, lon) == ac)
+            or (s_id == 1 and (lat, lon) == bc)
+        ),
+    )
+    return cfg, tbytes, manifest, rows, geo
+
+
+def test_per_satellite_qlearning_isolation_and_verified_receipt(tmp_path):
+    cfg, tbytes, manifest, rows, geo = _compile_two_sat_run(tmp_path, {
+        "scenario": {"num_satellites": 2, "num_planes": 1, "duration_s": 5.0,
+                     "seed": 7},
+        "routing": {"policy": "hop", "learning_enabled": True, "contract": "C3"},
+        "learning": {
+            "algorithm": "qlearning", "mode": "train",
+            "agent_scope": "per_satellite", "include_last_hop": True,
+            "epsilon_start": 0.2, "epsilon_end": 0.05, "epsilon_decay_s": 2.0,
+        },
+    })
+    agent = learning.PerSatelliteTabularQLearning(
+        "C3", cfg["config"]["learning"], seed=7)
+    dim = learning.contract_dim("C3", True)
+    s = np.ones(dim, dtype=np.float64)
+    ns = np.zeros(dim, dtype=np.float64)
+    mask = {"deliver": False, "N": False, "S": False, "E": True, "W": False}
+    a0 = agent.choose_for(0, s, mask, 0.0)
+    agent.remember_for(0, s, a0, -5.0, ns, mask, True)
+    assert 0 in agent.tables and 1 not in agent.tables
+    assert len(agent.tables[0]) == 1
+
+    run_dir = tmp_path / "q_persat_run"
+    res = kernel.run_simulation(
+        cfg, rows, geometry=geo, learning_out_dir=run_dir / "qlearning")
+    assert res["natural_end"] is True
+    assert res["learning"]["agent_scope"] == "per_satellite"
+    assert res["learning"]["include_last_hop"] is True
+    assert res["learning"]["n_agents"] == 2
+    assert res["learning"]["table_size"] >= 2
+    assert (run_dir / "qlearning" / "per_satellite_q_tables.json").is_file()
+    receipt.write_run(str(run_dir), cfg, tbytes, manifest, res, rows)
+    assert receipt.verify_receipt_dir(str(run_dir)) == []
+
+
+@pytest.mark.skipif(importlib.util.find_spec("tensorflow") is None,
+                    reason="TensorFlow wave2 DDQN tests require TF runtime")
+def test_ddqn_clip_norm_and_include_last_hop_fixed_inference(tmp_path):
+    from CODE.leo_sim import inference
+    train_cfg, _tb, _mf, rows, geo = _compile_two_sat_run(tmp_path / "t", {
+        "scenario": {"num_satellites": 2, "num_planes": 1, "duration_s": 5.0,
+                     "seed": 9},
+        "routing": {"policy": "hop", "learning_enabled": True, "contract": "C3"},
+        "learning": {
+            "algorithm": "ddqn", "mode": "train",
+            "batch_size": 2, "replay_size": 8, "target_update_interval": 2,
+            "clip_norm": 0.5, "include_last_hop": True, "fast_train": True,
+        },
+    })
+    ckpt_dir = tmp_path / "ckpt"
+    res = kernel.run_simulation(
+        train_cfg, rows, geometry=geo, learning_out_dir=ckpt_dir)
+    lr = res["learning"]
+    assert lr["clip_norm"] == 0.5
+    assert lr["include_last_hop"] is True
+    assert lr["feature_order"] == inference.OBSERVATION_FEATURE_ORDER_LAST_HOP
+    assert lr["feature_width"] == learning.contract_dim("C3", True)
+    assert lr["train_steps"] >= 1
+
+    bad_cfg = make_cfg({
+        "scenario": {"num_satellites": 2, "num_planes": 1, "duration_s": 2.0,
+                     "seed": 9},
+        "control_plane": {"enabled": True},
+        "routing": {"policy": "hop", "learning_enabled": True, "contract": "C3"},
+        "learning": {
+            "algorithm": "ddqn", "mode": "eval", "fixed_inference": True,
+            "include_last_hop": False,
+            "checkpoint_path": str(ckpt_dir / "online.keras"),
+            "checkpoint_sha256": lr["checkpoint_sha256"],
+            "checkpoint_metadata_sha256": lr["metadata_sha256"],
+        },
+    })
+    with pytest.raises(inference.FixedInferenceError):
+        kernel.Kernel(bad_cfg, [row(1, 0.0, A, B)], geometry=geo)
+
+    good_cfg = make_cfg({
+        "scenario": {"num_satellites": 2, "num_planes": 1, "duration_s": 3.0,
+                     "seed": 9},
+        "control_plane": {"enabled": True},
+        "routing": {"policy": "hop", "learning_enabled": True, "contract": "C3"},
+        "learning": {
+            "algorithm": "ddqn", "mode": "eval", "fixed_inference": True,
+            "include_last_hop": True,
+            "checkpoint_path": str(ckpt_dir / "online.keras"),
+            "checkpoint_sha256": lr["checkpoint_sha256"],
+            "checkpoint_metadata_sha256": lr["metadata_sha256"],
+        },
+    })
+    eval_res = kernel.run_simulation(good_cfg, [row(1, 0.0, A, B)], geometry=geo)
+    assert eval_res["fates"][1] == "DELIVERED"
+
+
+@pytest.mark.skipif(importlib.util.find_spec("tensorflow") is None,
+                    reason="TensorFlow per-satellite DDQN tests require TF runtime")
+def test_per_satellite_ddqn_isolation_and_verified_receipt(tmp_path):
+    from CODE.leo_sim import config
+    mask = {"deliver": False, "N": False, "S": True, "E": True, "W": False}
+    for contract in ("C3", "GAT"):
+        cfg = config.resolve_config({
+            "scenario": {"seed": 7},
+            "control_plane": {"enabled": True},
+            "routing": {"policy": "hop", "learning_enabled": True,
+                        "contract": contract},
+            "learning": {
+                "algorithm": "ddqn", "mode": "train",
+                "agent_scope": "per_satellite",
+                "clip_norm": 1.0,
+                "include_last_hop": True,
+                "batch_size": 2, "replay_size": 8, "target_update_interval": 2,
+                "epsilon_start": 0.0, "epsilon_end": 0.0, "epsilon_decay_s": 4.0,
+                "fast_train": True,
+            },
+        })["config"]["learning"]
+        ps = learning.PerSatelliteTensorflowDDQN(contract, cfg, seed=17)
+        dim = learning.contract_dim(contract, True)
+        rng = np.random.default_rng(3)
+        s0_init = [w.copy() for w in ps._agent(0)["online_w"]]
+        s1_init = [w.copy() for w in ps._agent(1)["online_w"]]
+        assert not all(np.array_equal(a, b) for a, b in zip(s0_init, s1_init))
+        for step in range(4):
+            s = rng.normal(size=dim).astype(np.float32)
+            ns = rng.normal(size=dim).astype(np.float32)
+            a = ps.choose_for(0, s, mask, float(step))
+            ps.remember_for(0, s, a, -1.0, ns, mask, False)
+        assert ps.agents[0]["train_steps"] == 3
+        assert ps.agents[1]["train_steps"] == 0
+        for a, b in zip(s1_init, ps.agents[1]["online_w"]):
+            assert np.array_equal(a, b)
+        assert int(ps.agents[1]["opt_w"][0]) == 0
+        assert int(ps.agents[0]["opt_w"][0]) == 3
+        assert any(not np.array_equal(a, b)
+                   for a, b in zip(s0_init, ps.agents[0]["online_w"]))
+
+    run_cfg, tbytes, manifest, rows, geo = _compile_two_sat_run(tmp_path / "p", {
+        "scenario": {"num_satellites": 2, "num_planes": 1, "duration_s": 5.0,
+                     "seed": 19},
+        "routing": {"policy": "hop", "learning_enabled": True, "contract": "GAT"},
+        "learning": {
+            "algorithm": "ddqn", "mode": "train",
+            "agent_scope": "per_satellite",
+            "clip_norm": 1.0,
+            "include_last_hop": True,
+            "batch_size": 2, "replay_size": 8, "target_update_interval": 2,
+            "fast_train": True,
+        },
+    })
+    run_dir = tmp_path / "ddqn_persat_run"
+    res = kernel.run_simulation(
+        run_cfg, rows, geometry=geo, learning_out_dir=run_dir / "ddqn")
+    assert res["natural_end"] is True
+    assert res["learning"]["agent_scope"] == "per_satellite"
+    assert res["learning"]["n_agents"] == 2
+    assert res["learning"]["train_steps"] >= 5
+    assert res["mechanisms"]["effective"]["learning"] is True
+    assert res["learning"]["per_satellite_verified"] is True
+    assert (run_dir / "ddqn" / "per_satellite_weights.npz").is_file()
+    receipt.write_run(str(run_dir), run_cfg, tbytes, manifest, res, rows)
+    assert receipt.verify_receipt_dir(str(run_dir)) == []
