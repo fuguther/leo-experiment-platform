@@ -23,8 +23,8 @@ from CODE.scripts.pigou_study import (
 ROOT = Path("/data/论文/leo-t1-wt")
 CALIBRATION_SEEDS = (9001, 9002)
 CALIBRATION_LOADS = {
-    "A": (70.0, 77.5, 82.5, 90.0),
-    "B": (45.0, 55.0, 65.0, 75.0),
+    "A": (90.0, 95.0, 100.0, 105.0),
+    "B": (60.0, 70.0, 80.0, 90.0),
 }
 TARGET_STEADY_UTILIZATION = 0.685
 UTILIZATION_TOLERANCE = 0.035
