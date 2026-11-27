@@ -418,3 +418,36 @@ def test_population_local_diurnal_cli_run_verifies_receipt(tmp_path, capsys,
     assert transform["clock"] == "source_local_solar_time_proxy"
     assert transform["utc_start_hour"] == 3.0
     assert main(["receipt", "verify", out_dir]) == 0
+
+
+def test_batch_cli_runs_parallel_seeds_and_verifies_receipts(tmp_path, capsys):
+    cfg = _write_cfg(tmp_path)
+    out_root = tmp_path / "batch_out"
+    rc = main(["batch", "--config", cfg, "--seeds", "1", "2",
+               "--workers", "2", "--threads-per-worker", "1",
+               "--out-root", str(out_root)])
+    summary = json.loads(capsys.readouterr().out)
+    assert rc == 0, summary
+    assert summary["schema"] == "leo-sim-batch/v1"
+    assert summary["status"] == "PASS"
+    assert len(summary["runs"]) == 2
+    assert [r["seed"] for r in summary["runs"]] == [1, 2]
+    assert all(r["receipt_verified"] and r["conservation_ok"] for r in summary["runs"])
+    assert (out_root / "batch-summary.json").is_file()
+    for r in summary["runs"]:
+        assert main(["receipt", "verify", r["out_dir"]]) == 0
+        capsys.readouterr()
+
+    import subprocess, sys
+    sub_root = tmp_path / "batch_sub"
+    proc = subprocess.run(
+        [sys.executable, "-m", "CODE.leo_sim", "batch",
+         "--config", cfg, "--seeds", "5", "6",
+         "--workers", "2", "--threads-per-worker", "1",
+         "--out-root", str(sub_root)],
+        cwd=str(Path(__file__).resolve().parents[3]),
+        check=True, capture_output=True, text=True,
+    )
+    sub_summary = json.loads(proc.stdout)
+    assert sub_summary["status"] == "PASS"
+    assert [r["seed"] for r in sub_summary["runs"]] == [5, 6]

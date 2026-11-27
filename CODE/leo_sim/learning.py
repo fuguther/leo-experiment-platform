@@ -321,16 +321,61 @@ def _effective_cpu_count() -> int:
 
 def _configure_tf_threads(tf_mod) -> None:
     """Cap TF CPU thread pools so tiny DDQN/GAT ops do not thrash many-core hosts."""
-    threads = min(4, _effective_cpu_count())
-    for setter in (
-        tf_mod.config.threading.set_intra_op_parallelism_threads,
-        tf_mod.config.threading.set_inter_op_parallelism_threads,
+    default_threads = min(4, _effective_cpu_count())
+    for env_key, setter in (
+        ("TF_NUM_INTRAOP_THREADS", tf_mod.config.threading.set_intra_op_parallelism_threads),
+        ("TF_NUM_INTEROP_THREADS", tf_mod.config.threading.set_inter_op_parallelism_threads),
     ):
+        raw = os.environ.get(env_key)
         try:
-            setter(threads)
-        except RuntimeError:
+            n = int(raw) if raw is not None else default_threads
+            if n >= 1:
+                setter(n)
+        except (RuntimeError, ValueError):
             # TF runtime already initialized earlier in this process.
             pass
+
+
+def _extract_dense_mlp(tf_mod, model):
+    """Extract weights of a pure Dense MLP (linear/relu/tanh) for fast NumPy forward.
+
+    Returns ``((w, b, act_name), ...)`` or ``None`` if the model contains any
+    non-Dense layer (e.g. ``V2GraphEncoder``) or unsupported activation/bias config.
+    """
+    if not isinstance(model, tf_mod.keras.Model):
+        return None
+    layers_out = []
+    for layer in getattr(model, "layers", ()):
+        if isinstance(layer, tf_mod.keras.layers.InputLayer):
+            continue
+        if not isinstance(layer, tf_mod.keras.layers.Dense):
+            return None
+        if not getattr(layer, "use_bias", True):
+            return None
+        act_name = getattr(getattr(layer, "activation", None), "__name__", None)
+        if act_name not in ("linear", "relu", "tanh"):
+            return None
+        weights = layer.get_weights()
+        if len(weights) != 2:
+            return None
+        layers_out.append((
+            np.asarray(weights[0], dtype=np.float32),
+            np.asarray(weights[1], dtype=np.float32),
+            act_name,
+        ))
+    return tuple(layers_out) if layers_out else None
+
+
+def _numpy_mlp_forward(layers, x: np.ndarray) -> np.ndarray:
+    """Evaluate extracted Dense layers identically to Keras float32 forward."""
+    h = np.asarray(x, dtype=np.float32)
+    for w, b, act_name in layers:
+        h = h @ w + b
+        if act_name == "relu":
+            np.maximum(h, 0.0, out=h)
+        elif act_name == "tanh":
+            np.tanh(h, out=h)
+    return h
 
 
 class _ReplayBuffer:
@@ -726,6 +771,9 @@ class TensorflowDDQN:
         self._fast_train_tgt_id = None
         self._fast_infer_fn = None
         self._fast_infer_net_id = None
+        self._weights_version = 0
+        self._np_mlp_layers = None
+        self._np_mlp_version = -1
         if cfg.get("resume_path") is not None:
             self._load_resume_bundle(
                 Path(cfg["resume_path"]), cfg.get("resume_sha256"))
@@ -771,7 +819,7 @@ class TensorflowDDQN:
         def _infer(obs):
             return net(obs, training=False)
 
-        return _infer
+        return _infer.get_concrete_function(*spec)
 
     def _sync_target(self) -> None:
         if len(self.target.variables) == len(self.online.variables):
@@ -779,6 +827,12 @@ class TensorflowDDQN:
                 tgt_var.assign(src_var)
         else:
             self.target.set_weights(self.online.get_weights())
+
+    def _current_np_mlp_layers(self):
+        if self._np_mlp_layers is None or self._np_mlp_version != self._weights_version:
+            self._np_mlp_layers = _extract_dense_mlp(self.tf, self.online)
+            self._np_mlp_version = self._weights_version
+        return self._np_mlp_layers
 
     def choose(self, observation: np.ndarray, mask: dict, now: float) -> str:
         legal = self._mask_array(mask)
@@ -793,12 +847,17 @@ class TensorflowDDQN:
         else:
             obs = np.asarray(observation, dtype=np.float32).reshape(1, self.input_dim)
             if self._fast_enabled:
-                fn = self._fast_infer_fn
-                if fn is None or self._fast_infer_net_id != id(self.online):
-                    fn = self._build_fast_infer_fn()
-                    self._fast_infer_fn = fn
-                    self._fast_infer_net_id = id(self.online)
-                q = fn(self.tf.convert_to_tensor(obs, dtype=self.tf.float32)).numpy()[0]
+                np_layers = (self._current_np_mlp_layers()
+                             if self.contract not in GRAPH_CONTRACTS else None)
+                if np_layers is not None:
+                    q = _numpy_mlp_forward(np_layers, obs)[0]
+                else:
+                    fn = self._fast_infer_fn
+                    if fn is None or self._fast_infer_net_id != id(self.online):
+                        fn = self._build_fast_infer_fn()
+                        self._fast_infer_fn = fn
+                        self._fast_infer_net_id = id(self.online)
+                    q = fn(self.tf.constant(obs, dtype=self.tf.float32)).numpy()[0]
             else:
                 q = self.online(obs, training=False).numpy()[0]
             chosen = int(indices[np.argmax(q[indices])])
@@ -816,7 +875,12 @@ class TensorflowDDQN:
         )
         self.replay.append(transition)
         self.transitions += 1
-        if self.mode == "train" and len(self.replay) >= int(self.cfg["batch_size"]):
+        train_after = max(
+            int(self.cfg["batch_size"]), int(self.cfg.get("warmup_steps", 0)))
+        every = max(1, int(self.cfg.get("train_every_steps", 1)))
+        if (self.mode == "train"
+                and len(self.replay) >= train_after
+                and (every == 1 or (self.transitions - train_after) % every == 0)):
             self._train_once()
 
     def _train_once(self) -> None:
@@ -832,15 +896,16 @@ class TensorflowDDQN:
                 self._fast_train_net_id = id(self.online)
                 self._fast_train_tgt_id = id(self.target)
             loss = fn(
-                self.tf.convert_to_tensor(states, dtype=self.tf.float32),
-                self.tf.convert_to_tensor(actions, dtype=self.tf.int64),
-                self.tf.convert_to_tensor(rewards, dtype=self.tf.float32),
-                self.tf.convert_to_tensor(next_states, dtype=self.tf.float32),
-                self.tf.convert_to_tensor(~dones, dtype=self.tf.bool),
-                self.tf.convert_to_tensor(masks, dtype=self.tf.bool),
+                self.tf.constant(states, dtype=self.tf.float32),
+                self.tf.constant(actions, dtype=self.tf.int64),
+                self.tf.constant(rewards, dtype=self.tf.float32),
+                self.tf.constant(next_states, dtype=self.tf.float32),
+                self.tf.constant(~dones, dtype=self.tf.bool),
+                self.tf.constant(masks, dtype=self.tf.bool),
             )
             self.last_loss = float(loss.numpy())
             self.train_steps += 1
+            self._weights_version += 1
             if self.train_steps % int(self.cfg["target_update_interval"]) == 0:
                 self._sync_target()
             return
@@ -857,6 +922,7 @@ class TensorflowDDQN:
         grads = tape.gradient(loss, self.online.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.online.trainable_variables))
         self.train_steps += 1
+        self._weights_version += 1
         self.last_loss = float(loss.numpy())
         if self.train_steps % int(self.cfg["target_update_interval"]) == 0:
             self.target.set_weights(self.online.get_weights())
@@ -900,7 +966,7 @@ class TensorflowDDQN:
             opt.apply_gradients(zip(grads, net.trainable_variables))
             return loss
 
-        return _step
+        return _step.get_concrete_function(*spec)
 
     def _load_resume_bundle(self, root: Path, expected_sha: str) -> None:
         if not isinstance(expected_sha, str):
@@ -990,6 +1056,8 @@ class TensorflowDDQN:
         self.loaded_resume_sha256 = expected_sha
         self.resume_manifest_sha256 = expected_sha
         self.resume_verified = True
+        self._weights_version += 1
+        self._np_mlp_layers = None
 
     def save_resume_and_verify(self, directory: str | Path) -> dict:
         """Save and verify the complete DDQN continuation state.

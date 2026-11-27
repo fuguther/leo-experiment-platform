@@ -238,6 +238,8 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         # it selects between two training execution paths; no environment
         # variable may steer it.
         "fast_train": bool,
+        "train_every_steps": int,
+        "warmup_steps": int,
     },
     "execution": {
         "max_events": int,
@@ -536,6 +538,8 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "epsilon_end": 0.05,
         "epsilon_decay_s": 300.0,
         "fast_train": True,
+        "train_every_steps": 1,
+        "warmup_steps": 0,
     },
     "execution": {
         "max_events": 1_000_000,
@@ -1131,6 +1135,10 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError("learning batch_size/replay_size/target_update_interval must be >= 1")
     if lr["batch_size"] > lr["replay_size"]:
         raise ConfigError("learning.batch_size must be <= replay_size")
+    if lr["train_every_steps"] < 1:
+        raise ConfigError("learning.train_every_steps must be >= 1")
+    if lr["warmup_steps"] < 0:
+        raise ConfigError("learning.warmup_steps must be >= 0")
     if lr["epsilon_decay_s"] <= 0:
         raise ConfigError("learning.epsilon_decay_s must be > 0")
     if not 0 <= lr["gamma"] <= 1:

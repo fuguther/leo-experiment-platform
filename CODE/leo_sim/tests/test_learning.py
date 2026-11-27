@@ -485,3 +485,43 @@ def test_ddqn_fast_train_matches_eager_and_preserves_epsilon_resume(tmp_path):
         "C3", dict(base, resume_path=str(tmp_path / "resume"),
                    resume_sha256=meta["resume_sha256"]), seed=11)
     assert resumed.epsilon(0.0) == pytest.approx(eps_at_5)
+
+
+@pytest.mark.skipif(importlib.util.find_spec("tensorflow") is None,
+                    reason="TensorFlow MLP fast-forward test requires TF runtime")
+def test_ddqn_train_every_steps_warmup_and_numpy_mlp_equivalence():
+    from CODE.leo_sim import config
+    cfg = config.resolve_config({
+        "scenario": {"seed": 7},
+        "control_plane": {"enabled": True},
+        "routing": {"policy": "hop", "learning_enabled": True, "contract": "C3"},
+        "learning": {
+            "algorithm": "ddqn", "mode": "train",
+            "batch_size": 2, "replay_size": 8, "target_update_interval": 2,
+            "train_every_steps": 3, "warmup_steps": 4,
+            "epsilon_start": 0.0, "epsilon_end": 0.0, "epsilon_decay_s": 4.0,
+            "fast_train": True,
+        },
+    })["config"]["learning"]
+    with pytest.raises(config.ConfigError, match="train_every_steps"):
+        config.resolve_config({"learning": {"train_every_steps": 0}})
+    with pytest.raises(config.ConfigError, match="warmup_steps"):
+        config.resolve_config({"learning": {"warmup_steps": -1}})
+
+    agent = learning.TensorflowDDQN("C3", cfg, seed=13)
+    dim = learning.CONTRACT_DIMS["C3"]
+    mask = {a: True for a in learning.ACTIONS}
+    rng = np.random.default_rng(5)
+    counts = []
+    for step in range(10):
+        s = rng.normal(size=dim).astype(np.float32)
+        ns = rng.normal(size=dim).astype(np.float32)
+        a = agent.choose(s, mask, float(step))
+        agent.remember(s, a, -1.0, ns, mask, False)
+        counts.append(agent.train_steps)
+    # Transitions 1..3 < warmup_steps(4): 0 steps; transitions 4,7,10 trigger steps 1,2,3.
+    assert counts == [0, 0, 0, 1, 1, 1, 2, 2, 2, 3]
+    probe = rng.normal(size=(1, dim)).astype(np.float32)
+    np_q = learning._numpy_mlp_forward(agent._current_np_mlp_layers(), probe)
+    tf_q = agent.online(probe, training=False).numpy()
+    assert np.allclose(np_q, tf_q, atol=1e-5)

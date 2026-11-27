@@ -580,6 +580,7 @@ class KerasFixedModelAdapter:
         self._calls = 0
         self._probe_max_abs = None
         self._fast_forward_fn = None
+        self._np_mlp_layers = None
         self._check_graph()
         self.parameter_sha256_value = self._weights_sha256()
         self._probe_max_abs = self._finite_probe()
@@ -626,6 +627,14 @@ class KerasFixedModelAdapter:
             return
         from . import learning as _learning
         _learning._configure_tf_threads(tf)
+        np_layers = _learning._extract_dense_mlp(tf, self.model)
+        if np_layers is not None:
+            probe = np.zeros((1, self.feature_width), dtype=np.float32)
+            ref = np.asarray(self.model(probe, training=False), dtype=np.float32)
+            cand = _learning._numpy_mlp_forward(np_layers, probe)
+            if cand.shape == ref.shape and np.allclose(cand, ref, atol=1e-4, rtol=1e-5):
+                self._np_mlp_layers = np_layers
+                return
         net = self.model
         spec = [tf.TensorSpec([1, self.feature_width], tf.float32)]
 
@@ -633,11 +642,18 @@ class KerasFixedModelAdapter:
         def _infer_one(batch):
             return net(batch, training=False)
 
-        self._fast_forward_fn = _infer_one
+        self._fast_forward_fn = (tf, _infer_one.get_concrete_function(*spec))
 
     def _forward(self, batch):
+        if self._np_mlp_layers is not None:
+            from . import learning as _learning
+            return np.asarray(
+                _learning._numpy_mlp_forward(self._np_mlp_layers, batch),
+                dtype=np.float64,
+            )
         if self._fast_forward_fn is not None and batch.shape == (1, self.feature_width):
-            values = self._fast_forward_fn(batch)
+            tf, fn = self._fast_forward_fn
+            values = fn(tf.constant(batch, dtype=tf.float32))
         else:
             values = self.model(batch, training=False)
         return np.asarray(values, dtype=np.float64)
