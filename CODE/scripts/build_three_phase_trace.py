@@ -470,7 +470,7 @@ def _make_config(
             "enabled": True,
             "advertisement_protocol_version": 2,
             "vis_k": 1,
-            "ttl_s": 10.0,
+            "ttl_s": 2.0,
             "advertise_interval_s": interval,
             "packet_bits": 8_000,
             "priority": "nonpreemptive_priority",

@@ -110,7 +110,9 @@ def split_observation(observation) -> tuple[np.ndarray, np.ndarray]:
 
 def _split_observation_batch(states) -> tuple[np.ndarray, np.ndarray]:
     array = np.asarray(states, dtype=np.float32)
-    if array.ndim < 1 or array.shape[-1] != INPUT_DIM:
+    if array.ndim == 1:
+        array = array[None, :]
+    if array.ndim != 2 or array.shape[-1] != INPUT_DIM:
         raise ValueError(
             f"last dimension of PRIMAL observations must be {INPUT_DIM}")
     if not np.all(np.isfinite(array)):
@@ -469,14 +471,14 @@ class TensorflowPrimalCVaR:
         packet_in = tf.keras.layers.Input(
             shape=(PACKET_INPUT_DIM,), name="packet_stream")
         satellite = tf.keras.layers.Dense(
-            64, activation=tf.nn.silu, name="satellite_encoder")(satellite_in)
+            64, activation="swish", name="satellite_encoder")(satellite_in)
         packet = tf.keras.layers.Dense(
-            32, activation=tf.nn.silu, name="packet_encoder")(packet_in)
+            32, activation="swish", name="packet_encoder")(packet_in)
         joined = tf.keras.layers.Concatenate(name="dual_stream_join")([satellite, packet])
         trunk = tf.keras.layers.Dense(
-            128, activation=tf.nn.silu, name="shared_trunk_128")(joined)
+            128, activation="swish", name="shared_trunk_128")(joined)
         trunk = tf.keras.layers.Dense(
-            64, activation=tf.nn.silu, name="shared_trunk_64")(trunk)
+            64, activation="swish", name="shared_trunk_64")(trunk)
         utility = tf.keras.layers.Dense(
             ACTION_COUNT, activation="linear", name="utility_head")(trunk)
         risk_flat = tf.keras.layers.Dense(
@@ -579,11 +581,13 @@ class TensorflowPrimalCVaR:
             raise ValueError("transition cost must be exactly 0.0 or 1.0")
         if cost == 1.0 and not done:
             raise ValueError("a terminal failure cost requires done=True")
+        self.transitions += 1
+        if self.mode == "eval":
+            return
         self.replay.append(
             state, ACTIONS.index(action), utility, cost, next_state,
             _mask_array(next_mask), bool(done),
         )
-        self.transitions += 1
 
         train_after = max(
             int(self.cfg["batch_size"]), int(self.cfg.get("warmup_steps", 0)))
@@ -1115,10 +1119,8 @@ class TensorflowPrimalCVaR:
     def _parameter_sha256(self, model=None) -> str:
         target = self.online if model is None else model
         digest = hashlib.sha256()
-        for variable in sorted(
-                target.trainable_variables, key=lambda item: item.path):
-            digest.update(variable.path.encode("utf-8"))
-            digest.update(str(tuple(variable.shape)).encode("ascii"))
+        for index, variable in enumerate(target.trainable_variables):
+            digest.update(f"{index}:{tuple(variable.shape)}".encode("ascii"))
             digest.update(np.asarray(variable.numpy(), dtype="<f4").tobytes())
         return digest.hexdigest()
 

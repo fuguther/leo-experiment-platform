@@ -6,7 +6,7 @@ import math
 import numpy as np
 
 
-CONTRACTS = ("neighbor_1hop", "flat_mean", "GAT", "MPNN", "PRIMAL")
+CONTRACTS = ("neighbor_1hop", "flat_mean", "GAT", "MPNN")
 CONTRACT_ALIASES = {"C1": "neighbor_1hop", "C3": "flat_mean"}
 
 
@@ -87,7 +87,6 @@ def graph_state_dim(max_nodes: int = GRAPH_MAX_NODES,
 GRAPH_CONTRACT_DIMS = {c: graph_state_dim() for c in GRAPH_CONTRACTS}
 CONTRACT_DIMS = dict(CONTRACT_DIMS)
 CONTRACT_DIMS.update(GRAPH_CONTRACT_DIMS)
-CONTRACT_DIMS["PRIMAL"] = 50
 LAST_HOP_FEATURES = len(GRAPH_DIRS)
 
 

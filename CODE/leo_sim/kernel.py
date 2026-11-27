@@ -1235,6 +1235,9 @@ class ISLLink:
 
 
 class Kernel:
+    resource_sink = None
+    _local_study = False
+
     def __init__(self, resolved: dict, rows: list[dict], geometry=None,
                  learning_out_dir=None, decision_sink=None, timeline_sink=None,
                  forced_actions=None, control_audit=False,

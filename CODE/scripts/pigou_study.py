@@ -391,7 +391,7 @@ def preflight(spec):
     summaries = []
     for alg in ("B1", "B2", "B3", "Collect"):
         summaries.append(simulate(root / alg, {**small, "alg": alg}))
-    for alg in LEARNERS:
+    for alg in ("B6", "B4", "B5"):
         train = simulate(root / alg, {**small, "alg": alg, "train_seed": 11})
         artifact = Path(train["run_dir"]) / ("primal_cvar" if alg == "B6" else "ddqn")
         summaries.append(simulate(root / (alg + "-eval"), {**small, "alg": alg, "train_seed": 11},
@@ -403,6 +403,12 @@ def preflight(spec):
                              "telemetry_sat": CORRIDOR_EDGES[0][0]}, checkpoint=checkpoint))
     if len({row["trace_sha256"] for row in summaries}) != 1:
         raise ValueError("preflight arms used different packet cohorts")
+    b = simulate(root / "scene-b", {**small, "scene": "B", "alg": "B1"})
+    fault = simulate(root / "outage", {**small, "alg": "B2", "outage": True,
+                                      "multiplier": 1.0})
+    staircase = simulate(root / "staircase", {**small, "alg": "B1", "sweep": True,
+                                             "multiplier": 1.0})
+    summaries.extend((b, fault, staircase))
     _json_write(root / "preflight.json", {"status": "passed", "tensorflow": tf.__version__,
                                          "fit_steps": stats["steps"], "arms": summaries})
 

@@ -224,3 +224,17 @@ def test_tf_exact_resume_continues_weights_optimizer_rng_replay_and_clock(tmp_pa
         assert np.array_equal(left, right)
     for left, right in zip(resumed.target.get_weights(), learner.target.get_weights()):
         assert np.array_equal(left, right)
+
+
+def test_primal_one_packet_is_batched_and_eval_does_not_write_replay():
+    from CODE.leo_sim.rl.agents.primal_cvar import TensorflowPrimalCVaR, _split_observation_batch
+
+    state = np.zeros(50, dtype=np.float32)
+    satellite, packet = _split_observation_batch(state)
+    assert satellite.shape == (1, 32)
+    assert packet.shape == (1, 18)
+    learner = object.__new__(TensorflowPrimalCVaR)
+    learner.mode = "eval"
+    learner.transitions = 0
+    learner.remember_with_cost(state, "N", -1, state, [False] * 5, True, cost=1.0)
+    assert learner.transitions == 1
