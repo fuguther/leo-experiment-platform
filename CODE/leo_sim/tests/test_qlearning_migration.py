@@ -181,8 +181,7 @@ def test_exact_resume_restores_table_counters_and_rng(tmp_path):
 
 def test_checkpoint_contract_mismatch_rejected(tmp_path):
     """A checkpoint trained under one observation contract must not load
-    under a different contract with the same input width (C3/C4 both have
-    dimension 14 but different semantics)."""
+    under a different contract."""
     train = _learner(contract="C3")
     dim = learning.CONTRACT_DIMS["C3"]
     train.remember(np.zeros(dim), "E", 1.5, np.ones(dim), FULL_MASK, False)
@@ -190,7 +189,7 @@ def test_checkpoint_contract_mismatch_rejected(tmp_path):
     table_path = tmp_path / "q_table.json"
     with pytest.raises(learning.LearningUnavailable,
                        match="contract mismatch"):
-        _learner(mode="eval", contract="C4",
+        _learner(mode="eval", contract="neighbor_1hop",
                  checkpoint_path=str(table_path),
                  checkpoint_sha256=meta["checkpoint_sha256"])
 
@@ -303,7 +302,7 @@ def test_legacy_v1_table_rejected_without_verifiable_metadata(tmp_path):
 
 
 def test_legacy_v1_table_rejected_on_metadata_contract_mismatch(tmp_path):
-    table_path, sha, meta_sha = _legacy_v1_table(tmp_path, contract="C4")
+    table_path, sha, meta_sha = _legacy_v1_table(tmp_path, contract="neighbor_1hop")
     with pytest.raises(learning.LearningUnavailable,
                        match="contract mismatch"):
         _learner(mode="eval", contract="C3",
@@ -336,12 +335,12 @@ def test_legacy_v1_table_rejected_on_wrong_key_width(tmp_path):
 
 
 def test_metadata_relabel_is_rejected_by_sha_pin(tmp_path):
-    """F1 regression: rewriting sibling metadata (C3 -> C4) while keeping the
+    """F1 regression: rewriting sibling metadata (C3 -> neighbor_1hop) while keeping the
     checkpoint SHA must fail because the metadata file itself is pinned."""
     table_path, sha, meta_sha = _legacy_v1_table(tmp_path)
     meta_path = tmp_path / "metadata.json"
     forged = json.loads(meta_path.read_text(encoding="utf-8"))
-    forged["contract"] = "C4"
+    forged["contract"] = "neighbor_1hop"
     meta_path.write_text(json.dumps(forged, sort_keys=True) + "\n",
                          encoding="utf-8")
     with pytest.raises(learning.LearningUnavailable,
@@ -562,7 +561,7 @@ def test_metadata_verifier_fail_closed_on_every_field():
         good, "C3", "online.keras", "ab" * 32,
         "leo-sim-ddqn/v1", "ddqn") is None
     for mutate in (
-            lambda m: m.update({"contract": "C4"}),
+            lambda m: m.update({"contract": "neighbor_1hop"}),
             lambda m: m.update({"checkpoint_sha256": "00" * 32}),
             lambda m: m.update({"checkpoint": "other.keras"}),
             lambda m: m.update({"schema": "other"}),

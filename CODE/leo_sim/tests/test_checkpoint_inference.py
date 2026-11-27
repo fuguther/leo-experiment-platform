@@ -186,7 +186,7 @@ def test_a_metadata_file_without_the_full_contract_is_refused(
 def test_a_relabelled_contract_is_refused(tmp_path, monkeypatch):
     """The id is recomputed from the declared fields, so relabelling fails."""
     payload = _metadata()
-    payload["contract"] = "C4"          # the id still belongs to C3
+    payload["contract"] = "neighbor_1hop"  # the id still belongs to C3
     with pytest.raises(inference.FixedInferenceError) as excinfo:
         _load(_write(tmp_path, metadata=payload), monkeypatch)
     assert "observation_contract_id" in str(excinfo.value)
@@ -194,8 +194,8 @@ def test_a_relabelled_contract_is_refused(tmp_path, monkeypatch):
 
 def test_a_self_consistent_model_for_another_contract_is_refused(tmp_path,
                                                                  monkeypatch):
-    """A genuinely C4 model must not be loaded into a C3 run."""
-    payload = _metadata(contract="C4")
+    """A genuinely neighbor_1hop model must not be loaded into a C3 run."""
+    payload = _metadata(contract="neighbor_1hop")
     with pytest.raises(inference.FixedInferenceError) as excinfo:
         _load(_write(tmp_path, metadata=payload), monkeypatch,
               expected_contract="C3")

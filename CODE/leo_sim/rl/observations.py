@@ -6,7 +6,17 @@ import math
 import numpy as np
 
 
-CONTRACTS = ("C1", "C3", "C4", "C5", "C6", "C7", "GAT", "MPNN")
+CONTRACTS = ("neighbor_1hop", "flat_mean", "GAT", "MPNN")
+CONTRACT_ALIASES = {"C1": "neighbor_1hop", "C3": "flat_mean"}
+
+
+def canonical_contract(contract: str) -> str:
+    """Resolve legacy short aliases (C1/C3) to canonical contract names."""
+    resolved = CONTRACT_ALIASES.get(contract, contract)
+    if resolved not in CONTRACTS:
+        raise ValueError(f"unknown contract {contract!r}")
+    return resolved
+
 
 # per-origin feature block layout (all normalized):
 #   [isl_queue_ratio, access_load_ratio, n_visible_cells_norm, aoi_norm]
@@ -26,24 +36,20 @@ OWN_FEATURES = 7
 DEST_FEATURES = 3
 _DEST_DIST_NORM_KM = 20000.0
 _EARTH_R_KM = 6371.0
-C3_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own state + mean aggregate
-C4_DIM = OWN_FEATURES + ORIGIN_FEATURES            # own + AoI-weighted aggregate
-C5_DIM = OWN_FEATURES + ORIGIN_FEATURES + 1        # own + freshest entry + staleness flag
-C6_MAX_HOPS = 4
-C6_DIM = OWN_FEATURES + C6_MAX_HOPS * ORIGIN_FEATURES      # own + per-hop buckets
-C7_MAX_ENTRIES = 5
-C7_DIM = OWN_FEATURES + C7_MAX_ENTRIES * (ORIGIN_FEATURES + 1)  # own + AoI-ordered seq
-C1_MAX_NEIGHBORS = 4
-C1_DIM = OWN_FEATURES + C1_MAX_NEIGHBORS * ORIGIN_FEATURES
+FLAT_MEAN_DIM = OWN_FEATURES + ORIGIN_FEATURES             # own state + mean aggregate
+NEIGHBOR_1HOP_MAX_NEIGHBORS = 4
+NEIGHBOR_1HOP_DIM = OWN_FEATURES + NEIGHBOR_1HOP_MAX_NEIGHBORS * ORIGIN_FEATURES
+# Legacy constant aliases kept for backwards compatibility
+C3_DIM = FLAT_MEAN_DIM
+C1_MAX_NEIGHBORS = NEIGHBOR_1HOP_MAX_NEIGHBORS
+C1_DIM = NEIGHBOR_1HOP_DIM
 
 # Every contract appends the 3 destination-conditioning features.
 CONTRACT_DIMS = {
-    "C1": C1_DIM + DEST_FEATURES,
-    "C3": C3_DIM + DEST_FEATURES,
-    "C4": C4_DIM + DEST_FEATURES,
-    "C5": C5_DIM + DEST_FEATURES,
-    "C6": C6_DIM + DEST_FEATURES,
-    "C7": C7_DIM + DEST_FEATURES,
+    "neighbor_1hop": NEIGHBOR_1HOP_DIM + DEST_FEATURES,
+    "flat_mean": FLAT_MEAN_DIM + DEST_FEATURES,
+    "C1": NEIGHBOR_1HOP_DIM + DEST_FEATURES,
+    "C3": FLAT_MEAN_DIM + DEST_FEATURES,
 }
 ACTIONS = ("deliver", "N", "S", "E", "W")
 
@@ -227,18 +233,19 @@ def information_set(contract: str, sat: int, cache, now: float,
                     topo, obs_hops: int | None = None) -> dict[int, object]:
     """The exact cache entries a contract may see.
 
-    C1 sees only current-neighbour origins whose advertisement also arrived in
-    at most one control hop.  C3-C7 and the graph contracts see the same set:
-    all valid arrived entries, optionally restricted to entries that travelled
-    at most `obs_hops` hops (None = no hop restriction, i.e. the full vis_k
-    cache).
+    neighbor_1hop (alias C1) sees only current-neighbour origins whose
+    advertisement also arrived in at most one control hop. flat_mean (alias C3)
+    and the graph contracts (GAT/MPNN) see all valid arrived entries, optionally
+    restricted to entries that travelled at most `obs_hops` hops (None = full
+    vis_k cache).
     """
+    canon = canonical_contract(contract)
     entries = cache.valid_entries(now)
-    if contract == "C1":
+    if canon == "neighbor_1hop":
         allowed = {sat} | set(topo.get(sat, {}).values())
         return {o: e for o, e in entries.items()
                 if o in allowed and e.hops <= 1}
-    if contract in ("C3", "C4", "C5", "C6", "C7", "GAT", "MPNN"):
+    if canon in ("flat_mean", "GAT", "MPNN"):
         if obs_hops is None:
             return dict(entries)
         return {o: e for o, e in entries.items() if e.hops <= obs_hops}
@@ -421,58 +428,17 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
             return np.concatenate([base, df, lh])
         return np.concatenate([base, df])
 
-    if contract == "C1":
+    canon = canonical_contract(contract)
+    if canon == "neighbor_1hop":
         neighbors = sorted(set(topo.get(sat, {}).values()))
         blocks = [feats.get(n, np.zeros(ORIGIN_FEATURES)) for n in neighbors]
-        blocks += [np.zeros(ORIGIN_FEATURES)] * (C1_MAX_NEIGHBORS - len(blocks))
-        return _finish(np.concatenate([own] + blocks[:C1_MAX_NEIGHBORS]))
+        blocks += [np.zeros(ORIGIN_FEATURES)] * (NEIGHBOR_1HOP_MAX_NEIGHBORS - len(blocks))
+        return _finish(np.concatenate([own] + blocks[:NEIGHBOR_1HOP_MAX_NEIGHBORS]))
 
-    if contract == "C3":
+    if canon == "flat_mean":
         agg = (np.mean(list(feats.values()), axis=0) if feats
                else np.zeros(ORIGIN_FEATURES))
         return _finish(np.concatenate([own, agg]))
-
-    if contract == "C4":
-        if not entries:
-            agg = np.zeros(ORIGIN_FEATURES)
-        else:
-            w = np.array([np.exp(-max(0.0, e.aoi(now)) / max(e.ttl_s, 1e-9))
-                          for e in entries.values()])
-            agg = np.average(list(feats.values()), axis=0, weights=w)
-        return _finish(np.concatenate([own, agg]))
-
-    if contract == "C5":
-        if not entries:
-            return _finish(np.concatenate(
-                [own, np.zeros(ORIGIN_FEATURES), [0.0]]))
-        freshest_o, freshest = min(
-            entries.items(), key=lambda oe: oe[1].aoi(now))
-        return _finish(np.concatenate(
-            [own, _origin_features(freshest, now, isl_queue_cap, topo,
-                                   freshest_o),
-             [1.0]]))
-
-    if contract == "C6":
-        buckets = [[] for _ in range(C6_MAX_HOPS)]
-        for o, e in entries.items():
-            h = min(max(1, e.hops), C6_MAX_HOPS)
-            buckets[h - 1].append(feats[o])
-        blocks = [np.mean(b, axis=0) if b else np.zeros(ORIGIN_FEATURES)
-                  for b in buckets]
-        return _finish(np.concatenate([own] + blocks))
-
-    if contract == "C7":
-        ordered = sorted(entries.items(), key=lambda oe: oe[1].aoi(now))
-        blocks = []
-        for o, e in ordered[:C7_MAX_ENTRIES]:
-            # keep each entry's advertisement origin: peer-bound queue bits
-            # must be validated against the peer the entry was measured on
-            # (topo[origin]), never against the root satellite's own edges
-            blocks.append(np.concatenate(
-                [_origin_features(e, now, isl_queue_cap, topo, o), [1.0]]))
-        while len(blocks) < C7_MAX_ENTRIES:
-            blocks.append(np.zeros(ORIGIN_FEATURES + 1))
-        return _finish(np.concatenate([own] + blocks))
 
     raise ValueError(f"unknown contract {contract!r}")
 
@@ -512,10 +478,11 @@ def ddqn_targets(q_online_next: np.ndarray, q_target_next: np.ndarray,
 
 
 __all__ = [
-    "CONTRACTS", "ORIGIN_FEATURES", "OWN_FEATURES", "DEST_FEATURES",
+    "CONTRACTS", "CONTRACT_ALIASES", "canonical_contract",
+    "ORIGIN_FEATURES", "OWN_FEATURES", "DEST_FEATURES",
     "_DEST_DIST_NORM_KM", "_EARTH_R_KM",
-    "C3_DIM", "C4_DIM", "C5_DIM", "C6_MAX_HOPS", "C6_DIM",
-    "C7_MAX_ENTRIES", "C7_DIM", "C1_MAX_NEIGHBORS", "C1_DIM",
+    "FLAT_MEAN_DIM", "NEIGHBOR_1HOP_MAX_NEIGHBORS", "NEIGHBOR_1HOP_DIM",
+    "C3_DIM", "C1_MAX_NEIGHBORS", "C1_DIM",
     "ACTIONS", "GRAPH_MAX_NODES", "GRAPH_NODE_FEAT_DIM", "GRAPH_DIRS",
     "GRAPH_CONTRACTS", "graph_state_dim", "GRAPH_CONTRACT_DIMS",
     "CONTRACT_DIMS", "LAST_HOP_FEATURES", "contract_dim",
