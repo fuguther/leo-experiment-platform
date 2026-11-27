@@ -2,10 +2,13 @@
 import pytest
 
 from CODE.leo_sim import kernel, learning, model, rl
+from CODE.leo_sim.rl import registry as rl_registry
 from CODE.leo_sim.tests.helpers import cell, make_cfg, row
 
 
-def test_custom_agent_plugin_is_loaded_through_factory():
+def test_custom_agent_plugin_is_loaded_through_factory(monkeypatch):
+    monkeypatch.setattr(rl_registry, "_AGENTS", dict(rl_registry._AGENTS))
+
     @rl.register_agent("test_factory_agent")
     class StubAgent:
         def __init__(self, contract, cfg, seed):
@@ -19,7 +22,8 @@ def test_custom_agent_plugin_is_loaded_through_factory():
     assert (learner.contract, learner.seed) == ("C3", 23)
 
 
-def test_custom_model_plugin_is_loaded_and_executed():
+def test_custom_model_plugin_is_loaded_and_executed(monkeypatch):
+    monkeypatch.setattr(rl_registry, "_MODELS", dict(rl_registry._MODELS))
     calls = []
 
     @rl.register_model("test_factory_model")
@@ -32,7 +36,9 @@ def test_custom_model_plugin_is_loaded_and_executed():
     assert calls == [(11, len(learning.ACTIONS))]
 
 
-def test_plugin_registration_fails_closed_on_duplicate_names():
+def test_plugin_registration_fails_closed_on_duplicate_names(monkeypatch):
+    monkeypatch.setattr(rl_registry, "_MODELS", dict(rl_registry._MODELS))
+    monkeypatch.setattr(rl_registry, "_AGENTS", dict(rl_registry._AGENTS))
     rl.register_model("test_duplicate_model")(lambda *_: None)
     with pytest.raises(ValueError, match="duplicate model registration"):
         rl.register_model("test_duplicate_model")(lambda *_: None)
