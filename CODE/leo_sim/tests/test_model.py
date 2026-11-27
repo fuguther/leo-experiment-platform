@@ -292,3 +292,27 @@ def test_epoch_applies_through_all_derived_geometry():
         base.slant_range_km(3, lat, lon, 100.0 + 600.0))
     assert shifted.isl_available(2, 7, 100.0) == base.isl_available(
         2, 7, 100.0 + 600.0)
+
+
+def test_memoized_geometry_reuses_certified_no_change_suffix():
+    c = model.Constellation(num_satellites=24, num_planes=4, altitude_km=550,
+                            inclination_deg=53, max_isl_km=6000.0)
+
+    class _SpyConstellation(model.Constellation):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.isl_change_calls = 0
+
+        def next_isl_change(self, a, b, t, limit):
+            self.isl_change_calls += 1
+            return super().next_isl_change(a, b, t, limit)
+
+    spy = _SpyConstellation(num_satellites=24, num_planes=4, altitude_km=550,
+                            inclination_deg=53, max_isl_km=6000.0)
+    # Intra-plane neighbor pair (0, 1) stays permanently in range/LOS.
+    m = model.MemoizedGeometry(spy)
+    assert m.next_isl_change(0, 1, 0.0, 30.0) is None
+    for t in (0.5, 5.0, 15.0, 29.0):
+        assert m.next_isl_change(0, 1, t, 30.0) is None
+        assert m.next_isl_change(0, 1, t, 30.0) == c.next_isl_change(0, 1, t, 30.0)
+    assert len(m._no_change_suffix["next_isl_change"]) == 1

@@ -15,10 +15,11 @@ run fails closed (LearningUnavailable) — no mock stands in for migration.
 """
 from __future__ import annotations
 
-import importlib.util
 import hashlib
+import importlib.util
 import json
 import math
+import os
 from collections import deque
 from pathlib import Path
 
@@ -235,7 +236,7 @@ def _verify_resume_bundle(root: Path, expected_sha: str, schema: str) -> dict:
 
 
 def _resume_identity(cfg: dict, contract: str, algorithm: str, seed: int) -> dict:
-    return {
+    ident = {
         "algorithm": algorithm,
         "contract": contract,
         "seed": int(seed),
@@ -246,6 +247,11 @@ def _resume_identity(cfg: dict, contract: str, algorithm: str, seed: int) -> dic
         "target_update_interval": int(cfg["target_update_interval"]),
         "fast_train": bool(cfg["fast_train"]),
     }
+    if bool(cfg.get("include_last_hop", False)):
+        ident["include_last_hop"] = True
+    if cfg.get("clip_norm") is not None:
+        ident["clip_norm"] = float(cfg["clip_norm"])
+    return ident
 
 
 def _require_resume_identity(manifest: dict, expected: dict) -> None:
@@ -289,10 +295,228 @@ def graph_state_dim(max_nodes: int = GRAPH_MAX_NODES,
 GRAPH_CONTRACT_DIMS = {c: graph_state_dim() for c in GRAPH_CONTRACTS}
 CONTRACT_DIMS = dict(CONTRACT_DIMS)
 CONTRACT_DIMS.update(GRAPH_CONTRACT_DIMS)
+LAST_HOP_FEATURES = len(GRAPH_DIRS)
+
+
+def contract_dim(contract: str, include_last_hop: bool = False) -> int:
+    """Observation width for `contract`, optionally including 4-dim last-hop."""
+    if contract not in CONTRACT_DIMS:
+        raise ValueError(f"unknown learning contract {contract!r}")
+    return CONTRACT_DIMS[contract] + (LAST_HOP_FEATURES if include_last_hop else 0)
+
+
+def last_hop_features(last_hop_dir: str | None) -> np.ndarray:
+    """4-dim one-hot incoming neighbor direction (all zeros at ingress/unknown)."""
+    vec = np.zeros(LAST_HOP_FEATURES, dtype=np.float64)
+    if last_hop_dir in GRAPH_DIRS:
+        vec[GRAPH_DIRS.index(last_hop_dir)] = 1.0
+    return vec
 
 
 class LearningUnavailable(RuntimeError):
     """Learning execution requested without a real TensorFlow runtime."""
+
+
+def _effective_cpu_count() -> int:
+    """Return container-capped CPU count when cgroup quotas apply."""
+    host_cpus = os.cpu_count() or 1
+    try:
+        v2 = Path("/sys/fs/cgroup/cpu.max")
+        if v2.is_file():
+            parts = v2.read_text(encoding="utf-8").strip().split()
+            if len(parts) == 2 and parts[0] != "max":
+                quota, period = int(parts[0]), int(parts[1])
+                if quota > 0 and period > 0:
+                    return max(1, min(host_cpus, quota // period))
+        quota_p = Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
+        period_p = Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us")
+        if quota_p.is_file() and period_p.is_file():
+            quota = int(quota_p.read_text(encoding="utf-8").strip())
+            period = int(period_p.read_text(encoding="utf-8").strip())
+            if quota > 0 and period > 0:
+                return max(1, min(host_cpus, quota // period))
+    except (OSError, ValueError):
+        pass
+    return max(1, host_cpus)
+
+
+def _configure_tf_threads(tf_mod) -> None:
+    """Cap TF CPU thread pools so tiny DDQN/GAT ops do not thrash many-core hosts."""
+    default_threads = min(4, _effective_cpu_count())
+    for env_key, setter in (
+        ("TF_NUM_INTRAOP_THREADS", tf_mod.config.threading.set_intra_op_parallelism_threads),
+        ("TF_NUM_INTEROP_THREADS", tf_mod.config.threading.set_inter_op_parallelism_threads),
+    ):
+        raw = os.environ.get(env_key)
+        try:
+            n = int(raw) if raw is not None else default_threads
+            if n >= 1:
+                setter(n)
+        except (RuntimeError, ValueError):
+            # TF runtime already initialized earlier in this process.
+            pass
+
+
+def _extract_dense_mlp(tf_mod, model):
+    """Extract weights of a pure Dense MLP (linear/relu/tanh) for fast NumPy forward.
+
+    Returns ``((w, b, act_name), ...)`` or ``None`` if the model contains any
+    non-Dense layer (e.g. ``V2GraphEncoder``) or unsupported activation/bias config.
+    """
+    if not isinstance(model, tf_mod.keras.Model):
+        return None
+    layers_out = []
+    for layer in getattr(model, "layers", ()):
+        if isinstance(layer, tf_mod.keras.layers.InputLayer):
+            continue
+        if not isinstance(layer, tf_mod.keras.layers.Dense):
+            return None
+        if not getattr(layer, "use_bias", True):
+            return None
+        act_name = getattr(getattr(layer, "activation", None), "__name__", None)
+        if act_name not in ("linear", "relu", "tanh"):
+            return None
+        weights = layer.get_weights()
+        if len(weights) != 2:
+            return None
+        layers_out.append((
+            np.asarray(weights[0], dtype=np.float32),
+            np.asarray(weights[1], dtype=np.float32),
+            act_name,
+        ))
+    return tuple(layers_out) if layers_out else None
+
+
+def _numpy_mlp_forward(layers, x: np.ndarray) -> np.ndarray:
+    """Evaluate extracted Dense layers identically to Keras float32 forward."""
+    h = np.asarray(x, dtype=np.float32)
+    for w, b, act_name in layers:
+        h = h @ w + b
+        if act_name == "relu":
+            np.maximum(h, 0.0, out=h)
+        elif act_name == "tanh":
+            np.tanh(h, out=h)
+    return h
+
+
+class _ReplayBuffer:
+    """Contiguous NumPy ring buffer preserving deque(maxlen=...) FIFO ordering."""
+
+    def __init__(self, maxlen: int, state_dim: int, n_actions: int):
+        self.maxlen = int(maxlen)
+        self.state_dim = int(state_dim)
+        self.n_actions = int(n_actions)
+        self._cap = min(max(1, self.maxlen), 64)
+        self._states = np.empty((self._cap, self.state_dim), dtype=np.float32)
+        self._actions = np.empty((self._cap,), dtype=np.int64)
+        self._rewards = np.empty((self._cap,), dtype=np.float32)
+        self._next_states = np.empty((self._cap, self.state_dim), dtype=np.float32)
+        self._masks = np.empty((self._cap, self.n_actions), dtype=bool)
+        self._dones = np.empty((self._cap,), dtype=bool)
+        self._pos = 0
+        self._size = 0
+
+    def __len__(self) -> int:
+        return self._size
+
+    def clear(self) -> None:
+        self._pos = 0
+        self._size = 0
+
+    def _grow(self) -> None:
+        new_cap = min(self.maxlen, max(self._cap * 2, 1))
+        states = np.empty((new_cap, self.state_dim), dtype=np.float32)
+        actions = np.empty((new_cap,), dtype=np.int64)
+        rewards = np.empty((new_cap,), dtype=np.float32)
+        next_states = np.empty((new_cap, self.state_dim), dtype=np.float32)
+        masks = np.empty((new_cap, self.n_actions), dtype=bool)
+        dones = np.empty((new_cap,), dtype=bool)
+        n = self._size
+        if n:
+            states[:n] = self._states[:n]
+            actions[:n] = self._actions[:n]
+            rewards[:n] = self._rewards[:n]
+            next_states[:n] = self._next_states[:n]
+            masks[:n] = self._masks[:n]
+            dones[:n] = self._dones[:n]
+        self._states = states
+        self._actions = actions
+        self._rewards = rewards
+        self._next_states = next_states
+        self._masks = masks
+        self._dones = dones
+        self._cap = new_cap
+        self._pos = n
+
+    def append(self, transition) -> None:
+        s, a, r, ns, m, d = transition
+        if self._size == self._cap and self._cap < self.maxlen:
+            self._grow()
+        idx = self._pos
+        self._states[idx] = s
+        self._actions[idx] = a
+        self._rewards[idx] = r
+        self._next_states[idx] = ns
+        self._masks[idx] = m
+        self._dones[idx] = d
+        self._pos = (idx + 1) % self._cap
+        if self._size < self.maxlen:
+            self._size += 1
+
+    def _physical_indices(self, logical_indices: np.ndarray) -> np.ndarray:
+        if self._size < self.maxlen:
+            return logical_indices
+        return (self._pos + logical_indices) % self.maxlen
+
+    def sample_batch(self, logical_indices: np.ndarray):
+        phys = self._physical_indices(logical_indices)
+        return (
+            self._states[phys],
+            self._actions[phys],
+            self._rewards[phys],
+            self._next_states[phys],
+            self._masks[phys],
+            self._dones[phys],
+        )
+
+    def to_arrays(self):
+        if self._size == 0:
+            return (
+                np.empty((0, self.state_dim), dtype=np.float32),
+                np.empty((0,), dtype=np.int64),
+                np.empty((0,), dtype=np.float32),
+                np.empty((0, self.state_dim), dtype=np.float32),
+                np.empty((0, self.n_actions), dtype=bool),
+                np.empty((0,), dtype=bool),
+            )
+        order = self._physical_indices(np.arange(self._size, dtype=np.int64))
+        return (
+            self._states[order],
+            self._actions[order],
+            self._rewards[order],
+            self._next_states[order],
+            self._masks[order],
+            self._dones[order],
+        )
+
+    def __getitem__(self, index: int):
+        if index < 0:
+            index += self._size
+        if index < 0 or index >= self._size:
+            raise IndexError("replay index out of range")
+        phys = index if self._size < self.maxlen else (self._pos + index) % self.maxlen
+        return (
+            self._states[phys],
+            int(self._actions[phys]),
+            float(self._rewards[phys]),
+            self._next_states[phys],
+            self._masks[phys],
+            bool(self._dones[phys]),
+        )
+
+    def __iter__(self):
+        for i in range(self._size):
+            yield self[i]
 
 
 def require_tensorflow():
@@ -308,13 +532,13 @@ class V2GraphEncoder(tf.keras.layers.Layer if tf is not None else object):
     """V2 GAT/MPNN graph encoder (module-level, serializable).
 
     Consumes the flattened observation built by ``build_graph_observation``:
-      node features  [MAX_N, 15]
+      node features  [MAX_N, 18]
       adjacency      [MAX_N, MAX_N]   (adj[dst, src] = 1 for a real ISL edge)
       readout masks  [4, MAX_N]       (N/S/E/W first-hop grouping)
-      own-state tail [4]
+      own+dst tail   [OWN_FEATURES + DEST_FEATURES]
     Runs either GAT (multi-head attention) or MPNN (mean message passing)
     layers, then returns four directional readout embeddings concatenated
-    with the own-state tail for a shared dense Q head.
+    with the own-state+destination tail for a shared dense Q head.
 
     NOTE: this class references ``tf`` at import time, so this module may only
     be imported after ``require_tensorflow()`` succeeded.  ``TensorflowDDQN``
@@ -492,6 +716,7 @@ class TensorflowDDQN:
         if contract not in CONTRACT_DIMS:
             raise ValueError(f"unknown learning contract {contract!r}")
         self.tf = require_tensorflow()
+        _configure_tf_threads(self.tf)
         # Op determinism is part of the reproducibility claim: record the
         # outcome instead of swallowing it. The value lands in diagnostics()
         # and therefore in the receipt-bound learning ledger.
@@ -518,12 +743,15 @@ class TensorflowDDQN:
                 "TensorFlow global RNG could not be initialized for exact "
                 f"resume ({type(exc).__name__}: {exc})") from exc
         self.contract = contract
-        self.input_dim = CONTRACT_DIMS[contract]
+        self.include_last_hop = bool(cfg.get("include_last_hop", False))
+        self.input_dim = contract_dim(contract, self.include_last_hop)
         self.cfg = dict(cfg)
         self.seed = int(seed)
         self.rng = np.random.default_rng(self.seed)
-        self.replay = deque(maxlen=int(cfg["replay_size"]))
+        self.replay = _ReplayBuffer(int(cfg["replay_size"]), self.input_dim, len(ACTIONS))
         self.mode = cfg["mode"]
+        self._resume_time_offset_s = 0.0
+        self._last_now = 0.0
         self.loaded_resume_path = None
         self.loaded_resume_sha256 = None
         self.resume_manifest_sha256 = None
@@ -575,8 +803,10 @@ class TensorflowDDQN:
             self.loaded_checkpoint_metadata_sha256 = None
         self.target = self._network()
         self.target.set_weights(self.online.get_weights())
-        self.optimizer = self.tf.keras.optimizers.Adam(
-            learning_rate=float(cfg["lr"]))
+        opt_kwargs = {"learning_rate": float(cfg["lr"])}
+        if cfg.get("clip_norm") is not None:
+            opt_kwargs["clipnorm"] = float(cfg["clip_norm"])
+        self.optimizer = self.tf.keras.optimizers.Adam(**opt_kwargs)
         self.decisions = 0
         self.transitions = 0
         self.train_steps = 0
@@ -591,6 +821,11 @@ class TensorflowDDQN:
         self._fast_train_fn = None
         self._fast_train_net_id = None
         self._fast_train_tgt_id = None
+        self._fast_infer_fn = None
+        self._fast_infer_net_id = None
+        self._weights_version = 0
+        self._np_mlp_layers = None
+        self._np_mlp_version = -1
         if cfg.get("resume_path") is not None:
             self._load_resume_bundle(
                 Path(cfg["resume_path"]), cfg.get("resume_sha256"))
@@ -620,22 +855,63 @@ class TensorflowDDQN:
         start = float(self.cfg["epsilon_start"])
         end = float(self.cfg["epsilon_end"])
         decay = float(self.cfg["epsilon_decay_s"])
-        return end + (start - end) * math.exp(-max(0.0, float(now)) / decay)
+        elapsed = self._resume_time_offset_s + max(0.0, float(now))
+        return end + (start - end) * math.exp(-elapsed / decay)
 
     @staticmethod
     def _mask_array(mask: dict) -> np.ndarray:
         return np.asarray([bool(mask.get(a, False)) for a in ACTIONS], dtype=bool)
+
+    def _build_fast_infer_fn(self):
+        tf = self.tf
+        net = self.online
+        spec = [tf.TensorSpec([1, self.input_dim], tf.float32)]
+
+        @tf.function(input_signature=spec, reduce_retracing=True)
+        def _infer(obs):
+            return net(obs, training=False)
+
+        return _infer.get_concrete_function(*spec)
+
+    def _sync_target(self) -> None:
+        if len(self.target.variables) == len(self.online.variables):
+            for tgt_var, src_var in zip(self.target.variables, self.online.variables):
+                tgt_var.assign(src_var)
+        else:
+            self.target.set_weights(self.online.get_weights())
+
+    def _current_np_mlp_layers(self):
+        if self._np_mlp_layers is None or self._np_mlp_version != self._weights_version:
+            self._np_mlp_layers = _extract_dense_mlp(self.tf, self.online)
+            self._np_mlp_version = self._weights_version
+        return self._np_mlp_layers
 
     def choose(self, observation: np.ndarray, mask: dict, now: float) -> str:
         legal = self._mask_array(mask)
         indices = np.flatnonzero(legal)
         if not len(indices):
             raise ValueError("DDQN decision requires at least one legal action")
-        obs = np.asarray(observation, dtype=np.float32).reshape(1, self.input_dim)
+        self._last_now = max(self._last_now, float(now))
         if self.rng.random() < self.epsilon(now):
             chosen = int(self.rng.choice(indices))
+        elif len(indices) == 1:
+            chosen = int(indices[0])
         else:
-            q = self.online(obs, training=False).numpy()[0]
+            obs = np.asarray(observation, dtype=np.float32).reshape(1, self.input_dim)
+            if self._fast_enabled:
+                np_layers = (self._current_np_mlp_layers()
+                             if self.contract not in GRAPH_CONTRACTS else None)
+                if np_layers is not None:
+                    q = _numpy_mlp_forward(np_layers, obs)[0]
+                else:
+                    fn = self._fast_infer_fn
+                    if fn is None or self._fast_infer_net_id != id(self.online):
+                        fn = self._build_fast_infer_fn()
+                        self._fast_infer_fn = fn
+                        self._fast_infer_net_id = id(self.online)
+                    q = fn(self.tf.constant(obs, dtype=self.tf.float32)).numpy()[0]
+            else:
+                q = self.online(obs, training=False).numpy()[0]
             chosen = int(indices[np.argmax(q[indices])])
         self.decisions += 1
         return ACTIONS[chosen]
@@ -651,19 +927,16 @@ class TensorflowDDQN:
         )
         self.replay.append(transition)
         self.transitions += 1
-        if self.mode == "train" and len(self.replay) >= int(self.cfg["batch_size"]):
+        train_after = max(
+            int(self.cfg["batch_size"]), int(self.cfg.get("warmup_steps", 0)))
+        every = max(1, int(self.cfg.get("train_every_steps", 1)))
+        if (self.mode == "train"
+                and len(self.replay) >= train_after
+                and (every == 1 or (self.transitions - train_after) % every == 0)):
             self._train_once()
 
-    def _train_once(self) -> None:
-        batch_size = int(self.cfg["batch_size"])
-        indices = self.rng.choice(len(self.replay), size=batch_size, replace=False)
-        batch = [self.replay[int(i)] for i in indices]
-        states = np.stack([x[0] for x in batch])
-        actions = np.asarray([x[1] for x in batch], dtype=np.int64)
-        rewards = np.asarray([x[2] for x in batch], dtype=np.float32)
-        next_states = np.stack([x[3] for x in batch])
-        masks = np.stack([x[4] for x in batch])
-        dones = np.asarray([x[5] for x in batch], dtype=bool)
+    def _train_on_batch(self, states, actions, rewards, next_states, masks, dones) -> float:
+        """Run one DDQN update step on the active online/target/optimizer state."""
         if self._fast_enabled:
             fn = self._fast_train_fn
             if (fn is None or self._fast_train_net_id != id(self.online)
@@ -673,18 +946,14 @@ class TensorflowDDQN:
                 self._fast_train_net_id = id(self.online)
                 self._fast_train_tgt_id = id(self.target)
             loss = fn(
-                self.tf.convert_to_tensor(states, dtype=self.tf.float32),
-                self.tf.convert_to_tensor(actions, dtype=self.tf.int64),
-                self.tf.convert_to_tensor(rewards, dtype=self.tf.float32),
-                self.tf.convert_to_tensor(next_states, dtype=self.tf.float32),
-                self.tf.convert_to_tensor(~dones, dtype=self.tf.bool),
-                self.tf.convert_to_tensor(masks, dtype=self.tf.bool),
+                self.tf.constant(states, dtype=self.tf.float32),
+                self.tf.constant(actions, dtype=self.tf.int64),
+                self.tf.constant(rewards, dtype=self.tf.float32),
+                self.tf.constant(next_states, dtype=self.tf.float32),
+                self.tf.constant(~dones, dtype=self.tf.bool),
+                self.tf.constant(masks, dtype=self.tf.bool),
             )
-            self.last_loss = float(loss.numpy())
-            self.train_steps += 1
-            if self.train_steps % int(self.cfg["target_update_interval"]) == 0:
-                self.target.set_weights(self.online.get_weights())
-            return
+            return float(loss.numpy())
         online_next = self.online(next_states, training=False).numpy()
         target_next = self.target(next_states, training=False).numpy()
         targets = ddqn_targets(
@@ -697,10 +966,21 @@ class TensorflowDDQN:
             loss = self.tf.reduce_mean(self.tf.square(targets - chosen_q))
         grads = tape.gradient(loss, self.online.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.online.trainable_variables))
+        return float(loss.numpy())
+
+    def _train_once(self) -> None:
+        batch_size = int(self.cfg["batch_size"])
+        indices = self.rng.choice(len(self.replay), size=batch_size, replace=False)
+        states, actions, rewards, next_states, masks, dones = self.replay.sample_batch(indices)
+        self.last_loss = self._train_on_batch(
+            states, actions, rewards, next_states, masks, dones)
         self.train_steps += 1
-        self.last_loss = float(loss.numpy())
+        self._weights_version += 1
         if self.train_steps % int(self.cfg["target_update_interval"]) == 0:
-            self.target.set_weights(self.online.get_weights())
+            if self._fast_enabled:
+                self._sync_target()
+            else:
+                self.target.set_weights(self.online.get_weights())
 
     def _build_fast_train_fn(self):
         tf = self.tf
@@ -741,7 +1021,7 @@ class TensorflowDDQN:
             opt.apply_gradients(zip(grads, net.trainable_variables))
             return loss
 
-        return _step
+        return _step.get_concrete_function(*spec)
 
     def _load_resume_bundle(self, root: Path, expected_sha: str) -> None:
         if not isinstance(expected_sha, str):
@@ -788,8 +1068,11 @@ class TensorflowDDQN:
             self.decisions = int(counters["decisions"])
             self.transitions = int(counters["transitions"])
             self.train_steps = int(counters["train_steps"])
-            if min(self.decisions, self.transitions, self.train_steps) < 0:
-                raise ValueError("negative training counter")
+            self._resume_time_offset_s = float(state.get("elapsed_time_s", 0.0))
+            if min(self.decisions, self.transitions, self.train_steps) < 0 \
+                    or not math.isfinite(self._resume_time_offset_s) \
+                    or self._resume_time_offset_s < 0:
+                raise ValueError("negative or non-finite training counter/time")
         except (KeyError, TypeError, ValueError) as exc:
             raise LearningUnavailable(f"DDQN resume state is invalid: {exc}") from exc
         try:
@@ -828,6 +1111,8 @@ class TensorflowDDQN:
         self.loaded_resume_sha256 = expected_sha
         self.resume_manifest_sha256 = expected_sha
         self.resume_verified = True
+        self._weights_version += 1
+        self._np_mlp_layers = None
 
     def save_resume_and_verify(self, directory: str | Path) -> dict:
         """Save and verify the complete DDQN continuation state.
@@ -847,22 +1132,22 @@ class TensorflowDDQN:
         prefix = out / "tf_ckpt"
         try:
             checkpoint.write(str(prefix))
+            r_states, r_actions, r_rewards, r_next_states, r_masks, r_dones = (
+                self.replay.to_arrays())
             np.savez_compressed(
                 out / "replay.npz",
-                states=np.asarray([x[0] for x in self.replay], dtype=np.float32)
-                if self.replay else np.empty((0, self.input_dim), dtype=np.float32),
-                actions=np.asarray([x[1] for x in self.replay], dtype=np.int64),
-                rewards=np.asarray([x[2] for x in self.replay], dtype=np.float32),
-                next_states=np.asarray([x[3] for x in self.replay], dtype=np.float32)
-                if self.replay else np.empty((0, self.input_dim), dtype=np.float32),
-                masks=np.asarray([x[4] for x in self.replay], dtype=bool)
-                if self.replay else np.empty((0, len(ACTIONS)), dtype=bool),
-                dones=np.asarray([x[5] for x in self.replay], dtype=bool),
+                states=r_states,
+                actions=r_actions,
+                rewards=r_rewards,
+                next_states=r_next_states,
+                masks=r_masks,
+                dones=r_dones,
             )
             tf_state = self.tf.random.get_global_generator().state.numpy()
             state = {
                 "numpy_rng_state": _resume_json(self.rng.bit_generator.state),
                 "tensorflow_rng_state": _resume_json(tf_state),
+                "elapsed_time_s": float(self._resume_time_offset_s + self._last_now),
                 "counters": {
                     "decisions": int(self.decisions),
                     "transitions": int(self.transitions),
@@ -910,8 +1195,14 @@ class TensorflowDDQN:
         # from the declared fields, so the two cannot drift apart silently.
         from . import inference as _inference
 
+        feature_order = (
+            _inference.OBSERVATION_FEATURE_ORDER_LAST_HOP
+            if self.include_last_hop
+            else _inference.OBSERVATION_FEATURE_ORDER
+        )
         metadata.update(_inference.observation_contract_fields(
             contract=self.contract, feature_width=self.input_dim,
+            feature_order=feature_order,
             normalisation={"mode": "none"}))
         metadata.update({
             "schema": "leo-sim-ddqn/v1",
@@ -957,6 +1248,346 @@ class TensorflowDDQN:
             # op determinism was actually enabled on this host
             "fast_train": self._fast_enabled,
             "op_determinism": self.op_determinism,
+            "agent_scope": str(self.cfg.get("agent_scope", "shared")),
+            "clip_norm": self.cfg.get("clip_norm"),
+            "include_last_hop": self.include_last_hop,
+        }
+
+
+class PerSatelliteTensorflowDDQN:
+    """Independent per-satellite DDQN agents (no Federated Learning weight sync).
+
+    All satellites share one compiled TensorFlow execution engine (``_engine``)
+    so TF builds a single computation graph instead of tracing N_sat models,
+    while each satellite owns independent online/target weights, Adam
+    optimizer slot variables, replay buffer, RNG stream, and counters.
+    """
+
+    def __init__(self, contract: str, cfg: dict, seed: int):
+        if contract not in CONTRACT_DIMS:
+            raise ValueError(f"unknown learning contract {contract!r}")
+        engine_cfg = dict(cfg)
+        engine_cfg["agent_scope"] = "shared"
+        engine_cfg["checkpoint_path"] = None
+        engine_cfg["checkpoint_sha256"] = None
+        engine_cfg["checkpoint_metadata_sha256"] = None
+        engine_cfg["resume_path"] = None
+        engine_cfg["resume_sha256"] = None
+        self._engine = TensorflowDDQN(contract, engine_cfg, seed)
+        self.tf = self._engine.tf
+        self.contract = contract
+        self.include_last_hop = self._engine.include_last_hop
+        self.input_dim = self._engine.input_dim
+        self.cfg = dict(cfg)
+        self.seed = int(seed)
+        self.mode = cfg["mode"]
+        self.op_determinism = self._engine.op_determinism
+        self._fast_enabled = self._engine._fast_enabled
+        self.loaded_checkpoint = None
+        self.loaded_checkpoint_sha256 = None
+        self.loaded_checkpoint_metadata_sha256 = None
+        self.loaded_resume_path = None
+        self.loaded_resume_sha256 = None
+        self.resume_manifest_sha256 = None
+        self.resume_verified = False
+        self._last_now = 0.0
+        self._resume_time_offset_s = 0.0
+        self.decisions = 0
+        self.transitions = 0
+        self.train_steps = 0
+        self.last_loss = None
+
+        try:
+            self._engine.optimizer.build(self._engine.online.trainable_variables)
+        except AttributeError:
+            pass
+        self._template_online = [
+            v.numpy().copy() for v in self._engine.online.variables
+        ]
+        self._init_opt_weights = [
+            v.numpy().copy() for v in self._engine.optimizer.variables
+        ]
+        self._mlp_template = (
+            _extract_dense_mlp(self.tf, self._engine.online)
+            if self.contract not in GRAPH_CONTRACTS else None
+        )
+        self._mlp_acts = (
+            tuple(act for _, _, act in self._mlp_template)
+            if self._mlp_template is not None
+            and len(self._template_online) == 2 * len(self._mlp_template)
+            else None
+        )
+        self.agents: dict[int, dict] = {}
+        self._active_online_sat: int | None = None
+        self._active_target_sat: int | None = None
+        self._active_opt_sat: int | None = None
+
+    @property
+    def replay_size(self) -> int:
+        return sum(len(a["replay"]) for a in self.agents.values())
+
+    def epsilon(self, now: float) -> float:
+        if self.mode == "eval":
+            return 0.0
+        start = float(self.cfg["epsilon_start"])
+        end = float(self.cfg["epsilon_end"])
+        decay = float(self.cfg["epsilon_decay_s"])
+        elapsed = self._resume_time_offset_s + max(0.0, float(now))
+        return end + (start - end) * math.exp(-elapsed / decay)
+
+    def _init_sat_weights(self, weight_rng: np.random.Generator) -> list[np.ndarray]:
+        weights = []
+        for arr in self._template_online:
+            if arr.ndim < 2 or not np.any(arr):
+                weights.append(np.zeros_like(arr))
+            else:
+                receptive = int(np.prod(arr.shape[:-2])) if arr.ndim > 2 else 1
+                fan_in = int(arr.shape[-2]) * receptive
+                fan_out = int(arr.shape[-1]) * receptive
+                limit = math.sqrt(6.0 / max(1, fan_in + fan_out))
+                weights.append(
+                    weight_rng.uniform(-limit, limit, size=arr.shape).astype(arr.dtype)
+                )
+        return weights
+
+    def _agent(self, sat_id: int) -> dict:
+        sid = int(sat_id)
+        if sid < 0:
+            raise ValueError(f"satellite id must be non-negative, got {sid}")
+        agent = self.agents.get(sid)
+        if agent is None:
+            w_ss, rng_ss = np.random.SeedSequence([self.seed, sid]).spawn(2)
+            online_w = self._init_sat_weights(np.random.default_rng(w_ss))
+            agent = {
+                "online_w": online_w,
+                "target_w": [w.copy() for w in online_w],
+                "opt_w": [w.copy() for w in self._init_opt_weights],
+                "replay": _ReplayBuffer(
+                    int(self.cfg["replay_size"]), self.input_dim, len(ACTIONS)
+                ),
+                "rng": np.random.default_rng(rng_ss),
+                "decisions": 0,
+                "transitions": 0,
+                "train_steps": 0,
+                "last_loss": None,
+                "np_layers": None,
+            }
+            self.agents[sid] = agent
+        return agent
+
+    def _load_online(self, sid: int, agent: dict) -> None:
+        if self._active_online_sat != sid:
+            for var, arr in zip(self._engine.online.variables, agent["online_w"]):
+                var.assign(arr)
+            self._active_online_sat = sid
+
+    def _load_target(self, sid: int, agent: dict) -> None:
+        if self._active_target_sat != sid:
+            for var, arr in zip(self._engine.target.variables, agent["target_w"]):
+                var.assign(arr)
+            self._active_target_sat = sid
+
+    def _load_opt(self, sid: int, agent: dict) -> None:
+        if self._active_opt_sat != sid:
+            for var, arr in zip(self._engine.optimizer.variables, agent["opt_w"]):
+                var.assign(arr)
+            self._active_opt_sat = sid
+
+    def choose_for(self, sat_id: int, observation: np.ndarray,
+                   mask: dict, now: float) -> str:
+        sid = int(sat_id)
+        agent = self._agent(sid)
+        legal = self._engine._mask_array(mask)
+        indices = np.flatnonzero(legal)
+        if not len(indices):
+            raise ValueError("DDQN decision requires at least one legal action")
+        self._last_now = max(self._last_now, float(now))
+        if agent["rng"].random() < self.epsilon(now):
+            chosen = int(agent["rng"].choice(indices))
+        elif len(indices) == 1:
+            chosen = int(indices[0])
+        else:
+            obs = np.asarray(observation, dtype=np.float32).reshape(1, self.input_dim)
+            if self._fast_enabled and self._mlp_acts is not None:
+                np_layers = agent["np_layers"]
+                if np_layers is None:
+                    online_w = agent["online_w"]
+                    np_layers = tuple(
+                        (online_w[2 * i], online_w[2 * i + 1], act)
+                        for i, act in enumerate(self._mlp_acts)
+                    )
+                    agent["np_layers"] = np_layers
+                q = _numpy_mlp_forward(np_layers, obs)[0]
+            elif self._fast_enabled:
+                self._load_online(sid, agent)
+                fn = self._engine._fast_infer_fn
+                if fn is None or self._engine._fast_infer_net_id != id(self._engine.online):
+                    fn = self._engine._build_fast_infer_fn()
+                    self._engine._fast_infer_fn = fn
+                    self._engine._fast_infer_net_id = id(self._engine.online)
+                q = fn(self.tf.constant(obs, dtype=self.tf.float32)).numpy()[0]
+            else:
+                self._load_online(sid, agent)
+                q = self._engine.online(obs, training=False).numpy()[0]
+            chosen = int(indices[np.argmax(q[indices])])
+        agent["decisions"] += 1
+        self.decisions += 1
+        return ACTIONS[chosen]
+
+    def remember_for(self, sat_id: int, state, action: str, reward: float,
+                     next_state, next_mask: dict, done: bool) -> None:
+        if action not in ACTIONS:
+            raise ValueError(f"unknown DDQN action {action!r}")
+        sid = int(sat_id)
+        agent = self._agent(sid)
+        transition = (
+            np.asarray(state, dtype=np.float32),
+            ACTIONS.index(action),
+            float(reward),
+            np.asarray(next_state, dtype=np.float32),
+            self._engine._mask_array(next_mask),
+            bool(done),
+        )
+        agent["replay"].append(transition)
+        agent["transitions"] += 1
+        self.transitions += 1
+        train_after = max(
+            int(self.cfg["batch_size"]), int(self.cfg.get("warmup_steps", 0)))
+        every = max(1, int(self.cfg.get("train_every_steps", 1)))
+        if (self.mode == "train"
+                and len(agent["replay"]) >= train_after
+                and (every == 1 or (agent["transitions"] - train_after) % every == 0)):
+            batch_size = int(self.cfg["batch_size"])
+            indices = agent["rng"].choice(
+                len(agent["replay"]), size=batch_size, replace=False)
+            states, actions, rewards, next_states, masks, dones = (
+                agent["replay"].sample_batch(indices))
+            self._load_online(sid, agent)
+            self._load_target(sid, agent)
+            self._load_opt(sid, agent)
+            loss = self._engine._train_on_batch(
+                states, actions, rewards, next_states, masks, dones)
+            agent["online_w"] = [
+                v.numpy().copy() for v in self._engine.online.variables
+            ]
+            agent["opt_w"] = [
+                v.numpy().copy() for v in self._engine.optimizer.variables
+            ]
+            agent["np_layers"] = None
+            agent["last_loss"] = loss
+            self.last_loss = loss
+            agent["train_steps"] += 1
+            self.train_steps += 1
+            if agent["train_steps"] % int(self.cfg["target_update_interval"]) == 0:
+                agent["target_w"] = [w.copy() for w in agent["online_w"]]
+                self._engine._sync_target()
+
+    def choose(self, observation: np.ndarray, mask: dict, now: float) -> str:
+        return self.choose_for(0, observation, mask, now)
+
+    def remember(self, state, action: str, reward: float, next_state,
+                 next_mask: dict, done: bool) -> None:
+        self.remember_for(0, state, action, reward, next_state, next_mask, done)
+
+    def save_and_verify(self, directory: str | Path) -> dict:
+        out = Path(directory)
+        out.mkdir(parents=True, exist_ok=True)
+        model_path = out / "online.keras"
+        rep_sat = min(self.agents) if self.agents else None
+        if rep_sat is not None:
+            self._load_online(rep_sat, self.agents[rep_sat])
+        self._engine.online.save(model_path)
+        checkpoint_sha = hashlib.sha256(model_path.read_bytes()).hexdigest()
+        loaded = self.tf.keras.models.load_model(
+            model_path, compile=False, custom_objects=_graph_custom_objects())
+        probe = np.linspace(-0.5, 0.5, self.input_dim, dtype=np.float32)[None, :]
+        before = self._engine.online(probe, training=False).numpy()
+        after = loaded(probe, training=False).numpy()
+        verified = bool(np.allclose(before, after, rtol=0.0, atol=1e-7))
+
+        weights_path = out / "per_satellite_weights.npz"
+        sat_ids = sorted(self.agents)
+        arrays: dict[str, np.ndarray] = {"sat_ids": np.asarray(sat_ids, dtype=np.int64)}
+        for sid in sat_ids:
+            for idx, arr in enumerate(self.agents[sid]["online_w"]):
+                arrays[f"sat_{sid}_w_{idx}"] = arr
+        np.savez_compressed(weights_path, **arrays)
+        weights_sha = hashlib.sha256(weights_path.read_bytes()).hexdigest()
+        loaded_npz = np.load(weights_path, allow_pickle=False)
+        try:
+            npz_verified = bool(
+                np.array_equal(loaded_npz["sat_ids"], arrays["sat_ids"])
+                and all(
+                    np.array_equal(loaded_npz[f"sat_{sid}_w_{idx}"], arr)
+                    for sid in sat_ids
+                    for idx, arr in enumerate(self.agents[sid]["online_w"])
+                )
+            )
+        finally:
+            loaded_npz.close()
+
+        metadata = self.diagnostics()
+        from . import inference as _inference
+
+        feature_order = (
+            _inference.OBSERVATION_FEATURE_ORDER_LAST_HOP
+            if self.include_last_hop
+            else _inference.OBSERVATION_FEATURE_ORDER
+        )
+        metadata.update(_inference.observation_contract_fields(
+            contract=self.contract, feature_width=self.input_dim,
+            feature_order=feature_order,
+            normalisation={"mode": "none"}))
+        metadata.update({
+            "schema": "leo-sim-ddqn/v1",
+            "checkpoint": model_path.name,
+            "checkpoint_sha256": checkpoint_sha,
+            "checkpoint_verified": verified and npz_verified,
+            "representative_sat": rep_sat,
+            "per_satellite_weights": weights_path.name,
+            "per_satellite_weights_sha256": weights_sha,
+            "per_satellite_verified": npz_verified,
+            "probe_max_abs_error": float(np.max(np.abs(before - after))),
+            "weights_purpose": str(self.cfg.get("weights_purpose", "trained")),
+        })
+        (out / "metadata.json").write_text(
+            json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        if not (verified and npz_verified):
+            raise LearningUnavailable(
+                "saved per-satellite DDQN checkpoint failed verification")
+        result = dict(metadata)
+        result["metadata_sha256"] = hashlib.sha256(
+            (out / "metadata.json").read_bytes()).hexdigest()
+        return result
+
+    def diagnostics(self) -> dict:
+        return {
+            "algorithm": "ddqn",
+            "contract": self.contract,
+            "mode": self.mode,
+            "loaded_checkpoint": self.loaded_checkpoint,
+            "loaded_checkpoint_sha256": self.loaded_checkpoint_sha256,
+            "loaded_checkpoint_metadata_sha256":
+                self.loaded_checkpoint_metadata_sha256,
+            "loaded_resume_path": self.loaded_resume_path,
+            "loaded_resume_sha256": self.loaded_resume_sha256,
+            "resume_manifest_sha256": self.resume_manifest_sha256,
+            "resume_verified": self.resume_verified,
+            "actions": list(ACTIONS),
+            "decisions": self.decisions,
+            "transitions": self.transitions,
+            "train_steps": self.train_steps,
+            "replay_size": self.replay_size,
+            "last_loss": self.last_loss,
+            "seed": self.seed,
+            "fast_train": self._fast_enabled,
+            "op_determinism": self.op_determinism,
+            "agent_scope": "per_satellite",
+            "n_agents": len(self.agents),
+            "clip_norm": self.cfg.get("clip_norm"),
+            "include_last_hop": self.include_last_hop,
         }
 
 
@@ -991,6 +1622,8 @@ class TabularQLearning:
         if contract not in CONTRACT_DIMS:
             raise ValueError(f"unknown learning contract {contract!r}")
         self.contract = contract
+        self.include_last_hop = bool(cfg.get("include_last_hop", False))
+        self.input_dim = contract_dim(contract, self.include_last_hop)
         self.cfg = dict(cfg)
         self.seed = int(seed)
         self.rng = np.random.default_rng(self.seed)
@@ -1065,8 +1698,8 @@ class TabularQLearning:
             entries = payload.get("entries")
             if not isinstance(entries, list):
                 raise LearningUnavailable("Q-learning checkpoint lacks entries")
-            expected_key_bytes = CONTRACT_DIMS[self.contract] * 8
-            expected_key_dims = CONTRACT_DIMS[self.contract]
+            expected_key_bytes = self.input_dim * 8
+            expected_key_dims = self.input_dim
             seen_keys = set()
             for entry in entries:
                 if (not isinstance(entry, (list, tuple)) or len(entry) != 2
@@ -1120,6 +1753,8 @@ class TabularQLearning:
         self.decisions = 0
         self.transitions = 0
         self.train_steps = 0  # tabular: one Q-table update per train step
+        self._resume_time_offset_s = 0.0
+        self._last_now = 0.0
         if cfg.get("resume_path") is not None:
             self._load_resume_bundle(
                 Path(cfg["resume_path"]), cfg.get("resume_sha256"))
@@ -1160,10 +1795,12 @@ class TabularQLearning:
         start = float(self.cfg["epsilon_start"])
         end = float(self.cfg["epsilon_end"])
         decay = float(self.cfg["epsilon_decay_s"])
-        return end + (start - end) * math.exp(-max(0.0, float(now)) / decay)
+        elapsed = self._resume_time_offset_s + max(0.0, float(now))
+        return end + (start - end) * math.exp(-elapsed / decay)
 
     def choose(self, observation: np.ndarray, mask: dict, now: float) -> str:
         legal = self._legal(mask)
+        self._last_now = max(self._last_now, float(now))
         if self.mode != "eval" and self.rng.random() < self.epsilon(now):
             chosen = int(self.rng.choice(legal))
         else:
@@ -1200,8 +1837,8 @@ class TabularQLearning:
         # eval loader would reject.  Reuse the loader's exact semantic
         # contract: canonical key width, finite little-endian float64 keys,
         # and finite 5-action rows.
-        expected_key_bytes = CONTRACT_DIMS[self.contract] * 8
-        expected_key_dims = CONTRACT_DIMS[self.contract]
+        expected_key_bytes = self.input_dim * 8
+        expected_key_dims = self.input_dim
         for key, row in self.table.items():
             if len(key) != expected_key_bytes:
                 raise LearningUnavailable(
@@ -1252,19 +1889,24 @@ class TabularQLearning:
             (out / "metadata.json").read_bytes()).hexdigest()
         return result
 
-    def _load_resume_bundle(self, root: Path, expected_sha: str) -> None:
-        if not isinstance(expected_sha, str):
-            raise LearningUnavailable("resume_sha256 is required for exact resume")
-        manifest = _verify_resume_bundle(
-            root, expected_sha, "leo-sim-qlearning-resume/v1")
-        expected_identity = {
+    def _q_resume_identity(self) -> dict:
+        ident = {
             "algorithm": "qlearning",
             "contract": self.contract,
             "seed": self.seed,
             "gamma": self.gamma,
             "alpha": self.alpha,
         }
-        _require_resume_identity(manifest, expected_identity)
+        if self.include_last_hop:
+            ident["include_last_hop"] = True
+        return ident
+
+    def _load_resume_bundle(self, root: Path, expected_sha: str) -> None:
+        if not isinstance(expected_sha, str):
+            raise LearningUnavailable("resume_sha256 is required for exact resume")
+        manifest = _verify_resume_bundle(
+            root, expected_sha, "leo-sim-qlearning-resume/v1")
+        _require_resume_identity(manifest, self._q_resume_identity())
         if "q_table.json" not in manifest["files"] or "state.json" not in manifest["files"]:
             raise LearningUnavailable("Q-learning resume bundle is incomplete")
         payload = _read_json_bytes(
@@ -1275,7 +1917,7 @@ class TabularQLearning:
         entries = payload.get("entries")
         if not isinstance(entries, list):
             raise LearningUnavailable("Q-learning resume table lacks entries")
-        expected_key_bytes = CONTRACT_DIMS[self.contract] * 8
+        expected_key_bytes = self.input_dim * 8
         for entry in entries:
             if not isinstance(entry, (list, tuple)) or len(entry) != 2:
                 raise LearningUnavailable("Q-learning resume table entry is invalid")
@@ -1298,8 +1940,11 @@ class TabularQLearning:
             self.decisions = int(counters["decisions"])
             self.transitions = int(counters["transitions"])
             self.train_steps = int(counters["train_steps"])
-            if min(self.decisions, self.transitions, self.train_steps) < 0:
-                raise ValueError("negative training counter")
+            self._resume_time_offset_s = float(state.get("elapsed_time_s", 0.0))
+            if min(self.decisions, self.transitions, self.train_steps) < 0 \
+                    or not math.isfinite(self._resume_time_offset_s) \
+                    or self._resume_time_offset_s < 0:
+                raise ValueError("negative or non-finite training counter/time")
         except (KeyError, TypeError, ValueError) as exc:
             raise LearningUnavailable(f"Q-learning resume state is invalid: {exc}") from exc
         self.loaded_resume_path = str(root.resolve())
@@ -1325,6 +1970,7 @@ class TabularQLearning:
             json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
         state = {
             "numpy_rng_state": _resume_json(self.rng.bit_generator.state),
+            "elapsed_time_s": float(self._resume_time_offset_s + self._last_now),
             "counters": {
                 "decisions": int(self.decisions),
                 "transitions": int(self.transitions),
@@ -1333,15 +1979,8 @@ class TabularQLearning:
         }
         (out / "state.json").write_text(
             json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        identity = {
-            "algorithm": "qlearning",
-            "contract": self.contract,
-            "seed": self.seed,
-            "gamma": self.gamma,
-            "alpha": self.alpha,
-        }
         sha = _write_resume_manifest(
-            out, "leo-sim-qlearning-resume/v1", identity)
+            out, "leo-sim-qlearning-resume/v1", self._q_resume_identity())
         verified = _verify_resume_bundle(
             out, sha, "leo-sim-qlearning-resume/v1")
         self.resume_manifest_sha256 = sha
@@ -1371,6 +2010,215 @@ class TabularQLearning:
             "train_steps": self.train_steps,
             "table_size": len(self.table),
             "seed": self.seed,
+            "agent_scope": str(self.cfg.get("agent_scope", "shared")),
+            "include_last_hop": self.include_last_hop,
+        }
+
+
+class PerSatelliteTabularQLearning:
+    """Independent per-satellite tabular Q-learning (no Federated sync)."""
+
+    def __init__(self, contract: str, cfg: dict, seed: int):
+        if contract not in CONTRACT_DIMS:
+            raise ValueError(f"unknown learning contract {contract!r}")
+        self.contract = contract
+        self.include_last_hop = bool(cfg.get("include_last_hop", False))
+        self.input_dim = contract_dim(contract, self.include_last_hop)
+        self.cfg = dict(cfg)
+        self.seed = int(seed)
+        self.mode = cfg["mode"]
+        self.alpha = float(cfg.get("qlearning_alpha", 0.25))
+        self.gamma = float(cfg["gamma"])
+        self.tables: dict[int, dict[bytes, np.ndarray]] = {}
+        self.rngs: dict[int, np.random.Generator] = {}
+        self.loaded_checkpoint = None
+        self.loaded_checkpoint_sha256 = None
+        self.loaded_checkpoint_metadata_sha256 = None
+        self.loaded_resume_path = None
+        self.loaded_resume_sha256 = None
+        self.resume_manifest_sha256 = None
+        self.resume_verified = False
+        self.decisions = 0
+        self.transitions = 0
+        self.train_steps = 0
+        self._resume_time_offset_s = 0.0
+        self._last_now = 0.0
+
+    @property
+    def table_size(self) -> int:
+        return sum(len(tbl) for tbl in self.tables.values())
+
+    def _agent(self, sat_id: int) -> tuple[dict[bytes, np.ndarray], np.random.Generator]:
+        sid = int(sat_id)
+        if sid < 0:
+            raise ValueError(f"satellite id must be non-negative, got {sid}")
+        tbl = self.tables.get(sid)
+        if tbl is None:
+            tbl = {}
+            self.tables[sid] = tbl
+            self.rngs[sid] = np.random.default_rng(
+                np.random.SeedSequence([self.seed, sid]))
+        return tbl, self.rngs[sid]
+
+    def _row(self, sat_id: int, observation) -> np.ndarray:
+        tbl, rng = self._agent(sat_id)
+        key = TabularQLearning._key(observation)
+        row = tbl.get(key)
+        if row is None:
+            if self.mode == "eval":
+                return np.zeros(len(ACTIONS))
+            row = rng.random(len(ACTIONS))
+            tbl[key] = row
+        return row
+
+    def epsilon(self, now: float) -> float:
+        if self.mode == "eval":
+            return 0.0
+        start = float(self.cfg["epsilon_start"])
+        end = float(self.cfg["epsilon_end"])
+        decay = float(self.cfg["epsilon_decay_s"])
+        elapsed = self._resume_time_offset_s + max(0.0, float(now))
+        return end + (start - end) * math.exp(-elapsed / decay)
+
+    def choose_for(self, sat_id: int, observation: np.ndarray,
+                   mask: dict, now: float) -> str:
+        legal = TabularQLearning._legal(mask)
+        _tbl, rng = self._agent(sat_id)
+        self._last_now = max(self._last_now, float(now))
+        if self.mode != "eval" and rng.random() < self.epsilon(now):
+            chosen = int(rng.choice(legal))
+        else:
+            row = self._row(sat_id, observation)
+            chosen = int(legal[np.argmax(row[legal])])
+        self.decisions += 1
+        return ACTIONS[chosen]
+
+    def remember_for(self, sat_id: int, state, action: str, reward: float,
+                     next_state, next_mask: dict, done: bool) -> None:
+        if action not in ACTIONS:
+            raise ValueError(f"unknown Q-learning action {action!r}")
+        row = self._row(sat_id, state)
+        idx = ACTIONS.index(action)
+        if self.mode == "train":
+            if done:
+                row[idx] = float(reward)
+            else:
+                next_row = self._row(sat_id, next_state)
+                legal_next = TabularQLearning._legal(next_mask)
+                max_next = float(np.max(next_row[legal_next]))
+                row[idx] = ((1.0 - self.alpha) * row[idx]
+                            + self.alpha * (float(reward) + self.gamma * max_next))
+            self.train_steps += 1
+        self.transitions += 1
+
+    def choose(self, observation: np.ndarray, mask: dict, now: float) -> str:
+        return self.choose_for(0, observation, mask, now)
+
+    def remember(self, state, action: str, reward: float, next_state,
+                 next_mask: dict, done: bool) -> None:
+        self.remember_for(0, state, action, reward, next_state, next_mask, done)
+
+    def save_and_verify(self, directory: str | Path) -> dict:
+        out = Path(directory)
+        out.mkdir(parents=True, exist_ok=True)
+        expected_key_bytes = self.input_dim * 8
+        expected_key_dims = self.input_dim
+        for tbl in self.tables.values():
+            for key, row in tbl.items():
+                if len(key) != expected_key_bytes:
+                    raise LearningUnavailable(
+                        "cannot save Q-learning checkpoint: state key width "
+                        f"{len(key)} != contract observation width "
+                        f"{expected_key_bytes}")
+                key_view = np.frombuffer(key, dtype="<f8")
+                if key_view.shape != (expected_key_dims,) \
+                        or not np.all(np.isfinite(key_view)):
+                    raise LearningUnavailable(
+                        "cannot save Q-learning checkpoint: state key is not a "
+                        f"finite float64 {expected_key_dims}-dim observation")
+                if row.shape != (len(ACTIONS),) or not np.all(np.isfinite(row)):
+                    raise LearningUnavailable(
+                        "cannot save Q-learning checkpoint: Q row width or "
+                        "finiteness mismatch")
+
+        rep_sat = min(self.tables) if self.tables else None
+        rep_tbl = self.tables[rep_sat] if rep_sat is not None else {}
+        payload = {
+            "schema": "leo-sim-qlearning-table/v1",
+            "contract": self.contract,
+            "entries": [[key.hex(), [float(v) for v in row]]
+                        for key, row in sorted(rep_tbl.items())],
+        }
+        table_path = out / "q_table.json"
+        table_path.write_text(json.dumps(payload, sort_keys=True) + "\n",
+                              encoding="utf-8")
+        data = table_path.read_bytes()
+        checkpoint_sha = hashlib.sha256(data).hexdigest()
+        loaded = _read_json_bytes(data, "Q-learning checkpoint")
+        verified = loaded == payload
+
+        all_payload = {
+            "schema": "leo-sim-per-sat-qlearning-tables/v1",
+            "contract": self.contract,
+            "include_last_hop": self.include_last_hop,
+            "satellites": {
+                str(sid): [[key.hex(), [float(v) for v in row]]
+                           for key, row in sorted(tbl.items())]
+                for sid, tbl in sorted(self.tables.items())
+            },
+        }
+        all_path = out / "per_satellite_q_tables.json"
+        all_path.write_text(json.dumps(all_payload, sort_keys=True) + "\n",
+                            encoding="utf-8")
+        all_data = all_path.read_bytes()
+        all_sha = hashlib.sha256(all_data).hexdigest()
+        all_loaded = _read_json_bytes(all_data, "Per-satellite Q-learning tables")
+        all_verified = all_loaded == all_payload
+
+        metadata = self.diagnostics()
+        metadata.update({
+            "schema": "leo-sim-qlearning/v1",
+            "checkpoint": table_path.name,
+            "checkpoint_sha256": checkpoint_sha,
+            "checkpoint_verified": verified and all_verified,
+            "representative_sat": rep_sat,
+            "per_satellite_q_tables": all_path.name,
+            "per_satellite_q_tables_sha256": all_sha,
+            "per_satellite_verified": all_verified,
+        })
+        (out / "metadata.json").write_text(
+            json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
+        if not (verified and all_verified):
+            raise LearningUnavailable(
+                "saved per-satellite Q-learning checkpoint failed verification")
+        result = dict(metadata)
+        result["metadata_sha256"] = hashlib.sha256(
+            (out / "metadata.json").read_bytes()).hexdigest()
+        return result
+
+    def diagnostics(self) -> dict:
+        return {
+            "algorithm": "qlearning",
+            "contract": self.contract,
+            "mode": self.mode,
+            "loaded_checkpoint": self.loaded_checkpoint,
+            "loaded_checkpoint_sha256": self.loaded_checkpoint_sha256,
+            "loaded_checkpoint_metadata_sha256":
+                self.loaded_checkpoint_metadata_sha256,
+            "loaded_resume_path": self.loaded_resume_path,
+            "loaded_resume_sha256": self.loaded_resume_sha256,
+            "resume_manifest_sha256": self.resume_manifest_sha256,
+            "resume_verified": self.resume_verified,
+            "actions": list(ACTIONS),
+            "decisions": self.decisions,
+            "transitions": self.transitions,
+            "train_steps": self.train_steps,
+            "table_size": self.table_size,
+            "seed": self.seed,
+            "agent_scope": "per_satellite",
+            "n_agents": len(self.tables),
+            "include_last_hop": self.include_last_hop,
         }
 
 
@@ -1589,12 +2437,16 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
                             isl_queue_cap: int = 256_000_000,
                             obs_hops: int | None = None,
                             dst_feats: np.ndarray | None = None,
-                            root_pos: tuple | None = None) -> np.ndarray:
+                            root_pos: tuple | None = None,
+                            first_dirs: dict[int, str] | None = None,
+                            include_last_hop: bool = False,
+                            last_hop_dir: str | None = None) -> np.ndarray:
     """Fixed-width flattened k-hop subgraph for the GAT/MPNN contracts.
 
     Layout: node features [MAX_N, GRAPH_NODE_FEAT_DIM] + directed adjacency
     [MAX_N, MAX_N] + directional readout masks [4, MAX_N] + own-state tail
-    [OWN_FEATURES] + destination features [DEST_FEATURES].
+    [OWN_FEATURES] + destination features [DEST_FEATURES]
+    (+ optional 4-dim one-hot incoming hop direction when include_last_hop).
     Nodes are the actually-arrived valid cache origins plus the root; only
     payload fields carried by arrived ControlPackets enter node features
     (no future geometry, no hidden global queues).
@@ -1607,9 +2459,16 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
     """
     entries = information_set(contract, sat, cache, now, topo,
                               obs_hops=obs_hops)
-    first_dirs = _bfs_first_dirs(sat, topo)
+    if first_dirs is None:
+        first_dirs = _bfs_first_dirs(sat, topo)
     n = GRAPH_MAX_NODES
-    origins = sorted(set(entries) - {sat})
+    # Prioritize closer (fewer control hops) and fresher (lower AoI) origins
+    # when truncating to GRAPH_MAX_NODES - 1 so large constellations never drop
+    # immediate 1-hop high-ID neighbors in favor of distant low-ID satellites.
+    origins = sorted(
+        (o for o in entries if o != sat),
+        key=lambda o: (entries[o].hops, entries[o].aoi(now), o),
+    )
     nodes = [sat] + origins[:n - 1]
     overflow = max(0, len(origins) - (n - 1))
     index = {node: i for i, node in enumerate(nodes)}
@@ -1645,9 +2504,11 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
     if df.shape[0] != DEST_FEATURES:
         raise ValueError(f"dst_feats must have {DEST_FEATURES} dims, got {df.shape}")
     tail = np.concatenate([tail, df])
+    if include_last_hop:
+        tail = np.concatenate([tail, last_hop_features(last_hop_dir)])
     state = np.concatenate([feats.reshape(-1), adj.reshape(-1),
                             readout.reshape(-1), tail])
-    expected = graph_state_dim()
+    expected = graph_state_dim() + (LAST_HOP_FEATURES if include_last_hop else 0)
     if state.shape[0] != expected:
         raise AssertionError(f"graph state width {state.shape[0]} != {expected}")
     return state
@@ -1657,11 +2518,16 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                       own: np.ndarray, isl_queue_cap: int = 256_000_000,
                       obs_hops: int | None = None,
                       dst_feats: np.ndarray | None = None,
-                      root_pos: tuple | None = None) -> np.ndarray:
+                      root_pos: tuple | None = None,
+                      first_dirs: dict[int, str] | None = None,
+                      include_last_hop: bool = False,
+                      last_hop_dir: str | None = None) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
             contract, sat, cache, now, topo, own, isl_queue_cap,
-            obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos)
+            obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos,
+            first_dirs=first_dirs, include_last_hop=include_last_hop,
+            last_hop_dir=last_hop_dir)
     entries = information_set(contract, sat, cache, now, topo,
                               obs_hops=obs_hops)
     feats = {o: _origin_features(e, now, isl_queue_cap, topo, o)
@@ -1671,8 +2537,11 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
           if dst_feats is not None else np.zeros(DEST_FEATURES))
     if df.shape[0] != DEST_FEATURES:
         raise ValueError(f"dst_feats must have {DEST_FEATURES} dims, got {df.shape}")
+    lh = last_hop_features(last_hop_dir) if include_last_hop else None
 
     def _finish(base: np.ndarray) -> np.ndarray:
+        if lh is not None:
+            return np.concatenate([base, df, lh])
         return np.concatenate([base, df])
 
     if contract == "C1":

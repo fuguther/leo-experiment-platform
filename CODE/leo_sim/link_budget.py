@@ -21,6 +21,7 @@ All three use the same DVB-S2X-style MCS table (speff/linear thresholds).
 """
 from __future__ import annotations
 
+from bisect import bisect_right
 import dataclasses
 import math
 from functools import lru_cache
@@ -52,6 +53,8 @@ LEGACY_DVBS2X_LIN = np.array([
     23.1206479, 25.00345362, 30.26913428, 35.2370871, 38.63669771,
     45.18559444, 49.88844875, 52.96634439, 64.5654229, 72.27698036,
     76.55966069, 90.57326009])
+_LEGACY_DVBS2X_SPEFF_TUPLE = tuple(float(v) for v in LEGACY_DVBS2X_SPEFF)
+_LEGACY_DVBS2X_LIN_TUPLE = tuple(float(v) for v in LEGACY_DVBS2X_LIN)
 
 LEGACY_DVBS2X = "legacy-dvbs2x"
 
@@ -180,10 +183,12 @@ def mcs_rate_bps(slant_km: float, rf: RFParams,
     maxptx_db, g, no = _derived(rf)
     path_loss = 10 * math.log10((4 * math.pi * d_m * rf.frequency_hz / VC) ** 2)
     snr = 10 ** ((maxptx_db + g - path_loss - no) / 10)
-    feasible = LEGACY_DVBS2X_SPEFF[np.nonzero(LEGACY_DVBS2X_LIN <= snr)]
-    if feasible.size == 0:
+    if math.isnan(snr):
         return 0.0
-    rate = rf.bandwidth_hz * float(feasible[-1])
+    idx = bisect_right(_LEGACY_DVBS2X_LIN_TUPLE, snr) - 1
+    if idx < 0:
+        return 0.0
+    rate = rf.bandwidth_hz * _LEGACY_DVBS2X_SPEFF_TUPLE[idx]
     if rate < rf.min_rate_bps:
         return 0.0
     return rate

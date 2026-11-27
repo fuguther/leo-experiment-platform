@@ -101,6 +101,7 @@ class MemoizedGeometry:
         self._inner = inner
         self._capacity = capacity
         self._caches: dict[str, "OrderedDict"] = {}
+        self._no_change_suffix: dict[str, "OrderedDict"] = {}
         self._compose = (
             hasattr(inner, "ecef")
             and hasattr(inner, "min_elevation_deg")
@@ -295,6 +296,35 @@ class MemoizedGeometry:
             "isl_available", t, (a, b),
             lambda: self._inner.isl_available(a, b, t))
 
+    def _lookup_change_interval(self, name: str, suffix_key, key, t: float,
+                                limit: float, compute):
+        """Reuse certified change-free suffixes before calling ``_lookup_result``.
+
+        When ``_next_change_adaptive`` returns ``None`` for ``(t_prev, limit]``,
+        the certified rate bound guarantees no crossing anywhere in
+        ``(t_prev, limit]``, so any later query ``t`` with ``t_prev <= t < limit``
+        must also return ``None``.
+        """
+        certified = self._compose or self.certifies_change_times
+        suffix_cache = None
+        if certified and t < limit:
+            suffix_cache = self._no_change_suffix.get(name)
+            if suffix_cache is None:
+                suffix_cache = OrderedDict()
+                self._no_change_suffix[name] = suffix_cache
+            earliest = suffix_cache.get(suffix_key)
+            if earliest is not None and earliest <= t:
+                suffix_cache.move_to_end(suffix_key)
+                return None
+        res = self._lookup_result(name, key, compute)
+        if res is None and suffix_cache is not None:
+            earliest = suffix_cache.get(suffix_key)
+            suffix_cache[suffix_key] = t if earliest is None else min(earliest, t)
+            suffix_cache.move_to_end(suffix_key)
+            if len(suffix_cache) > self._capacity:
+                suffix_cache.popitem(last=False)
+        return res
+
     def next_gsl_change(self, sat_id: int, lat: float, lon: float, t: float,
                         limit: float):
         key = (sat_id, lat, lon, t, limit)
@@ -304,9 +334,10 @@ class MemoizedGeometry:
                     return self.elevation_deg(sat_id, lat, lon, x) \
                         - self._inner.min_elevation_deg
                 return _next_change_adaptive(margin, t, limit, ELEV_RATE_DEG_S)
-            return self._lookup_result("next_gsl_change", key, compute)
-        return self._lookup_result(
-            "next_gsl_change", key,
+            return self._lookup_change_interval(
+                "next_gsl_change", (sat_id, lat, lon, limit), key, t, limit, compute)
+        return self._lookup_change_interval(
+            "next_gsl_change", (sat_id, lat, lon, limit), key, t, limit,
             lambda: self._inner.next_gsl_change(sat_id, lat, lon, t, limit))
 
     def next_isl_change(self, a: int, b: int, t: float, limit: float):
@@ -327,9 +358,10 @@ class MemoizedGeometry:
                     return min(self._inner.max_isl_km - rng,
                                closest - EARTH_RADIUS_KM)
                 return _next_change_adaptive(margin, t, limit, RANGE_RATE_KM_S)
-            return self._lookup_result("next_isl_change", key, compute)
-        return self._lookup_result(
-            "next_isl_change", key,
+            return self._lookup_change_interval(
+                "next_isl_change", (a, b, limit), key, t, limit, compute)
+        return self._lookup_change_interval(
+            "next_isl_change", (a, b, limit), key, t, limit,
             lambda: self._inner.next_isl_change(a, b, t, limit))
 
     def next_slant_range_under(self, sat_id: int, lat: float, lon: float,
@@ -493,6 +525,9 @@ class Constellation:
         self.max_isl_km = max_isl_km
         self.geometry_epoch_s = float(geometry_epoch_s)
         self.r = EARTH_RADIUS_KM + altitude_km
+        self._inc_rad = math.radians(self.inclination_deg)
+        self._sin_inc = math.sin(self._inc_rad)
+        self._cos_inc = math.cos(self._inc_rad)
         # circular orbit period
         mu = 398600.4418  # km^3/s^2
         self.period_s = 2 * math.pi * math.sqrt(self.r ** 3 / mu)
@@ -516,9 +551,8 @@ class Constellation:
         idx = sat_id % self.per_plane
         raan = 2 * math.pi * plane / self.num_planes
         phase = 2 * math.pi * (idx / self.per_plane + at / self.period_s)
-        inc = math.radians(self.inclination_deg)
-        lat = math.asin(math.sin(inc) * math.sin(phase))
-        lon_inertial = math.atan2(math.cos(inc) * math.sin(phase), math.cos(phase)) + raan
+        lat = math.asin(self._sin_inc * math.sin(phase))
+        lon_inertial = math.atan2(self._cos_inc * math.sin(phase), math.cos(phase)) + raan
         lon = lon_inertial - EARTH_ROT_RATE_RAD_S * at
         lon = math.degrees((lon + math.pi) % (2 * math.pi) - math.pi)
         return math.degrees(lat), lon, self.altitude_km

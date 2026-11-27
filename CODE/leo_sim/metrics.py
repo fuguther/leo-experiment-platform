@@ -77,6 +77,7 @@ def summarize(
     queue_entries: dict[int, tuple[int, float, str]] = {}
     queue_wait: defaultdict[int, float] = defaultdict(float)
     service_starts: dict[tuple[int, int], dict] = {}
+    service_count_by_pid: defaultdict[int, int] = defaultdict(int)
     prop_starts: dict[tuple[int, int], dict] = {}
     completed_uplink_arrivals: defaultdict[int, list[dict]] = defaultdict(list)
     consumed_uplink_arrivals: defaultdict[int, int] = defaultdict(int)
@@ -160,7 +161,9 @@ def summarize(
                 if at < entered_at:
                     raise MetricsError("service_start precedes queue_enter")
                 queue_wait[pid] += at - entered_at
-            key = (pid, len([k for k in service_starts if k[0] == pid]))
+            count = service_count_by_pid[pid]
+            service_count_by_pid[pid] = count + 1
+            key = (pid, count)
             service_starts[key] = {
                 "at": at, "stage": stage, "link_id": link_id,
                 "bits": bits, "rate_bps": rate,

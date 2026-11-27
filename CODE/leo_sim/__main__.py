@@ -20,6 +20,7 @@ import tempfile
 from pathlib import Path
 
 from . import acceptance as acceptance_mod
+from . import batch as batch_mod
 from . import comparison as comparison_mod
 from . import config as config_mod
 from . import decision_ledger
@@ -249,21 +250,7 @@ def _cmd_config_validate(args) -> int:
 
 
 def _compile(resolved: dict, out_dir: str) -> tuple[dict, bytes, list[dict]]:
-    evidence: dict = {}
-    manifest = trace_mod.compile_trace(resolved, out_dir, evidence=evidence)
-    trace_bytes = (Path(out_dir) / "trace.csv").read_bytes()
-    manifest_bytes = (Path(out_dir) / "manifest.json").read_bytes()
-    manifest["__trace_sha256"] = hashlib.sha256(trace_bytes).hexdigest()
-    manifest["__sha256"] = hashlib.sha256(manifest_bytes).hexdigest()
-    rows = trace_mod.load_trace(
-        str(Path(out_dir) / "trace.csv"),
-        horizon_s=resolved["config"]["scenario"]["duration_s"],
-        max_packets=resolved["config"]["execution"]["max_packets"])
-    # Input materialization evidence for the CLI output: produced by the gate
-    # inside compile_trace (the only place that knows the real endpoint set)
-    # and carried here under a "__" key, which never reaches manifest.json.
-    manifest["__materialization"] = evidence["materialization"]
-    return manifest, trace_bytes, rows
+    return batch_mod.compile_run_trace(resolved, out_dir)
 
 
 def _cmd_trace_compile(args) -> int:
@@ -771,6 +758,31 @@ def _cmd_compare_run(args) -> int:
     return 0 if summary["status"] == "PASS" else 8
 
 
+def _cmd_batch(args) -> int:
+    root = Path(args.out_root)
+    if root.is_symlink():
+        print(f"BATCH REFUSED: output root may not be a symlink: {root}")
+        return 2
+    if root.exists() and (not root.is_dir() or any(root.iterdir())):
+        print(f"BATCH REFUSED: output root must be a new or empty directory: {root}")
+        return 2
+    try:
+        summary = batch_mod.run_batch(
+            root,
+            configs=args.configs,
+            config_path=args.config,
+            seeds=args.seeds,
+            workers=args.workers,
+            threads_per_worker=args.threads_per_worker,
+        )
+    except ValueError as exc:
+        print(f"BATCH REFUSED: {exc}")
+        return 2
+    _publish_json_new(root / "batch-summary.json", summary)
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    return 0 if summary["status"] == "PASS" else 5
+
+
 def _cmd_platform_check(args) -> int:
     try:
         summary = platform_check_mod.run_platform_check(
@@ -886,6 +898,15 @@ def main(argv=None) -> int:
     pc.add_argument("--population-config", default=str(
         Path(__file__).resolve().parent / "profiles" / "population_gravity.yaml"))
     pc.set_defaults(fn=_cmd_platform_check)
+
+    bp = sub.add_parser("batch", help="run multiple configs/seeds in parallel across CPU workers")
+    bp.add_argument("--out-root", required=True)
+    bp.add_argument("--configs", nargs="+", default=None)
+    bp.add_argument("--config", default=None)
+    bp.add_argument("--seeds", nargs="+", type=int, default=None)
+    bp.add_argument("--workers", type=int, default=None)
+    bp.add_argument("--threads-per-worker", type=int, default=None)
+    bp.set_defaults(fn=_cmd_batch)
 
     args = ap.parse_args(argv)
     try:

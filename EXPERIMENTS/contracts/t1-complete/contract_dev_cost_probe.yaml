@@ -18,7 +18,7 @@ design_readiness:
     allow_append: false
     task: network_alignment
     seed: 7
-    execution_chain_sha256: 78105787fc1a01c921745b87a3b6c8a281edd9ce58a4b1cd91f269c3e66ae0ad
+    execution_chain_sha256: bcfa558e90ebdcefee240327d66c9308c7553af07e2274cf3d90af5f49bb126f
     cell_input_sha256:
       b-bounded_population_cost_smoke-network-seed-7: 9595d6babaade0c6f3841825b14af70ab16bf85b9f965102444fe1fedc438b12
   release_ready: false
@@ -101,13 +101,22 @@ design_readiness:
     Profile, population raster, compiled trace, seed, arm order, cell input,
     four-call budget, and simulation semantics remain unchanged. No cost probe
     or performance simulation was run by this re-pin.
+    ROUND20 (2026-11-27) re-binds the same one-cell/four-call scope to the
+    leo_sim optimization and learning-architecture branch (78105787 -> bcfa558e).
+    The execution chain gained CODE/leo_sim/batch.py and updated kernel,
+    learning, inference, config, link_budget, model, metrics, and __main__ for
+    container CPU caps, O(N) metrics, MCS bisect, change-free geometry suffix
+    caching, NumPy MLP fast forward, TF ConcreteFunctions, train_every_steps,
+    per-satellite DDQN/Q-learning, clip_norm, and include_last_hop. Profile,
+    population raster, compiled trace, seed, arm order, four-call budget, and
+    cell input digest (9595d6ba) are unchanged.
 input_identity:
   profile_path: CODE/leo_sim/profiles/t1_population_region_cost_smoke.yaml
   profile_sha256: c8bc49fb057dc0ba846334f02c33e06a3cd3494e2d90868ccfdffd522efc9451
   population_path: CODE/population_map/gpw_v4_population_count_rev11_2020_15_min.tif
   population_sha256: c5742d16fc01d454e8ac5c5345a7e7716883acd28ac4d0d34c24613bc315e59a
   advertisement_protocol_version: 2
-  source_execution_chain_sha256: 78105787fc1a01c921745b87a3b6c8a281edd9ce58a4b1cd91f269c3e66ae0ad
+  source_execution_chain_sha256: bcfa558e90ebdcefee240327d66c9308c7553af07e2274cf3d90af5f49bb126f
   compiled_trace_sha256: f647b978aa59b0ac3f511a94ce335a98099de7d1eb47df893f33ea38f4508de8
   bundle_sha256: null
   cell_input_sha256:

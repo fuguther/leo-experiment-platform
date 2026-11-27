@@ -410,6 +410,13 @@ def test_strict_receipt_verify_still_rejects_different_runtime_identity(
     out = _build_small_run(tmp_path)
     assert receipt.verify_receipt_dir(str(out)) == []
     _stamp_historical_runtime(out)
+    # Ensure at least one recorded dependency differs even on a host whose
+    # installed versions happen to match VM_RUNTIME_DEPS (such as the VM itself).
+    rcp_path = out / "receipt.json"
+    rcp = json.loads(rcp_path.read_text(encoding="utf-8"))
+    rcp["deps"]["numpy"] = "0.0.0-historical"
+    rcp_path.write_text(
+        json.dumps(rcp, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     errors = receipt.verify_receipt_dir(str(out))
     assert any("code sha mismatch" in e for e in errors)
     assert any("dependency versions differ" in e for e in errors)
