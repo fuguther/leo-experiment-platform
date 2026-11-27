@@ -140,7 +140,10 @@ def test_scene_catalogs_and_native_config_contract(builder, tmp_path):
     assert cfg_b["demand"]["deadline_s"] == 0.280
     assert cfg_b["demand"]["research_deadline_s"] == 0.280
     assert cfg_b["links"]["isl_rate_mbps"] == 60.0
-    assert cfg_b["links"]["isl_queue_bits"] == 1_500_000
+    assert cfg_b["links"]["isl_queue_bits"] == 1_800_000
+    assert cfg_b["demand"]["packet_bits"] == 128_000
+    assert 0.030 <= (cfg_b["links"]["isl_queue_bits"]
+                      / (cfg_b["links"]["isl_rate_mbps"] * 1_000_000)) <= 0.035
     assert cfg_b["links"]["max_isl_km"] >= 6_000.0
     assert cfg_b["control_plane"]["advertise_interval_s"] == 0.10
 

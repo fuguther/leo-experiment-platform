@@ -58,7 +58,7 @@ EMISSION_WINDOW_S = (0.2, 7.5)
 PULSE_WINDOW_S = (2.0, 3.5)
 DURATION_S = 9.5
 REAL_CONTROL_INTERVALS_S = (0.01, 0.05, 0.10)
-DEFAULT_OFFERED_MBPS = {"A": 100.0, "B": 85.0}
+DEFAULT_OFFERED_MBPS = {"A": 100.0, "B": 180.0}
 MAX_PACKETS = 200_000
 
 
@@ -197,7 +197,6 @@ SCENE_B_HOTSPOTS = (
 def _scene_spec(scene: str) -> SceneSpec:
     normalized = scene.upper()
     common = {
-        "packet_bits": 64_000,
         "minimum_site_distance_km": 6_000.0,
     }
     if normalized == "A":
@@ -210,6 +209,7 @@ def _scene_spec(scene: str) -> SceneSpec:
             inclination_deg=53.0,
             isl_rate_mbps=70.0,
             isl_queue_bits=2_240_000,
+            packet_bits=64_000,
             hard_deadline_s=0.240,
             sites=SCENE_A_SITES,
             corridor_weights=SCENE_A_CORRIDORS,
@@ -225,7 +225,8 @@ def _scene_spec(scene: str) -> SceneSpec:
             altitude_km=780.0,
             inclination_deg=86.4,
             isl_rate_mbps=60.0,
-            isl_queue_bits=1_500_000,
+            isl_queue_bits=1_800_000,
+            packet_bits=128_000,
             hard_deadline_s=0.280,
             sites=SCENE_B_SITES,
             corridor_weights=SCENE_B_CORRIDORS,
