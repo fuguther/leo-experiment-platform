@@ -102,6 +102,7 @@ class MemoizedGeometry:
         self._capacity = capacity
         self._caches: dict[str, "OrderedDict"] = {}
         self._no_change_suffix: dict[str, "OrderedDict"] = {}
+        self._ground_station_ecef: "OrderedDict" = OrderedDict()
         self._compose = (
             hasattr(inner, "ecef")
             and hasattr(inner, "min_elevation_deg")
@@ -158,6 +159,25 @@ class MemoizedGeometry:
             cache.popitem(last=False)
         return value
 
+    def _ground_station(self, lat: float, lon: float):
+        """Exact fixed-point ECEF and local-up vectors for ``(lat, lon)``."""
+        key = (lat, lon)
+        hit = self._ground_station_ecef.get(key)
+        if hit is not None:
+            self._ground_station_ecef.move_to_end(key)
+            return hit
+        gx, gy, gz = _sph_to_ecef(lat, lon, EARTH_RADIUS_KM)
+        value = (
+            gx, gy, gz,
+            gx / EARTH_RADIUS_KM,
+            gy / EARTH_RADIUS_KM,
+            gz / EARTH_RADIUS_KM,
+        )
+        self._ground_station_ecef[key] = value
+        if len(self._ground_station_ecef) > self._capacity:
+            self._ground_station_ecef.popitem(last=False)
+        return value
+
     # ---- pure queries, memoized by exact arguments -----------------------
 
     def subpoint(self, sat_id: int, t: float):
@@ -200,16 +220,13 @@ class MemoizedGeometry:
             if hit is not _MISS:
                 return hit
             sat = self.ecef(sat_id, t)
-            gs = _sph_to_ecef(lat, lon, EARTH_RADIUS_KM)
-            dx, dy, dz = sat[0] - gs[0], sat[1] - gs[1], sat[2] - gs[2]
+            gx, gy, gz, upx, upy, upz = self._ground_station(lat, lon)
+            dx, dy, dz = sat[0] - gx, sat[1] - gy, sat[2] - gz
             rng = math.sqrt(dx * dx + dy * dy + dz * dz)
             if rng == 0:
                 value = 90.0
             else:
-                up = (gs[0] / EARTH_RADIUS_KM,
-                      gs[1] / EARTH_RADIUS_KM,
-                      gs[2] / EARTH_RADIUS_KM)
-                cos_z = (dx * up[0] + dy * up[1] + dz * up[2]) / rng
+                cos_z = (dx * upx + dy * upy + dz * upz) / rng
                 value = math.degrees(
                     math.asin(max(-1.0, min(1.0, cos_z))))
             slot[key] = value

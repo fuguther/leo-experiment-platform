@@ -172,11 +172,18 @@ FIELD_AUTHORITY = {
 
 
 def code_sha256() -> str:
-    """SHA256 over the leo_sim package sources (sorted, path-bound)."""
+    """SHA256 over non-test leo_sim sources, recursively and path-bound."""
     pkg = Path(__file__).resolve().parent
     h = hashlib.sha256()
-    for p in sorted(pkg.glob("*.py")):
-        h.update(p.name.encode())
+    sources = []
+    for p in pkg.rglob("*.py"):
+        rel = p.relative_to(pkg)
+        if any(part in {"tests", "__pycache__"} or part.startswith(".")
+               for part in rel.parts):
+            continue
+        sources.append((rel.as_posix(), p))
+    for rel, p in sorted(sources, key=lambda item: item[0]):
+        h.update(rel.encode())
         h.update(hashlib.sha256(p.read_bytes()).digest())
     return h.hexdigest()
 

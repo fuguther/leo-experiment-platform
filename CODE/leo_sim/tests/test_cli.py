@@ -451,3 +451,14 @@ def test_batch_cli_runs_parallel_seeds_and_verifies_receipts(tmp_path, capsys):
     sub_summary = json.loads(proc.stdout)
     assert sub_summary["status"] == "PASS"
     assert [r["seed"] for r in sub_summary["runs"]] == [5, 6]
+
+    inline = subprocess.run(
+        [sys.executable, "-c",
+         "from CODE.leo_sim.batch import run_batch; "
+         f"run_batch({str(tmp_path / 'batch_inline')!r}, "
+         f"configs=[{cfg!r}, {cfg!r}], workers=2)"],
+        cwd=str(Path(__file__).resolve().parents[3]),
+        capture_output=True, text=True,
+    )
+    assert inline.returncode != 0
+    assert "multi-worker batch requires a file entrypoint" in inline.stderr

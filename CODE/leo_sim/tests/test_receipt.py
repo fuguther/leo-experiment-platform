@@ -445,6 +445,29 @@ def test_unbound_artifact_integrity_identity_matches_local_on_fresh_run(
     assert identity["deps"] == receipt.dependency_versions()
 
 
+def test_code_sha256_recursively_binds_runtime_sources_but_not_tests(
+        tmp_path, monkeypatch):
+    pkg = tmp_path / "leo_sim"
+    nested = pkg / "rl" / "agents" / "ddqn.py"
+    nested.parent.mkdir(parents=True)
+    (pkg / "receipt.py").write_text("RECEIPT = 1\n", encoding="utf-8")
+    nested.write_text("ENGINE = 1\n", encoding="utf-8")
+    test_source = pkg / "tests" / "test_engine.py"
+    test_source.parent.mkdir()
+    test_source.write_text("TEST_TOKEN = 1\n", encoding="utf-8")
+    hidden_source = pkg / ".hidden.py"
+    hidden_source.write_text("HIDDEN_TOKEN = 1\n", encoding="utf-8")
+    monkeypatch.setattr(receipt, "__file__", str(pkg / "receipt.py"))
+
+    baseline = receipt.code_sha256()
+    test_source.write_text("TEST_TOKEN = 2\n", encoding="utf-8")
+    hidden_source.write_text("HIDDEN_TOKEN = 2\n", encoding="utf-8")
+    assert receipt.code_sha256() == baseline
+
+    nested.write_text("ENGINE = 2\n", encoding="utf-8")
+    assert receipt.code_sha256() != baseline
+
+
 def test_unbound_artifact_integrity_still_rejects_artifact_tampering(
         tmp_path):
     """Posterior mode never relaxes artifact integrity: a tampered receipt
