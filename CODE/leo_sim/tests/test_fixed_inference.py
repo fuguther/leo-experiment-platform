@@ -314,7 +314,8 @@ def test_the_checkpoint_load_gate_checks_the_declared_width(tmp_path,
     assert "!=" in str(excinfo.value)
 
 
-def test_the_checkpoint_load_gate_reports_a_blocker_without_a_loader(tmp_path):
+def test_the_checkpoint_load_gate_reports_a_blocker_without_a_loader(tmp_path, monkeypatch):
+    monkeypatch.setattr(inference, "tf_available", lambda: False)
     ckpt = tmp_path / "m.h5"
     ckpt.write_bytes(b"x")
     meta = tmp_path / "metadata.json"

@@ -2183,6 +2183,7 @@ class Kernel:
         self._routing_sorted_rev_adj = {
             s: sorted(self._routing_reverse_adj.get(s, ()))
             for s in self._routing_reverse_adj}
+        self._learning_first_dirs = {}
         self.control_children = [
             routing.control_broadcast_children(
                 self.topo, origin, self.cfg_cp["vis_k"])
@@ -4126,16 +4127,25 @@ class Kernel:
             dst_feats = _learning.destination_features(
                 sat_lat, sat_lon, ep.lat, ep.lon)
         root_pos = None
+        first_dirs = None
         if self.cfg_rt["contract"] in _learning.GRAPH_CONTRACTS:
             # The root satellite's own position is directly measured local
             # state: query geometry, never the control cache — the control
             # plane explicitly refuses to cache a satellite's own looped
             # advertisement, so a cache lookup would read (0, 0, 0).
-            root_pos = self.geometry.positions(self.env.now)[sat]
+            try:
+                root_pos = self.geometry.ecef(sat, self.env.now)
+            except AttributeError:
+                root_pos = self.geometry.positions(self.env.now)[sat]
+            first_dirs = self._learning_first_dirs.get(sat)
+            if first_dirs is None:
+                first_dirs = _learning._bfs_first_dirs(sat, self.topo)
+                self._learning_first_dirs[sat] = first_dirs
         return _learning.build_observation(
             self.cfg_rt["contract"], sat, self.caches[sat], self.env.now,
             self.topo, own, self.cfg_links["isl_queue_bits"],
             obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos,
+            first_dirs=first_dirs,
         )
 
     def _finish_learning_transition(self, pkt: DataPacket, next_state,
@@ -6927,20 +6937,25 @@ class Kernel:
             self._timeline("redecision", pkt, decision_id,
                            prev_decision_id=pkt.decision_id, sat=int(sat),
                            obs_mode=self.obs_mode)
+        need_audit = (self.decision_sink is not None
+                      or self.timeline_sink is not None)
         if pkt.deadline is not None and now >= pkt.deadline:
-            self._timeline_decision_attempt(
-                pkt, sat, decision_id, "fail", "DATA_DEADLINE_EXPIRED",
-                self._four_direction_audit(
-                    pkt, sat, now, route_status="deadline_expired", kind="fail"),
-                "deadline_expired_before_routing")
+            if self.timeline_sink is not None:
+                self._timeline_decision_attempt(
+                    pkt, sat, decision_id, "fail", "DATA_DEADLINE_EXPIRED",
+                    self._four_direction_audit(
+                        pkt, sat, now, route_status="deadline_expired",
+                        kind="fail"),
+                    "deadline_expired_before_routing")
             self._fail(pkt, "DATA_DEADLINE_EXPIRED", decision_id=decision_id)
             return
         if len(pkt.path) > self.cfg_rt["max_hops"]:
-            self._timeline_decision_attempt(
-                pkt, sat, decision_id, "fail", "MAX_HOPS",
-                self._four_direction_audit(
-                    pkt, sat, now, route_status="max_hops", kind="fail"),
-                "maximum_hops_exceeded")
+            if self.timeline_sink is not None:
+                self._timeline_decision_attempt(
+                    pkt, sat, decision_id, "fail", "MAX_HOPS",
+                    self._four_direction_audit(
+                        pkt, sat, now, route_status="max_hops", kind="fail"),
+                    "maximum_hops_exceeded")
             self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             return
         ep = self._ensure_endpoint(pkt.dst)
@@ -6976,12 +6991,15 @@ class Kernel:
                         self._schedule_pending_wake(sat, nxt_up)
                 if pkt.deadline is not None:
                     self._schedule_pending_wake(sat, pkt.deadline)
-                self._timeline_decision_attempt(
-                    pkt, sat, decision_id, "hold", "deliver_mcs_unavailable",
-                    self._four_direction_audit(
-                        pkt, sat, now,
-                        route_status="deliver_mcs_unavailable", kind="deliver"),
-                    "downlink_zero_mcs_rate")
+                if self.timeline_sink is not None:
+                    self._timeline_decision_attempt(
+                        pkt, sat, decision_id, "hold",
+                        "deliver_mcs_unavailable",
+                        self._four_direction_audit(
+                            pkt, sat, now,
+                            route_status="deliver_mcs_unavailable",
+                            kind="deliver"),
+                        "downlink_zero_mcs_rate")
                 self._hold_packet(sat, pkt, decision_id=decision_id)
                 return
             dl = self.downlinks[sat]
@@ -7004,11 +7022,12 @@ class Kernel:
                                       decision_started_at=decision_started_at)
                 dl.put(pkt)
             else:
-                self._timeline_decision_attempt(
-                    pkt, sat, decision_id, "fail", "ACCESS_QUEUE_OVERFLOW",
-                    self._four_direction_audit(
-                        pkt, sat, now, route_status="deliver_queue_full",
-                        kind="deliver"), "downlink_queue_overflow")
+                if self.timeline_sink is not None:
+                    self._timeline_decision_attempt(
+                        pkt, sat, decision_id, "fail", "ACCESS_QUEUE_OVERFLOW",
+                        self._four_direction_audit(
+                            pkt, sat, now, route_status="deliver_queue_full",
+                            kind="deliver"), "downlink_queue_overflow")
                 self._fail(pkt, "ACCESS_QUEUE_OVERFLOW",
                            decision_id=decision_id)
             return
@@ -7042,13 +7061,14 @@ class Kernel:
                 if self.rate_model == "mcs" else None),
             cache_hops=cache_hops)
         if status == "unreachable":
-            direction_audit = self._four_direction_audit(
-                pkt, sat, now, route_candidates=cands,
-                loop_free_candidates=cands, legal=[], route_status=status,
-                kind="fail")
-            self._timeline_decision_attempt(
-                pkt, sat, decision_id, "fail", status, direction_audit,
-                "no_policy_route")
+            if self.timeline_sink is not None:
+                direction_audit = self._four_direction_audit(
+                    pkt, sat, now, route_candidates=cands,
+                    loop_free_candidates=cands, legal=[], route_status=status,
+                    kind="fail")
+                self._timeline_decision_attempt(
+                    pkt, sat, decision_id, "fail", status, direction_audit,
+                    "no_policy_route")
             self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             return
         if status == "no_info":
@@ -7060,13 +7080,14 @@ class Kernel:
             else:
                 no_info_action, no_info_kind = "hold", "hold"
                 no_info_reason = "no_current_routing_information"
-            direction_audit = self._four_direction_audit(
-                pkt, sat, now, route_candidates=cands,
-                loop_free_candidates=cands, legal=[], route_status=status,
-                kind=no_info_kind)
-            self._timeline_decision_attempt(
-                pkt, sat, decision_id, no_info_action, status,
-                direction_audit, no_info_reason)
+            if self.timeline_sink is not None:
+                direction_audit = self._four_direction_audit(
+                    pkt, sat, now, route_candidates=cands,
+                    loop_free_candidates=cands, legal=[], route_status=status,
+                    kind=no_info_kind)
+                self._timeline_decision_attempt(
+                    pkt, sat, decision_id, no_info_action, status,
+                    direction_audit, no_info_reason)
             if no_info_kind == "fail":
                 self._fail(pkt, "NO_ROUTE", decision_id=decision_id)
             else:
@@ -7120,10 +7141,12 @@ class Kernel:
             if link.room(pkt.bits):
                 legal.append(d)
         if legal:
-            direction_audit = self._four_direction_audit(
-                pkt, sat, now, route_candidates=route_candidates,
-                loop_free_candidates=loop_free_candidates, legal=legal,
-                route_status=status, kind="forward", ta_audit=ta_audit)
+            direction_audit = (
+                self._four_direction_audit(
+                    pkt, sat, now, route_candidates=route_candidates,
+                    loop_free_candidates=loop_free_candidates, legal=legal,
+                    route_status=status, kind="forward", ta_audit=ta_audit)
+                if need_audit else None)
             if self.learner is not None or self.fixed_policy is not None:
                 mask = {a: a in legal for a in _learning.ACTIONS}
                 action = self._learning_action(pkt, sat, mask)
@@ -7139,6 +7162,8 @@ class Kernel:
                 action = legal[0]
             action = self._apply_forced_action(pkt, sat, decision_id, action,
                                                legal)
+            if self.learner is not None and pkt.learning_state is not None:
+                pkt.learning_action = action
             pkt.decision_id = decision_id
             self._record_decision(pkt, sat, "forward", legal, action,
                                   audit_candidates=cands,
@@ -7149,13 +7174,14 @@ class Kernel:
             self.isls[sat][action].put_data(pkt)
             return
         if unavailable:
-            direction_audit = self._four_direction_audit(
-                pkt, sat, now, route_candidates=route_candidates,
-                loop_free_candidates=loop_free_candidates, legal=[],
-                route_status=status, kind="hold", ta_audit=ta_audit)
-            self._timeline_decision_attempt(
-                pkt, sat, decision_id, "hold", status, direction_audit,
-                "current_candidate_temporarily_unavailable")
+            if self.timeline_sink is not None:
+                direction_audit = self._four_direction_audit(
+                    pkt, sat, now, route_candidates=route_candidates,
+                    loop_free_candidates=loop_free_candidates, legal=[],
+                    route_status=status, kind="hold", ta_audit=ta_audit)
+                self._timeline_decision_attempt(
+                    pkt, sat, decision_id, "hold", status, direction_audit,
+                    "current_candidate_temporarily_unavailable")
             if rate_blocked:
                 self.mech["mcs_zero_rate_holds"] += 1
             if pkt.deadline is not None:
@@ -7166,22 +7192,24 @@ class Kernel:
                               decision_id=decision_id)  # unavailable: wait
             return
         if cands:
-            direction_audit = self._four_direction_audit(
-                pkt, sat, now, route_candidates=route_candidates,
-                loop_free_candidates=loop_free_candidates, legal=[],
-                route_status=status, kind="fail", ta_audit=ta_audit)
-            self._timeline_decision_attempt(
-                pkt, sat, decision_id, "fail", status, direction_audit,
-                "all_routed_candidates_have_no_queue_room")
+            if self.timeline_sink is not None:
+                direction_audit = self._four_direction_audit(
+                    pkt, sat, now, route_candidates=route_candidates,
+                    loop_free_candidates=loop_free_candidates, legal=[],
+                    route_status=status, kind="fail", ta_audit=ta_audit)
+                self._timeline_decision_attempt(
+                    pkt, sat, decision_id, "fail", status, direction_audit,
+                    "all_routed_candidates_have_no_queue_room")
             self._fail(pkt, "ISL_QUEUE_OVERFLOW", decision_id=decision_id)
         else:
-            direction_audit = self._four_direction_audit(
-                pkt, sat, now, route_candidates=route_candidates,
-                loop_free_candidates=loop_free_candidates, legal=[],
-                route_status=status, kind="fail", ta_audit=ta_audit)
-            self._timeline_decision_attempt(
-                pkt, sat, decision_id, "fail", status, direction_audit,
-                "all_policy_candidates_return_to_visited_satellites")
+            if self.timeline_sink is not None:
+                direction_audit = self._four_direction_audit(
+                    pkt, sat, now, route_candidates=route_candidates,
+                    loop_free_candidates=loop_free_candidates, legal=[],
+                    route_status=status, kind="fail", ta_audit=ta_audit)
+                self._timeline_decision_attempt(
+                    pkt, sat, decision_id, "fail", status, direction_audit,
+                    "all_policy_candidates_return_to_visited_satellites")
             self._fail(pkt, "NO_ROUTE",
                        decision_id=decision_id)  # every candidate loops
 

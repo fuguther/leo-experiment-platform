@@ -393,3 +393,95 @@ def test_c5_c7_reject_queue_bits_after_direction_removed():
         o = learning.build_observation(contract, 0, c, 6.0, topo, own)
         q = o[learning.OWN_FEATURES]
         assert q == 0.0, f"{contract} must reject a removed-direction record"
+
+
+def test_graph_observation_retains_close_high_id_neighbors_over_distant_low_ids():
+    """When cache origins exceed GRAPH_MAX_NODES - 1, closer/fresher origins
+    must be retained rather than truncating by ascending satellite ID."""
+    # 66-node ring where sat 60's 1-hop neighbors are 59 and 61, while 0..39
+    # are 2-to-4-hop distant entries with low IDs.
+    topo = {i: {"E": (i + 1) % 66, "W": (i - 1) % 66} for i in range(66)}
+    c = control.LocalCache()
+    for o in range(40):
+        c.put(control.CacheEntry(
+            o, {"isl_queue_bits": {"E": {"peer": (o + 1) % 66, "value": 100}},
+                "access_slots_used": 1, "access_slots_cap": 4,
+                "visible_cells": []},
+            5.0, 5.01, 10.0, hops=3))
+    for nb in (59, 61):
+        c.put(control.CacheEntry(
+            nb, {"isl_queue_bits": {"E": {"peer": (nb + 1) % 66, "value": 9999}},
+                 "access_slots_used": 2, "access_slots_cap": 4,
+                 "visible_cells": []},
+            5.5, 5.51, 10.0, hops=1))
+    o = learning.build_observation("GAT", 60, c, 6.0, topo, _own())
+    n = learning.GRAPH_MAX_NODES
+    feats = o[:n * learning.GRAPH_NODE_FEAT_DIM].reshape(
+        n, learning.GRAPH_NODE_FEAT_DIM)
+    # 1-hop neighbor slots must appear (hop_norm == 1/4 == 0.25) and have
+    # first-hop direction E or W (columns 8..11) active in the subgraph.
+    one_hop_rows = [i for i in range(1, n) if np.isclose(feats[i, 4], 0.25)]
+    assert len(one_hop_rows) == 2
+
+
+def test_qlearning_resume_preserves_elapsed_time_for_epsilon_decay(tmp_path):
+    from CODE.leo_sim import config
+    resolved = config.resolve_config({
+        "control_plane": {"enabled": True},
+        "routing": {"policy": "hop", "learning_enabled": True},
+        "learning": {
+            "algorithm": "qlearning", "mode": "train",
+            "epsilon_start": 0.9, "epsilon_end": 0.1, "epsilon_decay_s": 5.0,
+        },
+    })
+    cfg = resolved["config"]["learning"]
+    ql = learning.TabularQLearning("C3", cfg, seed=7)
+    dim = learning.CONTRACT_DIMS["C3"]
+    mask = {a: True for a in learning.ACTIONS}
+    ql.choose(np.zeros(dim), mask, 5.0)
+    eps_at_5 = ql.epsilon(5.0)
+    meta = ql.save_and_verify(tmp_path)
+    resumed_cfg = dict(cfg, resume_path=str(tmp_path / "resume"),
+                       resume_sha256=meta["resume_sha256"])
+    resumed = learning.TabularQLearning("C3", resumed_cfg, seed=7)
+    assert resumed.epsilon(0.0) == pytest.approx(eps_at_5)
+
+
+@pytest.mark.skipif(importlib.util.find_spec("tensorflow") is None,
+                    reason="TensorFlow compiled-inference test requires TF runtime")
+def test_ddqn_fast_train_matches_eager_and_preserves_epsilon_resume(tmp_path):
+    from CODE.leo_sim import config
+    base = config.resolve_config({
+        "scenario": {"seed": 7},
+        "control_plane": {"enabled": True},
+        "routing": {"policy": "hop", "learning_enabled": True, "contract": "C3"},
+        "learning": {
+            "algorithm": "ddqn", "mode": "train",
+            "batch_size": 2, "replay_size": 4, "target_update_interval": 2,
+            "epsilon_start": 0.8, "epsilon_end": 0.05, "epsilon_decay_s": 4.0,
+            "fast_train": True,
+        },
+    })["config"]["learning"]
+    eager_cfg = dict(base, fast_train=False)
+    fast_net = learning.TensorflowDDQN("C3", base, seed=11)
+    eager_net = learning.TensorflowDDQN("C3", eager_cfg, seed=11)
+    dim = learning.CONTRACT_DIMS["C3"]
+    mask = {a: True for a in learning.ACTIONS}
+    rng = np.random.default_rng(1)
+    for step in range(6):
+        s = rng.normal(size=dim)
+        ns = rng.normal(size=dim)
+        a1 = fast_net.choose(s, mask, float(step))
+        a2 = eager_net.choose(s, mask, float(step))
+        assert a1 == a2
+        fast_net.remember(s, a1, -1.0, ns, mask, False)
+        eager_net.remember(s, a2, -1.0, ns, mask, False)
+    assert len(fast_net.replay) == 4
+    for lw, rw in zip(fast_net.online.get_weights(), eager_net.online.get_weights()):
+        assert np.allclose(lw, rw, atol=1e-6)
+    eps_at_5 = fast_net.epsilon(5.0)
+    meta = fast_net.save_and_verify(tmp_path)
+    resumed = learning.TensorflowDDQN(
+        "C3", dict(base, resume_path=str(tmp_path / "resume"),
+                   resume_sha256=meta["resume_sha256"]), seed=11)
+    assert resumed.epsilon(0.0) == pytest.approx(eps_at_5)

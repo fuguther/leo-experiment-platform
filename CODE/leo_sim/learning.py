@@ -15,10 +15,11 @@ run fails closed (LearningUnavailable) — no mock stands in for migration.
 """
 from __future__ import annotations
 
-import importlib.util
 import hashlib
+import importlib.util
 import json
 import math
+import os
 from collections import deque
 from pathlib import Path
 
@@ -295,6 +296,135 @@ class LearningUnavailable(RuntimeError):
     """Learning execution requested without a real TensorFlow runtime."""
 
 
+def _effective_cpu_count() -> int:
+    """Return container-capped CPU count when cgroup quotas apply."""
+    host_cpus = os.cpu_count() or 1
+    try:
+        v2 = Path("/sys/fs/cgroup/cpu.max")
+        if v2.is_file():
+            parts = v2.read_text(encoding="utf-8").strip().split()
+            if len(parts) == 2 and parts[0] != "max":
+                quota, period = int(parts[0]), int(parts[1])
+                if quota > 0 and period > 0:
+                    return max(1, min(host_cpus, quota // period))
+        quota_p = Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
+        period_p = Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us")
+        if quota_p.is_file() and period_p.is_file():
+            quota = int(quota_p.read_text(encoding="utf-8").strip())
+            period = int(period_p.read_text(encoding="utf-8").strip())
+            if quota > 0 and period > 0:
+                return max(1, min(host_cpus, quota // period))
+    except (OSError, ValueError):
+        pass
+    return max(1, host_cpus)
+
+
+def _configure_tf_threads(tf_mod) -> None:
+    """Cap TF CPU thread pools so tiny DDQN/GAT ops do not thrash many-core hosts."""
+    threads = min(4, _effective_cpu_count())
+    for setter in (
+        tf_mod.config.threading.set_intra_op_parallelism_threads,
+        tf_mod.config.threading.set_inter_op_parallelism_threads,
+    ):
+        try:
+            setter(threads)
+        except RuntimeError:
+            # TF runtime already initialized earlier in this process.
+            pass
+
+
+class _ReplayBuffer:
+    """Contiguous NumPy ring buffer preserving deque(maxlen=...) FIFO ordering."""
+
+    def __init__(self, maxlen: int, state_dim: int, n_actions: int):
+        self.maxlen = int(maxlen)
+        self.state_dim = int(state_dim)
+        self.n_actions = int(n_actions)
+        self._states = np.empty((self.maxlen, self.state_dim), dtype=np.float32)
+        self._actions = np.empty((self.maxlen,), dtype=np.int64)
+        self._rewards = np.empty((self.maxlen,), dtype=np.float32)
+        self._next_states = np.empty((self.maxlen, self.state_dim), dtype=np.float32)
+        self._masks = np.empty((self.maxlen, self.n_actions), dtype=bool)
+        self._dones = np.empty((self.maxlen,), dtype=bool)
+        self._pos = 0
+        self._size = 0
+
+    def __len__(self) -> int:
+        return self._size
+
+    def clear(self) -> None:
+        self._pos = 0
+        self._size = 0
+
+    def append(self, transition) -> None:
+        s, a, r, ns, m, d = transition
+        idx = self._pos
+        self._states[idx] = s
+        self._actions[idx] = a
+        self._rewards[idx] = r
+        self._next_states[idx] = ns
+        self._masks[idx] = m
+        self._dones[idx] = d
+        self._pos = (idx + 1) % self.maxlen
+        if self._size < self.maxlen:
+            self._size += 1
+
+    def _physical_indices(self, logical_indices: np.ndarray) -> np.ndarray:
+        if self._size < self.maxlen:
+            return logical_indices
+        return (self._pos + logical_indices) % self.maxlen
+
+    def sample_batch(self, logical_indices: np.ndarray):
+        phys = self._physical_indices(logical_indices)
+        return (
+            self._states[phys],
+            self._actions[phys],
+            self._rewards[phys],
+            self._next_states[phys],
+            self._masks[phys],
+            self._dones[phys],
+        )
+
+    def to_arrays(self):
+        if self._size == 0:
+            return (
+                np.empty((0, self.state_dim), dtype=np.float32),
+                np.empty((0,), dtype=np.int64),
+                np.empty((0,), dtype=np.float32),
+                np.empty((0, self.state_dim), dtype=np.float32),
+                np.empty((0, self.n_actions), dtype=bool),
+                np.empty((0,), dtype=bool),
+            )
+        order = self._physical_indices(np.arange(self._size, dtype=np.int64))
+        return (
+            self._states[order],
+            self._actions[order],
+            self._rewards[order],
+            self._next_states[order],
+            self._masks[order],
+            self._dones[order],
+        )
+
+    def __getitem__(self, index: int):
+        if index < 0:
+            index += self._size
+        if index < 0 or index >= self._size:
+            raise IndexError("replay index out of range")
+        phys = index if self._size < self.maxlen else (self._pos + index) % self.maxlen
+        return (
+            self._states[phys],
+            int(self._actions[phys]),
+            float(self._rewards[phys]),
+            self._next_states[phys],
+            self._masks[phys],
+            bool(self._dones[phys]),
+        )
+
+    def __iter__(self):
+        for i in range(self._size):
+            yield self[i]
+
+
 def require_tensorflow():
     """Fail closed unless a genuinely importable TensorFlow exists."""
     if tf is None:
@@ -308,13 +438,13 @@ class V2GraphEncoder(tf.keras.layers.Layer if tf is not None else object):
     """V2 GAT/MPNN graph encoder (module-level, serializable).
 
     Consumes the flattened observation built by ``build_graph_observation``:
-      node features  [MAX_N, 15]
+      node features  [MAX_N, 18]
       adjacency      [MAX_N, MAX_N]   (adj[dst, src] = 1 for a real ISL edge)
       readout masks  [4, MAX_N]       (N/S/E/W first-hop grouping)
-      own-state tail [4]
+      own+dst tail   [OWN_FEATURES + DEST_FEATURES]
     Runs either GAT (multi-head attention) or MPNN (mean message passing)
     layers, then returns four directional readout embeddings concatenated
-    with the own-state tail for a shared dense Q head.
+    with the own-state+destination tail for a shared dense Q head.
 
     NOTE: this class references ``tf`` at import time, so this module may only
     be imported after ``require_tensorflow()`` succeeded.  ``TensorflowDDQN``
@@ -492,6 +622,7 @@ class TensorflowDDQN:
         if contract not in CONTRACT_DIMS:
             raise ValueError(f"unknown learning contract {contract!r}")
         self.tf = require_tensorflow()
+        _configure_tf_threads(self.tf)
         # Op determinism is part of the reproducibility claim: record the
         # outcome instead of swallowing it. The value lands in diagnostics()
         # and therefore in the receipt-bound learning ledger.
@@ -522,8 +653,10 @@ class TensorflowDDQN:
         self.cfg = dict(cfg)
         self.seed = int(seed)
         self.rng = np.random.default_rng(self.seed)
-        self.replay = deque(maxlen=int(cfg["replay_size"]))
+        self.replay = _ReplayBuffer(int(cfg["replay_size"]), self.input_dim, len(ACTIONS))
         self.mode = cfg["mode"]
+        self._resume_time_offset_s = 0.0
+        self._last_now = 0.0
         self.loaded_resume_path = None
         self.loaded_resume_sha256 = None
         self.resume_manifest_sha256 = None
@@ -591,6 +724,8 @@ class TensorflowDDQN:
         self._fast_train_fn = None
         self._fast_train_net_id = None
         self._fast_train_tgt_id = None
+        self._fast_infer_fn = None
+        self._fast_infer_net_id = None
         if cfg.get("resume_path") is not None:
             self._load_resume_bundle(
                 Path(cfg["resume_path"]), cfg.get("resume_sha256"))
@@ -620,22 +755,52 @@ class TensorflowDDQN:
         start = float(self.cfg["epsilon_start"])
         end = float(self.cfg["epsilon_end"])
         decay = float(self.cfg["epsilon_decay_s"])
-        return end + (start - end) * math.exp(-max(0.0, float(now)) / decay)
+        elapsed = self._resume_time_offset_s + max(0.0, float(now))
+        return end + (start - end) * math.exp(-elapsed / decay)
 
     @staticmethod
     def _mask_array(mask: dict) -> np.ndarray:
         return np.asarray([bool(mask.get(a, False)) for a in ACTIONS], dtype=bool)
+
+    def _build_fast_infer_fn(self):
+        tf = self.tf
+        net = self.online
+        spec = [tf.TensorSpec([1, self.input_dim], tf.float32)]
+
+        @tf.function(input_signature=spec, reduce_retracing=True)
+        def _infer(obs):
+            return net(obs, training=False)
+
+        return _infer
+
+    def _sync_target(self) -> None:
+        if len(self.target.variables) == len(self.online.variables):
+            for tgt_var, src_var in zip(self.target.variables, self.online.variables):
+                tgt_var.assign(src_var)
+        else:
+            self.target.set_weights(self.online.get_weights())
 
     def choose(self, observation: np.ndarray, mask: dict, now: float) -> str:
         legal = self._mask_array(mask)
         indices = np.flatnonzero(legal)
         if not len(indices):
             raise ValueError("DDQN decision requires at least one legal action")
-        obs = np.asarray(observation, dtype=np.float32).reshape(1, self.input_dim)
+        self._last_now = max(self._last_now, float(now))
         if self.rng.random() < self.epsilon(now):
             chosen = int(self.rng.choice(indices))
+        elif len(indices) == 1:
+            chosen = int(indices[0])
         else:
-            q = self.online(obs, training=False).numpy()[0]
+            obs = np.asarray(observation, dtype=np.float32).reshape(1, self.input_dim)
+            if self._fast_enabled:
+                fn = self._fast_infer_fn
+                if fn is None or self._fast_infer_net_id != id(self.online):
+                    fn = self._build_fast_infer_fn()
+                    self._fast_infer_fn = fn
+                    self._fast_infer_net_id = id(self.online)
+                q = fn(self.tf.convert_to_tensor(obs, dtype=self.tf.float32)).numpy()[0]
+            else:
+                q = self.online(obs, training=False).numpy()[0]
             chosen = int(indices[np.argmax(q[indices])])
         self.decisions += 1
         return ACTIONS[chosen]
@@ -657,13 +822,7 @@ class TensorflowDDQN:
     def _train_once(self) -> None:
         batch_size = int(self.cfg["batch_size"])
         indices = self.rng.choice(len(self.replay), size=batch_size, replace=False)
-        batch = [self.replay[int(i)] for i in indices]
-        states = np.stack([x[0] for x in batch])
-        actions = np.asarray([x[1] for x in batch], dtype=np.int64)
-        rewards = np.asarray([x[2] for x in batch], dtype=np.float32)
-        next_states = np.stack([x[3] for x in batch])
-        masks = np.stack([x[4] for x in batch])
-        dones = np.asarray([x[5] for x in batch], dtype=bool)
+        states, actions, rewards, next_states, masks, dones = self.replay.sample_batch(indices)
         if self._fast_enabled:
             fn = self._fast_train_fn
             if (fn is None or self._fast_train_net_id != id(self.online)
@@ -683,7 +842,7 @@ class TensorflowDDQN:
             self.last_loss = float(loss.numpy())
             self.train_steps += 1
             if self.train_steps % int(self.cfg["target_update_interval"]) == 0:
-                self.target.set_weights(self.online.get_weights())
+                self._sync_target()
             return
         online_next = self.online(next_states, training=False).numpy()
         target_next = self.target(next_states, training=False).numpy()
@@ -788,8 +947,11 @@ class TensorflowDDQN:
             self.decisions = int(counters["decisions"])
             self.transitions = int(counters["transitions"])
             self.train_steps = int(counters["train_steps"])
-            if min(self.decisions, self.transitions, self.train_steps) < 0:
-                raise ValueError("negative training counter")
+            self._resume_time_offset_s = float(state.get("elapsed_time_s", 0.0))
+            if min(self.decisions, self.transitions, self.train_steps) < 0 \
+                    or not math.isfinite(self._resume_time_offset_s) \
+                    or self._resume_time_offset_s < 0:
+                raise ValueError("negative or non-finite training counter/time")
         except (KeyError, TypeError, ValueError) as exc:
             raise LearningUnavailable(f"DDQN resume state is invalid: {exc}") from exc
         try:
@@ -847,22 +1009,22 @@ class TensorflowDDQN:
         prefix = out / "tf_ckpt"
         try:
             checkpoint.write(str(prefix))
+            r_states, r_actions, r_rewards, r_next_states, r_masks, r_dones = (
+                self.replay.to_arrays())
             np.savez_compressed(
                 out / "replay.npz",
-                states=np.asarray([x[0] for x in self.replay], dtype=np.float32)
-                if self.replay else np.empty((0, self.input_dim), dtype=np.float32),
-                actions=np.asarray([x[1] for x in self.replay], dtype=np.int64),
-                rewards=np.asarray([x[2] for x in self.replay], dtype=np.float32),
-                next_states=np.asarray([x[3] for x in self.replay], dtype=np.float32)
-                if self.replay else np.empty((0, self.input_dim), dtype=np.float32),
-                masks=np.asarray([x[4] for x in self.replay], dtype=bool)
-                if self.replay else np.empty((0, len(ACTIONS)), dtype=bool),
-                dones=np.asarray([x[5] for x in self.replay], dtype=bool),
+                states=r_states,
+                actions=r_actions,
+                rewards=r_rewards,
+                next_states=r_next_states,
+                masks=r_masks,
+                dones=r_dones,
             )
             tf_state = self.tf.random.get_global_generator().state.numpy()
             state = {
                 "numpy_rng_state": _resume_json(self.rng.bit_generator.state),
                 "tensorflow_rng_state": _resume_json(tf_state),
+                "elapsed_time_s": float(self._resume_time_offset_s + self._last_now),
                 "counters": {
                     "decisions": int(self.decisions),
                     "transitions": int(self.transitions),
@@ -1120,6 +1282,8 @@ class TabularQLearning:
         self.decisions = 0
         self.transitions = 0
         self.train_steps = 0  # tabular: one Q-table update per train step
+        self._resume_time_offset_s = 0.0
+        self._last_now = 0.0
         if cfg.get("resume_path") is not None:
             self._load_resume_bundle(
                 Path(cfg["resume_path"]), cfg.get("resume_sha256"))
@@ -1160,10 +1324,12 @@ class TabularQLearning:
         start = float(self.cfg["epsilon_start"])
         end = float(self.cfg["epsilon_end"])
         decay = float(self.cfg["epsilon_decay_s"])
-        return end + (start - end) * math.exp(-max(0.0, float(now)) / decay)
+        elapsed = self._resume_time_offset_s + max(0.0, float(now))
+        return end + (start - end) * math.exp(-elapsed / decay)
 
     def choose(self, observation: np.ndarray, mask: dict, now: float) -> str:
         legal = self._legal(mask)
+        self._last_now = max(self._last_now, float(now))
         if self.mode != "eval" and self.rng.random() < self.epsilon(now):
             chosen = int(self.rng.choice(legal))
         else:
@@ -1298,8 +1464,11 @@ class TabularQLearning:
             self.decisions = int(counters["decisions"])
             self.transitions = int(counters["transitions"])
             self.train_steps = int(counters["train_steps"])
-            if min(self.decisions, self.transitions, self.train_steps) < 0:
-                raise ValueError("negative training counter")
+            self._resume_time_offset_s = float(state.get("elapsed_time_s", 0.0))
+            if min(self.decisions, self.transitions, self.train_steps) < 0 \
+                    or not math.isfinite(self._resume_time_offset_s) \
+                    or self._resume_time_offset_s < 0:
+                raise ValueError("negative or non-finite training counter/time")
         except (KeyError, TypeError, ValueError) as exc:
             raise LearningUnavailable(f"Q-learning resume state is invalid: {exc}") from exc
         self.loaded_resume_path = str(root.resolve())
@@ -1325,6 +1494,7 @@ class TabularQLearning:
             json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
         state = {
             "numpy_rng_state": _resume_json(self.rng.bit_generator.state),
+            "elapsed_time_s": float(self._resume_time_offset_s + self._last_now),
             "counters": {
                 "decisions": int(self.decisions),
                 "transitions": int(self.transitions),
@@ -1589,7 +1759,8 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
                             isl_queue_cap: int = 256_000_000,
                             obs_hops: int | None = None,
                             dst_feats: np.ndarray | None = None,
-                            root_pos: tuple | None = None) -> np.ndarray:
+                            root_pos: tuple | None = None,
+                            first_dirs: dict[int, str] | None = None) -> np.ndarray:
     """Fixed-width flattened k-hop subgraph for the GAT/MPNN contracts.
 
     Layout: node features [MAX_N, GRAPH_NODE_FEAT_DIM] + directed adjacency
@@ -1607,9 +1778,16 @@ def build_graph_observation(contract: str, sat: int, cache, now: float,
     """
     entries = information_set(contract, sat, cache, now, topo,
                               obs_hops=obs_hops)
-    first_dirs = _bfs_first_dirs(sat, topo)
+    if first_dirs is None:
+        first_dirs = _bfs_first_dirs(sat, topo)
     n = GRAPH_MAX_NODES
-    origins = sorted(set(entries) - {sat})
+    # Prioritize closer (fewer control hops) and fresher (lower AoI) origins
+    # when truncating to GRAPH_MAX_NODES - 1 so large constellations never drop
+    # immediate 1-hop high-ID neighbors in favor of distant low-ID satellites.
+    origins = sorted(
+        (o for o in entries if o != sat),
+        key=lambda o: (entries[o].hops, entries[o].aoi(now), o),
+    )
     nodes = [sat] + origins[:n - 1]
     overflow = max(0, len(origins) - (n - 1))
     index = {node: i for i, node in enumerate(nodes)}
@@ -1657,11 +1835,13 @@ def build_observation(contract: str, sat: int, cache, now: float, topo,
                       own: np.ndarray, isl_queue_cap: int = 256_000_000,
                       obs_hops: int | None = None,
                       dst_feats: np.ndarray | None = None,
-                      root_pos: tuple | None = None) -> np.ndarray:
+                      root_pos: tuple | None = None,
+                      first_dirs: dict[int, str] | None = None) -> np.ndarray:
     if contract in GRAPH_CONTRACTS:
         return build_graph_observation(
             contract, sat, cache, now, topo, own, isl_queue_cap,
-            obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos)
+            obs_hops=obs_hops, dst_feats=dst_feats, root_pos=root_pos,
+            first_dirs=first_dirs)
     entries = information_set(contract, sat, cache, now, topo,
                               obs_hops=obs_hops)
     feats = {o: _origin_features(e, now, isl_queue_cap, topo, o)

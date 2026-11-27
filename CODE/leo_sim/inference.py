@@ -579,9 +579,11 @@ class KerasFixedModelAdapter:
         self.epsilon = 0.0
         self._calls = 0
         self._probe_max_abs = None
+        self._fast_forward_fn = None
         self._check_graph()
         self.parameter_sha256_value = self._weights_sha256()
         self._probe_max_abs = self._finite_probe()
+        self._init_fast_forward()
         self.observation_contract_id = observation_contract_id(
             contract=self.contract, feature_width=self.feature_width,
             feature_order=self.feature_order,
@@ -615,8 +617,29 @@ class KerasFixedModelAdapter:
                 f"checkpoint output shape {out_shape} does not match the "
                 f"declared action set of {len(self.actions)} actions")
 
+    def _init_fast_forward(self):
+        try:
+            import tensorflow as tf
+        except ImportError:
+            return
+        if not isinstance(self.model, tf.keras.Model):
+            return
+        from . import learning as _learning
+        _learning._configure_tf_threads(tf)
+        net = self.model
+        spec = [tf.TensorSpec([1, self.feature_width], tf.float32)]
+
+        @tf.function(input_signature=spec, reduce_retracing=True)
+        def _infer_one(batch):
+            return net(batch, training=False)
+
+        self._fast_forward_fn = _infer_one
+
     def _forward(self, batch):
-        values = self.model(batch, training=False)
+        if self._fast_forward_fn is not None and batch.shape == (1, self.feature_width):
+            values = self._fast_forward_fn(batch)
+        else:
+            values = self.model(batch, training=False)
         return np.asarray(values, dtype=np.float64)
 
     def _finite_probe(self):
