@@ -374,7 +374,6 @@ def test_nominal_hops_uses_each_packets_ephemeris_bucket(monkeypatch):
         return {0: {"E": 1}, 1: {"W": 0}}
 
     monkeypatch.setattr(routing, "build_topology", build_topology)
-    monkeypatch.setattr(routing, "_reverse_adj", lambda graph: {0: (1,), 1: (0,)})
     monkeypatch.setattr(
         routing, "_multi_source_bfs",
         lambda _reverse, targets: ({1: 0, 0: 1} if targets == [1]

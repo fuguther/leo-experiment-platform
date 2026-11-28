@@ -218,13 +218,13 @@ def _nominal_hops(cfg, rows):
         if topo_bucket not in graph_cache:
             graph = routing.build_topology(
                 geometry, sc["num_satellites"], lk["isl_dirs"], topo_at)
-            reverse = {
-                sat: tuple(direction for direction, peer in ports.items()
-                           if geometry.isl_available(sat, peer, topo_at))
+            available = {
+                sat: {direction: peer for direction, peer in ports.items()
+                      if geometry.isl_available(sat, peer, topo_at)}
                 for sat, ports in graph.items()
             }
             graph_cache[topo_bucket] = graph
-            reverse_cache[topo_bucket] = routing._reverse_adj(reverse)
+            reverse_cache[topo_bucket] = routing._reverse_adj(available)
         graph = graph_cache[topo_bucket]
         reverse = reverse_cache[topo_bucket]
 
