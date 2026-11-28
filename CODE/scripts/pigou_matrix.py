@@ -72,6 +72,18 @@ def _read(path):
     return json.loads(path.read_text())
 
 
+def canonical_task_argv(argv):
+    """Canonicalize the JSON task spec for exact semantic run reuse."""
+    canonical = list(argv)
+    for index, token in enumerate(canonical[:-1]):
+        if token != "--spec":
+            continue
+        canonical[index + 1] = json.dumps(
+            json.loads(canonical[index + 1]), sort_keys=True,
+            separators=(",", ":"))
+    return canonical
+
+
 class Matrix:
     def __init__(self, release, prefix, attempt):
         from CODE.scripts.remote import release_protocol
@@ -114,7 +126,8 @@ class Matrix:
                 run_id = candidate
                 break
             manifest = _read(dest / "run-manifest.json")
-            if (manifest.get("release_id") != self.release or manifest.get("argv", [])[1:] != argv[1:]
+            if (manifest.get("release_id") != self.release
+                    or canonical_task_argv(manifest.get("argv", [])[1:]) != canonical_task_argv(argv[1:])
                     or {x["name"]: x["sha256"] for x in manifest.get("inputs", [])} != expected):
                 raise RuntimeError(f"existing experimental cell has a different contract: {candidate}")
             if manifest["status"] == "completed":

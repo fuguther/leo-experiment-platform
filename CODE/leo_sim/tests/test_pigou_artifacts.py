@@ -599,3 +599,16 @@ def test_rgd_baseline_is_mean_of_prepulse_time_buckets(tmp_path):
 
     assert metrics["goodput_pdr_prepulse_pct"] == pytest.approx(100.0 * 14 / 24)
     assert metrics["prepulse_pdr_fraction"] == pytest.approx(14 / 15)
+
+
+def test_matrix_contract_canonicalizes_json_key_order():
+    from CODE.scripts.pigou_matrix import canonical_task_argv
+
+    left = ["python3", "-m", "CODE.scripts.pigou_study", "cell", "--spec",
+            '{"scene":"A","seed":42,"alg":"B6"}']
+    right = ["python3", "-m", "CODE.scripts.pigou_study", "cell", "--spec",
+             '{"alg":"B6","seed":42,"scene":"A"}']
+    changed = ["python3", "-m", "CODE.scripts.pigou_study", "cell", "--spec",
+               '{"alg":"B6","seed":43,"scene":"A"}']
+    assert canonical_task_argv(left) == canonical_task_argv(right)
+    assert canonical_task_argv(left) != canonical_task_argv(changed)
