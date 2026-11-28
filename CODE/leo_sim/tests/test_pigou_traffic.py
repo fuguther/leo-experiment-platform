@@ -323,3 +323,21 @@ def test_only_real_control_intervals_are_accepted(builder, tmp_path, interval):
     with pytest.raises(ValueError, match="multiplier"):
         builder.build(
             tmp_path / "bad-multiplier", scene="A", seed=101, multiplier=0.99)
+
+
+def test_pigou_cell_config_forwards_inference_constraints(builder, tmp_path):
+    from CODE.scripts.pigou_study import cell_config
+
+    built = builder.build(
+        tmp_path / "constraint-wiring", scene="B", seed=101,
+        interval=0.05, offered_mbps=1.0)
+    checkpoint = tmp_path / "frozen.npz"
+    checkpoint.write_bytes(b"placeholder")
+    resolved = cell_config(
+        built["config"],
+        {"alg": "Ours", "train_seed": 11, "hop_guard": 2,
+         "hop_penalty": 0.05},
+        checkpoint=checkpoint)
+    adapter = resolved["routing"]["local_forward_adapter"]
+    assert adapter["hop_guard"] == 2
+    assert adapter["hop_penalty"] == pytest.approx(0.05)

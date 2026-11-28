@@ -83,8 +83,9 @@ def cell_config(cfg, spec, checkpoint=None, metadata=None, resume=None):
             "argmax": spec.get("argmax", False), "capture": spec.get("capture", False),
             "exploration": spec.get("exploration", 0.10),
         }
-        if "telemetry_sat" in spec:
-            options["telemetry_sat"] = spec["telemetry_sat"]
+        for name in ("telemetry_sat", "hop_guard", "hop_penalty"):
+            if name in spec:
+                options[name] = spec[name]
         cfg["routing"]["local_forward_adapter"] = options
     if alg in LEARNERS:
         alg_name = "primal_cvar" if alg == "B6" else "ddqn"

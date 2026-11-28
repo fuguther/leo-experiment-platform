@@ -112,7 +112,7 @@ def primal_observation(view):
 def validate_adapter(options):
     allowed = {"kind", "threshold", "beta_ext", "temperature", "argmax", "shield",
                "checkpoint_path", "checkpoint_sha256", "capture", "telemetry_sat",
-               "exploration", "seed", "hop_guard"}
+               "exploration", "seed", "hop_guard", "hop_penalty"}
     if set(options) - allowed:
         raise ValueError("unknown adapter options")
     kind = options.get("kind")
@@ -120,7 +120,8 @@ def validate_adapter(options):
         raise ValueError("unsupported adapter kind")
     for name, default, lo, hi in (
             ("threshold", 0.50, 0.0, 1.0), ("beta_ext", 0.50, 0.0, 2.0),
-            ("temperature", 0.08, 0.001, 2.0), ("exploration", 0.33, 0.0, 1.0)):
+            ("temperature", 0.08, 0.001, 2.0), ("exploration", 0.33, 0.0, 1.0),
+            ("hop_penalty", 0.0, 0.0, 2.0)):
         value = options.get(name, default)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not lo <= value <= hi:
             raise ValueError(f"{name} must be a number in [{lo}, {hi}]")
@@ -333,7 +334,10 @@ class LocalForwardAdapter:
             ego, quantile = self.model.score(state.encoded, g, x)
             costs = quantile[:, -4:].mean(axis=1)
             charge = 2.0 * max(0.0, state.shield_state - 1.0) if self.cfg.get("shield", True) else 0.0
-            score = ego[ids] - self.cfg.get("beta_ext", 0.50) * costs[ids] - charge * np.asarray(hops)[ids]
+            score = (ego[ids]
+                     - self.cfg.get("beta_ext", 0.50) * costs[ids]
+                     - charge * np.asarray(hops)[ids]
+                     - self.cfg.get("hop_penalty", 0.0) * np.asarray(hops)[ids])
             if self.cfg.get("argmax"):
                 local_choice = int(np.argmax(score[eligible_positions]))
                 choice = eligible_positions[local_choice]

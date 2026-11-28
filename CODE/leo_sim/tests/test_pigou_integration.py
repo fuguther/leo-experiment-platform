@@ -160,3 +160,28 @@ def test_pigou_hop_guard_restricts_late_decisions_to_shortest_legal_ports():
          "argmax": True}, 7)
     adapter.model = _Model()
     assert adapter.choose(view, 1) == "N"
+
+
+def test_pigou_hop_penalty_can_prefer_a_lower_detour_despite_ego_score():
+    from CODE.leo_sim.rl.local_forward import LocalForwardView, Port
+
+    class _Model:
+        def encode(self, *_args):
+            return np.zeros(32, dtype=np.float32)
+
+        def score(self, *_args):
+            ego = np.asarray([0.8, 0.9, 0.0, 0.0], dtype=np.float32)
+            quantile = np.zeros((4, 16), dtype=np.float32)
+            return ego, quantile
+
+    view = LocalForwardView(
+        0, 0.0, 1, "src", "dst", 0.0, 10, 1,
+        (0.0, 1.0, 0.8), 2,
+        (Port(1, hops=1), Port(2, hops=4), Port(None), Port(None)),
+        ("N", "S"), ("N",), ("S",))
+    adapter = LocalForwardAdapter(
+        {"kind": "pigou_metadrl", "checkpoint_path": "/unused",
+         "checkpoint_sha256": "0" * 64, "hop_penalty": 0.05,
+         "argmax": True}, 7)
+    adapter.model = _Model()
+    assert adapter.choose(view, 1) == "N"
