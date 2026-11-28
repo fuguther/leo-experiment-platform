@@ -236,3 +236,12 @@ def test_retry_label_aggregation_preserves_the_worst_edge_cost():
     _close_busy(high, labels, pkt_bits=10, rate_bps=100, deadline_s=1.0)
     assert first < 1.0
     assert labels[key] == 1.0
+
+
+def test_retry_transaction_ego_utility_uses_total_deadline_and_is_bounded():
+    from CODE.leo_sim.rl.pigou_labels import packet_ego_utility
+
+    assert packet_ego_utility(0.12, 0.0, 0.84) == pytest.approx(0.9285714286)
+    assert packet_ego_utility(0.84, 0.0, 0.84) == pytest.approx(0.5)
+    assert packet_ego_utility(0.2, 1.0, 0.84) is None
+    assert packet_ego_utility(0.9, 0.0, 0.84) is None

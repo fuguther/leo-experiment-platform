@@ -99,6 +99,16 @@ def _two_hop(topologies, sat, at):
     return {sat, *neighbors, *(node for peer in neighbors for node in graph[peer])}
 
 
+def packet_ego_utility(delivered_at: float, emitted_at: float,
+                       transaction_deadline_at: float) -> float | None:
+    """Bounded delivery utility for the complete (possibly retried) transaction."""
+    delay = float(delivered_at) - float(emitted_at)
+    window = float(transaction_deadline_at) - float(emitted_at)
+    if delay < 0.0 or window <= 0.0 or delay > window:
+        return None
+    return float(np.clip(1.0 - 0.5 * delay / window, 0.0, 1.0))
+
+
 def build_dataset(result, events, rows, config):
     audit = result["local_forward_adapter"]
     snapshots, decisions = audit["snapshots"], audit["decisions"]
@@ -133,9 +143,10 @@ def build_dataset(result, events, rows, config):
     pack_ego = {}
     for pid, delivery in result["deliveries"].items():
         row = by_pid[pid]
-        delay = delivery["delivered_at"] - row["emit_time_s"]
-        if delivery["delivered_at"] < row["deadline_at_s"]:
-            pack_ego[pid] = 1.0 - 0.5 * delay / deadline_s
+        utility = packet_ego_utility(
+            delivery["delivered_at"], row["emit_time_s"], row["deadline_at_s"])
+        if utility is not None:
+            pack_ego[pid] = utility
 
     g_ego = np.zeros(len(decisions), dtype=np.float32)
     g_ext = np.zeros_like(g_ego)
