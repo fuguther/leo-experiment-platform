@@ -1208,6 +1208,7 @@ class TensorflowPigouOnline:
             "feature_order": self.feature_order,
             "normalisation": self.normalisation,
             "actions": list(ACTIONS),
+            "action_order": list(ACTIONS),
             "observation_contract_id": self.observation_contract_id,
             "weights_purpose": "trained",
             "checkpoint_file": NATIVE_CHECKPOINT_FILENAME,
