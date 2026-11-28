@@ -7250,6 +7250,7 @@ class Kernel:
                     prop_s * model.C_KM_S, self.rf_isl, self.mcs_table))
                 if self.rate_model == "mcs" else None),
             cache_hops=cache_hops,
+            forbidden_nodes=pkt.path[:-1],
             fallback_targets=(self._nominal_egress(sat, pkt.dst, now)
                               if self.cfg_rt.get("ephemeris_egress_fallback") else ()))
         if status == "unreachable":
