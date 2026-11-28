@@ -800,6 +800,10 @@ class TensorflowPigouOnline:
         self._last_cvar: np.ndarray | None = None
         self._last_scores: np.ndarray | None = None
         self._fast_train_fn = None
+        self.op_determinism = True
+        self.fast_train = True
+        self.checkpoint_verified = False
+        self.metadata_sha256: str | None = None
 
         if self.mode == "eval":
             self._load_eval_checkpoint()
@@ -1081,17 +1085,20 @@ class TensorflowPigouOnline:
         meta = _read_checkpoint_metadata(
             meta_path, self.cfg["checkpoint_metadata_sha256"])
         _verify_checkpoint_metadata(
-            meta, expected_schema=CHECKPOINT_SCHEMA,
-            expected_algorithm="pigou_online",
-            expected_contract="PIGOU_V2",
-            expected_feature_width=INPUT_DIM,
-            expected_feature_order=self.feature_order,
-            expected_contract_id=self.observation_contract_id,
-            expected_checkpoint_sha256=self.cfg["checkpoint_sha256"])
+            meta, self.contract, ckpt_path.name,
+            self.cfg["checkpoint_sha256"], CHECKPOINT_SCHEMA,
+            "pigou_online")
+        if (meta.get("feature_width") != INPUT_DIM
+                or meta.get("feature_order") != self.feature_order
+                or meta.get("observation_contract_id")
+                != self.observation_contract_id):
+            raise LearningUnavailable("PIGOU_V2 observation contract mismatch")
         self.online = self.tf.keras.models.load_model(str(ckpt_path), compile=False)
         self.target.set_weights(self.online.get_weights())
         self.lambda_pd = float(meta["lambda_pd"])
         self.variant = str(meta.get("variant", self.variant))
+        self.checkpoint_verified = True
+        self.metadata_sha256 = self.cfg["checkpoint_metadata_sha256"]
 
     def _resume_identity(self) -> dict:
         from ..persistence import _resume_identity
@@ -1138,10 +1145,12 @@ class TensorflowPigouOnline:
 
     def diagnostics(self) -> dict:
         return {
+            "schema": CHECKPOINT_SCHEMA,
             "algorithm": "pigou_online",
             "contract": self.contract,
             "variant": self.variant,
             "mode": self.mode,
+            "input_dim": int(self.input_dim),
             "seed": self.seed,
             "decisions": self.decisions,
             "transitions": self.transitions,
@@ -1154,6 +1163,10 @@ class TensorflowPigouOnline:
             "last_ais_loss": self.last_ais_loss,
             "last_loss": self.last_loss,
             "observation_contract_id": self.observation_contract_id,
+            "op_determinism": bool(self.op_determinism),
+            "fast_train": bool(self.fast_train),
+            "checkpoint_verified": bool(self.checkpoint_verified),
+            "metadata_sha256": self.metadata_sha256,
         }
 
     def save_and_verify(self, out_dir: str | Path) -> dict:
@@ -1198,7 +1211,9 @@ class TensorflowPigouOnline:
             "observation_contract_id": self.observation_contract_id,
             "weights_purpose": "trained",
             "checkpoint_file": NATIVE_CHECKPOINT_FILENAME,
+            "checkpoint": NATIVE_CHECKPOINT_FILENAME,
             "checkpoint_sha256": ckpt_sha,
+            "checkpoint_verified": True,
             "numpy_checkpoint": NATIVE_NUMPY_CHECKPOINT_FILENAME,
             "numpy_checkpoint_sha256": numpy_sha,
             "numpy_verified": True,
@@ -1210,6 +1225,7 @@ class TensorflowPigouOnline:
         }
         meta_path.write_text(
             json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        self.metadata_sha256 = hashlib.sha256(meta_path.read_bytes()).hexdigest()
 
         # Write resume bundle for multi-round continuation.
         resume_dir = out / "resume"
@@ -1241,12 +1257,15 @@ class TensorflowPigouOnline:
             resume_dir, RESUME_SCHEMA, self._resume_identity())
 
         diag = self.diagnostics()
+        self.checkpoint_verified = True
+        diag["checkpoint_verified"] = True
         diag.update({
             "checkpoint_path": str(ckpt_path),
             "checkpoint_sha256": ckpt_sha,
             "numpy_checkpoint_path": str(numpy_path),
             "numpy_checkpoint_sha256": numpy_sha,
             "metadata_path": str(meta_path),
+            "metadata_sha256": self.metadata_sha256,
             "numpy_max_abs_diff": max_diff,
         })
         return diag

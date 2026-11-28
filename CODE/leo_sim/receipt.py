@@ -1079,10 +1079,16 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
                 if (not metadata.is_file() or metadata.is_symlink()
                         or _sha_file(metadata) != learning.get("metadata_sha256")):
                     errors.append(f"{requested_learning} checkpoint metadata hash mismatch")
-                if learning.get("input_dim") != 50 or learning.get("schema") != "leo-sim-primal-cvar/v1":
-                    errors.append("PRIMAL observation or checkpoint schema mismatch")
+                expected = ((50, "leo-sim-primal-cvar/v1")
+                            if requested_learning == "primal_cvar"
+                            else (66, "leo-sim-pigou-online/v2"))
+                if learning.get("input_dim") != expected[0] \
+                        or learning.get("schema") != expected[1]:
+                    errors.append(
+                        f"{requested_learning} observation or checkpoint schema mismatch")
                 if not _is_nonneg_num(learning.get("lambda_pd")):
-                    errors.append("PRIMAL multiplier must be finite and nonnegative")
+                    errors.append(
+                        f"{requested_learning} multiplier must be finite and nonnegative")
                 if learning.get("mode") == "eval" and any(
                         learning.get(k, 0) != 0 for k in ("dual_updates", "round_updates", "replay_size")):
                     errors.append("PRIMAL eval mutated round, dual or replay state")
