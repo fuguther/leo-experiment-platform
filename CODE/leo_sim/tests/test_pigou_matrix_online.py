@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from CODE.scripts import pigou_matrix
 
@@ -38,3 +39,34 @@ def test_online_native_seed_builds_seed_specific_validation_labels(tmp_path):
     assert validation_labels == expected
     assert result[:4] == ("A", "Ours", 11, "full")
     assert Path(result[4]).is_file()
+
+
+def test_gate2_probe_writes_report(tmp_path, monkeypatch):
+    matrix = object.__new__(pigou_matrix.Matrix)
+    matrix.prefix = "gate-test"
+    matrix._heldout_tasks = lambda *args, **kwargs: []
+    responses = iter([
+        [
+            (None, {"scene": "A", "alg": "Ours", "tx_goodput": 0.9}),
+            *[(None, {"scene": "A", "alg": alg, "tx_goodput": 0.8})
+              for alg in ("B1", "B2", "B4", "B5", "B6")],
+        ],
+        [
+            (None, {"scene": "B", "alg": "Ours", "tx_goodput": 0.9}),
+            *[(None, {"scene": "B", "alg": alg, "tx_goodput": 0.8})
+              for alg in ("B1", "B2", "B4", "B5", "B6")],
+        ],
+        [(None, {"scene": "A", "alg": "Ours", "tx_goodput": 0.7})],
+        [(None, {"scene": "B", "alg": "Ours", "tx_goodput": 0.7})],
+    ])
+    matrix.parallel = lambda tasks, workers: next(responses)
+    matrix.raw = []
+    monkeypatch.setattr(pigou_matrix, "ROOT", tmp_path)
+    (tmp_path / "runs").mkdir()
+
+    report = matrix._gate2_probe()
+
+    path = tmp_path / "runs" / "gate-test-gate2.json"
+    assert json.loads(path.read_text()) == report
+    assert report["A"]["passed_tx_goodput"]
+    assert report["B"]["passed_tx_goodput"]

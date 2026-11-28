@@ -527,7 +527,11 @@ class Matrix:
                 "no_ext_tx_goodput": no_ext_tx,
                 "passed_tx_goodput": passed,
             }
-        _json_write(ROOT / "runs" / f"{self.prefix}-gate2.json", report)
+        target = ROOT / "runs" / f"{self.prefix}-gate2.json"
+        target.write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         if not all(item["passed_tx_goodput"] for item in report.values()):
             raise RuntimeError(f"Gate-2 failed: {report}")
         return report
