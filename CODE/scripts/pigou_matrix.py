@@ -540,9 +540,9 @@ class Matrix:
                     f"{baseline_prefix}-cal-{scene}-*/cell/summary.json")):
                 row = _read(path)
                 row.update(
-                    run_id=path.parents[2].name,
+                    run_id=path.parents[1].name,
                     base_trace_sha256=row["background_sha256"],
-                    outer_receipt_sha256=sha(path.parents[2] / "run-receipt.json"),
+                    outer_receipt_sha256=sha(path.parents[1] / "run-receipt.json"),
                 )
                 reused.append(row)
                 by_rate[float(row["offered_mbps"])] = float(
