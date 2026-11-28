@@ -21,6 +21,9 @@ class _Geometry:
     def isl_available(self, *_args):
         return True
 
+    def ground_visible(self, *_args):
+        return True
+
     def next_isl_change(self, *_args):
         return None
 
@@ -28,6 +31,9 @@ class _Geometry:
         return 0.0, float(sat), 800.0
 
     def isl_range_km(self, *_args):
+        return 1000
+
+    def slant_range_km(self, *_args):
         return 1000
 
 
@@ -60,7 +66,9 @@ def test_local_features_cannot_read_remote_links_future_or_expired_entries():
     sim.cfg_links = {"isl_queue_bits": 100}
     sim.cfg_rt = {"policy": "hop", "ephemeris_egress_fallback": True}
     sim._staged_policy = None
-    sim._planned_egress = {"dest": (2,)}
+    sim.num_sats = 3
+    sim.time_step_s = 0.05
+    sim._planned_egress = {}
     sim.isl_rate_bps = 100
     sim._link_rate = lambda *_args, **_kwargs: 100
     sim.geometry = _Geometry()
@@ -185,3 +193,32 @@ def test_pigou_hop_penalty_can_prefer_a_lower_detour_despite_ego_score():
          "argmax": True}, 7)
     adapter.model = _Model()
     assert adapter.choose(view, 1) == "N"
+
+
+def test_nominal_egress_uses_current_time_bucket_and_nearest_visible_satellite():
+    sim = kernel.Kernel.__new__(kernel.Kernel)
+    sim.num_sats = 4
+    sim.time_step_s = 0.05
+    sim.endpoints = {"dest": SimpleNamespace(lat=0.0, lon=20.0)}
+    sim._planned_egress = {}
+
+    class _TimeGeometry:
+        ranges = {
+            0.00: ((500.0, 0), (300.0, 1), (400.0, 2), (800.0, 3)),
+            0.05: ((200.0, 0), (700.0, 1), (300.0, 2), (900.0, 3)),
+        }
+
+        @staticmethod
+        def ground_visible(_sat, _lat, _lon, _when):
+            return True
+
+        def slant_range_km(self, sat, _lat, _lon, when):
+            bucket = 0.0 if when < 0.05 else 0.05
+            return dict((s, distance) for distance, s in self.ranges[bucket])[sat]
+
+    sim.geometry = _TimeGeometry()
+
+    assert sim._nominal_egress(0, "dest", 0.00) == [1]
+    assert sim._nominal_egress(1, "dest", 0.04) == [2]
+    assert sim._nominal_egress(0, "dest", 0.05) == [2]
+    assert set(sim._planned_egress) == {("dest", 0), ("dest", 1)}

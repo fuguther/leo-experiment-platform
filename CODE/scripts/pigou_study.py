@@ -5,6 +5,7 @@ import argparse
 from copy import deepcopy
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import resource
@@ -179,7 +180,12 @@ def _steady_utilization(result):
 
 
 def _nominal_hops(cfg, rows):
-    """Apply a fixed time-zero zero-queue graph to every offered OD."""
+    """Apply the zero-queue graph with current-time nearest nominal egress.
+
+    Egress selection uses only public ephemeris at each packet's deterministic
+    simulation-time bucket.  Topology and egress caches are keyed by time so a
+    packet emitted after a pass is never scored against the time-zero plan.
+    """
     from collections import Counter
 
     from CODE.leo_sim import grid, model, routing
@@ -189,27 +195,67 @@ def _nominal_hops(cfg, rows):
     geometry = model.Constellation(sc["num_satellites"], sc["num_planes"],
         sc["altitude_km"], sc["inclination_deg"], sc["min_elevation_deg"],
         max_isl_km=lk["max_isl_km"], geometry_epoch_s=sc["geometry_epoch_s"])
-    graph = routing.build_topology(geometry, sc["num_satellites"], lk["isl_dirs"], 0.0)
-    reverse = routing._reverse_adj({
-        sat: {d: peer for d, peer in ports.items() if geometry.isl_available(sat, peer, 0.0)}
-        for sat, ports in graph.items()
-    })
-    links = {}
-    by_od = Counter((row["src_grid_id"], row["dst_grid_id"]) for row in rows)
-    for cell in sorted({node for od in by_od for node in od}):
-        lat, lon = grid.grid_center(cell)
-        choices = [sat for sat in graph if geometry.ground_visible(sat, lat, lon, 0.0)]
-        if choices:
-            links[cell] = min(choices, key=lambda sat: (geometry.slant_range_km(sat, lat, lon, 0.0), sat))
-    distances = {cell: routing._multi_source_bfs(reverse, [sat]) for cell, sat in links.items()}
+    egress_step = float(sc["time_step_s"])
+    topology_step = float(cfg["topology"]["recompute_interval_s"])
+
+    def bucket(now, step):
+        return int(math.floor(float(now) / step))
+
+    graph_cache = {}
+    reverse_cache = {}
+    egress_cache = {}
+    distance_cache = {}
+    by_od = Counter(
+        (row["src_grid_id"], row["dst_grid_id"],
+         bucket(row["emit_time_s"], egress_step))
+        for row in rows
+    )
     covered = total = 0
-    for (src, dst), n in by_od.items():
-        hops = distances.get(dst, {}).get(links.get(src))
+    for (src, dst, time_bucket), count in by_od.items():
+        at = time_bucket * egress_step
+        topo_bucket = bucket(at, topology_step)
+        topo_at = topo_bucket * topology_step
+        if topo_bucket not in graph_cache:
+            graph = routing.build_topology(
+                geometry, sc["num_satellites"], lk["isl_dirs"], topo_at)
+            reverse = {
+                sat: tuple(direction for direction, peer in ports.items()
+                           if geometry.isl_available(sat, peer, topo_at))
+                for sat, ports in graph.items()
+            }
+            graph_cache[topo_bucket] = graph
+            reverse_cache[topo_bucket] = routing._reverse_adj(reverse)
+        graph = graph_cache[topo_bucket]
+        reverse = reverse_cache[topo_bucket]
+
+        def nearest_egress(cell):
+            key = (time_bucket, cell)
+            if key not in egress_cache:
+                lat, lon = grid.grid_center(cell)
+                visible = [
+                    (geometry.slant_range_km(sat, lat, lon, at), sat)
+                    for sat in graph
+                    if geometry.ground_visible(sat, lat, lon, at)
+                ]
+                visible.sort(key=lambda item: (item[0], item[1]))
+                egress_cache[key] = visible[0][1] if visible else None
+            return egress_cache[key]
+
+        src_sat = nearest_egress(src)
+        dst_sat = nearest_egress(dst)
+        if src_sat is None or dst_sat is None:
+            continue
+        distance_key = (topo_bucket, dst_sat)
+        if distance_key not in distance_cache:
+            distance_cache[distance_key] = routing._multi_source_bfs(
+                reverse, [dst_sat])
+        hops = distance_cache[distance_key].get(src_sat)
         if hops is not None:
-            total += n * hops
-            covered += n
-    return {"hops": total if covered == len(rows) else None, "covered_packets": covered,
-            "offered_packets": len(rows), "basis": "time_zero_nearest_nominal_egress_min_hops"}
+            total += count * hops
+            covered += count
+    return {"hops": total if covered == len(rows) else None,
+            "covered_packets": covered, "offered_packets": len(rows),
+            "basis": "current_time_nearest_nominal_egress_min_hops"}
 
 
 def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):

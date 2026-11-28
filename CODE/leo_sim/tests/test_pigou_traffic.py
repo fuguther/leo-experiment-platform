@@ -107,7 +107,7 @@ def test_scene_catalogs_and_native_config_contract(builder, tmp_path):
     assert cfg_a["scenario"]["num_planes"] == 12
     assert cfg_a["scenario"]["altitude_km"] == 800.0
     assert cfg_a["scenario"]["inclination_deg"] == 53.0
-    assert cfg_a["scenario"]["duration_s"] == 10.5
+    assert cfg_a["scenario"]["duration_s"] == 11.5
     assert cfg_a["demand"]["emission_start_s"] == 0.2
     assert cfg_a["demand"]["emission_end_s"] == 9.5
     assert cfg_a["demand"]["packet_bits"] == 64_000
@@ -238,7 +238,7 @@ def test_native_compile_preserves_deadline_and_budget(
     compiled_dir = tmp_path / f"compiled-{scene}"
     manifest = trace.compile_trace(resolved, str(compiled_dir))
     assert manifest["offered_packets"] == result["packet_count"]
-    assert manifest["drain_s"] == pytest.approx(1.0)
+    assert manifest["drain_s"] == pytest.approx(2.0)
     assert manifest["trace_schema"] == trace.TRACE_SCHEMA_V2
     assert manifest["provenance_contract"]["source"]["sha256"] == \
         result["trace_sha256"]
@@ -341,3 +341,59 @@ def test_pigou_cell_config_forwards_inference_constraints(builder, tmp_path):
     adapter = resolved["routing"]["local_forward_adapter"]
     assert adapter["hop_guard"] == 2
     assert adapter["hop_penalty"] == pytest.approx(0.05)
+
+
+def test_nominal_hops_uses_each_packets_ephemeris_bucket(monkeypatch):
+    from CODE.scripts import pigou_study
+    from CODE.leo_sim import grid, model, routing
+
+    class _Geometry:
+        @staticmethod
+        def ground_visible(_sat, _lat, _lon, _at):
+            return True
+
+        @staticmethod
+        def slant_range_km(sat, _lat, lon, at):
+            # A's and B's nearest satellites swap at one second.
+            a_prefers_low = lon < 0.5
+            low_is_nearest = a_prefers_low == (at < 1.0)
+            return float(100 + (sat if low_is_nearest else 1 - sat))
+
+        @staticmethod
+        def isl_available(*_args):
+            return True
+
+    geometry = _Geometry()
+    monkeypatch.setattr(model, "Constellation", lambda *_a, **_k: geometry)
+    monkeypatch.setattr(grid, "grid_center",
+                        lambda cell: (0.0, 0.0) if cell == "A" else (1.0, 1.0))
+    graph_calls = []
+
+    def build_topology(_geometry, _count, _dirs, at):
+        graph_calls.append(at)
+        return {0: {"E": 1}, 1: {"W": 0}}
+
+    monkeypatch.setattr(routing, "build_topology", build_topology)
+    monkeypatch.setattr(routing, "_reverse_adj", lambda graph: {0: (1,), 1: (0,)})
+    monkeypatch.setattr(
+        routing, "_multi_source_bfs",
+        lambda _reverse, targets: ({1: 0, 0: 1} if targets == [1]
+                                   else {0: 0, 1: 2}))
+    cfg = {
+        "scenario": {"num_satellites": 2, "num_planes": 1,
+                     "altitude_km": 550.0, "inclination_deg": 53.0,
+                     "min_elevation_deg": 10.0, "geometry_epoch_s": 0.0,
+                     "time_step_s": 0.05},
+        "links": {"max_isl_km": 6000.0, "isl_dirs": ["E", "W"]},
+        "topology": {"recompute_interval_s": 1.0},
+    }
+    rows = [
+        {"src_grid_id": "A", "dst_grid_id": "B", "emit_time_s": 0.01},
+        {"src_grid_id": "A", "dst_grid_id": "B", "emit_time_s": 1.01},
+    ]
+    result = pigou_study._nominal_hops(cfg, rows)
+
+    assert result["covered_packets"] == 2
+    assert result["hops"] == 3
+    assert result["basis"] == "current_time_nearest_nominal_egress_min_hops"
+    assert graph_calls == [0.0, 1.0]

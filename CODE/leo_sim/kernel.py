@@ -4127,19 +4127,30 @@ class Kernel:
             self.caches[sat], dst, now, max_cache_hops=cache_hops)
         if not self.cfg_rt.get("ephemeris_egress_fallback"):
             return advertised
-        return [s for s in advertised if s != sat] or self._nominal_egress(sat, dst)
+        return [s for s in advertised if s != sat] or self._nominal_egress(sat, dst, now)
 
-    def _nominal_egress(self, sat: int, dst: str) -> list[int]:
-        """Fallback from a time-zero visibility plan, with no live GSL input."""
-        if dst not in self._planned_egress:
+    def _nominal_egress(self, sat: int, dst: str, now: float) -> list[int]:
+        """Return the current nearest nominal egress, using public ephemeris.
+
+        The fallback is evaluated on a deterministic simulation-time bucket and
+        caches only the two nearest visible satellites.  It deliberately does
+        not consult the live GSL association state.  When the caller is itself
+        the nearest candidate, the runner-up is returned so a packet never gets
+        an unusable self-target from the fallback.
+        """
+        bucket = int(math.floor(float(now) / self.time_step_s))
+        key = (str(dst), bucket)
+        if key not in self._planned_egress:
             ep = self.endpoints[dst]
+            at = bucket * self.time_step_s
             visible = [
-                (self.geometry.slant_range_km(s, ep.lat, ep.lon, 0.0), s)
+                (self.geometry.slant_range_km(s, ep.lat, ep.lon, at), s)
                 for s in range(self.num_sats)
-                if self.geometry.ground_visible(s, ep.lat, ep.lon, 0.0)
+                if self.geometry.ground_visible(s, ep.lat, ep.lon, at)
             ]
-            self._planned_egress[dst] = tuple(s for _, s in sorted(visible))
-        return [s for s in self._planned_egress[dst] if s != sat]
+            visible.sort(key=lambda item: (item[0], item[1]))
+            self._planned_egress[key] = tuple(s for _, s in visible[:2])
+        return [s for s in self._planned_egress[key] if s != sat][:1]
 
     def _local_forward_view(self, sat, pkt, legal, shortest_candidates):
         from .rl.local_forward import DIRS, EdgeReport, LocalForwardView, Port, distance_to_cell_km
@@ -7239,7 +7250,7 @@ class Kernel:
                     prop_s * model.C_KM_S, self.rf_isl, self.mcs_table))
                 if self.rate_model == "mcs" else None),
             cache_hops=cache_hops,
-            fallback_targets=(self._nominal_egress(sat, pkt.dst)
+            fallback_targets=(self._nominal_egress(sat, pkt.dst, now)
                               if self.cfg_rt.get("ephemeris_egress_fallback") else ()))
         if status == "unreachable":
             if self.timeline_sink is not None:

@@ -52,11 +52,11 @@ PHASE_WINDOWS_S = {
     "steady_base": (0.2, 2.0),
     "declared_pulse_overlay": (2.0, 3.5),
     "recovery_base": (3.5, 9.5),
-    "drain": (9.5, 10.5),
+    "drain": (9.5, 11.5),
 }
 EMISSION_WINDOW_S = (0.2, 9.5)
 PULSE_WINDOW_S = (2.0, 3.5)
-DURATION_S = 10.5
+DURATION_S = 11.5
 REAL_CONTROL_INTERVALS_S = (0.01, 0.05, 0.10)
 DEFAULT_OFFERED_MBPS = {"A": 100.0, "B": 180.0}
 MAX_PACKETS = 200_000
