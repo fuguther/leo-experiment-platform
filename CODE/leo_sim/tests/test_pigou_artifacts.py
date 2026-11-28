@@ -627,3 +627,33 @@ def test_scene_c_export_uses_scene_c_windows(tmp_path):
     assert metrics["goodput_pdr_prepulse_pct"] == pytest.approx(100.0)
     assert metrics["goodput_pdr_recovery_pct"] == pytest.approx(100.0)
     assert metrics["status"] == "COMPUTED"
+
+
+def test_matrix_native_seed_scene_c_validation_labels(tmp_path):
+    from CODE.scripts import pigou_matrix
+
+    matrix = pigou_matrix.Matrix("rel", "pigou-test", 0, scene_c_workers=2, eval_workers=2)
+    matrix.loads["C"] = 185.0
+    calls = []
+
+    def fake_cell(label, spec, *, model=None, resume=None):
+        calls.append((label, dict(spec), model, resume))
+        run_dir = tmp_path / label / "sim"
+        ckpt_dir = run_dir / ("pigou_online" if spec.get("online_ours") else "ddqn")
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        ckpt = ckpt_dir / "online.keras"
+        ckpt.write_bytes(b"weights")
+        (tmp_path / label / "resume.tar").write_bytes(b"tar")
+        return tmp_path / label, {"run_dir": str(run_dir), "pdr": 0.9}
+
+    matrix.cell = fake_cell
+    scene, alg, seed, variant, best_path = matrix._native_seed("C", "Ours", 11, "full")
+    assert (scene, alg, seed, variant) == ("C", "Ours", 11, "full")
+    assert best_path.name == "online.keras"
+    val_labels = [label for label, spec, _, _ in calls if spec["exp"] == "validation"]
+    assert val_labels == [
+        "C-Ours-full-t11-r3-v41",
+        "C-Ours-full-t11-r3-v42",
+        "C-Ours-full-t11-r5-v41",
+        "C-Ours-full-t11-r5-v42",
+    ]

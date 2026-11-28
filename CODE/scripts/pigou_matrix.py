@@ -265,16 +265,17 @@ class Matrix:
                             else ("primal_cvar" if alg == "B6" else "ddqn"))
             path = Path(report["run_dir"]) / artifact_dir / "online.keras"
             if round_no in {3, 5}:
-                validation_label = (
-                    f"{scene}-{alg}-{variant}-t{train_seed}-r{round_no}-v{s}"
-                    if online_ours else
-                    f"{scene}-{alg}-t{train_seed}-r{round_no}-v{s}")
-                vals = [self.cell(validation_label,
-                                  _params(scene, s, alg, "validation", self.loads[scene],
-                                          interval=interval, multiplier=multiplier,
-                                          train_seed=train_seed, **extra),
-                                  model=(path, {}))
-                        for s in VAL_SEEDS]
+                vals = self.parallel([
+                    (self.cell, (
+                        (f"{scene}-{alg}-{variant}-t{train_seed}-r{round_no}-v{s}"
+                         if online_ours else
+                         f"{scene}-{alg}-t{train_seed}-r{round_no}-v{s}"),
+                        _params(scene, s, alg, "validation", self.loads[scene],
+                                interval=interval, multiplier=multiplier,
+                                train_seed=train_seed, **extra)),
+                     {"model": (path, {})})
+                    for s in VAL_SEEDS
+                ], min(2, self.eval_workers))
                 score = sum(row["pdr"] for _, row in vals) / len(vals)
                 report.update(validation_score=score, checkpoint_sha256=sha(path))
                 if best is None or score > best[0]:
