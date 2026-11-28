@@ -241,6 +241,16 @@ def choose_next_hop(policy: str, sat: int, dst_cell: str, now: float,
     if forbidden or sorted_adj is None:
         sorted_adj = {u: sorted(adj.get(u, ())) for u in adj}
 
+    fallback = [t for t in fallback_targets
+                if t != sat and t not in forbidden]
+    if fallback and _multi_source_bfs(adj, targets).get(
+            sat, float("inf")) == float("inf"):
+        # A stale advertisement can target a satellite in another transient
+        # topology component.  Fall back to the caller's public current-time
+        # nominal egress rather than converting that stale target into a
+        # deterministic NO_ROUTE for every progress-capable direction.
+        targets = fallback
+
     def observed_propagation(a, b):
         """Propagation metric available at `sat` for forward edge a -> b."""
         if a == sat:

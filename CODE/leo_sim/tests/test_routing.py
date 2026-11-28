@@ -623,3 +623,19 @@ def test_observation_age_audit_survives_an_unmapped_direction():
         key = None if res is None else res.as_tuple()
         assert key is None or isinstance(key, tuple)
 
+
+
+def test_unreachable_advertised_target_falls_back_to_current_nominal_egress():
+    geo = StaticGeometry(
+        4,
+        neighbors_map={0: {"E": 1}, 1: {"W": 0, "E": 2}, 2: {"W": 1}},
+    )
+    topo = _topo(geo)
+    cache = _cache_with([
+        (3, {"serve_cells": [B], "isl_queue_bits": {}}, 0.0, 0.01, 10.0),
+    ])
+    dirs, status = routing.choose_next_hop(
+        "hop", 0, B, 1.0, geo, topo, cache, {}, 1e9,
+        lambda km: km / 299_792.458, fallback_targets=[2])
+    assert status == "ok"
+    assert dirs == ["E"]
