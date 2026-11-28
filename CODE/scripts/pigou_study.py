@@ -312,11 +312,14 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
 def _cell_main(spec):
     _set_threads(spec.get("threads", 2))
     root = _release_run_dir()
-    checkpoint = _input("online.keras") if "T1_INPUT_ONLINE_KERAS" in os.environ else (
-        _input("frozen.npz") if "T1_INPUT_FROZEN_NPZ" in os.environ else None)
+    if spec["alg"] == "Ours":
+        checkpoint = _input("frozen.npz") if "T1_INPUT_FROZEN_NPZ" in os.environ else None
+    else:
+        checkpoint = _input("online.keras") if "T1_INPUT_ONLINE_KERAS" in os.environ else (
+            _input("frozen.npz") if "T1_INPUT_FROZEN_NPZ" in os.environ else None)
     metadata = _input("metadata.json") if "T1_INPUT_METADATA_JSON" in os.environ else None
-    if "T1_INPUT_EXPERT_KERAS" in os.environ:
-        expert_path = _input("expert.keras")
+    if spec["alg"] == "Ours" and "T1_INPUT_ONLINE_KERAS" in os.environ:
+        expert_path = _input("online.keras")
         if metadata is None:
             raise ValueError("expert checkpoint requires metadata.json")
         spec = {**spec, "expert_checkpoint_path": str(expert_path),
