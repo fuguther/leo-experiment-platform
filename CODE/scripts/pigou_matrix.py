@@ -21,8 +21,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from CODE.scripts.pigou_study import (
-    ALGORITHMS, CADENCES, CORRIDOR_EDGES, LEARNERS, MODULE, TEST_SEEDS, TRAIN_SEEDS,
-    VAL_SEEDS, _pinned_env, sha,
+    ALGORITHMS, CADENCES, CORRIDOR_EDGES, CORRIDOR_EDGES_BY_SCENE, LEARNERS,
+    MODULE, TEST_SEEDS, TRAIN_SEEDS, VAL_SEEDS, _json_write, _pinned_env, sha,
 )
 
 ROOT = Path("/data/论文/leo-t1-wt")
@@ -30,6 +30,7 @@ CALIBRATION_SEEDS = (9001,)
 CALIBRATION_LOADS = {
     "A": (180.0, 210.0, 235.0),
     "B": (150.0, 180.0, 210.0),
+    "C": (105.0, 125.0, 145.0, 165.0, 185.0),
 }
 TARGET_STEADY_UTILIZATION = 0.720
 UTILIZATION_TOLERANCE = 0.050
@@ -41,7 +42,7 @@ FIT_ROUNDS = (
     (1, 600, 2e-4),
     (1, 400, 1e-4),
 )
-VARIANTS = {"A": ("full",), "B": ("full",)}
+VARIANTS = {"A": ("full",), "B": ("full",), "C": ("full",)}
 BETA_GRID = (0.25, 0.50, 0.75, 1.00)
 
 
@@ -97,12 +98,14 @@ def canonical_task_argv(argv):
 
 
 class Matrix:
-    def __init__(self, release, prefix, attempt):
+    def __init__(self, release, prefix, attempt, scene_c_workers=5, eval_workers=16):
         from CODE.scripts.remote import release_protocol
 
         self.release = release
         self.prefix = prefix
         self.attempt = attempt
+        self.scene_c_workers = max(1, int(scene_c_workers))
+        self.eval_workers = max(1, int(eval_workers))
         self.runner = release_protocol
         self.raw = []
         self.models = {}
@@ -241,14 +244,19 @@ class Matrix:
     def _native_seed(self, scene, alg, train_seed, variant="full"):
         previous = None
         best = None
+        seed_base = {"A": 100_000, "B": 200_000, "C": 500_000}[scene]
+        interval = 0.10 if scene == "C" else 0.05
+        multiplier = 3.2 if scene == "C" else 2.5
+        train_every = 8 if scene == "C" else 32
         for round_no in range(1, 6):
-            scenario_seed = (200_000 if scene == "B" else 100_000) + train_seed * 100 + round_no
+            scenario_seed = seed_base + train_seed * 100 + round_no
             online_ours = alg == "Ours"
             extra = {"online_ours": True, "variant": variant,
-                     "train_every_steps": 32} if online_ours else {}
+                     "train_every_steps": train_every} if online_ours else {}
             parent, report = self.cell(
                 f"{scene}-{alg}-{variant}-t{train_seed}-r{round_no}",
                 _params(scene, scenario_seed, alg, "exp1", self.loads[scene],
+                        interval=interval, multiplier=multiplier,
                         train_seed=train_seed, epoch=round_no, threads=2,
                         duration_s=5.5, **extra),
                 resume=previous)
@@ -263,6 +271,7 @@ class Matrix:
                     f"{scene}-{alg}-t{train_seed}-r{round_no}-v{s}")
                 vals = [self.cell(validation_label,
                                   _params(scene, s, alg, "validation", self.loads[scene],
+                                          interval=interval, multiplier=multiplier,
                                           train_seed=train_seed, **extra),
                                   model=(path, {}))
                         for s in VAL_SEEDS]
@@ -396,8 +405,9 @@ class Matrix:
                             use_model = selected
                         if alg == "B3":
                             spec["threshold"] = self.thresholds[scene]
-                        if scene == "A" and experiment == "exp2" and seed == 101 and alg == "Ours":
-                            spec["telemetry_sat"] = CORRIDOR_EDGES[0][0]
+                        if scene in ("A", "C") and experiment == "exp2" and seed == 101 and alg == "Ours":
+                            edges = CORRIDOR_EDGES_BY_SCENE.get(scene, CORRIDOR_EDGES)
+                            spec["telemetry_sat"] = edges[0][0]
                         tag = options.get("tag", "main")
                         suffix = f"-{variant}" if alg == "Ours" and getattr(self, "online_ours", False) else ""
                         label = f"{scene}-{experiment.replace('_','-')}-{alg}{suffix}-{tag}-t{train_seed}-p{int(interval*1000)}-s{seed}"
@@ -407,8 +417,9 @@ class Matrix:
         tasks = list(self._heldout_tasks(scene, experiment, intervals, seeds, algorithms, **options))
         graphs = [(fn, a, kw) for fn, a, kw in tasks if a[1]["alg"] in ("B5", "B6")]
         other = [(fn, a, kw) for fn, a, kw in tasks if a[1]["alg"] not in ("B5", "B6")]
-        self.record(self.parallel(other, 16))
-        self.record(self.parallel(graphs, 16))
+        workers = self.eval_workers
+        self.record(self.parallel(other, workers))
+        self.record(self.parallel(graphs, workers))
 
     def _export(self, suffix):
         # Bind the run-ID index as one byte-exact input to the export run.
@@ -736,6 +747,123 @@ class Matrix:
         self._export("complete")
 
 
+    def _train_scene_c(self, variants=("full", "no_ext")):
+        tasks = [
+            (self._native_seed, ("C", alg, 11, "full"), {})
+            for alg in LEARNERS
+        ] + [
+            (self._native_seed, ("C", "Ours", 11, variant), {})
+            for variant in variants
+        ]
+        workers = min(self.scene_c_workers, len(tasks))
+        for _scene, alg, seed, variant, path in self.parallel(tasks, workers):
+            self.models[("C", alg, seed, variant)] = path, {}
+
+    def _gate_c_probe(self):
+        rows = [
+            row for _, row in self.parallel(
+                list(self._heldout_tasks(
+                    "C", "gateC", (0.10,), VAL_SEEDS, ALGORITHMS,
+                    train_seeds=(11,), multiplier=3.2, tag="gateC")),
+                self.eval_workers)
+        ]
+        no_ext = [
+            row for _, row in self.parallel(
+                list(self._heldout_tasks(
+                    "C", "gateC_no_ext", (0.10,), VAL_SEEDS, ("Ours",),
+                    train_seeds=(11,), multiplier=3.2, variant="no_ext", tag="gateC-no-ext")),
+                self.eval_workers)
+        ]
+        self.raw.extend(rows)
+        self.raw.extend(no_ext)
+        ours = [row for row in rows if row["alg"] == "Ours"]
+        baselines = [row for row in rows if row["alg"] != "Ours"]
+        ours_tx = self._mean_metric(ours, "tx_goodput")
+        baseline_tx = {
+            alg: self._mean_metric([r for r in baselines if r["alg"] == alg], "tx_goodput")
+            for alg in ("B1", "B2", "B4", "B5", "B6")
+        }
+        no_ext_tx = self._mean_metric(no_ext, "tx_goodput")
+        burst_means = {
+            alg: self._mean_metric(
+                [{"burst": (r.get("phase_pdr") or {}).get("burst")}
+                 for r in rows if r["alg"] == alg],
+                "burst")
+            for alg in ("B1", "B2", "B4", "B5", "B6", "Ours")
+        }
+        burst_means["Ours_no_ext"] = self._mean_metric(
+            [{"burst": (r.get("phase_pdr") or {}).get("burst")} for r in no_ext], "burst")
+        passed = (
+            ours_tx is not None
+            and all(value is not None and ours_tx > value for value in baseline_tx.values())
+            and no_ext_tx is not None and ours_tx > no_ext_tx
+        )
+        report = {
+            "scene": "C",
+            "offered_mbps": self.loads["C"],
+            "ours_tx_goodput": ours_tx,
+            "baseline_tx_goodput": baseline_tx,
+            "no_ext_tx_goodput": no_ext_tx,
+            "burst_pdr": burst_means,
+            "passed_tx_goodput": passed,
+        }
+        _json_write(ROOT / "runs" / f"{self.prefix}-gateC.json", report)
+        print("GATE_C_REPORT", json.dumps(report, sort_keys=True), flush=True)
+        if not passed:
+            raise RuntimeError(f"Gate-C failed: {report}")
+        return report
+
+    def scene_c_probe(self):
+        self.calibrate(scenes=("C",))
+        self.online_ours = True
+        self._train_scene_c(("full", "no_ext"))
+        self._gate_c_probe()
+        self._export("gateC")
+
+    def scene_c_full(self):
+        """Full Scene-C 8-figure suite exporting all 14 required CSVs."""
+        self.calibrate(scenes=("C",))
+        self.online_ours = True
+        self._train_scene_c(("full", "no_ext", "mean", "frame", "no_ais"))
+        self._gate_c_probe()
+
+        for multiplier in (1.0, 2.5, 3.2):
+            self.heldout("C", "exp0b", (0.10,), (101,), ("B1", "B2"),
+                         multiplier=multiplier, tag=f"m{round(multiplier * 10)}")
+        self.heldout("C", "exp0_hysteresis", (0.10,), (9003,),
+                     ("B1", "B2", "B4", "Ours"), sweep=True,
+                     multiplier=1.0, tag="step")
+        self._export("wave1")
+
+        self.heldout("C", "exp2", (0.10,), TEST_SEEDS, ALGORITHMS,
+                     train_seeds=(11,), multiplier=3.2, tag="main")
+        self.heldout("C", "exp2", (0.010, 0.050), TEST_SEEDS, ALGORITHMS,
+                     train_seeds=(11,), multiplier=3.2, tag="main")
+        self.heldout("C", "exp3_outage", (0.10,), TEST_SEEDS, ALGORITHMS,
+                     train_seeds=(11,), outage=True, multiplier=1.0, tag="outage")
+        self.heldout("C", "exp3_zeroshot", (0.10,), TEST_SEEDS, ALGORITHMS,
+                     train_seeds=(11,), large=True, multiplier=3.2, tag="large")
+        self._export("wave3")
+
+        for variant in ("no_ext", "mean", "frame", "no_ais"):
+            self.heldout("C", "exp4_ablation", (0.10,), TEST_SEEDS, ("Ours",),
+                         multiplier=3.2, variant=variant, tag=variant)
+        self.raw.extend({**row, "exp": "exp4_ablation", "variant": "full"}
+                        for row in self.raw
+                        if row.get("exp") == "exp2" and row.get("scene") == "C"
+                        and row.get("interval") == 0.10 and row.get("alg") == "Ours")
+        for delay in (0.000010, 0.000100):
+            self.heldout("C", "exp4_compute", (0.10,), TEST_SEEDS,
+                         ("B2", "Ours"), multiplier=3.2, compute_delay_s=delay,
+                         tag=f"us{round(delay * 1e6)}")
+        self.raw.extend({**row, "exp": "exp4_compute", "compute_delay_s": 0.0}
+                        for row in self.raw
+                        if row.get("exp") == "exp2" and row.get("scene") == "C"
+                        and row.get("interval") == 0.10
+                        and row.get("alg") in ("B2", "Ours"))
+        self._export("complete")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--describe", action="store_true")
@@ -744,8 +872,11 @@ def main():
     parser.add_argument("--preflight")
     parser.add_argument("--baseline-prefix", default="pigou-20261128-meeting")
     parser.add_argument("--attempt", type=int, default=0)
-    parser.add_argument("--wave", choices=("exp0", "pilot", "core", "extras", "tonight", "online_tonight", "all"),
-                        default="all")
+    parser.add_argument("--scene-c-workers", type=int, default=5)
+    parser.add_argument("--wave", choices=(
+        "exp0", "pilot", "core", "extras", "tonight", "online_tonight",
+        "scene_c_probe", "scene_c_full", "all"),
+        default="all")
     args = parser.parse_args()
     if args.describe:
         print(json.dumps(describe(), indent=2))
@@ -765,10 +896,16 @@ def main():
         raise RuntimeError("matrix requires a completed exact-release VM validation")
     # One study writer. Native release locks and independent run IDs protect
     # each trial. This lock carries no experiment authorization of its own.
-    lock = ROOT / "runs" / ".locks" / "pigou-matrix.lock"
+    is_scene_c = args.wave in ("scene_c_probe", "scene_c_full")
+    lock_name = "pigou-matrix-sceneC.lock" if is_scene_c else "pigou-matrix.lock"
+    eval_workers = min(8, max(args.scene_c_workers, 6)) if is_scene_c else 16
+    lock = ROOT / "runs" / ".locks" / lock_name
+    lock.parent.mkdir(parents=True, exist_ok=True)
     with lock.open("a+b") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        matrix = Matrix(args.release, args.prefix, args.attempt)
+        matrix = Matrix(args.release, args.prefix, args.attempt,
+                        scene_c_workers=args.scene_c_workers,
+                        eval_workers=eval_workers)
         if args.wave == "all":
             matrix.execute()
         elif args.wave == "online_tonight":

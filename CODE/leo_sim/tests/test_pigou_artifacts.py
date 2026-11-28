@@ -612,3 +612,18 @@ def test_matrix_contract_canonicalizes_json_key_order():
                '{"alg":"B6","seed":43,"scene":"A"}']
     assert canonical_task_argv(left) == canonical_task_argv(right)
     assert canonical_task_argv(left) != canonical_task_argv(changed)
+
+
+def test_scene_c_export_uses_scene_c_windows(tmp_path):
+    packets = [
+        _packet(1, 0.6, 1.0, delivered=0.8),
+        _packet(2, 4.0, 5.0, delivered=4.1),
+    ]
+    run, _ = _write_run(tmp_path, "scene-c", packets)
+    evidence = ex._load_run(
+        tmp_path, _entry("exp2", run, tmp_path, scene="C"), 0)
+    metrics = ex._run_metrics(evidence)
+
+    assert metrics["goodput_pdr_prepulse_pct"] == pytest.approx(100.0)
+    assert metrics["goodput_pdr_recovery_pct"] == pytest.approx(100.0)
+    assert metrics["status"] == "COMPUTED"

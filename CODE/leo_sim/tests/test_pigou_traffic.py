@@ -425,3 +425,34 @@ def test_nominal_hops_uses_each_packets_ephemeris_bucket(monkeypatch):
     assert result["hops"] == 3
     assert result["basis"] == "current_time_nearest_nominal_egress_min_hops"
     assert graph_calls == [0.0, 1.0]
+
+
+def test_scene_c_trace_and_config_contract(builder, tmp_path):
+    from CODE.scripts.pigou_study import cell_config
+
+    built = builder.build(
+        tmp_path / "scene-c-eval", scene="C", seed=101,
+        interval=0.10, multiplier=3.2, offered_mbps=145.0)
+    cfg = built["config"]
+    assert cfg["scenario"]["num_satellites"] == 66
+    assert cfg["scenario"]["num_planes"] == 6
+    assert cfg["scenario"]["inclination_deg"] == pytest.approx(86.4)
+    assert cfg["links"]["isl_rate_mbps"] == pytest.approx(60.0)
+    assert cfg["links"]["isl_queue_bits"] == 1_800_000
+    assert cfg["demand"]["retry"]["max_retries"] == 2
+    assert cfg["demand"]["retry"]["retry_fraction"] == pytest.approx(0.80)
+    assert cfg["demand"]["deadline_s"] == pytest.approx(0.210)
+    assert built["packet_count"] > 0
+
+    outage_cfg = cell_config(
+        cfg, {"scene": "C", "alg": "B2", "outage": True, "multiplier": 1.0})
+    assert outage_cfg["links"]["scheduled_isl_outages"] == [
+        {"a": 12, "b": 23, "start_s": 2.0, "end_s": 3.5},
+        {"a": 23, "b": 34, "start_s": 2.0, "end_s": 3.5},
+        {"a": 34, "b": 45, "start_s": 2.0, "end_s": 3.5},
+    ]
+
+    large_cfg = cell_config(
+        cfg, {"scene": "C", "alg": "B1", "large": True, "multiplier": 3.2})
+    assert large_cfg["scenario"]["num_satellites"] == 280
+    assert large_cfg["scenario"]["num_planes"] == 14

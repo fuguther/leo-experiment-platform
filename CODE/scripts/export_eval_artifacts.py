@@ -170,6 +170,13 @@ SCENE_WINDOWS = {
         ("recovery", 3.5, 9.5),
         ("full", 0.2, 9.5),
     ),
+    "C": (
+        ("emission_window", 0.2, 9.5),
+        ("steady_prepulse", 0.5, 2.0),
+        ("burst", 2.0, 3.5),
+        ("recovery", 3.5, 9.5),
+        ("full", 0.2, 9.5),
+    ),
 }
 
 SUMMARY_METRICS = (
@@ -442,8 +449,8 @@ def _normalize_entry(root: Path, raw: Mapping[str, Any], ordinal: int) -> tuple[
         raise ExportValidationError(f"index[{ordinal}] missing {missing}")
     if entry["exp"] not in EXPERIMENTS:
         raise ExportValidationError(f"index[{ordinal}] unsupported exp {entry['exp']!r}")
-    if entry["scene"] not in {"A", "B"}:
-        raise ExportValidationError(f"index[{ordinal}] scene must be A or B")
+    if entry["scene"] not in {"A", "B", "C"}:
+        raise ExportValidationError(f"index[{ordinal}] scene must be A, B, or C")
     entry["seed"] = int(_finite(entry["seed"], f"index[{ordinal}].seed"))
     entry["interval_s"] = _finite(entry["interval"], f"index[{ordinal}].interval")
     if entry["interval_s"] <= 0:

@@ -25,6 +25,11 @@ TRAIN_SEEDS = (11,)
 VAL_SEEDS = (41, 42)
 TEST_SEEDS = (101, 102, 103)
 CORRIDOR_EDGES = ((2, 90), (90, 82), (82, 74))
+CORRIDOR_EDGES_BY_SCENE = {
+    "A": CORRIDOR_EDGES,
+    "B": ((12, 23), (23, 34), (34, 45)),
+    "C": ((12, 23), (23, 34), (34, 45)),
+}
 MODULE = "CODE.scripts.pigou_study"
 
 
@@ -148,9 +153,10 @@ def cell_config(cfg, spec, checkpoint=None, metadata=None, resume=None):
             cfg["learning"].update(resume_path=str(resume),
                                    resume_sha256=sha(resume / "manifest.json"))
     if spec.get("outage"):
+        edges = CORRIDOR_EDGES_BY_SCENE.get(str(spec.get("scene", "A")).upper(), CORRIDOR_EDGES)
         cfg["links"]["scheduled_isl_outages"] = [
             {"a": min(a, b), "b": max(a, b), "start_s": 2.0, "end_s": 3.5}
-            for a, b in CORRIDOR_EDGES
+            for a, b in edges
         ]
     if spec.get("large"):
         cfg["scenario"].update(num_satellites=280, num_planes=14, altitude_km=550.0)
@@ -318,7 +324,8 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
     sim.mkdir(parents=True)
     if spec.get("sweep"):
         workload = build_staircase(out / "traffic", seed=spec["seed"],
-                                   interval=spec["interval"], offered_mbps=spec["offered_mbps"])
+                                   interval=spec["interval"], offered_mbps=spec["offered_mbps"],
+                                   scene=spec.get("scene", "A"))
     else:
         workload = build(out / "traffic", scene=spec["scene"], seed=spec["seed"],
                          interval=spec.get("interval", 0.05), multiplier=spec.get("multiplier", 2.5),
@@ -524,11 +531,16 @@ def preflight(spec):
     if len({row["trace_sha256"] for row in summaries}) != 1:
         raise ValueError("preflight arms used different packet cohorts")
     b = simulate(root / "scene-b", {**small, "scene": "B", "alg": "B1"})
+    c = simulate(root / "scene-c", {**small, "scene": "C", "alg": "B1"})
+    c_ours = simulate(root / "scene-c-ours", {
+        **small, "scene": "C", "alg": "Ours", "train_seed": 11,
+        "train_every_steps": 8, "online_ours": True, "variant": "full",
+    })
     fault = simulate(root / "outage", {**small, "alg": "B2", "outage": True,
                                       "multiplier": 1.0})
     staircase = simulate(root / "staircase", {**small, "alg": "B1", "sweep": True,
                                              "multiplier": 1.0})
-    summaries.extend((b, fault, staircase))
+    summaries.extend((b, c, c_ours, fault, staircase))
     _json_write(root / "preflight.json", {
         "status": "passed", "tensorflow": tf.__version__,
         "online_ours": True, "arms": summaries,

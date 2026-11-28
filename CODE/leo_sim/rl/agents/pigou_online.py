@@ -55,7 +55,7 @@ PORT_EMBED_DIM = 32
 ATTN_HEADS = 2
 ATTN_HEAD_DIM = PORT_EMBED_DIM // ATTN_HEADS  # 16
 LAYER_NORM_EPS = 1e-5
-RISK_TARGET_MAX = 3.0
+RISK_TARGET_MAX = 2.5
 
 VALID_VARIANTS = frozenset({"full", "no_ext", "mean", "no_ais", "frame"})
 
@@ -763,7 +763,7 @@ class TensorflowPigouOnline:
         self.initial_lambda_pd = _resolve_cfg_float(cfg, ("lambda_init",), 0.15)
         self.lambda_pd = float(self.initial_lambda_pd)
         self.dual_lr = _resolve_cfg_float(cfg, ("dual_lr",), 0.10)
-        self.dual_constraint = _resolve_cfg_float(cfg, ("dual_constraint",), 0.15)
+        self.dual_constraint = _resolve_cfg_float(cfg, ("dual_constraint",), 0.12)
         self.risk_loss_weight = _resolve_cfg_float(cfg, ("risk_loss_weight",), 1.0)
         self.ais_loss_weight = (
             0.0 if self.variant in ("no_ais", "frame")

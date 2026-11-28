@@ -59,7 +59,7 @@ PULSE_WINDOW_S = (2.0, 3.5)
 DURATION_S = 11.5
 TIME_STEP_S = 0.05
 REAL_CONTROL_INTERVALS_S = (0.01, 0.05, 0.10)
-DEFAULT_OFFERED_MBPS = {"A": 100.0, "B": 180.0}
+DEFAULT_OFFERED_MBPS = {"A": 100.0, "B": 180.0, "C": 185.0}
 MAX_PACKETS = 200_000
 RETRY_POLICY = {
     "enabled": True,
@@ -70,6 +70,19 @@ RETRY_POLICY = {
     "attempt_timeout_s": 0.240,
     "stop_reinject_at_s": 9.3,
 }
+SCENE_C_RETRY_POLICY = {
+    "enabled": True,
+    "max_retries": 2,
+    "retry_fraction": 0.80,
+    "backoff_s": 0.030,
+    "jitter_s": 0.015,
+    "attempt_timeout_s": 0.195,
+    "stop_reinject_at_s": 9.3,
+}
+
+
+def _retry_policy_for_scene(scene_name: str) -> dict:
+    return dict(SCENE_C_RETRY_POLICY if scene_name.upper() == "C" else RETRY_POLICY)
 
 
 @dataclass(frozen=True)
@@ -219,6 +232,34 @@ SCENE_B_HOTSPOTS = (
     ("NewYork", "SaoPaulo", 1.0),
 )
 
+# Scene-C: coupled Eurasia-Atlantic-Pacific cross-corridor belt under 66x6 polar
+# seam asymmetry, tight 30 ms shallow buffers, 100 ms control cadence, and 80%
+# bounded transaction retries where selfish bypass detours induce spillover.
+SCENE_C_CORRIDORS = (
+    ("Beijing", "Frankfurt", 1.15),
+    ("Tokyo", "Frankfurt", 1.25),
+    ("Seoul", "London", 1.10),
+    ("Singapore", "London", 1.25),
+    ("Mumbai", "London", 1.15),
+    ("Dubai", "London", 1.05),
+    ("Istanbul", "Frankfurt", 0.95),
+    ("Moscow", "NewYork", 0.90),
+    ("NewYork", "Frankfurt", 1.20),
+    ("Toronto", "Frankfurt", 1.10),
+    ("Chicago", "London", 1.05),
+    ("Tokyo", "LosAngeles", 1.00),
+    ("Seoul", "LosAngeles", 0.90),
+    ("NewYork", "SaoPaulo", 0.95),
+    ("Sydney", "Singapore", 0.70),
+    ("Nairobi", "Frankfurt", 0.80),
+)
+
+SCENE_C_HOTSPOTS = (
+    ("Tokyo", "Frankfurt", 1.3),
+    ("Beijing", "Frankfurt", 1.2),
+    ("Singapore", "London", 1.3),
+)
+
 
 def _scene_spec(scene: str) -> SceneSpec:
     normalized = scene.upper()
@@ -259,7 +300,24 @@ def _scene_spec(scene: str) -> SceneSpec:
             hotspot_weights=SCENE_B_HOTSPOTS,
             **common,
         )
-    raise ValueError(f"scene must be 'A' or 'B', got {scene!r}")
+    if normalized == "C":
+        return SceneSpec(
+            scene="C",
+            name="pigou-scene-c",
+            num_satellites=66,
+            num_planes=6,
+            altitude_km=780.0,
+            inclination_deg=86.4,
+            isl_rate_mbps=60.0,
+            isl_queue_bits=1_800_000,
+            packet_bits=64_000,
+            hard_deadline_s=0.210,
+            sites=SCENE_B_SITES,
+            corridor_weights=SCENE_C_CORRIDORS,
+            hotspot_weights=SCENE_C_HOTSPOTS,
+            **common,
+        )
+    raise ValueError(f"scene must be 'A', 'B', or 'C', got {scene!r}")
 
 
 def _validate_inputs(
@@ -418,12 +476,13 @@ def _packet_row(
 
 
 def _transaction_deadline_s(spec: SceneSpec) -> float:
-    retries = int(RETRY_POLICY["max_retries"])
+    policy = _retry_policy_for_scene(spec.scene)
+    retries = int(policy["max_retries"])
     attempts = retries + 1
     return (
-        attempts * float(RETRY_POLICY["attempt_timeout_s"])
-        + retries * (float(RETRY_POLICY["backoff_s"])
-                     + float(RETRY_POLICY["jitter_s"])
+        attempts * float(policy["attempt_timeout_s"])
+        + retries * (float(policy["backoff_s"])
+                     + float(policy["jitter_s"])
                      + TIME_STEP_S)
     )
 
@@ -478,7 +537,7 @@ def _make_config(
             "burst_start_s": None,
             "burst_duration_s": None,
             "temporal_model": "constant",
-            "retry": dict(RETRY_POLICY),
+            "retry": _retry_policy_for_scene(spec.scene),
         },
         "access": {
             "unavailable_policy": "queue",
@@ -631,6 +690,8 @@ def build(
              weight * 8.0 if (src, dst) in hotspot_pairs else weight)
             for src, dst, weight in background_routes)
         pulse_routes = spec.hotspot_weights
+    elif spec.scene == "C":
+        pulse_routes = spec.hotspot_weights
     else:
         pulse_routes = _bidirectional_routes(spec.hotspot_weights)
 
@@ -778,9 +839,9 @@ def _cli_summary(result: Mapping[str, object]) -> dict[str, object]:
     }
 
 
-def build_staircase(out_dir, *, seed, interval, offered_mbps):
+def build_staircase(out_dir, *, seed, interval, offered_mbps, scene="A"):
     """Matched ascending and descending load plateaus for the hysteresis figure."""
-    spec = _scene_spec("A")
+    spec = _scene_spec(scene)
     _validate_inputs(scene=spec, seed=seed, multiplier=1.0,
                      interval=interval, offered_mbps=offered_mbps)
     out = Path(out_dir).resolve()
@@ -788,7 +849,7 @@ def build_staircase(out_dir, *, seed, interval, offered_mbps):
     path = out / TRACE_FILENAME
     sites = {site.name: site for site in spec.sites}
     hotspots = {(a, b) for a, b, _ in spec.hotspot_weights}
-    routes = tuple((a, b, w * 8.0 if (a, b) in hotspots else w)
+    routes = tuple((a, b, w * (8.0 if spec.scene == "A" else 1.5) if (a, b) in hotspots else w)
                    for a, b, w in _bidirectional_routes(spec.corridor_weights))
     levels = (0.65, 0.80, 0.95, 1.10, 1.25, 1.10, 0.95, 0.80, 0.65)
     rows = []
@@ -824,7 +885,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Build deterministic three-phase Pigou Scene A/B traffic")
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--scene", choices=("A", "B"), required=True)
+    parser.add_argument("--scene", choices=("A", "B", "C"), required=True)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--multiplier", type=float, default=2.5)
     parser.add_argument(
