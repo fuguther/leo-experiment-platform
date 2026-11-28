@@ -1132,7 +1132,9 @@ class TensorflowPigouOnline:
         manifest = _verify_resume_bundle(
             resume_dir, self.cfg["resume_sha256"], RESUME_SCHEMA)
         _require_resume_identity(manifest, self._resume_identity())
-        state = json.loads(_read_json_bytes(resume_dir / "state.json").decode("utf-8"))
+        state_path = resume_dir / "state.json"
+        state = _read_json_bytes(
+            state_path.read_bytes(), "Pigou online resume state")
         self.decisions = int(state["decisions"])
         self.transitions = int(state["transitions"])
         self.train_steps = int(state["train_steps"])

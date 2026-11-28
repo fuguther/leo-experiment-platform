@@ -11,6 +11,7 @@ import pytest
 
 from CODE.leo_sim import config, control, inference, kernel, receipt
 from CODE.leo_sim.batch import compile_run_trace
+from CODE.leo_sim.rl.agents import pigou_online as pigou_online_module
 from CODE.leo_sim.rl.agents.pigou_online import (
     ACTION_COUNT,
     CHECKPOINT_SCHEMA,
@@ -184,6 +185,79 @@ def test_pigou_online_config_validation():
     })
     assert resolved["config"]["learning"]["algorithm"] == "pigou_online"
     assert resolved["config"]["routing"]["contract"] == "PIGOU_V2"
+
+
+def test_pigou_online_restore_resume_bundle_restores_state(tmp_path, monkeypatch):
+    resume_dir = tmp_path / "resume"
+    resume_dir.mkdir()
+    expected_rng_state = np.random.default_rng(1234).bit_generator.state
+    state = {
+        "decisions": 17,
+        "transitions": 13,
+        "train_steps": 5,
+        "dual_updates": 2,
+        "lambda_pd": 0.31,
+        "last_now": 4.25,
+        "resume_time_offset_s": 1.5,
+        "rng_state": pigou_online_module._resume_json(expected_rng_state),
+    }
+    (resume_dir / "state.json").write_text(
+        json.dumps(state, sort_keys=True), encoding="utf-8")
+    np.savez(
+        resume_dir / "replay.npz",
+        states=np.ones((1, INPUT_DIM), dtype=np.float32),
+        actions=np.array([1], dtype=np.int64),
+        utilities=np.array([0.5], dtype=np.float32),
+        costs=np.array([0.2], dtype=np.float32),
+        next_states=np.zeros((1, INPUT_DIM), dtype=np.float32),
+        next_masks=np.ones((1, ACTION_COUNT), dtype=bool),
+        dones=np.array([False], dtype=bool),
+        ais_targets=np.zeros((1, PORT_COUNT, 3), dtype=np.float32),
+        ais_valid=np.zeros((1,), dtype=np.float32),
+    )
+
+    identity = {"resume": "identity"}
+    monkeypatch.setattr(
+        pigou_online_module, "_verify_resume_bundle",
+        lambda root, expected_sha, schema: {"identity": identity})
+    monkeypatch.setattr(
+        pigou_online_module, "_require_resume_identity",
+        lambda manifest, expected: None)
+
+    class _Checkpoint:
+        def restore(self, path):
+            self.path = path
+            return self
+
+        def assert_consumed(self):
+            return None
+
+    checkpoint = _Checkpoint()
+    agent = object.__new__(pigou_online_module.TensorflowPigouOnline)
+    agent.cfg = {
+        "resume_path": str(resume_dir),
+        "resume_sha256": "a" * 64,
+    }
+    agent._resume_identity = lambda: identity
+    agent.rng = np.random.default_rng(99)
+    agent.replay = pigou_online_module._PigouReplay(64)
+    agent.online = object()
+    agent.target = object()
+    agent.optimizer = object()
+    agent.tf = SimpleNamespace(
+        train=SimpleNamespace(Checkpoint=lambda **kwargs: checkpoint))
+
+    agent._restore_resume_bundle()
+
+    assert agent.decisions == 17
+    assert agent.transitions == 13
+    assert agent.train_steps == 5
+    assert agent.dual_updates == 2
+    assert agent.lambda_pd == pytest.approx(0.31)
+    assert agent._last_now == pytest.approx(4.25)
+    assert agent._resume_time_offset_s == pytest.approx(1.5)
+    assert len(agent.replay) == 1
+    assert checkpoint.path == str(resume_dir / "tf.ckpt")
 
 
 def test_pigou_online_fixed_inference_end_to_end_kernel(tmp_path):
