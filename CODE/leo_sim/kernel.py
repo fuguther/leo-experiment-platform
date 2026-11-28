@@ -4138,11 +4138,11 @@ class Kernel:
         the nearest candidate, the runner-up is returned so a packet never gets
         an unusable self-target from the fallback.
         """
-        bucket = int(math.floor(float(now) / self.time_step_s))
+        bucket = int(math.floor(float(now) / self.time_step))
         key = (str(dst), bucket)
         if key not in self._planned_egress:
             ep = self.endpoints[dst]
-            at = bucket * self.time_step_s
+            at = bucket * self.time_step
             visible = [
                 (self.geometry.slant_range_km(s, ep.lat, ep.lon, at), s)
                 for s in range(self.num_sats)

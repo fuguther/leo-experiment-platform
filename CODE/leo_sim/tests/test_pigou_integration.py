@@ -67,7 +67,7 @@ def test_local_features_cannot_read_remote_links_future_or_expired_entries():
     sim.cfg_rt = {"policy": "hop", "ephemeris_egress_fallback": True}
     sim._staged_policy = None
     sim.num_sats = 3
-    sim.time_step_s = 0.05
+    sim.time_step = 0.05
     sim._planned_egress = {}
     sim.isl_rate_bps = 100
     sim._link_rate = lambda *_args, **_kwargs: 100
@@ -198,7 +198,7 @@ def test_pigou_hop_penalty_can_prefer_a_lower_detour_despite_ego_score():
 def test_nominal_egress_uses_current_time_bucket_and_nearest_visible_satellite():
     sim = kernel.Kernel.__new__(kernel.Kernel)
     sim.num_sats = 4
-    sim.time_step_s = 0.05
+    sim.time_step = 0.05
     sim.endpoints = {"dest": SimpleNamespace(lat=0.0, lon=20.0)}
     sim._planned_egress = {}
 
