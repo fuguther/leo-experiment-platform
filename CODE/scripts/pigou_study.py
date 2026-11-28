@@ -13,6 +13,11 @@ import sys
 import time
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+
 ALGORITHMS = ("B1", "B2", "B3", "B4", "B5", "B6", "Ours")
 LEARNERS = ("B4", "B5", "B6")
 CADENCES = (0.010, 0.050, 0.100)
