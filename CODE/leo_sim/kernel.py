@@ -177,7 +177,8 @@ class DataPacket:
                  "metric_queue_id", "metric_prop_id", "metric_ingress_at",
                  "decision_id", "decision_ordinal", "current_hop_index",
                  "retries_used", "retry_eligible", "orig_emit_time_s",
-                 "attempt_token", "retry_scheduled", "retired")
+                 "attempt_token", "retry_scheduled", "retired",
+                 "pigou_aux")
 
     def __init__(self, pid, src, dst, bits, deadline, emitted_at,
                  research_deadline_at=None):
@@ -220,6 +221,7 @@ class DataPacket:
         self.attempt_token = 0
         self.retry_scheduled = False
         self.retired = False
+        self.pigou_aux = None
 
 
 class QueueArea:
@@ -1403,18 +1405,18 @@ class Kernel:
             include_lh = bool(self.cfg_learning.get("include_last_hop", False))
             if algorithm == "primal_cvar":
                 expected_fo = _inference.PRIMAL_OBSERVATION_FEATURE_ORDER
+                expected_width = _inference.PRIMAL_OBSERVATION_DIM
+            elif algorithm == "pigou_online":
+                expected_fo = _inference.PIGOU_V2_OBSERVATION_FEATURE_ORDER
+                expected_width = _inference.PIGOU_V2_OBSERVATION_DIM
             else:
                 expected_fo = (
                     _inference.OBSERVATION_FEATURE_ORDER_LAST_HOP
                     if include_lh
                     else _inference.OBSERVATION_FEATURE_ORDER
                 )
-            expected_width = (
-                _inference.PRIMAL_OBSERVATION_DIM
-                if algorithm == "primal_cvar"
-                else _learning.contract_dim(
+                expected_width = _learning.contract_dim(
                     self.cfg_rt["contract"], include_lh)
-            )
             self.fixed_policy = _inference.load_fixed_adapter_from_checkpoint(
                 self.cfg_learning["checkpoint_path"],
                 self.cfg_learning["checkpoint_sha256"],
@@ -1484,6 +1486,14 @@ class Kernel:
         self._local_study = bool(self.cfg_rt.get("ephemeris_egress_fallback"))
         self._control_wire_windows = []
         self._neighbor_age_samples = []
+        if self.cfg_rt["contract"] == "PIGOU_V2":
+            from .rl.agents.pigou_online import PigouLocalTracker
+            self._pigou_tracker = PigouLocalTracker()
+        else:
+            self._pigou_tracker = None
+        self._pigou_link_pressure: dict[tuple[int, str], tuple[float, float]] = {}
+        self._pigou_telemetry: list[dict] = []
+        self._pigou_telemetry_sat = self.cfg_learning.get("pigou_telemetry_sat")
         adapter = self.cfg_rt.get("local_forward_adapter")
         if adapter is not None:
             from .rl.local_forward import build_adapter
@@ -4358,10 +4368,10 @@ class Kernel:
             "online.keras": Path(str(self.cfg_learning["checkpoint_path"])),
             "metadata.json": Path(self._fixed_policy_metadata_path()),
         }
-        if self.cfg_learning["algorithm"] == "primal_cvar":
+        if self.cfg_learning["algorithm"] in ("primal_cvar", "pigou_online"):
             numpy_path = getattr(self.fixed_policy, "weights_path", None)
             if numpy_path is None:
-                raise KernelError("PRIMAL fixed policy has no NumPy checkpoint")
+                raise KernelError(f"{self.cfg_learning['algorithm']} fixed policy has no NumPy checkpoint")
             sources["online.npz"] = Path(numpy_path)
         for name, source in sources.items():
             if source.is_symlink() or not source.is_file():
@@ -4396,11 +4406,16 @@ class Kernel:
 
     def _learner_remember(self, sat: int | None, state, action: str,
                           reward: float, next_state, next_mask: dict,
-                          done: bool, *, terminal_cost: float = 0.0) -> None:
+                          done: bool, *, terminal_cost: float = 0.0,
+                          ais_target=None) -> None:
         remember_with_cost = getattr(self.learner, "remember_with_cost", None)
         if remember_with_cost is not None:
-            remember_with_cost(state, action, reward, next_state, next_mask, done,
-                               cost=terminal_cost)
+            if self.cfg_learning["algorithm"] == "pigou_online":
+                remember_with_cost(state, action, reward, next_state, next_mask, done,
+                                   cost=terminal_cost, ais_target=ais_target)
+            else:
+                remember_with_cost(state, action, reward, next_state, next_mask, done,
+                                   cost=terminal_cost)
             return
         remember_for = getattr(self.learner, "remember_for", None)
         if remember_for is not None:
@@ -4423,12 +4438,31 @@ class Kernel:
         return None
 
     def _learning_observation(self, sat: int, dst_cell: str,
-                              pkt: DataPacket | None = None) -> np.ndarray:
+                              pkt: DataPacket | None = None,
+                              legal: tuple[str, ...] = ()) -> np.ndarray:
         if self.cfg_rt["contract"] == "PRIMAL":
             from .rl.local_forward import primal_observation
             if pkt is None:
                 raise KernelError("PRIMAL observation needs a packet snapshot")
             return primal_observation(self._local_forward_view(sat, pkt, (), ()))
+        if self.cfg_rt["contract"] == "PIGOU_V2":
+            if pkt is None or self._pigou_tracker is None:
+                raise KernelError("PIGOU_V2 observation needs a packet snapshot and tracker")
+            view = self._local_forward_view(sat, pkt, legal, ())
+            variant = self.cfg_learning.get("pigou_variant", "full")
+            if self.fixed_policy is not None:
+                variant = getattr(self.fixed_policy, "variant", variant)
+            obs, aux = self._pigou_tracker.build_observation(
+                view, orig_emit_time_s=pkt.orig_emit_time_s,
+                retries_used=pkt.retries_used,
+                zero_temporal=(variant == "frame"))
+            aux["local_queues"] = [float(p.queue) for p in view.ports]
+            aux["peer_q_max"] = [
+                max((e.queue for e in p.reports if e is not None), default=0.0)
+                for p in view.ports
+            ]
+            pkt.pigou_aux = aux
+            return obs
         queues = {d: lnk.data_bits + lnk.ctrl_bits
                   for d, lnk in self.isls[sat].items()}
         visible = sum(
@@ -4526,10 +4560,47 @@ class Kernel:
                 next_state = np.zeros(self._learning_state_dim())
             if next_mask is None:
                 next_mask = {action: False for action in _learning.ACTIONS}
+            c_cost = float(transition.terminal and outcome != "delivered")
+            ais_target = None
+            if self.cfg_learning["algorithm"] == "pigou_online":
+                sat_id = pkt.learning_sat
+                act_name = pkt.learning_action
+                now_t = float(self.env.now)
+                if sat_id is not None and act_name in ("N", "S", "E", "W"):
+                    key = (int(sat_id), str(act_name))
+                    prev_t, prev_p = self._pigou_link_pressure.get(key, (now_t, 0.0))
+                    decayed_p = prev_p * math.exp(-max(0.0, now_t - prev_t) / 0.20)
+                    if transition.terminal and outcome != "delivered":
+                        decayed_p = min(6.0, decayed_p + 1.0)
+                    self._pigou_link_pressure[key] = (now_t, decayed_p)
+                    variant = self.cfg_learning.get("pigou_variant", "full")
+                    if variant != "no_ext" and pkt.pigou_aux is not None:
+                        d_idx = ("N", "S", "E", "W").index(act_name)
+                        q_loc = float(pkt.pigou_aux["local_queues"][d_idx])
+                        q_peer = float(pkt.pigou_aux["peer_q_max"][d_idx])
+                        f_2d = float(pkt.pigou_aux["f_2d"][d_idx])
+                        is_detour = float(pkt.pigou_aux["detour_flags"][d_idx + 1])
+                        c_busy = (
+                            min(1.0, (q_loc - 0.65) / 0.35 + 0.35 * min(1.0, decayed_p / 3.0))
+                            if q_loc > 0.65 else 0.0)
+                        c_spill = is_detour * min(1.0, q_peer * (1.0 + 0.5 * f_2d))
+                        c_cost = float(np.clip(c_cost + 0.8 * c_busy + 0.8 * c_spill, 0.0, 3.0))
+                if sat_id is not None and pkt.pigou_aux is not None:
+                    cap = max(1.0, float(self.cfg_links["isl_queue_bits"]))
+                    ais_rows = np.zeros((4, 3), dtype=np.float32)
+                    for d_i, d_name in enumerate(("N", "S", "E", "W")):
+                        lnk = self.isls[sat_id].get(d_name)
+                        q_now = (min(1.0, (lnk.data_bits + lnk.ctrl_bits) / cap)
+                                 if lnk is not None else 0.0)
+                        q_old = float(pkt.pigou_aux["local_queues"][d_i])
+                        slope = float(np.clip((q_now - q_old) * 2.0, -1.0, 1.0))
+                        byp = float(np.clip(pkt.pigou_aux["f_2d"][d_i] / 2.0, 0.0, 1.0))
+                        ais_rows[d_i] = (q_now, slope, byp)
+                    ais_target = ais_rows
             self._learner_remember(
                 pkt.learning_sat, pkt.learning_state, pkt.learning_action,
                 transition.reward, next_state, next_mask, transition.terminal,
-                terminal_cost=float(transition.terminal and outcome != "delivered"))
+                terminal_cost=c_cost, ais_target=ais_target)
         if transition is None or transition.terminal:
             pkt.learning_episode_closed = True
         pkt.learning_state = None
@@ -4597,25 +4668,49 @@ class Kernel:
         return action
 
     def _learning_action(self, pkt: DataPacket, sat: int, mask: dict) -> str:
-        state = self._learning_observation(sat, pkt.dst, pkt=pkt)
+        legal_dirs = tuple(d for d in ("N", "S", "E", "W") if mask.get(d))
+        if self.cfg_rt["contract"] == "PIGOU_V2":
+            state = self._learning_observation(sat, pkt.dst, pkt=pkt, legal=legal_dirs)
+        else:
+            state = self._learning_observation(sat, pkt.dst, pkt=pkt)
+        aux = pkt.pigou_aux if self.cfg_rt["contract"] == "PIGOU_V2" else None
         if self.fixed_policy is not None:
-            # A1 fixed-inference path.  The observation contract, the mask and
-            # the tie-break are the SAME as the learner path; what is absent is
-            # the transition: no reward is settled, no replay row is written
-            # and no gradient step can happen, because the adapter refuses all
-            # of them.  The adapter owns the call counter, so the artifact can
-            # prove the model -- not the scorer -- produced the action.
+            if self.cfg_rt["contract"] == "PIGOU_V2" and aux is not None:
+                action = self.fixed_policy.choose(
+                    state, mask, self.env.now,
+                    z_u=aux["z_u"], detour_flags=aux["detour_flags"])
+                if self._pigou_telemetry_sat is not None and int(sat) == int(self._pigou_telemetry_sat):
+                    ego = getattr(self.fixed_policy, "_last_utility", None)
+                    cvar = getattr(self.fixed_policy, "_last_cvar", None)
+                    scores = getattr(self.fixed_policy, "_last_scores", None)
+                    self._pigou_telemetry.append({
+                        "t": float(self.env.now), "sat": int(sat), "pid": int(pkt.pid),
+                        "action": action, "z_u": float(aux["z_u"]),
+                        "phi_spill": float(aux["phi_spill"]),
+                        "q_local": [float(v) for v in aux["local_queues"]],
+                        "ego_q": None if ego is None else [float(v) for v in ego[1:]],
+                        "cvar_risk": None if cvar is None else [float(v) for v in cvar[1:]],
+                        "scores": None if scores is None else [float(v) for v in scores[1:]],
+                    })
+                return action
             return self.fixed_policy.choose(state, mask, self.env.now)
         if self.cfg_learning["reward"] == "deadline_loss_v1":
             if pkt.learning_episode_closed:
-                # Physical routing continues after research D, but this
-                # packet cannot create more replay transitions.
+                if self.cfg_rt["contract"] == "PIGOU_V2" and aux is not None:
+                    return self.learner.choose(
+                        state, mask, self.env.now,
+                        z_u=aux["z_u"], detour_flags=aux["detour_flags"])
                 return self._learner_choose(sat, state, mask, self.env.now)
             if pkt.learning_state is not None:
                 self._finish_deadline_transition(
                     pkt, "intermediate", next_state=state,
                     next_mask=mask)
-            action = self._learner_choose(sat, state, mask, self.env.now)
+            if self.cfg_rt["contract"] == "PIGOU_V2" and aux is not None:
+                action = self.learner.choose(
+                    state, mask, self.env.now,
+                    z_u=aux["z_u"], detour_flags=aux["detour_flags"])
+            else:
+                action = self._learner_choose(sat, state, mask, self.env.now)
             pkt.learning_state = state
             pkt.learning_action = action
             pkt.learning_reward = None
@@ -7656,16 +7751,19 @@ class Kernel:
             self._fail(pkt, "DATA_DEADLINE_EXPIRED")
             return
         pkt.path.append(sat)
-        if self.local_forward_adapter is not None:
+        if self.local_forward_adapter is not None or self._pigou_tracker is not None:
             ep = self.endpoints[pkt.dst]
             now = self.env.now
             from .rl.local_forward import distance_to_cell_km
             prev_distance = distance_to_cell_km(
                 self.geometry, pkt.path[-2], ep.lat, ep.lon, now)
             own_distance = distance_to_cell_km(self.geometry, sat, ep.lat, ep.lon, now)
-            inbound = self._learning_last_hop_dir(sat, pkt)
-            self.local_forward_adapter.arrive(sat, inbound, pkt.bits,
-                                              own_distance >= prev_distance - 50.0)
+            is_spill = own_distance >= prev_distance - 50.0
+            if self.local_forward_adapter is not None:
+                inbound = self._learning_last_hop_dir(sat, pkt)
+                self.local_forward_adapter.arrive(sat, inbound, pkt.bits, is_spill)
+            if self._pigou_tracker is not None:
+                self._pigou_tracker.note_arrival(sat, pkt.bits, is_spill)
         self._note_busy(pkt.dst)  # new downlink demand may have appeared
         yield from self._node_process(pkt, sat, "isl")
         if self._deferred_enabled():
@@ -8037,6 +8135,8 @@ def _run_simulation_impl(resolved: dict, rows: list[dict], geometry=None,
         }
     if kern.local_forward_adapter is not None:
         result["local_forward_adapter"] = kern.local_forward_adapter.audit()
+    if kern._pigou_telemetry:
+        result["pigou_online_telemetry"] = list(kern._pigou_telemetry)
     if kern.target_probe is not None:
         # Written AFTER the simulation stops, so an interrupted run still
         # carries whatever was sampled before the stop.

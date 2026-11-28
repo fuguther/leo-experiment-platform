@@ -391,10 +391,13 @@ OBSERVATION_FEATURE_ORDER = "leo_sim.learning.build_observation/v1"
 OBSERVATION_FEATURE_ORDER_LAST_HOP = "leo_sim.learning.build_observation/v2_last_hop"
 PRIMAL_OBSERVATION_FEATURE_ORDER = "leo_sim.primal.build_observation/v1"
 PRIMAL_OBSERVATION_DIM = 50
+PIGOU_V2_OBSERVATION_FEATURE_ORDER = "leo_sim.pigou_online.build_observation/v2"
+PIGOU_V2_OBSERVATION_DIM = 66
 VALID_FEATURE_ORDERS = (
     OBSERVATION_FEATURE_ORDER,
     OBSERVATION_FEATURE_ORDER_LAST_HOP,
     PRIMAL_OBSERVATION_FEATURE_ORDER,
+    PIGOU_V2_OBSERVATION_FEATURE_ORDER,
 )
 CONTRACT_SCHEMA = "leo-sim-observation-contract/v1"
 CHECKPOINT_SCHEMA = "leo-sim-ddqn/v1"
@@ -881,7 +884,7 @@ def load_fixed_adapter_from_checkpoint(checkpoint_path, checkpoint_sha256,
 
     Returns the adapter; its receipt() carries the full provenance.
     """
-    loader = "numpy" if str(algorithm) == "primal_cvar" else "tensorflow"
+    loader = "numpy" if str(algorithm) in {"primal_cvar", "pigou_online"} else "tensorflow"
     report = verify_checkpoint(checkpoint_path, checkpoint_sha256,
                                metadata_path, metadata_sha256,
                                loader=loader)
@@ -901,6 +904,9 @@ def load_fixed_adapter_from_checkpoint(checkpoint_path, checkpoint_sha256,
             + repr(require_weights_purpose))
     if str(algorithm) == "primal_cvar":
         return _load_numpy_primal_adapter(
+            report, declared, checkpoint_path=checkpoint_path, name=name)
+    if str(algorithm) == "pigou_online":
+        return _load_numpy_pigou_online_adapter(
             report, declared, checkpoint_path=checkpoint_path, name=name)
     try:
         model = _load_keras_model(checkpoint_path)
@@ -978,6 +984,68 @@ def _load_numpy_primal_adapter(report, declared, *, checkpoint_path, name):
     if not np.all(np.isfinite(utility)) or not np.all(np.isfinite(risk)):
         raise FixedInferenceError(
             "PRIMAL NumPy checkpoint probe returned non-finite values")
+    policy.name = str(name)
+    return policy
+
+
+def _load_numpy_pigou_online_adapter(report, declared, *, checkpoint_path, name):
+    """Hash-check the Pigou V2 artifact and read its pure-NumPy twin."""
+    metadata = report.get("metadata") or {}
+    if metadata.get("algorithm") != "pigou_online":
+        raise FixedInferenceError(
+            "pigou_online metadata declares a different algorithm")
+    if metadata.get("schema") != "leo-sim-pigou-online/v2":
+        raise FixedInferenceError("pigou_online metadata schema mismatch")
+    if metadata.get("numpy_verified") is not True:
+        raise FixedInferenceError(
+            "pigou_online NumPy checkpoint was not verified at save time")
+    filename = metadata.get("numpy_checkpoint")
+    if not isinstance(filename, str) or Path(filename).name != filename:
+        raise FixedInferenceError(
+            "pigou_online metadata does not declare a sibling NumPy checkpoint")
+    declared_sha = metadata.get("numpy_checkpoint_sha256")
+    if not isinstance(declared_sha, str) or len(declared_sha) != 64:
+        raise FixedInferenceError(
+            "pigou_online metadata lacks the NumPy checkpoint SHA-256")
+    path = Path(checkpoint_path).with_name(filename)
+    if path.is_symlink() or not path.is_file():
+        raise FixedInferenceError(f"Pigou V2 NumPy checkpoint missing: {path}")
+    actual_sha = _sha256_file(path)
+    if actual_sha != declared_sha:
+        raise FixedInferenceError(
+            "pigou_online NumPy checkpoint SHA-256 mismatch")
+    try:
+        from .rl.agents.pigou_online import NumpyPigouOnline
+
+        policy = NumpyPigouOnline(
+            path,
+            contract=declared["contract"],
+            feature_order=declared["feature_order"],
+            normalisation=declared["normalisation"],
+            variant=metadata.get("variant", "full"),
+            cvar_alpha=metadata["cvar_alpha"],
+            lambda_pd=metadata["lambda_pd"],
+            gamma_z=metadata.get("gamma_z", 0.08),
+            actions=declared["actions"],
+            checkpoint_path=checkpoint_path,
+            checkpoint_sha256=report["actual_sha256"],
+            numpy_checkpoint_sha256=actual_sha,
+            metadata_sha256=report["metadata_actual_sha256"],
+            weights_purpose=declared["weights_purpose"],
+        )
+        probe = np.linspace(-0.5, 0.5, declared["feature_width"],
+                            dtype=np.float32)
+        utility, risk = policy.predict(probe)
+    except Exception as exc:
+        raise FixedInferenceError(
+            "Pigou V2 NumPy checkpoint could not be read: "
+            f"{type(exc).__name__}: {exc}") from exc
+    if utility.shape != (1, len(ACTIONS)) or risk.shape != (1, len(ACTIONS), 16):
+        raise FixedInferenceError(
+            "Pigou V2 NumPy checkpoint probe returned wrong shapes")
+    if not np.all(np.isfinite(utility)) or not np.all(np.isfinite(risk)):
+        raise FixedInferenceError(
+            "Pigou V2 NumPy checkpoint probe returned non-finite values")
     policy.name = str(name)
     return policy
 

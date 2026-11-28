@@ -707,7 +707,11 @@ def build_receipt(resolved: dict, manifest: dict, result: dict,
         "code_sha256": code_sha256(),
         "ledgers_sha256": ledgers_sha256,
         "deps": dependency_versions(
-            with_tensorflow=requested["learning_algorithm"] in {"ddqn", "primal_cvar"}),
+            with_tensorflow=(
+                requested["learning_algorithm"] in {"ddqn", "primal_cvar"}
+                or (requested["learning_algorithm"] == "pigou_online"
+                    and not bool(resolved["config"]["learning"].get("fixed_inference")))
+            )),
         "seed": resolved["config"]["scenario"]["seed"],
         "horizon_s": result["horizon_s"],
         "natural_end": result["natural_end"],
@@ -968,10 +972,10 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
         if learning != {"algorithm": "none"}:
             errors.append("non-learning ledger must be exactly {'algorithm': 'none'}")
     elif learning_policy == "fixed_inference_checkpoint":
-        if requested_learning not in {"ddqn", "primal_cvar"}:
+        if requested_learning not in {"ddqn", "primal_cvar", "pigou_online"}:
             errors.append(
                 "learning_policy=fixed_inference_checkpoint requires "
-                "learning_algorithm=ddqn or primal_cvar")
+                "learning_algorithm=ddqn, primal_cvar, or pigou_online")
         # A1: a FIXED-INFERENCE run reads a real artifact and never trains.
         # It is verified on its own terms: no replay buffer, no gradient step,
         # no saved training bundle, and the artifact identity it ran against
@@ -1019,15 +1023,15 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
                     and learning.get("metadata_sha256") != expected_meta:
                 errors.append(
                     "model.metadata_sha256 != resolved config pin")
-            if requested_learning == "primal_cvar":
-                numpy_checkpoint = verify_root / "primal_cvar" / "online.npz"
+            if requested_learning in ("primal_cvar", "pigou_online"):
+                numpy_checkpoint = verify_root / requested_learning / "online.npz"
                 numpy_sha = learning.get("numpy_checkpoint_sha256")
                 if not numpy_checkpoint.is_file() or numpy_checkpoint.is_symlink():
-                    errors.append("PRIMAL NumPy checkpoint artifact missing")
+                    errors.append(f"{requested_learning} NumPy checkpoint artifact missing")
                 elif isinstance(numpy_sha, str) \
                         and _sha_file(numpy_checkpoint) != numpy_sha:
-                    errors.append("PRIMAL NumPy checkpoint artifact SHA mismatch")
-    elif requested_learning in ("ddqn", "primal_cvar"):
+                    errors.append(f"{requested_learning} NumPy checkpoint artifact SHA mismatch")
+    elif requested_learning in ("ddqn", "primal_cvar", "pigou_online"):
         if not isinstance(learning, dict):
             errors.append(f"{requested_learning} run must have a learning ledger")
         else:
@@ -1070,11 +1074,11 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
             if expected_fast is not None \
                     and learning.get("fast_train") is not expected_fast:
                 errors.append("learning.fast_train != resolved config")
-            if requested_learning == "primal_cvar":
+            if requested_learning in ("primal_cvar", "pigou_online"):
                 metadata = checkpoint.with_name("metadata.json")
                 if (not metadata.is_file() or metadata.is_symlink()
                         or _sha_file(metadata) != learning.get("metadata_sha256")):
-                    errors.append("PRIMAL checkpoint metadata hash mismatch")
+                    errors.append(f"{requested_learning} checkpoint metadata hash mismatch")
                 if learning.get("input_dim") != 50 or learning.get("schema") != "leo-sim-primal-cvar/v1":
                     errors.append("PRIMAL observation or checkpoint schema mismatch")
                 if not _is_nonneg_num(learning.get("lambda_pd")):
@@ -1894,8 +1898,12 @@ def _verify_receipt_dir_impl(out_dir: str, *,
     if not (isinstance(code_sha, str) and len(code_sha) == 64
             and all(ch in "0123456789abcdef" for ch in code_sha)):
         errors.append("receipt code_sha256 must be a lowercase SHA256")
+    _lr_cfg = (resolved_cfg or {}).get("learning") or {}
     want_tf = bool(resolved_cfg) and (
-        (resolved_cfg.get("learning") or {}).get("algorithm") in {"ddqn", "primal_cvar"})
+        _lr_cfg.get("algorithm") in {"ddqn", "primal_cvar"}
+        or (_lr_cfg.get("algorithm") == "pigou_online"
+            and not bool(_lr_cfg.get("fixed_inference")))
+    )
     expected_dep_keys = DEP_KEYS | ({TF_DEP_KEY} if want_tf else set())
     deps = receipt.get("deps")
     if require_local_runtime_identity and code_sha256() != code_sha:

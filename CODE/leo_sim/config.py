@@ -250,6 +250,8 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "agent_scope": str,
         "clip_norm": (int, float, type(None)),
         "include_last_hop": bool,
+        "pigou_variant": str,
+        "pigou_telemetry_sat": (int, type(None)),
     },
     "execution": {
         "max_events": int,
@@ -373,8 +375,8 @@ VALID_POLICIES = {
     # runs keep their identity.
     "known_serving",
 }
-VALID_CONTRACTS = {"neighbor_1hop", "flat_mean", "GAT", "MPNN", "C1", "C3", "PRIMAL"}
-VALID_ALGORITHMS = {"none", "ddqn", "qlearning", "primal_cvar"}
+VALID_CONTRACTS = {"neighbor_1hop", "flat_mean", "GAT", "MPNN", "C1", "C3", "PRIMAL", "PIGOU_V2"}
+VALID_ALGORITHMS = {"none", "ddqn", "qlearning", "primal_cvar", "pigou_online"}
 VALID_ISL_DIRS = {"N", "S", "E", "W"}
 VALID_RATE_MODELS = {"constant", "mcs"}
 # T1-COMPUTE-DELAY observation semantics.  "refresh" is the historical
@@ -1091,12 +1093,23 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         raise ConfigError(f"learning.algorithm must be one of {sorted(VALID_ALGORITHMS)}")
     if (rt["contract"] == "PRIMAL") != (lr["algorithm"] == "primal_cvar"):
         raise ConfigError("PRIMAL observation and primal_cvar must be selected together")
+    if (rt["contract"] == "PIGOU_V2") != (lr["algorithm"] == "pigou_online"):
+        raise ConfigError("PIGOU_V2 observation and pigou_online must be selected together")
     if lr["algorithm"] == "primal_cvar" and (
             lr["agent_scope"] != "shared" or lr["reward"] != "deadline_loss_v1"
             or lr["include_last_hop"] or rt["policy"] != "hop"
             or ta["state_source"] != "advertised" or staged):
         raise ConfigError("primal_cvar requires shared, local hop routing with "
                           "deadline_loss_v1 and its fixed 50-field observation")
+    if lr["algorithm"] == "pigou_online":
+        if (lr["agent_scope"] != "shared" or lr["reward"] != "deadline_loss_v1"
+                or lr["include_last_hop"] or rt["policy"] != "hop"
+                or ta["state_source"] != "advertised" or staged):
+            raise ConfigError("pigou_online requires shared, local hop routing with "
+                              "deadline_loss_v1 and its fixed 66-field observation")
+        variant = lr.get("pigou_variant", "full")
+        if variant not in {"full", "no_ext", "mean", "no_ais", "frame"}:
+            raise ConfigError(f"unsupported learning.pigou_variant {variant!r}")
     if lr["mode"] not in {"train", "eval"}:
         raise ConfigError("learning.mode must be 'train' or 'eval'")
     if lr["seed"] is not None and (
@@ -1154,7 +1167,7 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             and (lr["checkpoint_path"] is None or lr["checkpoint_sha256"] is None):
         raise ConfigError(
             "learning.mode=eval requires checkpoint_path and checkpoint_sha256")
-    if lr["algorithm"] in {"ddqn", "primal_cvar"} and lr["mode"] == "eval" \
+    if lr["algorithm"] in {"ddqn", "primal_cvar", "pigou_online"} and lr["mode"] == "eval" \
             and lr["checkpoint_metadata_sha256"] is None:
         # DDQN artifacts are opaque model files whose observation contract
         # lives only in the sibling metadata.json; that metadata must itself
@@ -1167,10 +1180,10 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         # A1: the fixed-inference reader is a DIFFERENT execution path from the
         # training learner.  Every condition it depends on is checked here so a
         # configuration cannot ask for a read that has no artifact to read.
-        if lr["algorithm"] not in {"ddqn", "primal_cvar"}:
+        if lr["algorithm"] not in {"ddqn", "primal_cvar", "pigou_online"}:
             raise ConfigError(
-                "learning.fixed_inference requires learning.algorithm=ddqn "
-                "or primal_cvar")
+                "learning.fixed_inference requires learning.algorithm=ddqn, "
+                "primal_cvar, or pigou_online")
         if lr["mode"] != "eval":
             raise ConfigError(
                 "learning.fixed_inference requires learning.mode=eval: a fixed "

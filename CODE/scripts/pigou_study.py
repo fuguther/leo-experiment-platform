@@ -84,7 +84,31 @@ def cell_config(cfg, spec, checkpoint=None, metadata=None, resume=None):
         cfg["routing"]["local_forward_adapter"] = {
             "kind": "explore", "capture": True, "exploration": spec.get("exploration", 0.33),
         }
-    if alg == "Ours":
+    if alg == "Ours" and spec.get("online_ours"):
+        cfg["routing"].update(learning_enabled=True, contract="PIGOU_V2")
+        cfg["learning"].update(
+            algorithm="pigou_online", seed=spec["train_seed"], obs_hops=1,
+            include_last_hop=False, replay_size=50_000,
+            warmup_steps=spec.get("warmup_steps", 128), batch_size=32, train_every_steps=4,
+            lr=0.001, clip_norm=10.0, gamma=1.0, reward="deadline_loss_v1",
+            epsilon_start=0.35, epsilon_end=0.02, epsilon_decay_s=15.0,
+            target_update_interval=500,
+            pigou_variant=spec.get("variant", "full"),
+        )
+        if "telemetry_sat" in spec:
+            cfg["learning"]["pigou_telemetry_sat"] = int(spec["telemetry_sat"])
+        if checkpoint is not None:
+            if metadata is None or Path(metadata) != Path(checkpoint).with_name("metadata.json"):
+                raise ValueError("pigou_online checkpoint requires sibling metadata.json")
+            cfg["learning"].update(
+                mode="eval", checkpoint_path=str(checkpoint), checkpoint_sha256=sha(checkpoint),
+                checkpoint_metadata_sha256=sha(metadata), fixed_inference=True,
+                epsilon_start=0.0, epsilon_end=0.0,
+            )
+        elif resume is not None:
+            cfg["learning"].update(resume_path=str(resume),
+                                   resume_sha256=sha(resume / "manifest.json"))
+    elif alg == "Ours":
         if checkpoint is None:
             raise ValueError("Pigou evaluation/rollout requires a frozen checkpoint")
         options = {
@@ -319,9 +343,13 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
     policy = result.get("local_forward_adapter")
     if policy and policy["calls"] == 0:
         raise ValueError("local forwarding adapter never handled a legal choice")
-    if policy and policy["telemetry"]:
+    telemetry_rows = (
+        policy["telemetry"] if (policy and policy.get("telemetry"))
+        else result.get("pigou_online_telemetry")
+    )
+    if telemetry_rows:
         with (sim / "telemetry.jsonl").open("x", encoding="utf-8") as stream:
-            for row in policy["telemetry"]:
+            for row in telemetry_rows:
                 stream.write(json.dumps(row, allow_nan=False, separators=(",", ":")) + "\n")
     audit = None
     if resources is not None:
