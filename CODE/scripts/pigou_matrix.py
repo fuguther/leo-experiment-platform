@@ -605,6 +605,15 @@ class Matrix:
         self.record(large)
         self._export("wave3")
 
+        if getattr(self, "online_ours", False):
+            missing = [variant for variant in ("mean", "frame", "no_ais")
+                       if ("A", "Ours", 11, variant) not in self.models]
+            if missing:
+                tasks = [(self._native_seed, ("A", "Ours", 11, variant), {})
+                         for variant in missing]
+                for scene, _alg, seed, variant, path in self.parallel(
+                        tasks, len(tasks)):
+                    self.models[(scene, "Ours", seed, variant)] = path, {}
         for variant in ("no_ext", "mean", "frame", "no_ais"):
             self.heldout("A", "exp4_ablation", (0.05,), TEST_SEEDS, ("Ours",),
                          variant=variant, tag=variant)
@@ -628,7 +637,7 @@ class Matrix:
         self._reuse_baselines(baseline_prefix)
         self.online_ours = True
         variants = {
-            "A": ("full", "no_ext", "mean", "frame", "no_ais"),
+            "A": ("full", "no_ext"),
             "B": ("full", "no_ext"),
         }
         tasks = [
