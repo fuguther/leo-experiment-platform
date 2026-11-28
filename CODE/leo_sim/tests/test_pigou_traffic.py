@@ -160,6 +160,42 @@ def test_scene_catalogs_and_native_config_contract(builder, tmp_path):
     config.resolve_config(cfg_b)
 
 
+def test_scene_d_is_routing_dominant_gateway_funnel(builder, tmp_path):
+    built = builder.build(
+        tmp_path / "d-small", scene="D", seed=101, interval=0.10,
+        offered_mbps=1.0)
+    cfg = built["config"]
+
+    assert cfg["scenario"]["num_satellites"] == 66
+    assert cfg["scenario"]["num_planes"] == 6
+    assert cfg["links"]["isl_rate_mbps"] == 60.0
+    assert cfg["links"]["isl_queue_bits"] == 1_000_000
+    assert cfg["access"]["slots_per_satellite"] == 32
+    assert cfg["access"]["acquisition_delay_s"] == pytest.approx(0.020)
+    assert cfg["demand"]["retry"]["retry_fraction"] == pytest.approx(0.75)
+    assert cfg["demand"]["retry"]["attempt_timeout_s"] == pytest.approx(0.160)
+    assert cfg["control_plane"]["advertise_interval_s"] == 0.10
+
+    rows = _raw_rows(built["trace_path"])
+    coordinates = {
+        (f"{site.lat:.6f}", f"{site.lon:.6f}"): site.name
+        for site in builder.SCENE_B_SITES
+    }
+    background_count = built["background_packet_count"]
+    background_routes = {
+        _route_for(row, coordinates)
+        for row in rows if int(row["packet_id"]) <= background_count
+    }
+    pulse_routes = {
+        _route_for(row, coordinates)
+        for row in rows if int(row["packet_id"]) > background_count
+    }
+    assert background_routes
+    assert pulse_routes == {("Tokyo", "Frankfurt"), ("Singapore", "Frankfurt"),
+                            ("NewYork", "Frankfurt")}
+    config.resolve_config(cfg)
+
+
 def test_background_is_byte_identical_and_pulse_is_only_targeted(
         builder, tmp_path):
     built = {}

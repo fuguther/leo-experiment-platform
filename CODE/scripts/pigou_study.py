@@ -29,6 +29,7 @@ CORRIDOR_EDGES_BY_SCENE = {
     "A": CORRIDOR_EDGES,
     "B": ((12, 23), (23, 34), (34, 45)),
     "C": ((12, 23), (23, 34), (34, 45)),
+    "D": ((22, 33), (33, 34), (34, 35), (22, 32)),
 }
 MODULE = "CODE.scripts.pigou_study"
 

@@ -59,7 +59,7 @@ PULSE_WINDOW_S = (2.0, 3.5)
 DURATION_S = 11.5
 TIME_STEP_S = 0.05
 REAL_CONTROL_INTERVALS_S = (0.01, 0.05, 0.10)
-DEFAULT_OFFERED_MBPS = {"A": 100.0, "B": 180.0, "C": 185.0}
+DEFAULT_OFFERED_MBPS = {"A": 100.0, "B": 180.0, "C": 185.0, "D": 200.0}
 MAX_PACKETS = 200_000
 RETRY_POLICY = {
     "enabled": True,
@@ -80,9 +80,23 @@ SCENE_C_RETRY_POLICY = {
     "stop_reinject_at_s": 9.3,
 }
 
+SCENE_D_RETRY_POLICY = {
+    "enabled": True,
+    "max_retries": 2,
+    "retry_fraction": 0.75,
+    "backoff_s": 0.040,
+    "jitter_s": 0.010,
+    "attempt_timeout_s": 0.160,
+    "stop_reinject_at_s": 9.3,
+}
+
 
 def _retry_policy_for_scene(scene_name: str) -> dict:
-    return dict(SCENE_C_RETRY_POLICY if scene_name.upper() == "C" else RETRY_POLICY)
+    if scene_name.upper() == "C":
+        return dict(SCENE_C_RETRY_POLICY)
+    if scene_name.upper() == "D":
+        return dict(SCENE_D_RETRY_POLICY)
+    return dict(RETRY_POLICY)
 
 
 @dataclass(frozen=True)
@@ -109,6 +123,8 @@ class SceneSpec:
     sites: tuple[Site, ...]
     corridor_weights: tuple[tuple[str, str, float], ...]
     hotspot_weights: tuple[tuple[str, str, float], ...]
+    access_slots_per_satellite: int = 8
+    acquisition_delay_s: float = 0.1
 
 
 # Coordinates below are city-centre WGS84 reference points, written explicitly
@@ -260,6 +276,34 @@ SCENE_C_HOTSPOTS = (
     ("Singapore", "London", 1.3),
 )
 
+# Scene-D: routing-dominant gateway funnel.  Most background demand converges
+# on the Frankfurt/London region while accelerated access removes the endpoint
+# admission bottleneck observed in the earlier C probes.
+SCENE_D_CORRIDORS = (
+    ("Beijing", "Frankfurt", 1.50),
+    ("Tokyo", "Frankfurt", 1.60),
+    ("Seoul", "London", 1.30),
+    ("Singapore", "Frankfurt", 1.50),
+    ("Mumbai", "London", 1.30),
+    ("Dubai", "Frankfurt", 1.20),
+    ("Istanbul", "Frankfurt", 1.10),
+    ("Moscow", "Frankfurt", 1.00),
+    ("NewYork", "Frankfurt", 1.50),
+    ("Toronto", "London", 1.30),
+    ("Chicago", "Frankfurt", 1.20),
+    ("LosAngeles", "Frankfurt", 1.00),
+    ("SaoPaulo", "London", 1.10),
+    ("Nairobi", "Frankfurt", 0.90),
+    ("Sydney", "Singapore", 0.80),
+    ("Singapore", "London", 1.40),
+)
+
+SCENE_D_HOTSPOTS = (
+    ("Tokyo", "Frankfurt", 1.50),
+    ("Singapore", "Frankfurt", 1.30),
+    ("NewYork", "Frankfurt", 1.30),
+)
+
 
 def _scene_spec(scene: str) -> SceneSpec:
     normalized = scene.upper()
@@ -317,7 +361,26 @@ def _scene_spec(scene: str) -> SceneSpec:
             hotspot_weights=SCENE_C_HOTSPOTS,
             **common,
         )
-    raise ValueError(f"scene must be 'A', 'B', or 'C', got {scene!r}")
+    if normalized == "D":
+        return SceneSpec(
+            scene="D",
+            name="pigou-scene-d",
+            num_satellites=66,
+            num_planes=6,
+            altitude_km=780.0,
+            inclination_deg=86.4,
+            isl_rate_mbps=60.0,
+            isl_queue_bits=1_000_000,
+            packet_bits=64_000,
+            hard_deadline_s=0.180,
+            sites=SCENE_B_SITES,
+            corridor_weights=SCENE_D_CORRIDORS,
+            hotspot_weights=SCENE_D_HOTSPOTS,
+            access_slots_per_satellite=32,
+            acquisition_delay_s=0.020,
+            **common,
+        )
+    raise ValueError(f"scene must be 'A', 'B', 'C', or 'D', got {scene!r}")
 
 
 def _validate_inputs(
@@ -541,7 +604,7 @@ def _make_config(
         },
         "access": {
             "unavailable_policy": "queue",
-            "slots_per_satellite": 8,
+            "slots_per_satellite": spec.access_slots_per_satellite,
             "uplink_rate_mbps": 10_000.0,
             "downlink_rate_mbps": 10_000.0,
             "uplink_queue_bits": 1_000_000_000,
@@ -550,7 +613,7 @@ def _make_config(
             "association": "bbm",
             "hysteresis_deg": 0.0,
             "min_dwell_s": 0.0,
-            "acquisition_delay_s": 0.1,
+            "acquisition_delay_s": spec.acquisition_delay_s,
         },
         "links": {
             "rate_model": "constant",
@@ -690,7 +753,7 @@ def build(
              weight * 8.0 if (src, dst) in hotspot_pairs else weight)
             for src, dst, weight in background_routes)
         pulse_routes = spec.hotspot_weights
-    elif spec.scene == "C":
+    elif spec.scene in ("C", "D"):
         pulse_routes = spec.hotspot_weights
     else:
         pulse_routes = _bidirectional_routes(spec.hotspot_weights)
@@ -885,7 +948,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Build deterministic three-phase Pigou Scene A/B traffic")
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--scene", choices=("A", "B", "C"), required=True)
+    parser.add_argument("--scene", choices=("A", "B", "C", "D"), required=True)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--multiplier", type=float, default=2.5)
     parser.add_argument(
