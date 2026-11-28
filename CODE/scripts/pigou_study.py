@@ -201,8 +201,12 @@ def _metric_components(rows, results, *, burst_end=3.5, recovery_end=9.5):
     t_clear = (None if onset_index is None else round(
         (onset_index + recovery_streak_buckets) * recovery_bucket_s, 9))
     recovery_window_s = recovery_end - burst_end
+    censor_onset_s = recovery_window_s - (
+        recovery_streak_buckets * recovery_bucket_s)
+    # The manuscript's T_rec is the start of the sustained-recovery interval,
+    # not the end of that interval. Immediate recovery is therefore T_rec=0.
     score = len(success) / len(rows) - 0.02 * (
-        t_clear if t_clear is not None else recovery_window_s)
+        t_onset if t_onset is not None else censor_onset_s)
     recovery_rates = [
         None if not n else ok / n for ok, n in buckets
     ]
@@ -241,6 +245,7 @@ def _metric_components(rows, results, *, burst_end=3.5, recovery_end=9.5):
         "t_rec_onset_s": t_onset,
         "t_rec_clear_s": t_clear,
         "t_rec_right_censored": onset_index is None,
+        "t_rec_censor_onset_s": censor_onset_s,
         "t_rec_window_s": recovery_window_s,
         "t_rec_threshold_ratio": recovery_ratio,
         "t_rec_bucket_s": recovery_bucket_s,

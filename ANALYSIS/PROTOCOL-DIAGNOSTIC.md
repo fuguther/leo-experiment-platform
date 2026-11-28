@@ -75,16 +75,19 @@ The sensitivity arms must not be merged into the main headline.
 
 - `tx_goodput` and `first_attempt_pdr`;
 - `load_amplification` and `retry_reinjections`;
-- `t_rec_onset_s` (start of the recovery streak);
-- `t_rec_clear_s` (end of the first complete recovery streak);
+- `t_rec_onset_s` (the manuscript's formal `T_rec`, i.e. start of the
+  sustained recovery interval);
+- `t_rec_clear_s` (the auxiliary end time of that first complete interval);
 - `t_rec_right_censored`, with threshold, bucket and streak length exported;
 - `rgd_fraction_seconds`, plus observed bucket coverage;
 - `hir`, measured as attempted ISL service hops divided by the current-time
   nominal shortest-path hops;
 - `whr`, failed-transaction ISL service hops divided by all ISL service hops.
 
-The recovery endpoint is the end of the streak, not its start. Missing recovery
-buckets do not silently count as successful or failed traffic.
+The formal recovery timestamp is the start of the streak, so immediate
+recovery is correctly `T_rec=0`. `T_clear` is supplementary and does not replace
+the predeclared model-selection score. Missing recovery buckets do not silently
+count as successful or failed traffic.
 
 ## Survival rule
 
