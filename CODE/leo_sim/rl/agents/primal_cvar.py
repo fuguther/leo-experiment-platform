@@ -399,6 +399,10 @@ class NumpyPrimalCVaR:
         return 0.5 * value * (1.0 + np.tanh(0.5 * value))
 
     def predict(self, states) -> tuple[np.ndarray, np.ndarray]:
+        return self.predict_with_weights(self.weights, states)
+
+    @staticmethod
+    def predict_with_weights(weights, states) -> tuple[np.ndarray, np.ndarray]:
         array = np.asarray(states, dtype=np.float32)
         if array.ndim == 1:
             array = array[None, :]
@@ -407,15 +411,16 @@ class NumpyPrimalCVaR:
                 f"PRIMAL observations must end in {INPUT_DIM} features")
         if not np.all(np.isfinite(array)):
             raise ValueError("PRIMAL observations must be finite")
-        w = self.weights
-        satellite = self._swish(
+        w = weights
+        satellite = NumpyPrimalCVaR._swish(
             array[:, :SATELLITE_INPUT_DIM] @ w["satellite_w"] + w["satellite_b"])
-        packet = self._swish(
+        packet = NumpyPrimalCVaR._swish(
             array[:, SATELLITE_INPUT_DIM:] @ w["packet_w"] + w["packet_b"])
-        trunk = self._swish(
+        trunk = NumpyPrimalCVaR._swish(
             np.concatenate((satellite, packet), axis=1) @ w["trunk128_w"]
             + w["trunk128_b"])
-        trunk = self._swish(trunk @ w["trunk64_w"] + w["trunk64_b"])
+        trunk = NumpyPrimalCVaR._swish(
+            trunk @ w["trunk64_w"] + w["trunk64_b"])
         utility = trunk @ w["utility_w"] + w["utility_b"]
         risk_flat = trunk @ w["risk_w"] + w["risk_b"]
         risk = np.logaddexp(0.0, risk_flat).reshape(
@@ -631,6 +636,7 @@ class TensorflowPrimalCVaR:
         if cfg.get("resume_path") is not None:
             self._load_resume_bundle(
                 Path(cfg["resume_path"]), cfg.get("resume_sha256"))
+        self._numpy_weights = self._numpy_weight_arrays()
 
     def _force_cpu_runtime(self) -> None:
         self.cpu_only_verified = True
@@ -735,8 +741,13 @@ class TensorflowPrimalCVaR:
         elif len(legal_indices) == 1:
             chosen = int(legal_indices[0])
         else:
-            utility, risk = self._predict_numpy(
-                self.online, np.asarray(observation, dtype=np.float32))
+            if getattr(self, "_numpy_weights", None) is not None:
+                utility, risk = NumpyPrimalCVaR.predict_with_weights(
+                    self._numpy_weights,
+                    np.asarray(observation, dtype=np.float32))
+            else:
+                utility, risk = self._predict_numpy(
+                    self.online, np.asarray(observation, dtype=np.float32))
             scores = risk_scores(
                 utility[0], risk[0], self.lambda_pd, alpha=self.cvar_alpha)
             self._last_utility = utility[0].copy()
@@ -1043,6 +1054,7 @@ class TensorflowPrimalCVaR:
         batch = self.replay.sample_batch(indices)
         self.last_reward_loss, self.last_risk_loss, self.last_loss = (
             self._train_on_batch(batch))
+        self._numpy_weights = self._numpy_weight_arrays()
         self.train_steps += 1
         if self.train_steps % int(self.cfg["target_update_interval"]) == 0:
             self.target.set_weights(self.online.get_weights())
