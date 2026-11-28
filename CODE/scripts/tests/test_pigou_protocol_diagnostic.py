@@ -56,3 +56,22 @@ def test_protocol_diagnostic_plan_separates_main_and_sensitivity_arms(tmp_path):
         if arm["retry"]["enabled"]:
             assert arm["retry"]["discovery"] == "endpoint_timeout"
             assert arm["retry"]["deadline_policy"] == "endpoint_only"
+
+
+def test_age_aware_diagnostic_spec_is_applied_before_resolution():
+    from CODE.leo_sim import config
+    from CODE.leo_sim.tests.helpers import make_cfg
+
+    raw = make_cfg()["config"]
+    cfg = pigou_study.cell_config(raw, {
+        "alg": "B2",
+        "time_alignment": {
+            "enabled": True,
+            "state_source": "ideal_current",
+            "predictor": "hold_last",
+        },
+        "ephemeris_egress_fallback": False,
+    })
+    config.resolve_config(cfg)
+    assert cfg["time_alignment"]["state_source"] == "ideal_current"
+    assert cfg["routing"]["ephemeris_egress_fallback"] is False

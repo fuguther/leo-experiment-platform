@@ -74,6 +74,11 @@ def cell_config(cfg, spec, checkpoint=None, metadata=None, resume=None):
         cfg["time_alignment"].update(
             enabled=True, arm="candidate", predictor="hold_last",
             state_source="advertised", queue_weight=4.0)
+    if spec.get("time_alignment") is not None:
+        cfg["time_alignment"].update(deepcopy(spec["time_alignment"]))
+    if "ephemeris_egress_fallback" in spec:
+        cfg["routing"]["ephemeris_egress_fallback"] = bool(
+            spec["ephemeris_egress_fallback"])
     if alg in ("B3", "Collect"):
         cfg["time_alignment"].update(
             enabled=True, arm="candidate", predictor="ou_shrink",
@@ -391,7 +396,8 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
     errors = receipt.verify_receipt_dir(str(sim))
     if not rcp["natural_end"] or not rcp["conservation_ok"] or errors:
         raise ValueError(f"unverified simulation {spec['alg']}: {rcp.get('error') or errors}")
-    if rcp["fate_counts"].get("IN_SYSTEM_AT_STOP", 0):
+    in_system_at_stop = int(rcp["fate_counts"].get("IN_SYSTEM_AT_STOP", 0))
+    if in_system_at_stop and not spec.get("allow_in_system_at_stop"):
         raise ValueError("some offered data remains unsettled after the hard deadline and drain")
     if (spec["alg"] in LEARNERS or spec.get("online_ours")) \
             and not rcp["mechanisms"]["effective"]["learning"]:
@@ -454,8 +460,18 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
             "options": env["routing"]["local_forward_adapter"],
             "telemetry_sha256": sha(sim / "telemetry.jsonl") if (sim / "telemetry.jsonl").is_file() else None,
         })
+    observed_success = int(rcp["fate_counts"].get("DELIVERED", 0))
     summary = {**spec, **vals, "trace_sha256": rcp["trace_sha256"],
                "run_dir": str(sim), "offered_packets": len(rows),
+               "in_system_at_stop": in_system_at_stop,
+               "observed_success_count": observed_success,
+               "censored_fraction_at_stop": (
+                   in_system_at_stop / len(rows) if rows else None),
+               "tx_goodput_if_censored_miss": (
+                   observed_success / len(rows) if rows else None),
+               "tx_goodput_if_censored_success": (
+                   (observed_success + in_system_at_stop) / len(rows)
+                   if rows else None),
                "receipt_sha256": sha(sim / "receipt.json"),
                "background_sha256": workload["background_packet_sha256"],
                "fate_counts": rcp["fate_counts"], "audit": audit,

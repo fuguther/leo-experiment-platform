@@ -116,3 +116,30 @@ comparisons.
 The original retry-storm claim is not supported at this operating point. This is
 one diagnostic seed and does not establish that retry cascades cannot occur in
 other LEO workloads.
+
+## AGE-1 focused mechanism test
+
+After the retry hypothesis failed, the retained narrow question is whether stale
+queue state alone makes local detouring reduce network-level deadline delivery
+under high load.
+
+Use Scene B, seed 41, 150 Mbps, 2.5x pulse, 64 kbit packets and retry disabled.
+Keep the same control schedule, trace bytes and public ephemeris fallback setting
+across information-age arms.
+
+- `sp`: SP-Hop with no queue scoring.
+- `stale-10`: B2 with the current admissible advertised state.
+- `stale-50`: B2 with source measurements younger than 50 ms withheld.
+- `stale-100`: B2 with source measurements younger than 100 ms withheld.
+- `fresh-current`: B2 with `state_source=ideal_current`, an explicitly labeled
+  diagnostic oracle that is never presented as deployable information.
+
+The primary causal series is `J(fresh)-J(age)` for age in `{0,50,100} ms`.
+Pending packets at the stop time are reported as right-censored. The diagnostic
+runner may emit a summary when `allow_in_system_at_stop=true`, but production
+runs retain the zero-in-system gate.
+
+Do not attribute the entire B2-vs-SP difference to queue age. SP-Hop also changes
+the action rule. AGE-1 survives only if the B2 arms themselves degrade
+monotonically as the allowed source age increases and fresh-current reverses the
+degradation under the same route scorer.
