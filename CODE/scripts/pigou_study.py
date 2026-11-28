@@ -281,8 +281,10 @@ def _steady_utilization(result):
     for row in result["link_service_windows"]:
         if row["stage"] == "isl":
             used[row["link_id"]] += clip(row) * row["rate_bps"]
-    for link, start, end, rate in result["local_routing_measurements"]["control_wire_windows"]:
-        used[link] += max(0.0, min(2.0, end) - max(0.5, start)) * rate
+    measurements = result.get("local_routing_measurements")
+    if measurements is not None:
+        for link, start, end, rate in measurements["control_wire_windows"]:
+            used[link] += max(0.0, min(2.0, end) - max(0.5, start)) * rate
     return max((used[key] / bits for key, bits in cap.items() if bits > 0), default=None)
 
 
