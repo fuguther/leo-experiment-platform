@@ -1,8 +1,8 @@
 # Pigou Protocol-Causality Diagnostic
 
-Status: `PLANNED_NOT_RUN` for the new endpoint-timeout arms. The earlier Gate-1
-B1/B2 receipts remain valid historical evidence, but they executed the legacy
-local-failure retry clock.
+Status: the 64 kbit main contrast and 12 kbit sensitivity have completed in
+release-bound VM diagnostics. Both packet granularities recorded zero retry
+-eligible failures at the tested Scene-A operating point.
 
 ## Question
 
@@ -102,3 +102,17 @@ retry fraction, retry count or load until the story reappears.
 One seed is diagnostic only. Promote to at least five predeclared test seeds only
 after the paired main contrast survives. No result may be called protocol-compliant
 until an RTT/PTO estimator and ACK semantics are implemented.
+
+## Diagnostic outcome
+
+At seed 101, neither `SP-Hop` nor `Dyn-Queue` produced an access overflow, ISL
+overflow, deadline expiry or retry reinjection in either the 64 kbit main cohort
+or the 12 kbit sensitivity cohort. Retry-on and retry-off arms were therefore
+identical by construction. Dynamic queue routing reduced TxGoodput relative to
+SP-Hop by about 0.011 percentage points at 64 kbit and 0.013 percentage points
+at 12 kbit, with immediate recovery (`T_rec=0`) in all four successful
+comparisons.
+
+The original retry-storm claim is not supported at this operating point. This is
+one diagnostic seed and does not establish that retry cascades cannot occur in
+other LEO workloads.
