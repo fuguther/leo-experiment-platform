@@ -83,9 +83,7 @@ def cell_config(cfg, spec, checkpoint=None, metadata=None, resume=None):
             "argmax": spec.get("argmax", False), "capture": spec.get("capture", False),
             "exploration": spec.get("exploration", 0.10),
         }
-        for name in ("telemetry_sat", "hop_guard", "hop_penalty",
-                     "expert_checkpoint_path", "expert_checkpoint_sha256",
-                     "expert_metadata_sha256", "expert_weight"):
+        for name in ("telemetry_sat", "hop_guard", "hop_penalty"):
             if name in spec:
                 options[name] = spec[name]
         cfg["routing"]["local_forward_adapter"] = options
@@ -312,19 +310,9 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
 def _cell_main(spec):
     _set_threads(spec.get("threads", 2))
     root = _release_run_dir()
-    if spec["alg"] == "Ours":
-        checkpoint = _input("frozen.npz") if "T1_INPUT_FROZEN_NPZ" in os.environ else None
-    else:
-        checkpoint = _input("online.keras") if "T1_INPUT_ONLINE_KERAS" in os.environ else (
-            _input("frozen.npz") if "T1_INPUT_FROZEN_NPZ" in os.environ else None)
+    checkpoint = _input("online.keras") if "T1_INPUT_ONLINE_KERAS" in os.environ else (
+        _input("frozen.npz") if "T1_INPUT_FROZEN_NPZ" in os.environ else None)
     metadata = _input("metadata.json") if "T1_INPUT_METADATA_JSON" in os.environ else None
-    if spec["alg"] == "Ours" and "T1_INPUT_ONLINE_KERAS" in os.environ:
-        expert_path = _input("online.keras")
-        if metadata is None:
-            raise ValueError("expert checkpoint requires metadata.json")
-        spec = {**spec, "expert_checkpoint_path": str(expert_path),
-                "expert_checkpoint_sha256": sha(expert_path),
-                "expert_metadata_sha256": sha(metadata)}
     resume = None
     if "T1_INPUT_RESUME_TAR" in os.environ:
         import tarfile
