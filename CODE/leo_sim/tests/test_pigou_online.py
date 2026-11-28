@@ -213,3 +213,36 @@ def test_pigou_online_fixed_inference_end_to_end_kernel(tmp_path):
     assert rcp["mechanisms"]["effective"]["learning"]
     assert receipt.verify_receipt_dir(str(sim_dir)) == []
     assert (sim_dir / "pigou_online" / "online.npz").is_file()
+
+
+def test_cvar_dual_update_separates_upper_tail_from_mean():
+    from CODE.leo_sim.rl.agents.pigou_online import TensorflowPigouOnline, cvar_tail
+
+    # Reviewer #2 counterexample: 10% heavy-tail packets (cost=2.0), 90% zero.
+    # Mean = 0.20 < 0.25, whereas CVaR_0.75 = 0.80 > 0.25.
+    returns = np.array([2.0] * 10 + [0.0] * 90, dtype=np.float64)
+    assert float(np.mean(returns)) == pytest.approx(0.20)
+    assert float(cvar_tail(returns, alpha=0.75)) == pytest.approx(0.80)
+
+    class _StubAgent:
+        mode = "train"
+        cvar_alpha = 0.75
+        risk_target_max = 2.0
+        dual_lr = 0.10
+        dual_constraint = 0.25
+        lambda_max = 4.0
+        dual_updates = 0
+
+        def __init__(self, use_mean_risk: bool):
+            self.use_mean_risk = use_mean_risk
+            self.lambda_pd = 0.50
+            self._pending_costs = []
+
+    cvar_agent = _StubAgent(use_mean_risk=False)
+    mean_agent = _StubAgent(use_mean_risk=True)
+    lam_cvar = TensorflowPigouOnline.finish_round(cvar_agent, packet_returns=returns)
+    lam_mean = TensorflowPigouOnline.finish_round(mean_agent, packet_returns=returns)
+    # Upper-tail CVaR (0.80 > 0.25) pushes lambda UP; mean (0.20 < 0.25) pushes lambda DOWN.
+    assert lam_cvar == pytest.approx(0.50 + 0.10 * (0.80 - 0.25))
+    assert lam_mean == pytest.approx(0.50 + 0.10 * (0.20 - 0.25))
+    assert lam_cvar > 0.50 > lam_mean

@@ -3,15 +3,20 @@
 This module implements an online distributed RL agent on an equal footing with
 B4 (DDQN), B5 (GAT-DDQN), and B6 (PRIMAL-inspired CVaR):
   * Strict 1-hop local observation contract (``PIGOU_V2``, 66 float32 features:
-    4x12 port spatio-temporal tensor with conformal residual ``r_conf``,
-    2-complex bypass fragility ``F_2d``, and integral damping ``z_u`` + 18-dim
-    packet context; zero global state, zero future cache, zero secret deadline).
-  * Lightweight Port-Aware Spatio-Temporal Encoder (Shared Port Dense ->
-    4-Port Self-Attention -> Packet Fusion Trunk, ~22k online parameters).
+    4x12 port spatio-temporal tensor with generation-aligned conformal residual
+    ``r_conf``, 1-hop visible-edge bypass fragility proxy ``F_2d``, and integral
+    damping ``z_u`` + 18-dim packet context; zero global state, zero future
+    cache, zero secret deadline).
+  * Lightweight Port-Aware Spatio-Temporal Encoder (Shared Port Dense 12->32 ->
+    4-Port Self-Attention with post-projection 4x32 residual -> Packet Fusion
+    Trunk 128+32=160->96->64, ~22k online parameters; 5 actions with protocol
+    termination ``deliver``).
   * Dual-Head Risk Architecture: Ego Utility Head ``Q_ego(s, a)`` and
-    16-quantile Pigouvian Social Externality Risk Head ``Z_pigou(s, a)`` with
-    bounded TD target clipping ``[0, 3.0]`` (preventing gamma=1.0 divergence)
-    and training-only AIS auxiliary representation head ``(4, 3)``.
+    16-quantile Congestion-Externality Proxy Risk Head ``Z_pigou(s, a)`` over
+    per-packet truncated cumulative cost ``G = clip(sum c_t, 0, 2.0)``, aligned
+    with empirical upper-tail ``CVaR_alpha`` primal-dual multiplier updates,
+    plus training-only AIS auxiliary representation head ``(4, 3)`` branched
+    from the post-attention port representation.
   * Five 1-to-1 ablatable variants: ``full``, ``no_ext``, ``mean``, ``no_ais``,
     and ``frame``.
   * Pure-NumPy frozen deployment twin (``NumpyPigouOnline``) exported to
@@ -352,6 +357,7 @@ class PigouLocalTracker:
             "detour_flags": detour_flags,
             "f_2d": [float(np.clip(bypasses[i] * 2.0, 0.0, 2.0)) for i in range(PORT_COUNT)],
             "r_conf": list(st["r_conf"]),
+            "dq_dt": list(st["dq_dt"]),
         }
         return obs, aux_info
 
@@ -763,7 +769,7 @@ class TensorflowPigouOnline:
         self.initial_lambda_pd = _resolve_cfg_float(cfg, ("lambda_init",), 0.15)
         self.lambda_pd = float(self.initial_lambda_pd)
         self.dual_lr = _resolve_cfg_float(cfg, ("dual_lr",), 0.05)
-        self.dual_constraint = _resolve_cfg_float(cfg, ("dual_constraint",), 0.08)
+        self.dual_constraint = _resolve_cfg_float(cfg, ("dual_constraint",), 0.25)
         self.risk_loss_weight = _resolve_cfg_float(cfg, ("risk_loss_weight",), 1.0)
         self.ais_loss_weight = (
             0.0 if self.variant in ("no_ais", "frame")
@@ -963,14 +969,38 @@ class TensorflowPigouOnline:
                 and (self.transitions - train_after) % every == 0):
             self._train_once()
 
-    def finish_round(self, observed_cost_rate: float | None = None) -> float:
+    def finish_round(self, observed_cost_rate: float | None = None, *,
+                     packet_returns: Any = None) -> float:
+        """Update dual multiplier aligned with the upper-tail CVaR risk functional.
+
+        When per-packet truncated cumulative costs ``packet_returns`` are supplied,
+        computes the empirical upper-tail ``CVaR_alpha`` (or mean for ``variant=='mean'``)
+        directly over the same random variable ``G = clip(sum c_t, 0, risk_target_max)``
+        estimated by ``Z_pigou``. Falls back to ``observed_cost_rate`` or empirical
+        CVaR of pending transition costs if ``packet_returns`` is omitted.
+        """
         if self.mode == "eval":
             return float(self.lambda_pd)
-        if observed_cost_rate is not None:
+        if packet_returns is not None and len(packet_returns) > 0:
+            arr = np.clip(
+                np.asarray(packet_returns, dtype=np.float64),
+                0.0, float(self.risk_target_max))
+            observed = (
+                float(np.mean(arr, dtype=np.float64))
+                if self.use_mean_risk
+                else float(cvar_tail(arr, alpha=self.cvar_alpha))
+            )
+            self._pending_costs.clear()
+        elif observed_cost_rate is not None:
             observed = float(observed_cost_rate)
             self._pending_costs.clear()
         elif self._pending_costs:
-            observed = float(np.mean(self._pending_costs, dtype=np.float64))
+            arr = np.asarray(self._pending_costs, dtype=np.float64)
+            observed = (
+                float(np.mean(arr, dtype=np.float64))
+                if self.use_mean_risk
+                else float(cvar_tail(arr, alpha=self.cvar_alpha))
+            )
             self._pending_costs.clear()
         else:
             return float(self.lambda_pd)
@@ -1241,6 +1271,10 @@ class TensorflowPigouOnline:
             "cvar_alpha": float(self.cvar_alpha),
             "lambda_pd": float(self.lambda_pd),
             "gamma_z": float(self.gamma_z),
+            "risk_target_max": float(self.risk_target_max),
+            "dual_constraint": float(self.dual_constraint),
+            "dual_statistic": "empirical_mean" if self.use_mean_risk else "empirical_cvar_alpha",
+            "cost_unit": "per_packet_truncated_cumulative_externality_proxy",
             "train_steps": int(self.train_steps),
         }
         meta_path.write_text(

@@ -1492,6 +1492,8 @@ class Kernel:
         else:
             self._pigou_tracker = None
         self._pigou_link_pressure: dict[tuple[int, str], tuple[float, float]] = {}
+        self._pigou_link_drops: dict[tuple[int, str], int] = {}
+        self._pigou_pkt_cost: dict[int, float] = {}
         self._pigou_telemetry: list[dict] = []
         self._pigou_telemetry_sat = self.cfg_learning.get("pigou_telemetry_sat")
         adapter = self.cfg_rt.get("local_forward_adapter")
@@ -4461,6 +4463,11 @@ class Kernel:
                 max((e.queue for e in p.reports if e is not None), default=0.0)
                 for p in view.ports
             ]
+            aux["legal_dirs"] = tuple(legal)
+            aux["link_drops_at_decision"] = {
+                d: self._pigou_link_drops.get((int(sat), d), 0)
+                for d in ("N", "S", "E", "W")
+            }
             pkt.pigou_aux = aux
             return obs
         queues = {d: lnk.data_bits + lnk.ctrl_bits
@@ -4570,23 +4577,49 @@ class Kernel:
                     key = (int(sat_id), str(act_name))
                     prev_t, prev_p = self._pigou_link_pressure.get(key, (now_t, 0.0))
                     decayed_p = prev_p * math.exp(-max(0.0, now_t - prev_t) / 0.20)
+                    drops_now = self._pigou_link_drops.get(key, 0)
+                    drops_before = (
+                        int((pkt.pigou_aux.get("link_drops_at_decision") or {}).get(act_name, drops_now))
+                        if pkt.pigou_aux is not None else drops_now
+                    )
+                    # Strictly count OTHER packets that dropped on this link AFTER pkt entered it.
+                    delta_other_drops = max(0, drops_now - drops_before)
                     if transition.terminal and outcome != "delivered":
                         decayed_p = min(6.0, decayed_p + 1.0)
+                        self._pigou_link_drops[key] = drops_now + 1
                     self._pigou_link_pressure[key] = (now_t, decayed_p)
                     variant = self.cfg_learning.get("pigou_variant", "full")
                     if variant != "no_ext" and pkt.pigou_aux is not None:
                         d_idx = ("N", "S", "E", "W").index(act_name)
                         q_loc = float(pkt.pigou_aux["local_queues"][d_idx])
-                        q_peer = float(pkt.pigou_aux["peer_q_max"][d_idx])
+                        dq_dt = float((pkt.pigou_aux.get("dq_dt") or (0.0, 0.0, 0.0, 0.0))[d_idx])
+                        peer_qs = pkt.pigou_aux["peer_q_max"]
+                        q_peer = float(peer_qs[d_idx])
+                        legal_dirs = pkt.pigou_aux.get("legal_dirs") or ()
+                        legal_peer_qs = [
+                            float(peer_qs[i])
+                            for i, d_name in enumerate(("N", "S", "E", "W"))
+                            if d_name in legal_dirs
+                        ]
+                        min_legal_peer_q = min(legal_peer_qs) if legal_peer_qs else 0.0
+                        excess_peer_q = max(0.0, q_peer - max(0.50, min_legal_peer_q + 0.10))
                         f_2d = float(pkt.pigou_aux["f_2d"][d_idx])
                         is_detour = float(pkt.pigou_aux["detour_flags"][d_idx + 1])
-                        c_busy = (
-                            min(1.0, (q_loc - 0.78) / 0.22 + 0.30 * min(1.0, decayed_p / 3.0))
-                            if q_loc > 0.78 else 0.0)
-                        c_spill = (
-                            is_detour * min(1.0, ((q_peer - 0.65) / 0.35) * (1.0 + 0.6 * f_2d))
-                            if q_peer > 0.65 else 0.0)
-                        c_cost = float(np.clip(c_cost + 0.45 * c_busy + 0.85 * c_spill, 0.0, 2.0))
+                        c_busy_proxy = min(
+                            1.0,
+                            (0.40 * ((q_loc - 0.70) / 0.30)
+                             if (q_loc > 0.70 and dq_dt > 0.0) else 0.0)
+                            + 0.60 * min(1.0, delta_other_drops / 3.0),
+                        )
+                        c_spill_proxy = (
+                            is_detour * min(1.0, (excess_peer_q / 0.50) * (1.0 + 0.5 * f_2d))
+                            if excess_peer_q > 0.0 else 0.0
+                        )
+                        c_cost = float(np.clip(
+                            c_cost + 0.50 * c_busy_proxy + 0.65 * c_spill_proxy, 0.0, 2.0))
+                max_ret = 1.0 if self.cfg_learning.get("pigou_variant") == "no_ext" else 2.0
+                self._pigou_pkt_cost[pkt.pid] = min(
+                    max_ret, self._pigou_pkt_cost.get(pkt.pid, 0.0) + c_cost)
                 if sat_id is not None and pkt.pigou_aux is not None:
                     cap = max(1.0, float(self.cfg_links["isl_queue_bits"]))
                     ais_rows = np.zeros((4, 3), dtype=np.float32)
@@ -8002,7 +8035,14 @@ class Kernel:
                 n = len(self.ledger._fates)
                 failures = sum(fate != "DELIVERED" for fate in self.ledger._fates.values())
                 if n:
-                    finish_round(failures / n)
+                    if self.cfg_learning["algorithm"] == "pigou_online":
+                        pkt_returns = [
+                            self._pigou_pkt_cost.get(pid, float(fate != "DELIVERED"))
+                            for pid, fate in self.ledger._fates.items()
+                        ]
+                        finish_round(failures / n, packet_returns=pkt_returns)
+                    else:
+                        finish_round(failures / n)
             learning_result = self.learner.diagnostics()
             if self.learning_out_dir is not None:
                 learning_result = self.learner.save_and_verify(
