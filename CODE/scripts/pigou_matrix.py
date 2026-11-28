@@ -246,7 +246,8 @@ class Matrix:
             parent, report = self.cell(
                 f"{scene}-{alg}-t{train_seed}-r{round_no}",
                 _params(scene, scenario_seed, alg, "exp1", self.loads[scene],
-                        train_seed=train_seed, epoch=round_no, threads=2),
+                        train_seed=train_seed, epoch=round_no, threads=2,
+                        duration_s=5.5),
                 resume=previous)
             previous = parent / "resume.tar"
             path = Path(report["run_dir"]) / ("primal_cvar" if alg == "B6" else "ddqn") / "online.keras"
@@ -316,7 +317,7 @@ class Matrix:
                     "collection", self.loads[scene], train_seed=train_seed,
                     capture=True, exploration=0.12 if model else (0.08, 0.24)[i % 2],
                     temperature=(0.06, 0.12)[i % 2] if number < 3 else (0.04, 0.08)[i % 2],
-                    threads=2)
+                    threads=2, duration_s=5.5)
                 rollouts.append((self.cell, (f"{scene}-roll-t{train_seed}-r{number}-e{i}", spec),
                                  {"model": model}))
             data.extend(parent for parent, _ in self.parallel(rollouts, 2))

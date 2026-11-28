@@ -317,6 +317,24 @@ def test_repeat_build_and_cli_are_deterministic(builder, tmp_path):
     assert Path(summary["trace_path"]).is_file()
 
 
+def test_training_episode_can_end_after_the_pulse_without_changing_eval_default(
+        builder, tmp_path):
+    result = builder.build(
+        tmp_path / "training-short", scene="A", seed=11, interval=0.05,
+        multiplier=2.5, offered_mbps=10.0, duration_s=5.5)
+    cfg = result["config"]
+    assert cfg["scenario"]["duration_s"] == 5.5
+    assert cfg["demand"]["emission_end_s"] == 3.5
+    rows = _raw_rows(result["trace_path"])
+    assert rows and max(float(row["emit_time_s"]) for row in rows) < 3.5
+
+    full = builder.build(
+        tmp_path / "eval-full", scene="A", seed=11, interval=0.05,
+        multiplier=2.5, offered_mbps=10.0)
+    assert full["config"]["scenario"]["duration_s"] == 11.5
+    assert full["config"]["demand"]["emission_end_s"] == 9.5
+
+
 @pytest.mark.parametrize("interval", [0.01, 0.05, 0.10])
 def test_only_real_control_intervals_are_accepted(builder, tmp_path, interval):
     result = builder.build(

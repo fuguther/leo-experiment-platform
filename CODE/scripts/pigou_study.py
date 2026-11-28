@@ -105,7 +105,8 @@ def cell_config(cfg, spec, checkpoint=None, metadata=None, resume=None):
         cfg["learning"].update(
             algorithm=alg_name, seed=spec["train_seed"], obs_hops=1,
             include_last_hop=alg != "B6", replay_size=50_000,
-            warmup_steps=spec.get("warmup_steps", 128), batch_size=32, train_every_steps=4,
+            warmup_steps=spec.get("warmup_steps", 128), batch_size=32,
+            train_every_steps=spec.get("train_every_steps", 32),
             lr=0.001, clip_norm=10.0, gamma=1.0, reward="deadline_loss_v1",
             epsilon_start=0.35, epsilon_end=0.02, epsilon_decay_s=15.0,
             target_update_interval=500,
@@ -296,7 +297,8 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
     else:
         workload = build(out / "traffic", scene=spec["scene"], seed=spec["seed"],
                          interval=spec.get("interval", 0.05), multiplier=spec.get("multiplier", 2.5),
-                         offered_mbps=spec.get("offered_mbps"))
+                         offered_mbps=spec.get("offered_mbps"),
+                         duration_s=spec.get("duration_s"))
     raw = cell_config(workload["config"], spec, checkpoint=checkpoint, metadata=metadata, resume=resume)
     raw["outputs"]["out_dir"] = str(sim)
     resolved = config.resolve_config(raw)

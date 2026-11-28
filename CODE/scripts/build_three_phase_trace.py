@@ -434,13 +434,14 @@ def _make_config(
     seed: int,
     interval: float,
     offered_mbps: float,
+    duration_s: float,
     trace_path: Path,
     max_packets: int,
 ) -> dict[str, object]:
     return {
         "scenario": {
             "name": spec.name,
-            "duration_s": DURATION_S,
+            "duration_s": duration_s,
             "time_step_s": TIME_STEP_S,
             "num_satellites": spec.num_satellites,
             "num_planes": spec.num_planes,
@@ -578,6 +579,7 @@ def build(
     multiplier: float = 2.5,
     interval: float = 0.05,
     offered_mbps: float | None = None,
+    duration_s: float | None = None,
 ) -> dict[str, object]:
     """Write one deterministic trace and return its native-config interface.
 
@@ -595,6 +597,12 @@ def build(
     )
     resolved_multiplier = float(multiplier)
     resolved_interval = float(interval)
+    resolved_duration = (DURATION_S if duration_s is None else float(duration_s))
+    if resolved_duration < PULSE_WINDOW_S[1] + 0.5:
+        raise ValueError("duration_s must leave at least 0.5 s after the pulse")
+    resolved_emission_end = min(EMISSION_WINDOW_S[1], resolved_duration - 2.0)
+    if resolved_emission_end <= EMISSION_WINDOW_S[0]:
+        raise ValueError("duration_s leaves no usable steady emission window")
     _validate_inputs(
         scene=spec,
         seed=seed,
@@ -629,7 +637,8 @@ def build(
     emission_duration = EMISSION_WINDOW_S[1] - EMISSION_WINDOW_S[0]
     pulse_duration = PULSE_WINDOW_S[1] - PULSE_WINDOW_S[0]
     background_count = _expected_packet_count(
-        resolved_offered, spec.packet_bits, emission_duration)
+        resolved_offered, spec.packet_bits,
+        resolved_emission_end - EMISSION_WINDOW_S[0])
     pulse_count = _expected_packet_count(
         resolved_offered * (resolved_multiplier - 1.0),
         spec.packet_bits,
@@ -645,7 +654,7 @@ def build(
 
     rows: list[dict[str, object]] = []
     for index, emit_time_s in enumerate(_midpoint_times(
-            background_count, *EMISSION_WINDOW_S)):
+            background_count, EMISSION_WINDOW_S[0], resolved_emission_end)):
         source_name, destination_name = _choose_route(
             background_routes, seed=seed, stream="background", index=index)
         rows.append(_packet_row(
@@ -683,8 +692,14 @@ def build(
         seed=seed,
         interval=resolved_interval,
         offered_mbps=resolved_offered,
+        duration_s=resolved_duration,
         trace_path=trace_path,
         max_packets=packet_budget,
+    )
+    raw_config["demand"]["emission_end_s"] = resolved_emission_end
+    raw_config["demand"]["retry"]["stop_reinject_at_s"] = min(
+        float(raw_config["demand"]["retry"]["stop_reinject_at_s"]),
+        max(0.0, resolved_duration - 0.2),
     )
     # Fail in the builder if the raw mapping is not accepted by the platform.
     # The caller receives the raw mapping, not this resolved envelope, so a
@@ -794,8 +809,11 @@ def build_staircase(out_dir, *, seed, interval, offered_mbps):
                                     hard_deadline_s=_transaction_deadline_s(spec),
                                     layer="background"))
     _write_trace(path, rows)
-    cfg = _make_config(spec=spec, seed=seed, interval=interval, offered_mbps=offered_mbps,
+    cfg = _make_config(spec=spec, seed=seed, interval=interval,
+                       offered_mbps=offered_mbps,
+                       duration_s=resolved_duration,
                        trace_path=path, max_packets=len(rows))
+    cfg["demand"]["emission_end_s"] = resolved_emission_end
     cfg["demand"]["emission_end_s"] = plateaus[-1]["end_s"]
     cfg["scenario"]["duration_s"] = plateaus[-1]["end_s"] + 2.0
     return {"config": cfg, "trace_path": path,
