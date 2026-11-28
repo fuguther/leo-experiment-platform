@@ -143,42 +143,50 @@ SCENE_B_SITES = (
 )
 
 SCENE_A_CORRIDORS = (
-    # Coupled regional groups.  Each group shares a distinct physical trunk,
-    # while the groups overlap at their gateway satellites so congestion can
-    # spill laterally rather than draining into an empty side corridor.
-    ("Beijing", "Frankfurt", 0.7),
+    # Four coupled groups converge on distinct physical gateways.  Several
+    # independently sourced flows share each gateway trunk, so congestion can
+    # spill laterally instead of draining into an isolated empty side orbit.
     ("Mumbai", "London", 1.0),
     ("Singapore", "Frankfurt", 1.0),
     ("Tokyo", "Frankfurt", 1.0),
-    ("NewYork", "Frankfurt", 1.0),
-    ("SaoPaulo", "Frankfurt", 0.8),
-    ("SaoPaulo", "London", 0.7),
-    ("Johannesburg", "London", 0.7),
-    ("SanFrancisco", "Tokyo", 1.0),
-    ("SanFrancisco", "Singapore", 0.9),
-    ("SanFrancisco", "Sydney", 0.8),
+    ("Beijing", "NewYork", 1.0),
+    ("Tokyo", "NewYork", 1.0),
+    ("Singapore", "NewYork", 1.0),
+    ("Frankfurt", "NewYork", 1.0),
+    ("London", "Johannesburg", 1.0),
+    ("Cairo", "Johannesburg", 1.0),
+    ("Singapore", "Johannesburg", 1.0),
+    ("Beijing", "Johannesburg", 1.0),
+    ("Tokyo", "SanFrancisco", 1.0),
     ("Beijing", "SanFrancisco", 0.7),
-    ("Sydney", "Singapore", 0.8),
-    ("Tokyo", "Sydney", 0.5),
+    ("Cairo", "SanFrancisco", 1.0),
+    ("Sydney", "SanFrancisco", 1.0),
+    # Low-rate peripheral flows keep every city represented without recreating
+    # the previous single-trunk traffic matrix.
+    ("SaoPaulo", "NewYork", 0.25),
+    ("Sydney", "Singapore", 0.25),
+    ("SaoPaulo", "London", 0.25),
+    ("Beijing", "Frankfurt", 0.25),
 )
 
 # Directed nominal paths from these sources share the same reference trunk
 # at the declared Walker epoch. Every city retains a background workload.
 SCENE_A_HOTSPOTS = (
-    ("Beijing", "Frankfurt", 0.7),
     ("Mumbai", "London", 1.0),
     ("Singapore", "Frankfurt", 1.0),
     ("Tokyo", "Frankfurt", 1.0),
-    ("NewYork", "Frankfurt", 1.0),
-    ("SaoPaulo", "Frankfurt", 0.8),
-    ("SaoPaulo", "London", 0.7),
-    ("Johannesburg", "London", 0.7),
-    ("SanFrancisco", "Tokyo", 1.0),
-    ("SanFrancisco", "Singapore", 0.9),
-    ("SanFrancisco", "Sydney", 0.8),
+    ("Beijing", "NewYork", 1.0),
+    ("Tokyo", "NewYork", 1.0),
+    ("Singapore", "NewYork", 1.0),
+    ("Frankfurt", "NewYork", 1.0),
+    ("London", "Johannesburg", 1.0),
+    ("Cairo", "Johannesburg", 1.0),
+    ("Singapore", "Johannesburg", 1.0),
+    ("Beijing", "Johannesburg", 1.0),
+    ("Tokyo", "SanFrancisco", 1.0),
     ("Beijing", "SanFrancisco", 0.7),
-    ("Sydney", "Singapore", 0.8),
-    ("Tokyo", "Sydney", 0.5),
+    ("Cairo", "SanFrancisco", 1.0),
+    ("Sydney", "SanFrancisco", 1.0),
 )
 
 SCENE_B_CORRIDORS = (
@@ -612,10 +620,9 @@ def build(
         hotspot_pairs = {(src, dst) for src, dst, _ in spec.hotspot_weights}
         background_routes = tuple(
             (src, dst,
-             weight * 8.0 if ((src, dst) in hotspot_pairs
-                               or (dst, src) in hotspot_pairs) else weight)
+             weight * 8.0 if (src, dst) in hotspot_pairs else weight)
             for src, dst, weight in background_routes)
-        pulse_routes = _bidirectional_routes(spec.hotspot_weights)
+        pulse_routes = spec.hotspot_weights
     else:
         pulse_routes = _bidirectional_routes(spec.hotspot_weights)
 

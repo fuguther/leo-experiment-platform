@@ -39,17 +39,14 @@ EXPECTED_B = {
     "PanamaCity", "Bogota", "SaoPaulo", "BuenosAires",
 }
 EXPECTED_A_HOTSPOTS = {
-    (src, dst)
-    for pair in (
-        ("Beijing", "Frankfurt"), ("Mumbai", "London"),
-        ("Singapore", "Frankfurt"), ("Tokyo", "Frankfurt"),
-        ("NewYork", "Frankfurt"), ("SaoPaulo", "Frankfurt"),
-        ("SaoPaulo", "London"), ("Johannesburg", "London"),
-        ("SanFrancisco", "Tokyo"),
-        ("SanFrancisco", "Singapore"), ("SanFrancisco", "Sydney"),
-        ("Beijing", "SanFrancisco"), ("Sydney", "Singapore"),
-        ("Tokyo", "Sydney"),
-    ) for src, dst in (pair, pair[::-1])
+    ("Mumbai", "London"), ("Singapore", "Frankfurt"),
+    ("Tokyo", "Frankfurt"), ("Beijing", "NewYork"),
+    ("Tokyo", "NewYork"), ("Singapore", "NewYork"),
+    ("Frankfurt", "NewYork"), ("London", "Johannesburg"),
+    ("Cairo", "Johannesburg"), ("Singapore", "Johannesburg"),
+    ("Beijing", "Johannesburg"), ("Tokyo", "SanFrancisco"),
+    ("Beijing", "SanFrancisco"), ("Cairo", "SanFrancisco"),
+    ("Sydney", "SanFrancisco"),
 }
 
 
