@@ -811,9 +811,8 @@ def build_staircase(out_dir, *, seed, interval, offered_mbps):
     _write_trace(path, rows)
     cfg = _make_config(spec=spec, seed=seed, interval=interval,
                        offered_mbps=offered_mbps,
-                       duration_s=resolved_duration,
+                       duration_s=plateaus[-1]["end_s"] + 2.0,
                        trace_path=path, max_packets=len(rows))
-    cfg["demand"]["emission_end_s"] = resolved_emission_end
     cfg["demand"]["emission_end_s"] = plateaus[-1]["end_s"]
     cfg["scenario"]["duration_s"] = plateaus[-1]["end_s"] + 2.0
     return {"config": cfg, "trace_path": path,
