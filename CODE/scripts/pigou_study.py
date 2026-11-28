@@ -536,11 +536,15 @@ def preflight(spec):
         **small, "scene": "C", "alg": "Ours", "train_seed": 11,
         "train_every_steps": 8, "online_ours": True, "variant": "full",
     })
+    c_ours_r2 = simulate(root / "scene-c-ours-r2", {
+        **small, "scene": "C", "alg": "Ours", "train_seed": 11, "epoch": 2,
+        "train_every_steps": 8, "online_ours": True, "variant": "full",
+    }, resume=Path(c_ours["run_dir"]) / "pigou_online" / "resume")
     fault = simulate(root / "outage", {**small, "alg": "B2", "outage": True,
                                       "multiplier": 1.0})
     staircase = simulate(root / "staircase", {**small, "alg": "B1", "sweep": True,
                                              "multiplier": 1.0})
-    summaries.extend((b, c, c_ours, fault, staircase))
+    summaries.extend((b, c, c_ours, c_ours_r2, fault, staircase))
     _json_write(root / "preflight.json", {
         "status": "passed", "tensorflow": tf.__version__,
         "online_ours": True, "arms": summaries,

@@ -1132,7 +1132,8 @@ class TensorflowPigouOnline:
         manifest = _verify_resume_bundle(
             resume_dir, self.cfg["resume_sha256"], RESUME_SCHEMA)
         _require_resume_identity(manifest, self._resume_identity())
-        state = json.loads(_read_json_bytes(resume_dir / "state.json").decode("utf-8"))
+        state = _read_json_bytes(
+            (resume_dir / "state.json").read_bytes(), "pigou_online resume state")
         self.decisions = int(state["decisions"])
         self.transitions = int(state["transitions"])
         self.train_steps = int(state["train_steps"])
@@ -1146,9 +1147,19 @@ class TensorflowPigouOnline:
                 buf["states"], buf["actions"], buf["utilities"], buf["costs"],
                 buf["next_states"], buf["next_masks"], buf["dones"],
                 buf["ais_targets"], buf["ais_valid"])
+        self.optimizer.build(self.online.trainable_variables)
         ckpt = self.tf.train.Checkpoint(
             online=self.online, target=self.target, optimizer=self.optimizer)
-        ckpt.restore(str(resume_dir / "tf.ckpt")).assert_consumed()
+        status = ckpt.read(str(resume_dir / "tf.ckpt"))
+        status.assert_existing_objects_matched()
+        try:
+            status.assert_consumed()
+        except AssertionError as exc:
+            message = str(exc)
+            if ("Found 1 Python objects" not in message
+                    or "save_counter" not in message
+                    or "not assigned a value" in message):
+                raise
 
     def diagnostics(self) -> dict:
         return {
