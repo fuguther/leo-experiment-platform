@@ -431,11 +431,15 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
     import gzip
     import statistics
 
-    measurements = result["local_routing_measurements"]
+    measurements = result.get("local_routing_measurements")
     raw_measurements = sim / "routing-measurements.json.gz"
-    with gzip.open(raw_measurements, "wt", encoding="utf-8") as handle:
-        json.dump(measurements, handle, separators=(",", ":"), allow_nan=False)
-    samples = [age for row in measurements["neighbor_age_samples"] for age in row[4]]
+    if measurements is not None:
+        with gzip.open(raw_measurements, "wt", encoding="utf-8") as handle:
+            json.dump(measurements, handle, separators=(",", ":"), allow_nan=False)
+        samples = [age for row in measurements["neighbor_age_samples"]
+                   for age in row[4]]
+    else:
+        samples = []
     ages = [age for age in samples if age is not None]
     vals = _metric_components(rows, result)
     nominal_hops = _nominal_hops(env, rows)
@@ -485,7 +489,9 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
                "measured_neighbor_aoi_p95_s": (sorted(ages)[int(0.95 * (len(ages) - 1))]
                                                if ages else None),
                "measured_neighbor_aoi_obs_fraction": len(ages) / len(samples) if samples else None,
-               "routing_measurements_sha256": sha(raw_measurements),
+               "routing_measurements_present": measurements is not None,
+               "routing_measurements_sha256": (
+                   sha(raw_measurements) if measurements is not None else None),
                "nominal_shortest_hops": nominal_hops,
                "plateaus": workload.get("plateaus"),
                "wall_seconds": time.monotonic() - start,
