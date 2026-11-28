@@ -18,12 +18,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-ALGORITHMS = ("B1", "B2", "B3", "B4", "B5", "B6", "Ours")
+ALGORITHMS = ("B1", "B2", "B4", "B5", "B6", "Ours")
 LEARNERS = ("B4", "B5", "B6")
 CADENCES = (0.010, 0.050, 0.100)
-TRAIN_SEEDS = (11, 22, 33)
+TRAIN_SEEDS = (11,)
 VAL_SEEDS = (41, 42)
-TEST_SEEDS = (101, 102, 103, 104, 105)
+TEST_SEEDS = (101, 102, 103)
 CORRIDOR_EDGES = ((2, 90), (90, 82), (82, 74))
 MODULE = "CODE.scripts.pigou_study"
 
@@ -473,7 +473,7 @@ def preflight(spec):
     small = {"scene": "A", "seed": seed, "interval": 0.1, "multiplier": 1.6,
              "offered_mbps": 2.5, "warmup_steps": 32, "exp": "preflight"}
     summaries = []
-    for alg in ("B1", "B2", "B3", "Collect"):
+    for alg in ("B1", "B2", "Collect"):
         summaries.append(simulate(root / alg, {**small, "alg": alg}))
     for alg in ("B6", "B4", "B5"):
         train = simulate(root / alg, {**small, "alg": alg, "train_seed": 11})

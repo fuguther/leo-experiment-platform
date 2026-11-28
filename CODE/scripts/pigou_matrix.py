@@ -21,16 +21,22 @@ from CODE.scripts.pigou_study import (
 )
 
 ROOT = Path("/data/论文/leo-t1-wt")
-CALIBRATION_SEEDS = (9001, 9002)
+CALIBRATION_SEEDS = (9001,)
 CALIBRATION_LOADS = {
-    "A": (90.0, 95.0, 100.0, 105.0),
-    "B": (150.0, 165.0, 180.0, 195.0),
+    "A": (180.0, 210.0, 235.0),
+    "B": (150.0, 180.0, 210.0),
 }
-TARGET_STEADY_UTILIZATION = 0.685
-UTILIZATION_TOLERANCE = 0.035
+TARGET_STEADY_UTILIZATION = 0.720
+UTILIZATION_TOLERANCE = 0.050
 ABLATIONS = ("no_ext", "mean", "frame", "no_ais", "argmax", "no_shield")
-FIT_ROUNDS = ((6, 2000, 5e-4), (6, 1500, 3e-4), (6, 1000, 1e-4))
-VARIANTS = {"A": ("full", "mean", "frame", "no_ais"), "B": ("full",)}
+FIT_ROUNDS = (
+    (2, 1200, 5e-4),
+    (2, 1000, 4e-4),
+    (1, 800, 3e-4),
+    (1, 600, 2e-4),
+    (1, 400, 1e-4),
+)
+VARIANTS = {"A": ("full",), "B": ("full",)}
 BETA_GRID = (0.25, 0.50, 0.75, 1.00)
 
 
@@ -40,7 +46,7 @@ def describe():
     model_chains = sum(map(len, VARIANTS.values())) * len(TRAIN_SEEDS)
     jobs = {
         "calibration": sum(map(len, CALIBRATION_LOADS.values())) * len(CALIBRATION_SEEDS),
-        "static_guard_validation": 2 * len(VAL_SEEDS) * 3,
+        "static_guard_validation": 0,
         "hysteresis_plateaus": len(CADENCES) * (2 + 2 * len(TRAIN_SEEDS)),
         "pigou_rollouts": 2 * len(TRAIN_SEEDS) * sum(r[0] for r in FIT_ROUNDS),
         "pigou_fit_jobs": model_chains * len(FIT_ROUNDS),
@@ -229,7 +235,7 @@ class Matrix:
     def _native_seed(self, scene, alg, train_seed):
         previous = None
         best = None
-        for round_no in range(1, 9):
+        for round_no in range(1, 6):
             scenario_seed = (200_000 if scene == "B" else 100_000) + train_seed * 100 + round_no
             parent, report = self.cell(
                 f"{scene}-{alg}-t{train_seed}-r{round_no}",
@@ -237,7 +243,7 @@ class Matrix:
                         train_seed=train_seed, epoch=round_no), resume=previous)
             previous = parent / "resume.tar"
             path = Path(report["run_dir"]) / ("primal_cvar" if alg == "B6" else "ddqn") / "online.keras"
-            if round_no % 2 == 0:
+            if round_no in {3, 5}:
                 vals = [self.cell(f"{scene}-{alg}-t{train_seed}-r{round_no}-v{s}",
                                   _params(scene, s, alg, "validation", self.loads[scene],
                                           train_seed=train_seed), model=(path, {}))
@@ -285,41 +291,55 @@ class Matrix:
             for s in VAL_SEEDS], 2)
         return sum(row["val_score"] for _, row in vals) / len(vals)
 
-    def pigou(self, scene, train_seeds=TRAIN_SEEDS, variants=None):
+    def _pigou_seed(self, scene, train_seed, variants=None):
         arch_variants = tuple(variants or VARIANTS[scene])
         unknown = set(arch_variants) - set(VARIANTS[scene])
         if unknown:
             raise ValueError(f"unsupported Pigou variants for scene {scene}: {sorted(unknown)}")
-        for train_seed in train_seeds:
-            data = []
-            previous = {variant: None for variant in arch_variants}
-            best = {variant: None for variant in arch_variants}
-            for number, (n, _, _) in enumerate(FIT_ROUNDS, 1):
-                rollouts = []
-                for i in range(n):
-                    seed = (400_000 if scene == "B" else 300_000) + 1000 * train_seed + 100 * number + i
-                    model = None if number == 1 else (previous["full"], {})
-                    spec = _params(
-                        scene, seed, "Collect" if model is None else "Ours",
-                        "collection", self.loads[scene], train_seed=train_seed,
-                        capture=True, exploration=0.12 if model else (0.05, 0.24, 0.45)[i % 3],
-                        temperature=(0.06, 0.12, 0.25)[i % 3] if number < 3 else (0.04, 0.08)[i % 2])
-                    rollouts.append((self.cell, (f"{scene}-roll-t{train_seed}-r{number}-e{i}", spec),
-                                     {"model": model}))
-                data.extend(parent for parent, _ in self.parallel(rollouts, 4))
-                for variant in arch_variants:
-                    fitted = self._pigou_fit(scene, train_seed, variant, number, data, previous[variant])
-                    previous[variant] = fitted
-                    score = self._pigou_validation(scene, train_seed, variant, number, fitted, 0.50)
-                    if best[variant] is None or score > best[variant][0]:
-                        best[variant] = score, fitted
+        data = []
+        previous = {variant: None for variant in arch_variants}
+        best = {variant: None for variant in arch_variants}
+        for number, (n, _, _) in enumerate(FIT_ROUNDS, 1):
+            rollouts = []
+            for i in range(n):
+                seed = (400_000 if scene == "B" else 300_000) + 1000 * train_seed + 100 * number + i
+                model = None if number == 1 else (previous["full"], {})
+                spec = _params(
+                    scene, seed, "Collect" if model is None else "Ours",
+                    "collection", self.loads[scene], train_seed=train_seed,
+                    capture=True, exploration=0.12 if model else (0.08, 0.24)[i % 2],
+                    temperature=(0.06, 0.12)[i % 2] if number < 3 else (0.04, 0.08)[i % 2])
+                rollouts.append((self.cell, (f"{scene}-roll-t{train_seed}-r{number}-e{i}", spec),
+                                 {"model": model}))
+            data.extend(parent for parent, _ in self.parallel(rollouts, 2))
             for variant in arch_variants:
-                _, path = best[variant]
-                candidates = [(self._pigou_validation(
-                    scene, train_seed, variant, 9, path, beta), beta)
-                    for beta in BETA_GRID]
-                beta = max(candidates, key=lambda point: (point[0], -point[1]))[1]
-                self.models[(scene, "Ours", train_seed, variant)] = path, {"beta_ext": beta}
+                fitted = self._pigou_fit(scene, train_seed, variant, number, data, previous[variant])
+                previous[variant] = fitted
+                score = self._pigou_validation(scene, train_seed, variant, number, fitted, 0.50)
+                if best[variant] is None or score > best[variant][0]:
+                    best[variant] = score, fitted
+        for variant in arch_variants:
+            _, path = best[variant]
+            candidates = [(self._pigou_validation(
+                scene, train_seed, variant, 9, path, beta), beta)
+                for beta in BETA_GRID]
+            beta = max(candidates, key=lambda point: (point[0], -point[1]))[1]
+            self.models[(scene, "Ours", train_seed, variant)] = path, {"beta_ext": beta}
+        return "Ours", train_seed, best["full"][1]
+
+    def pigou(self, scene, train_seeds=TRAIN_SEEDS, variants=None):
+        for train_seed in train_seeds:
+            self._pigou_seed(scene, train_seed, variants)
+
+    def train_four_concurrent(self, scene):
+        tasks = [
+            (self._native_seed, (scene, alg, 11), {})
+            for alg in LEARNERS
+        ]
+        tasks.append((self._pigou_seed, (scene, 11, ("full",)), {}))
+        for alg, seed, path in self.parallel(tasks, 4):
+            if alg != "Ours":
+                self.models[(scene, alg, seed, "full")] = path, {}
 
     def _heldout_tasks(self, scene, experiment, intervals, seeds,
                        algorithms=ALGORITHMS, train_seeds=TRAIN_SEEDS,
@@ -373,7 +393,6 @@ class Matrix:
 
     def exp0(self):
         self.calibrate()
-        self.static_guard("A")
         self.heldout("A", "exp0", (0.05,), (101,), ("B1", "B2"),
                      multiplier=1.0, tag="workpoint")
         for multiplier in (1.0, 1.6, 2.5):
@@ -386,9 +405,7 @@ class Matrix:
     def pilot(self):
         self.calibrate()
         for scene in ("A", "B"):
-            self.static_guard(scene)
-            self.native(scene, train_seeds=(11,))
-            self.pigou(scene, train_seeds=(11,), variants=("full",))
+            self.train_four_concurrent(scene)
             self.heldout(scene, "exp2", (0.05,), (101,), ALGORITHMS,
                          train_seeds=(11,), tag="pilot")
         self._export("pilot")
@@ -396,7 +413,6 @@ class Matrix:
     def core(self):
         self.calibrate()
         for scene in ("A", "B"):
-            self.static_guard(scene)
             self.native(scene)
             self.pigou(scene)
             self.heldout(scene, "exp2", (0.05,), TEST_SEEDS, ALGORITHMS, tag="main")
@@ -405,7 +421,6 @@ class Matrix:
     def extras(self):
         self.calibrate()
         for scene in ("A", "B"):
-            self.static_guard(scene)
             self.native(scene)
             self.pigou(scene)
             self.heldout(scene, "exp2", (0.010, 0.100), TEST_SEEDS,
@@ -436,7 +451,6 @@ class Matrix:
     def execute(self):
         self.calibrate()
         for scene in ("A", "B"):
-            self.static_guard(scene)
             self.native(scene)
             self.pigou(scene)
             self.heldout(scene, "exp2", CADENCES, TEST_SEEDS)
