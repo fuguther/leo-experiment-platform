@@ -258,10 +258,10 @@ class Matrix:
             path = Path(report["run_dir"]) / artifact_dir / "online.keras"
             if round_no in {3, 5}:
                 validation_label = (
-                    f"{scene}-{alg}-{variant}-t{train_seed}-r{round_no}-v{s}"
+                    f"{scene}-{alg}-{variant}-t{train_seed}-r{round_no}"
                     if online_ours else
-                    f"{scene}-{alg}-t{train_seed}-r{round_no}-v{s}")
-                vals = [self.cell(validation_label,
+                    f"{scene}-{alg}-t{train_seed}-r{round_no}")
+                vals = [self.cell(f"{validation_label}-v{s}",
                                   _params(scene, s, alg, "validation", self.loads[scene],
                                           train_seed=train_seed, **extra),
                                   model=(path, {}))
