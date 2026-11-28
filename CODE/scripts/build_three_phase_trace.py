@@ -73,10 +73,10 @@ RETRY_POLICY = {
 SCENE_C_RETRY_POLICY = {
     "enabled": True,
     "max_retries": 2,
-    "retry_fraction": 0.80,
-    "backoff_s": 0.030,
-    "jitter_s": 0.015,
-    "attempt_timeout_s": 0.195,
+    "retry_fraction": 0.85,
+    "backoff_s": 0.025,
+    "jitter_s": 0.010,
+    "attempt_timeout_s": 0.135,
     "stop_reinject_at_s": 9.3,
 }
 
@@ -309,9 +309,9 @@ def _scene_spec(scene: str) -> SceneSpec:
             altitude_km=780.0,
             inclination_deg=86.4,
             isl_rate_mbps=60.0,
-            isl_queue_bits=1_800_000,
+            isl_queue_bits=1_200_000,
             packet_bits=64_000,
-            hard_deadline_s=0.210,
+            hard_deadline_s=0.160,
             sites=SCENE_B_SITES,
             corridor_weights=SCENE_C_CORRIDORS,
             hotspot_weights=SCENE_C_HOTSPOTS,

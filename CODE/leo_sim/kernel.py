@@ -4581,12 +4581,12 @@ class Kernel:
                         f_2d = float(pkt.pigou_aux["f_2d"][d_idx])
                         is_detour = float(pkt.pigou_aux["detour_flags"][d_idx + 1])
                         c_busy = (
-                            min(1.0, (q_loc - 0.60) / 0.40 + 0.35 * min(1.0, decayed_p / 3.0))
-                            if q_loc > 0.60 else 0.0)
+                            min(1.0, (q_loc - 0.78) / 0.22 + 0.30 * min(1.0, decayed_p / 3.0))
+                            if q_loc > 0.78 else 0.0)
                         c_spill = (
-                            is_detour * min(1.0, ((q_peer - 0.45) / 0.55) * (1.0 + 0.5 * f_2d))
-                            if q_peer > 0.45 else 0.0)
-                        c_cost = float(np.clip(c_cost + 0.60 * c_busy + 0.70 * c_spill, 0.0, 2.5))
+                            is_detour * min(1.0, ((q_peer - 0.65) / 0.35) * (1.0 + 0.6 * f_2d))
+                            if q_peer > 0.65 else 0.0)
+                        c_cost = float(np.clip(c_cost + 0.45 * c_busy + 0.85 * c_spill, 0.0, 2.0))
                 if sat_id is not None and pkt.pigou_aux is not None:
                     cap = max(1.0, float(self.cfg_links["isl_queue_bits"]))
                     ais_rows = np.zeros((4, 3), dtype=np.float32)

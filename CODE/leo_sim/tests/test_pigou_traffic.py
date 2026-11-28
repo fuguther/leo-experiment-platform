@@ -438,10 +438,10 @@ def test_scene_c_trace_and_config_contract(builder, tmp_path):
     assert cfg["scenario"]["num_planes"] == 6
     assert cfg["scenario"]["inclination_deg"] == pytest.approx(86.4)
     assert cfg["links"]["isl_rate_mbps"] == pytest.approx(60.0)
-    assert cfg["links"]["isl_queue_bits"] == 1_800_000
+    assert cfg["links"]["isl_queue_bits"] == 1_200_000
     assert cfg["demand"]["retry"]["max_retries"] == 2
-    assert cfg["demand"]["retry"]["retry_fraction"] == pytest.approx(0.80)
-    assert cfg["demand"]["deadline_s"] == pytest.approx(0.210)
+    assert cfg["demand"]["retry"]["retry_fraction"] == pytest.approx(0.85)
+    assert cfg["demand"]["deadline_s"] == pytest.approx(0.160)
     assert built["packet_count"] > 0
 
     outage_cfg = cell_config(

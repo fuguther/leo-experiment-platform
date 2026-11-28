@@ -55,7 +55,7 @@ PORT_EMBED_DIM = 32
 ATTN_HEADS = 2
 ATTN_HEAD_DIM = PORT_EMBED_DIM // ATTN_HEADS  # 16
 LAYER_NORM_EPS = 1e-5
-RISK_TARGET_MAX = 2.5
+RISK_TARGET_MAX = 2.0
 
 VALID_VARIANTS = frozenset({"full", "no_ext", "mean", "no_ais", "frame"})
 
@@ -762,15 +762,15 @@ class TensorflowPigouOnline:
         self.lambda_max = _resolve_cfg_float(cfg, ("dual_max",), 4.0)
         self.initial_lambda_pd = _resolve_cfg_float(cfg, ("lambda_init",), 0.15)
         self.lambda_pd = float(self.initial_lambda_pd)
-        self.dual_lr = _resolve_cfg_float(cfg, ("dual_lr",), 0.10)
-        self.dual_constraint = _resolve_cfg_float(cfg, ("dual_constraint",), 0.12)
+        self.dual_lr = _resolve_cfg_float(cfg, ("dual_lr",), 0.08)
+        self.dual_constraint = _resolve_cfg_float(cfg, ("dual_constraint",), 0.08)
         self.risk_loss_weight = _resolve_cfg_float(cfg, ("risk_loss_weight",), 1.0)
         self.ais_loss_weight = (
             0.0 if self.variant in ("no_ais", "frame")
             else _resolve_cfg_float(cfg, ("ais_loss_weight",), 0.25))
         self.gamma_z = (
             0.0 if self.variant == "frame"
-            else _resolve_cfg_float(cfg, ("gamma_z",), 0.08))
+            else _resolve_cfg_float(cfg, ("gamma_z",), 0.03))
         self.quantile_huber_delta = _resolve_cfg_float(
             cfg, ("quantile_huber_delta",), 1.0)
         self.risk_target_max = (
@@ -966,11 +966,12 @@ class TensorflowPigouOnline:
     def finish_round(self, observed_cost_rate: float | None = None) -> float:
         if self.mode == "eval":
             return float(self.lambda_pd)
-        if self._pending_costs:
+        if observed_cost_rate is not None:
+            observed = float(observed_cost_rate)
+            self._pending_costs.clear()
+        elif self._pending_costs:
             observed = float(np.mean(self._pending_costs, dtype=np.float64))
             self._pending_costs.clear()
-        elif observed_cost_rate is not None:
-            observed = float(observed_cost_rate)
         else:
             return float(self.lambda_pd)
         updated = self.lambda_pd + self.dual_lr * (observed - self.dual_constraint)
