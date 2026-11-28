@@ -178,6 +178,7 @@ class DataPacket:
                  "decision_id", "decision_ordinal", "current_hop_index",
                  "retries_used", "retry_eligible", "orig_emit_time_s",
                  "attempt_token", "retry_scheduled", "retired",
+                 "application_deadline_at", "attempt_deadline_at",
                  "pigou_aux")
 
     def __init__(self, pid, src, dst, bits, deadline, emitted_at,
@@ -187,6 +188,8 @@ class DataPacket:
         self.dst = dst
         self.bits = bits
         self.deadline = deadline
+        self.application_deadline_at = deadline
+        self.attempt_deadline_at = None
         self.emitted_at = emitted_at
         self.path: list[int] = []
         self.assigned_sat: int | None = None
@@ -1280,7 +1283,12 @@ class Kernel:
             "jitter_s": float(retry_cfg.get("jitter_s", 0.0)),
             "attempt_timeout_s": float(retry_cfg.get("attempt_timeout_s", 0.0)),
             "stop_reinject_at_s": float(retry_cfg.get("stop_reinject_at_s", 0.0)),
+            "discovery": str(retry_cfg.get("discovery", "local_failure")),
+            "backoff_policy": str(retry_cfg.get("backoff_policy", "fixed")),
+            "deadline_policy": str(retry_cfg.get("deadline_policy", "router_timer")),
         }
+        self._endpoint_deadline_policy = (
+            self.retry_cfg["deadline_policy"] == "endpoint_only")
         # CONTROL-INIT: one optional extra advertisement burst per satellite,
         # emitted at the declared instant and NOT charged to the periodic
         # schedule.  It is the legal "initial synchronisation" of the night
@@ -3343,12 +3351,20 @@ class Kernel:
                 r["packet_id"], r["src_grid_id"], r["dst_grid_id"],
                 r["bits"], r["deadline_at_s"], self.env.now,
                 research_deadline_at=research_deadline_at)
+            if self._endpoint_deadline_policy:
+                # The application deadline remains available to the source and
+                # destination, but intermediate routers do not execute an
+                # endpoint clock they cannot observe.
+                pkt.deadline = None
             if self.retry_cfg["enabled"]:
                 pkt.retry_eligible = (
                     self._retry_unit_interval(pkt.pid, "eligible")
                     < self.retry_cfg["retry_fraction"])
-                pkt.deadline = self.env.now + self.retry_cfg["attempt_timeout_s"]
-                pkt.research_deadline_at = pkt.deadline
+                pkt.attempt_deadline_at = (
+                    self.env.now + self.retry_cfg["attempt_timeout_s"])
+                if not self._endpoint_deadline_policy:
+                    pkt.deadline = pkt.attempt_deadline_at
+                    pkt.research_deadline_at = pkt.deadline
             self._metric_packet_emitted(pkt)
             self.ledger.register(pkt.pid, pkt.bits)
             if (self.learner is not None
@@ -3364,7 +3380,10 @@ class Kernel:
 
     def _admit_data_packet(self, pkt: DataPacket, ep):
         now = self.env.now
-        if pkt.deadline is not None and now > pkt.deadline:
+        endpoint_deadline = (
+            pkt.application_deadline_at
+            if self._endpoint_deadline_policy else pkt.deadline)
+        if endpoint_deadline is not None and now > endpoint_deadline:
             self._fail(pkt, "DATA_DEADLINE_EXPIRED")
             return
         link = ep.primary_link()
@@ -3394,8 +3413,17 @@ class Kernel:
         yield self.env.timeout(0.0)
 
     def _retry_backoff(self, pkt: DataPacket) -> float:
-        jitter = self.retry_cfg["jitter_s"] * self._retry_unit_interval(
-            pkt.pid, f"jitter:{pkt.retries_used}")
+        factor = (2 ** pkt.retries_used
+                  if self.retry_cfg["backoff_policy"] == "exponential" else 1)
+        jitter = (self.retry_cfg["jitter_s"] * factor
+                  * self._retry_unit_interval(
+                      pkt.pid, f"jitter:{pkt.retries_used}"))
+        if self.retry_cfg["discovery"] == "endpoint_timeout":
+            # A loss is only visible to the sender at the end of its current
+            # attempt clock. The overflow event itself grants no back-channel.
+            now = float(self.env.now)
+            wait = max(0.0, float(pkt.attempt_deadline_at or now) - now)
+            return wait + self.retry_cfg["backoff_s"] * factor + jitter
         return self.retry_cfg["backoff_s"] + jitter
 
     def _retry_should_schedule(self, pkt: DataPacket, fate: str, now: float) -> bool:
@@ -3425,6 +3453,10 @@ class Kernel:
             "prior_fate": str(fate),
             "src": str(pkt.src),
             "dst": str(pkt.dst),
+            "discovery": self.retry_cfg["discovery"],
+            "backoff_policy": self.retry_cfg["backoff_policy"],
+            "deadline_policy": self.retry_cfg["deadline_policy"],
+            "attempt_deadline_at_s": pkt.attempt_deadline_at,
         })
         self.env.process(self._reinject_after_backoff(pkt, delay, fate))
 
@@ -3436,8 +3468,16 @@ class Kernel:
         pkt.path = []
         pkt.assigned_sat = None
         pkt.emitted_at = self.env.now
-        pkt.deadline = self.env.now + self.retry_cfg["attempt_timeout_s"]
-        pkt.research_deadline_at = pkt.deadline
+        timeout_factor = (2 ** pkt.retries_used
+                          if self.retry_cfg["backoff_policy"] == "exponential"
+                          else 1)
+        pkt.attempt_deadline_at = (
+            self.env.now + self.retry_cfg["attempt_timeout_s"] * timeout_factor)
+        if self._endpoint_deadline_policy:
+            pkt.deadline = None
+        else:
+            pkt.deadline = pkt.attempt_deadline_at
+            pkt.research_deadline_at = pkt.deadline
         pkt.learning_state = None
         pkt.learning_action = None
         pkt.learning_reward = None
@@ -7776,7 +7816,10 @@ class Kernel:
         self._in_flight.pop(pkt.pid, None)
         self._metric_propagation_arrival(pkt)
         now = self.env.now
-        if pkt.deadline is not None and now >= pkt.deadline:
+        delivery_deadline = (
+            pkt.application_deadline_at
+            if self._endpoint_deadline_policy else pkt.deadline)
+        if delivery_deadline is not None and now >= delivery_deadline:
             self._fail(pkt, "DATA_DEADLINE_EXPIRED")
             return
         if self.cfg_learning["reward"] == "deadline_loss_v1":

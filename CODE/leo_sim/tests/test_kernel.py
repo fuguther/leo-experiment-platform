@@ -116,6 +116,75 @@ def test_bounded_retry_reuses_one_offered_packet_and_preserves_conservation():
         + totals["in_system_bits_at_stop"])
 
 
+def test_endpoint_deadline_does_not_abort_a_packet_at_an_intelligent_hop():
+    nb = {0: {"E": 1}, 1: {"W": 0}}
+    vis = lambda s, lat, lon, t: (s == 0 and (lat, lon) == AC) or \
+                                 (s == 1 and (lat, lon) == BC)
+    retry = {
+        "enabled": False,
+        "max_retries": 0,
+        "retry_fraction": 0.0,
+        "backoff_s": 0.0,
+        "jitter_s": 0.0,
+        "attempt_timeout_s": 0.24,
+        "stop_reinject_at_s": 1.0,
+        "discovery": "endpoint_timeout",
+        "backoff_policy": "fixed",
+        "deadline_policy": "endpoint_only",
+    }
+    cfg = make_cfg({"demand": {"retry": retry}})
+    geo = StaticGeometry(2, neighbors_map=nb, visible=vis)
+    res = kernel.run_simulation(cfg, [row(1, 0.0, A, B, deadline=0.085)],
+                                geometry=geo)
+    # The first-hop ingress is already past D, but the endpoint-only policy
+    # keeps the packet in the transport path. The destination, not the ISL
+    # queue owner, makes the deadline decision.
+    assert res["fates"][1] == "DATA_DEADLINE_EXPIRED"
+    assert sum(e["kind"] == "service_start"
+               and e.get("stage") == "isl"
+               for e in res["packet_events"]) == 1
+    assert sum(e["kind"] == "retry_reinject"
+               for e in res["packet_events"]) == 0
+
+
+def test_endpoint_timeout_defers_overflow_feedback_until_attempt_clock():
+    nb = {0: {"E": 1}, 1: {"W": 0}}
+    vis = lambda s, lat, lon, t: (s == 0 and (lat, lon) == AC) or \
+                                 (s == 1 and (lat, lon) == BC)
+    retry = {
+        "enabled": True,
+        "max_retries": 1,
+        "retry_fraction": 1.0,
+        "backoff_s": 0.04,
+        "jitter_s": 0.0,
+        "attempt_timeout_s": 0.24,
+        "stop_reinject_at_s": 1.2,
+        "discovery": "endpoint_timeout",
+        "backoff_policy": "fixed",
+        "deadline_policy": "endpoint_only",
+    }
+    cfg = make_cfg({
+        "links": {"isl_rate_mbps": 10_000.0, "isl_queue_bits": 1},
+        "scenario": {"duration_s": 2.0},
+        "demand": {"retry": retry},
+    })
+    geo = StaticGeometry(2, neighbors_map=nb, visible=vis)
+    rows = [row(i, 0.0, A, B, deadline=2.0) for i in (1, 2, 3)]
+    res = kernel.run_simulation(cfg, rows, geometry=geo)
+    overflow_retries = [
+        event for event in res["retry_events"]
+        if event["prior_fate"] == "ISL_QUEUE_OVERFLOW"
+    ]
+    assert overflow_retries
+    for event in overflow_retries:
+        source_wait = max(
+            0.0,
+            event["attempt_deadline_at_s"] - event["scheduled_at_s"],
+        )
+        assert event["inject_at_s"] - event["scheduled_at_s"] >= (
+            source_wait + 0.04 - 1e-12)
+
+
 def test_uplink_fair_scheduling_alternates():
     cfg = make_cfg({
         "access": {"uplink_rate_mbps": 1.0, "downlink_rate_mbps": 1.0},

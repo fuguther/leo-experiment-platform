@@ -872,9 +872,18 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
             "attempt_timeout_s": (int, float),
             "stop_reinject_at_s": (int, float),
         }
+        # Diagnostic-only protocol controls are optional so every existing
+        # retry configuration reconstructs with its original canonical hash.
+        # Omitting them preserves the historical local-failure/fixed-clock
+        # behavior.
+        optional_enums = {
+            "discovery": {"local_failure", "endpoint_timeout"},
+            "backoff_policy": {"fixed", "exponential"},
+            "deadline_policy": {"router_timer", "endpoint_only"},
+        }
         if not isinstance(retry, Mapping):
             raise ConfigError("demand.retry must be a mapping")
-        unknown = set(retry) - set(expected)
+        unknown = set(retry) - set(expected) - set(optional_enums)
         missing = set(expected) - set(retry)
         if unknown:
             raise ConfigError(f"demand.retry has unknown fields {sorted(unknown)}")
@@ -896,6 +905,16 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
                 raise ConfigError(f"demand.retry.{key} must be finite and >= 0")
         if float(retry["attempt_timeout_s"]) <= 0:
             raise ConfigError("demand.retry.attempt_timeout_s must be > 0")
+        for key, allowed in optional_enums.items():
+            if key in retry and retry[key] not in allowed:
+                raise ConfigError(
+                    f"demand.retry.{key} must be one of {sorted(allowed)}")
+        if (retry.get("deadline_policy") == "endpoint_only"
+                and retry.get("discovery", "local_failure")
+                != "endpoint_timeout"):
+            raise ConfigError(
+                "demand.retry.deadline_policy=endpoint_only requires "
+                "demand.retry.discovery=endpoint_timeout")
         if (not math.isfinite(float(retry["stop_reinject_at_s"]))
                 or float(retry["stop_reinject_at_s"]) < 0
                 or float(retry["stop_reinject_at_s"]) > sc["duration_s"]):

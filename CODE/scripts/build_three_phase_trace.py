@@ -24,7 +24,7 @@ import math
 import os
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
@@ -580,6 +580,7 @@ def build(
     interval: float = 0.05,
     offered_mbps: float | None = None,
     duration_s: float | None = None,
+    packet_bits: int | None = None,
 ) -> dict[str, object]:
     """Write one deterministic trace and return its native-config interface.
 
@@ -591,6 +592,10 @@ def build(
     provides the reusable no-burst input for a separate outage experiment.
     """
     spec = _scene_spec(scene)
+    if packet_bits is not None:
+        if isinstance(packet_bits, bool) or not isinstance(packet_bits, int)                 or packet_bits <= 0:
+            raise ValueError("packet_bits must be a positive integer")
+        spec = replace(spec, packet_bits=packet_bits)
     resolved_offered = (
         DEFAULT_OFFERED_MBPS[spec.scene]
         if offered_mbps is None else float(offered_mbps)
@@ -831,6 +836,7 @@ def main(argv: list[str] | None = None) -> int:
         "--interval", type=float, choices=REAL_CONTROL_INTERVALS_S,
         default=0.05, help="real ControlPacket emission interval in seconds")
     parser.add_argument("--offered-mbps", type=float, default=None)
+    parser.add_argument("--packet-bits", type=int, default=None)
     args = parser.parse_args(argv)
     result = build(
         args.out,
@@ -839,6 +845,7 @@ def main(argv: list[str] | None = None) -> int:
         multiplier=args.multiplier,
         interval=args.interval,
         offered_mbps=args.offered_mbps,
+        packet_bits=args.packet_bits,
     )
     print(json.dumps(_json_ready(_cli_summary(result)), indent=2, sort_keys=True))
     return 0

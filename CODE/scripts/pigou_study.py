@@ -183,14 +183,46 @@ def _metric_components(rows, results, *, burst_end=3.5, recovery_end=9.5):
         counts[mark][0] += ok
         counts[mark][1] += 1
     rates = {name: ok / n if n else None for name, (ok, n) in counts.items()}
-    t_rec = None
+    recovery_bucket_s = 0.1
+    recovery_streak_buckets = 8
+    recovery_ratio = 0.95
+    onset_index = None
     if rates["steady"] is not None and rates["steady"] > 0.0:
-        for i in range(len(buckets) - 7):
-            if all(n and ok / n >= 0.95 * rates["steady"] for ok, n in buckets[i:i + 8]):
-                t_rec = round(i * 0.1, 9)
+        threshold = recovery_ratio * rates["steady"]
+        for i in range(len(buckets) - recovery_streak_buckets + 1):
+            streak = buckets[i:i + recovery_streak_buckets]
+            if all(n and ok / n >= threshold for ok, n in streak):
+                onset_index = i
                 break
+    t_onset = (None if onset_index is None
+               else round(onset_index * recovery_bucket_s, 9))
+    t_clear = (None if onset_index is None else round(
+        (onset_index + recovery_streak_buckets) * recovery_bucket_s, 9))
+    recovery_window_s = recovery_end - burst_end
     score = len(success) / len(rows) - 0.02 * (
-        t_rec if t_rec is not None else recovery_end - burst_end - 0.8)
+        t_clear if t_clear is not None else recovery_window_s)
+    recovery_rates = [
+        None if not n else ok / n for ok, n in buckets
+    ]
+    observed_recovery_buckets = sum(rate is not None for rate in recovery_rates)
+    rgd = None
+    if (rates["steady"] is not None and rates["steady"] > 0.0
+            and observed_recovery_buckets):
+        rgd = sum(
+            recovery_bucket_s * max(0.0, rates["steady"] - rate)
+            for rate in recovery_rates if rate is not None
+        )
+    isl_attempts = [
+        event for event in results.get("packet_events", [])
+        if event.get("kind") == "service_start"
+        and event.get("stage") == "isl"
+    ]
+    hop_attempts_total = len(isl_attempts)
+    hop_attempts_wasted = sum(
+        int(event["pid"]) not in success for event in isl_attempts
+    )
+    whr = (None if not hop_attempts_total
+           else hop_attempts_wasted / hop_attempts_total)
     retried_pids = {
         int(event["pid"]) for event in results.get("packet_events", [])
         if event.get("kind") == "retry_reinject"
@@ -202,8 +234,22 @@ def _metric_components(rows, results, *, burst_end=3.5, recovery_end=9.5):
         "tx_goodput": tx_goodput,
         "first_attempt_pdr": first_attempt_success / len(rows),
         "phase_pdr": rates,
-        "t_rec_onset_s": t_rec,
-        "t_rec_censor_onset_s": recovery_end - burst_end - 0.8,
+        # T_onset is when the fixed recovery streak starts. T_clear is the
+        # elapsed time from pulse end to the end of that complete streak.
+        "t_rec_onset_s": t_onset,
+        "t_rec_clear_s": t_clear,
+        "t_rec_right_censored": onset_index is None,
+        "t_rec_window_s": recovery_window_s,
+        "t_rec_threshold_ratio": recovery_ratio,
+        "t_rec_bucket_s": recovery_bucket_s,
+        "t_rec_streak_buckets": recovery_streak_buckets,
+        "rgd_fraction_seconds": rgd,
+        "rgd_observed_buckets": observed_recovery_buckets,
+        "rgd_observed_coverage_s": (
+            observed_recovery_buckets * recovery_bucket_s),
+        "hop_attempts_total": hop_attempts_total,
+        "hop_attempts_wasted": hop_attempts_wasted,
+        "whr": whr,
         "val_score": score,
     }
 
@@ -378,6 +424,11 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
     samples = [age for row in measurements["neighbor_age_samples"] for age in row[4]]
     ages = [age for age in samples if age is not None]
     vals = _metric_components(rows, result)
+    nominal_hops = _nominal_hops(env, rows)
+    vals["hir"] = (
+        vals["hop_attempts_total"] / nominal_hops["hops"]
+        if nominal_hops["hops"] not in (None, 0) else None
+    )
     offered_packets = len(rows)
     retry_reinjections = int(result.get("retry_reinjections", 0))
     load_amplification = (
@@ -411,7 +462,7 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
                                                if ages else None),
                "measured_neighbor_aoi_obs_fraction": len(ages) / len(samples) if samples else None,
                "routing_measurements_sha256": sha(raw_measurements),
-               "nominal_shortest_hops": _nominal_hops(env, rows),
+               "nominal_shortest_hops": nominal_hops,
                "plateaus": workload.get("plateaus"),
                "wall_seconds": time.monotonic() - start,
                "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (
