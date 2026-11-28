@@ -154,7 +154,10 @@ class Matrix:
             weight, options = model
             spec = {**spec, **options}
             if spec["alg"] in LEARNERS:
-                inputs.extend((("online.keras", weight), ("metadata.json", weight.with_name("metadata.json"))))
+                inputs.extend((("online.keras", weight),
+                               ("metadata.json", weight.with_name("metadata.json"))))
+                if spec["alg"] == "B6":
+                    inputs.append(("online.npz", weight.with_name("online.npz")))
             else:
                 inputs.append(("frozen.npz", weight))
         if resume:

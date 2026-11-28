@@ -44,6 +44,7 @@ import math
 import hashlib
 import json
 import os
+import shutil
 import time
 from collections import deque
 from pathlib import Path
@@ -174,7 +175,9 @@ class DataPacket:
                  "learning_reward", "learning_sat", "learning_episode_closed",
                  "research_deadline_at", "isl_enqueued_at", "holding_until",
                  "metric_queue_id", "metric_prop_id", "metric_ingress_at",
-                 "decision_id", "decision_ordinal", "current_hop_index")
+                 "decision_id", "decision_ordinal", "current_hop_index",
+                 "retries_used", "retry_eligible", "orig_emit_time_s",
+                 "attempt_token", "retry_scheduled", "retired")
 
     def __init__(self, pid, src, dst, bits, deadline, emitted_at,
                  research_deadline_at=None):
@@ -211,6 +214,12 @@ class DataPacket:
         # the hop_index of the decision currently being committed, so timeline
         # milestones written during that decision carry the same key
         self.current_hop_index = None
+        self.retries_used = 0
+        self.retry_eligible = False
+        self.orig_emit_time_s = float(emitted_at)
+        self.attempt_token = 0
+        self.retry_scheduled = False
+        self.retired = False
 
 
 class QueueArea:
@@ -1260,6 +1269,16 @@ class Kernel:
         self.cfg_ta = cfg["time_alignment"]
         self.cfg_ar = cfg["async_routing"]
         self.cfg_dm = cfg["demand"]
+        retry_cfg = self.cfg_dm.get("retry") or {}
+        self.retry_cfg = {
+            "enabled": bool(retry_cfg.get("enabled", False)),
+            "max_retries": int(retry_cfg.get("max_retries", 0)),
+            "retry_fraction": float(retry_cfg.get("retry_fraction", 0.0)),
+            "backoff_s": float(retry_cfg.get("backoff_s", 0.0)),
+            "jitter_s": float(retry_cfg.get("jitter_s", 0.0)),
+            "attempt_timeout_s": float(retry_cfg.get("attempt_timeout_s", 0.0)),
+            "stop_reinject_at_s": float(retry_cfg.get("stop_reinject_at_s", 0.0)),
+        }
         # CONTROL-INIT: one optional extra advertisement burst per satellite,
         # emitted at the declared instant and NOT charged to the periodic
         # schedule.  It is the legal "initial synchronisation" of the night
@@ -1382,11 +1401,14 @@ class Kernel:
         self.policy_source = "deterministic_scorer"
         if algorithm != "none" and self.cfg_learning.get("fixed_inference"):
             include_lh = bool(self.cfg_learning.get("include_last_hop", False))
-            expected_fo = (
-                _inference.OBSERVATION_FEATURE_ORDER_LAST_HOP
-                if include_lh
-                else _inference.OBSERVATION_FEATURE_ORDER
-            )
+            if algorithm == "primal_cvar":
+                expected_fo = _inference.PRIMAL_OBSERVATION_FEATURE_ORDER
+            else:
+                expected_fo = (
+                    _inference.OBSERVATION_FEATURE_ORDER_LAST_HOP
+                    if include_lh
+                    else _inference.OBSERVATION_FEATURE_ORDER
+                )
             self.fixed_policy = _inference.load_fixed_adapter_from_checkpoint(
                 self.cfg_learning["checkpoint_path"],
                 self.cfg_learning["checkpoint_sha256"],
@@ -1396,7 +1418,8 @@ class Kernel:
                 expected_width=_learning.contract_dim(
                     self.cfg_rt["contract"], include_lh),
                 expected_feature_order=expected_fo,
-                name="checkpoint-ddqn")
+                name=(f"checkpoint-{algorithm}"),
+                algorithm=algorithm)
             self.learner = None
             self.policy_source = "fixed_inference_checkpoint"
             self.mech_fixed_policy_calls = 0
@@ -1699,6 +1722,7 @@ class Kernel:
         self.link_available_windows: list[dict] = []
         self._metric_queue_seq = 0
         self._metric_prop_seq = 0
+        self._retry_events: list[dict] = []
         self.handover_events: list[dict] = []
         self.monitor_log: list[tuple] = []
         self.q0_plan_audit: list[dict] = []
@@ -1746,6 +1770,7 @@ class Kernel:
             "mcs_zero_rate_holds": 0,
             "mcs_rate_min_bps": 0,
             "mcs_rate_max_bps": 0,
+            "retry_reinjections": 0,
         }
         if self.cfg_topo["recompute_interval_s"] is not None:
             static_topo = routing.build_topology(
@@ -2071,6 +2096,16 @@ class Kernel:
         self.packet_events.append({
             "kind": "packet_emitted", "pid": pkt.pid,
             "at": float(pkt.emitted_at), "bits": pkt.bits,
+        })
+
+    def _metric_retry_reinject(self, pkt: DataPacket, *, prior_fate: str,
+                               at: float) -> None:
+        self.packet_events.append({
+            "kind": "retry_reinject",
+            "pid": pkt.pid,
+            "at": float(at),
+            "retry_index": int(pkt.retries_used),
+            "prior_fate": str(prior_fate),
         })
 
     def _metric_queue_enter(self, pkt: DataPacket, queue: str,
@@ -3293,46 +3328,121 @@ class Kernel:
                 r["packet_id"], r["src_grid_id"], r["dst_grid_id"],
                 r["bits"], r["deadline_at_s"], self.env.now,
                 research_deadline_at=research_deadline_at)
+            if self.retry_cfg["enabled"]:
+                pkt.retry_eligible = (
+                    self._retry_unit_interval(pkt.pid, "eligible")
+                    < self.retry_cfg["retry_fraction"])
+                pkt.deadline = self.env.now + self.retry_cfg["attempt_timeout_s"]
+                pkt.research_deadline_at = pkt.deadline
             self._metric_packet_emitted(pkt)
             self.ledger.register(pkt.pid, pkt.bits)
             if (self.learner is not None
                     and self.cfg_learning["reward"] == "deadline_loss_v1"
                     and pkt.research_deadline_at is not None):
                 self.env.process(self._research_deadline_watch(pkt))
-            now = self.env.now
-            if pkt.deadline is not None and now > pkt.deadline:
-                self._fail(pkt, "DATA_DEADLINE_EXPIRED")
-                continue
-            link = ep.primary_link()
-            if link is None and not self._visible_sats(ep):
-                # Access coverage is a boundary condition, not a network
-                # congestion outcome.  The historical default rejects at
-                # emission; the explicit research queue profile keeps the
-                # packet in the existing finite endpoint uplink queue so the
-                # normal access ticker can retry when coverage returns.
-                if self.cfg_access["unavailable_policy"] == "reject":
-                    self._fail(pkt, "ACCESS_REJECTED")
-                    continue
-            if ep.queued_bits + pkt.bits > self.cfg_access["uplink_queue_bits"]:
-                self._fail(pkt, "ACCESS_QUEUE_OVERFLOW")
-                continue
-            # MBB: new arrivals go to the newest active/acquiring link; an
-            # unassociated endpoint queues and requests fair access instead of
-            # being rejected just because every slot is currently taken.
-            pkt.assigned_sat = link.sat if (link is not None and link.state == "active") else None
-            ep.queue.append(pkt)
-            ep.queued_bits += pkt.bits
-            ep.area.add(pkt.bits, now)
-            self._metric_queue_enter(
-                pkt, "uplink", f"gsl:uplink:pending:{cell}")
-            self._note_busy(ep.cell)
-            if link is None:
-                self._request_or_grant(ep, now)
-            for sat_id in list(ep.links):
-                self._poke(self.uplinks[sat_id].wake)
-            # let link servers dequeue at the same instant before the next
-            # emission; this keeps same-time ordering deterministic.
-            yield self.env.timeout(0.0)
+            yield from self._admit_data_packet(pkt, ep)
+
+    @staticmethod
+    def _retry_unit_interval(packet_id: int, salt: str) -> float:
+        payload = f"{int(packet_id)}:{salt}".encode("ascii")
+        return int.from_bytes(hashlib.sha256(payload).digest()[:8], "big") / 2**64
+
+    def _admit_data_packet(self, pkt: DataPacket, ep):
+        now = self.env.now
+        if pkt.deadline is not None and now > pkt.deadline:
+            self._fail(pkt, "DATA_DEADLINE_EXPIRED")
+            return
+        link = ep.primary_link()
+        if link is None and not self._visible_sats(ep):
+            # Access coverage is a boundary condition, not a network
+            # congestion outcome.  The historical default rejects at emission;
+            # the explicit research queue profile keeps the packet in the
+            # finite endpoint uplink queue so normal access can retry it.
+            if self.cfg_access["unavailable_policy"] == "reject":
+                self._fail(pkt, "ACCESS_REJECTED")
+                return
+        if ep.queued_bits + pkt.bits > self.cfg_access["uplink_queue_bits"]:
+            self._fail(pkt, "ACCESS_QUEUE_OVERFLOW")
+            return
+        pkt.assigned_sat = (
+            link.sat if (link is not None and link.state == "active") else None)
+        ep.queue.append(pkt)
+        ep.queued_bits += pkt.bits
+        ep.area.add(pkt.bits, now)
+        self._metric_queue_enter(
+            pkt, "uplink", f"gsl:uplink:pending:{pkt.src}")
+        self._note_busy(ep.cell)
+        if link is None:
+            self._request_or_grant(ep, now)
+        for sat_id in list(ep.links):
+            self._poke(self.uplinks[sat_id].wake)
+        yield self.env.timeout(0.0)
+
+    def _retry_backoff(self, pkt: DataPacket) -> float:
+        jitter = self.retry_cfg["jitter_s"] * self._retry_unit_interval(
+            pkt.pid, f"jitter:{pkt.retries_used}")
+        return self.retry_cfg["backoff_s"] + jitter
+
+    def _retry_should_schedule(self, pkt: DataPacket, fate: str, now: float) -> bool:
+        if not self.retry_cfg["enabled"] or not pkt.retry_eligible:
+            return False
+        if fate not in {"DATA_DEADLINE_EXPIRED", "ISL_QUEUE_OVERFLOW"}:
+            return False
+        if pkt.retry_scheduled or pkt.retired:
+            return False
+        if pkt.retries_used >= self.retry_cfg["max_retries"]:
+            return False
+        inject_at = now + self._retry_backoff(pkt)
+        return (inject_at <= self.retry_cfg["stop_reinject_at_s"]
+                and inject_at + self.retry_cfg["attempt_timeout_s"]
+                <= self.retry_cfg["stop_reinject_at_s"])
+
+    def _schedule_retry(self, pkt: DataPacket, fate: str) -> None:
+        delay = self._retry_backoff(pkt)
+        pkt.retry_scheduled = True
+        pkt.retired = True
+        self.mech["retry_reinjections"] += 1
+        self._retry_events.append({
+            "scheduled_at_s": float(self.env.now),
+            "inject_at_s": float(self.env.now + delay),
+            "pid": int(pkt.pid),
+            "retry_index": int(pkt.retries_used + 1),
+            "prior_fate": str(fate),
+            "src": str(pkt.src),
+            "dst": str(pkt.dst),
+        })
+        self.env.process(self._reinject_after_backoff(pkt, delay, fate))
+
+    def _reinject_after_backoff(self, pkt: DataPacket, delay: float,
+                                prior_fate: str):
+        yield self.env.timeout(delay)
+        pkt.retries_used += 1
+        pkt.attempt_token += 1
+        pkt.path = []
+        pkt.assigned_sat = None
+        pkt.emitted_at = self.env.now
+        pkt.deadline = self.env.now + self.retry_cfg["attempt_timeout_s"]
+        pkt.research_deadline_at = pkt.deadline
+        pkt.learning_state = None
+        pkt.learning_action = None
+        pkt.learning_reward = None
+        pkt.learning_sat = None
+        pkt.learning_episode_closed = False
+        pkt.isl_enqueued_at = None
+        pkt.holding_until = None
+        pkt.metric_queue_id = None
+        pkt.metric_prop_id = None
+        pkt.metric_ingress_at = None
+        pkt.retry_scheduled = False
+        pkt.retired = False
+        self._in_flight.pop(pkt.pid, None)
+        self._metric_retry_reinject(
+            pkt, prior_fate=prior_fate, at=self.env.now)
+        if (self.learner is not None
+                and self.cfg_learning["reward"] == "deadline_loss_v1"):
+            self.env.process(self._research_deadline_watch(pkt))
+        ep = self.endpoints[pkt.src]
+        yield from self._admit_data_packet(pkt, ep)
 
     def _endpoint_ticker(self, ep: TrafficEndpoint):
         while True:
@@ -4233,6 +4343,31 @@ class Kernel:
         path = Path(str(self.cfg_learning["checkpoint_path"]))
         return str(path.with_name("metadata.json"))
 
+    def _materialize_fixed_policy_artifacts(self) -> None:
+        """Copy the verified read-only inputs beside the run receipt."""
+        if self.fixed_policy is None or self.learning_out_dir is None:
+            return
+        out = Path(self.learning_out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        sources = {
+            "online.keras": Path(str(self.cfg_learning["checkpoint_path"])),
+            "metadata.json": Path(self._fixed_policy_metadata_path()),
+        }
+        if self.cfg_learning["algorithm"] == "primal_cvar":
+            numpy_path = getattr(self.fixed_policy, "weights_path", None)
+            if numpy_path is None:
+                raise KernelError("PRIMAL fixed policy has no NumPy checkpoint")
+            sources["online.npz"] = Path(numpy_path)
+        for name, source in sources.items():
+            if source.is_symlink() or not source.is_file():
+                raise KernelError(f"fixed-inference artifact missing: {source}")
+            target = out / name
+            shutil.copyfile(source, target)
+            os.chmod(target, 0o400)
+            if hashlib.sha256(target.read_bytes()).digest() != \
+                    hashlib.sha256(source.read_bytes()).digest():
+                raise KernelError(f"fixed-inference artifact copy mismatch: {name}")
+
     def _learning_state_dim(self) -> int:
         if self.learner is not None:
             dim = getattr(self.learner, "input_dim", None)
@@ -4407,11 +4542,13 @@ class Kernel:
 
     def _research_deadline_watch(self, pkt: DataPacket):
         """Close a deadline-loss learner episode at D while physics continues."""
+        token = pkt.attempt_token
         target = float(pkt.research_deadline_at)
         delay = max(0.0, target - float(self.env.now))
         if delay:
             yield self.env.timeout(delay)
-        if not pkt.learning_episode_closed:
+        if pkt.attempt_token == token and not pkt.retired \
+                and not pkt.learning_episode_closed:
             self._finish_deadline_transition(pkt, "deadline_expired")
 
     def _close_learning_at_stop(self) -> None:
@@ -7553,15 +7690,24 @@ class Kernel:
                 terminal_reward=float(self.cfg_learning["arrive_reward"]),
             )
         self.ledger.record(pkt.pid, "DELIVERED", pkt.bits)
-        self.deliveries[pkt.pid] = {"delivered_at": now, "path": list(pkt.path)}
+        pkt.retired = True
+        self.deliveries[pkt.pid] = {
+            "delivered_at": now,
+            "path": list(pkt.path),
+        }
         self._metric_delivered(pkt)
         self._log("delivered", pid=pkt.pid, sat=sat)
 
     # ----------------------------------------------------------------- fates
     def _fail(self, pkt, fate: str, decision_id: int | None = None,
               observation: dict | None = None):
+        if isinstance(pkt, DataPacket) and pkt.retired:
+            return
+        retry_now = (
+            isinstance(pkt, DataPacket)
+            and self._retry_should_schedule(pkt, fate, float(self.env.now)))
         if (self.timeline_sink is not None
-                and isinstance(pkt, DataPacket)):
+                and isinstance(pkt, DataPacket) and not retry_now):
             # Exact terminal timing for packet-population replay, including
             # access rejection/overflow before a routing decision exists.
             self._timeline("packet_fate", pkt, decision_id, fate=fate)
@@ -7593,6 +7739,10 @@ class Kernel:
                                      if pkt.learning_reward is not None
                                      else 0.0),
                 )
+            if retry_now:
+                self._schedule_retry(pkt, fate)
+                return
+            pkt.retired = True
             self.ledger.record(pkt.pid, fate, pkt.bits)
             self._log("fate", pid=pkt.pid, fate=fate)
 
@@ -7768,6 +7918,7 @@ class Kernel:
             learning_result.update(counters)
             self.mech["learning_decisions"] = int(counters["calls"])
             effective["learning"] = self.mech["learning_decisions"] > 0
+            self._materialize_fixed_policy_artifacts()
         # A local kernel cannot self-authorize a scientific result. Mechanism
         # effectiveness is reported above; research eligibility requires an
         # externally anchored review/authorization/deployment receipt and is
@@ -7808,6 +7959,8 @@ class Kernel:
             "access": dict(self.access_stats),
             "service_log": self.service_log,
             "packet_events": list(self.packet_events),
+            "retry_events": list(self._retry_events),
+            "retry_reinjections": int(self.mech["retry_reinjections"]),
             "link_service_windows": list(self.link_service_windows),
             "link_available_windows": list(self.link_available_windows),
             "topology_trace": list(self.topology_trace),

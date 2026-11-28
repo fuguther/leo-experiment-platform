@@ -63,9 +63,14 @@ def cell_config(cfg, spec, checkpoint=None, metadata=None, resume=None):
     cfg["execution"].update(compute_delay_s=delay, compute_servers_per_satellite=int(delay > 0),
                             decision_observation_mode="refresh",
                             available_capacity_interval_s=0.1)
-    if alg in ("B2", "B3", "Collect"):
-        cfg["time_alignment"].update(enabled=True, arm="candidate", predictor="ou_shrink",
-                                     state_source="advertised", ou_tau_s=0.10)
+    if alg == "B2":
+        cfg["time_alignment"].update(
+            enabled=True, arm="candidate", predictor="hold_last",
+            state_source="advertised", queue_weight=4.0)
+    if alg in ("B3", "Collect"):
+        cfg["time_alignment"].update(
+            enabled=True, arm="candidate", predictor="ou_shrink",
+            state_source="advertised", ou_tau_s=0.10)
     if alg == "B3":
         cfg["routing"]["local_forward_adapter"] = {
             "kind": "static_guard", "threshold": spec.get("threshold", 0.50),
@@ -105,7 +110,7 @@ def cell_config(cfg, spec, checkpoint=None, metadata=None, resume=None):
                 raise ValueError("learning checkpoint requires sibling metadata.json")
             cfg["learning"].update(
                 mode="eval", checkpoint_path=str(checkpoint), checkpoint_sha256=sha(checkpoint),
-                checkpoint_metadata_sha256=sha(metadata), fixed_inference=alg != "B6",
+                checkpoint_metadata_sha256=sha(metadata), fixed_inference=True,
                 epsilon_start=0.0, epsilon_end=0.0,
             )
         elif resume is not None:
@@ -155,8 +160,21 @@ def _metric_components(rows, results, *, burst_end=3.5, recovery_end=9.5):
                 break
     score = len(success) / len(rows) - 0.02 * (
         t_rec if t_rec is not None else recovery_end - burst_end - 0.8)
-    return {"pdr": len(success) / len(rows), "phase_pdr": rates, "t_rec_onset_s": t_rec,
-            "t_rec_censor_onset_s": recovery_end - burst_end - 0.8, "val_score": score}
+    retried_pids = {
+        int(event["pid"]) for event in results.get("packet_events", [])
+        if event.get("kind") == "retry_reinject"
+    }
+    first_attempt_success = sum(1 for pid in success if pid not in retried_pids)
+    tx_goodput = len(success) / len(rows)
+    return {
+        "pdr": tx_goodput,
+        "tx_goodput": tx_goodput,
+        "first_attempt_pdr": first_attempt_success / len(rows),
+        "phase_pdr": rates,
+        "t_rec_onset_s": t_rec,
+        "t_rec_censor_onset_s": recovery_end - burst_end - 0.8,
+        "val_score": score,
+    }
 
 
 def _steady_utilization(result):
@@ -323,6 +341,17 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
     samples = [age for row in measurements["neighbor_age_samples"] for age in row[4]]
     ages = [age for age in samples if age is not None]
     vals = _metric_components(rows, result)
+    offered_packets = len(rows)
+    retry_reinjections = int(result.get("retry_reinjections", 0))
+    load_amplification = (
+        (offered_packets + retry_reinjections) / offered_packets
+        if offered_packets else None)
+    retry_rate_by_100ms = {}
+    for event in result.get("retry_events", []):
+        at = float(event["inject_at_s"])
+        bucket = math.floor(at / 0.1) * 0.1
+        key = f"{bucket:.1f}"
+        retry_rate_by_100ms[key] = retry_rate_by_100ms.get(key, 0) + 1
     if policy:
         _json_write(sim / "policy-audit.json", {
             "adapter": policy["kind"], "forwarding_calls": policy["calls"],
@@ -336,6 +365,9 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
                "fate_counts": rcp["fate_counts"], "audit": audit,
                "policy_calls": None if policy is None else policy["calls"],
                "control_bits": rcp["control"]["totals"].get("offered_bits"),
+               "retry_reinjections": retry_reinjections,
+               "load_amplification": load_amplification,
+               "retry_reinjections_by_100ms": retry_rate_by_100ms,
                "steady_utilization_peak": _steady_utilization(result),
                "measured_neighbor_aoi_p50_s": statistics.median(ages) if ages else None,
                "measured_neighbor_aoi_p95_s": (sorted(ages)[int(0.95 * (len(ages) - 1))]

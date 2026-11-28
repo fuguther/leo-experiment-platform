@@ -124,6 +124,9 @@ SCHEMA: dict[str, dict[str, type | tuple[type, ...]]] = {
         "population_destination_sampler": str,  # scan | alias_rejection
         "destination_rejection_max_draws": int,
         "nested_master_offered_mbps": (int, float, type(None)),
+        # Optional bounded transaction retry.  Deliberately absent from
+        # DEFAULT_CONFIG so existing profiles retain their exact config SHA.
+        "retry": dict,
     },
     "access": {
         "unavailable_policy": str,  # reject | queue
@@ -856,6 +859,46 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
                 "local_diurnal_cosine in the same demand profile")
     if dm["deadline_s"] is not None and dm["deadline_s"] <= 0:
         raise ConfigError("demand.deadline_s must be > 0 when set")
+    retry = dm.get("retry")
+    if retry is not None:
+        expected = {
+            "enabled": bool,
+            "max_retries": int,
+            "retry_fraction": (int, float),
+            "backoff_s": (int, float),
+            "jitter_s": (int, float),
+            "attempt_timeout_s": (int, float),
+            "stop_reinject_at_s": (int, float),
+        }
+        if not isinstance(retry, Mapping):
+            raise ConfigError("demand.retry must be a mapping")
+        unknown = set(retry) - set(expected)
+        missing = set(expected) - set(retry)
+        if unknown:
+            raise ConfigError(f"demand.retry has unknown fields {sorted(unknown)}")
+        if missing:
+            raise ConfigError(f"demand.retry missing fields {sorted(missing)}")
+        for key, expected_type in expected.items():
+            value = retry[key]
+            allowed = expected_type if isinstance(expected_type, tuple) else (expected_type,)
+            if isinstance(value, bool) and bool not in allowed:
+                raise ConfigError(f"demand.retry.{key} has invalid bool type")
+            if not isinstance(value, expected_type):
+                raise ConfigError(f"demand.retry.{key} has invalid type")
+        if retry["max_retries"] < 0:
+            raise ConfigError("demand.retry.max_retries must be >= 0")
+        if not 0.0 <= float(retry["retry_fraction"]) <= 1.0:
+            raise ConfigError("demand.retry.retry_fraction must be in [0, 1]")
+        for key in ("backoff_s", "jitter_s", "attempt_timeout_s"):
+            if not math.isfinite(float(retry[key])) or float(retry[key]) < 0:
+                raise ConfigError(f"demand.retry.{key} must be finite and >= 0")
+        if float(retry["attempt_timeout_s"]) <= 0:
+            raise ConfigError("demand.retry.attempt_timeout_s must be > 0")
+        if (not math.isfinite(float(retry["stop_reinject_at_s"]))
+                or float(retry["stop_reinject_at_s"]) < 0
+                or float(retry["stop_reinject_at_s"]) > sc["duration_s"]):
+            raise ConfigError(
+                "demand.retry.stop_reinject_at_s must lie in [0, duration_s]")
     if dm["research_deadline_s"] is not None and (
             isinstance(dm["research_deadline_s"], bool)
             or not math.isfinite(dm["research_deadline_s"])
@@ -1124,10 +1167,10 @@ def _validate_semantics(cfg: Mapping[str, Any]) -> None:
         # A1: the fixed-inference reader is a DIFFERENT execution path from the
         # training learner.  Every condition it depends on is checked here so a
         # configuration cannot ask for a read that has no artifact to read.
-        if lr["algorithm"] != "ddqn":
+        if lr["algorithm"] not in {"ddqn", "primal_cvar"}:
             raise ConfigError(
-                "learning.fixed_inference requires learning.algorithm=ddqn (it "
-                "reads the repository DDQN artifact format)")
+                "learning.fixed_inference requires learning.algorithm=ddqn "
+                "or primal_cvar")
         if lr["mode"] != "eval":
             raise ConfigError(
                 "learning.fixed_inference requires learning.mode=eval: a fixed "

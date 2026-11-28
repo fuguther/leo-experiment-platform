@@ -60,6 +60,15 @@ DURATION_S = 11.5
 REAL_CONTROL_INTERVALS_S = (0.01, 0.05, 0.10)
 DEFAULT_OFFERED_MBPS = {"A": 100.0, "B": 180.0}
 MAX_PACKETS = 200_000
+RETRY_POLICY = {
+    "enabled": True,
+    "max_retries": 2,
+    "retry_fraction": 0.65,
+    "backoff_s": 0.040,
+    "jitter_s": 0.020,
+    "attempt_timeout_s": 0.240,
+    "stop_reinject_at_s": 9.3,
+}
 
 
 @dataclass(frozen=True)
@@ -208,7 +217,7 @@ def _scene_spec(scene: str) -> SceneSpec:
             altitude_km=800.0,
             inclination_deg=53.0,
             isl_rate_mbps=70.0,
-            isl_queue_bits=2_240_000,
+            isl_queue_bits=2_800_000,
             packet_bits=64_000,
             hard_deadline_s=0.240,
             sites=SCENE_A_SITES,
@@ -225,8 +234,8 @@ def _scene_spec(scene: str) -> SceneSpec:
             altitude_km=780.0,
             inclination_deg=86.4,
             isl_rate_mbps=60.0,
-            isl_queue_bits=1_800_000,
-            packet_bits=128_000,
+            isl_queue_bits=2_400_000,
+            packet_bits=64_000,
             hard_deadline_s=0.280,
             sites=SCENE_B_SITES,
             corridor_weights=SCENE_B_CORRIDORS,
@@ -391,6 +400,16 @@ def _packet_row(
     }
 
 
+def _transaction_deadline_s(spec: SceneSpec) -> float:
+    retries = int(RETRY_POLICY["max_retries"])
+    attempts = retries + 1
+    return (
+        attempts * float(RETRY_POLICY["attempt_timeout_s"])
+        + retries * (float(RETRY_POLICY["backoff_s"])
+                     + float(RETRY_POLICY["jitter_s"]))
+    )
+
+
 def _make_config(
     *,
     spec: SceneSpec,
@@ -440,6 +459,7 @@ def _make_config(
             "burst_start_s": None,
             "burst_duration_s": None,
             "temporal_model": "constant",
+            "retry": dict(RETRY_POLICY),
         },
         "access": {
             "unavailable_policy": "queue",
@@ -614,7 +634,7 @@ def build(
             source=sites[source_name],
             destination=sites[destination_name],
             packet_bits=spec.packet_bits,
-            hard_deadline_s=spec.hard_deadline_s,
+            hard_deadline_s=_transaction_deadline_s(spec),
             layer="background",
         ))
 
@@ -628,7 +648,7 @@ def build(
             source=sites[source_name],
             destination=sites[destination_name],
             packet_bits=spec.packet_bits,
-            hard_deadline_s=spec.hard_deadline_s,
+            hard_deadline_s=_transaction_deadline_s(spec),
             layer="pulse_overlay",
         ))
 
@@ -751,7 +771,8 @@ def build_staircase(out_dir, *, seed, interval, offered_mbps):
             src, dst = _choose_route(routes, seed=seed, stream="staircase", index=pid)
             rows.append(_packet_row(packet_id=pid, emit_time_s=at, source=sites[src],
                                     destination=sites[dst], packet_bits=spec.packet_bits,
-                                    hard_deadline_s=spec.hard_deadline_s, layer="background"))
+                                    hard_deadline_s=_transaction_deadline_s(spec),
+                                    layer="background"))
     _write_trace(path, rows)
     cfg = _make_config(spec=spec, seed=seed, interval=interval, offered_mbps=offered_mbps,
                        trace_path=path, max_packets=len(rows))

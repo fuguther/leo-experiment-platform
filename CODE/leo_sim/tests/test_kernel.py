@@ -83,6 +83,39 @@ def test_isl_queue_overflow():
     assert res["fates"][3] == "ISL_QUEUE_OVERFLOW"
 
 
+def test_bounded_retry_reuses_one_offered_packet_and_preserves_conservation():
+    nb = {0: {"E": 1}, 1: {"W": 0}}
+    vis = lambda s, lat, lon, t: (s == 0 and (lat, lon) == AC) or \
+                                 (s == 1 and (lat, lon) == BC)
+    cfg = make_cfg({
+        "links": {"isl_rate_mbps": 1.0, "isl_queue_bits": 8_000_000},
+        "scenario": {"duration_s": 40.0},
+        "demand": {"retry": {
+            "enabled": True,
+            "max_retries": 2,
+            "retry_fraction": 1.0,
+            "backoff_s": 0.0,
+            "jitter_s": 0.0,
+            "attempt_timeout_s": 20.0,
+            "stop_reinject_at_s": 39.0,
+        }},
+    })
+    geo = StaticGeometry(2, neighbors_map=nb, visible=vis)
+    rows = [row(i, 0.0, A, B) for i in (1, 2, 3)]
+    res = kernel.run_simulation(cfg, rows, geometry=geo)
+
+    assert res["natural_end"] is True
+    assert res["mechanism_counters"]["retry_reinjections"] == 2
+    assert res["fates"][3] == "ISL_QUEUE_OVERFLOW"
+    assert sum(e["kind"] == "packet_emitted" for e in res["packet_events"]) == 3
+    assert sum(e["kind"] == "retry_reinject"
+               for e in res["packet_events"]) == 2
+    totals = res["totals"]
+    assert totals["offered_bits"] == (
+        totals["delivered_bits"] + totals["terminal_loss_bits"]
+        + totals["in_system_bits_at_stop"])
+
+
 def test_uplink_fair_scheduling_alternates():
     cfg = make_cfg({
         "access": {"uplink_rate_mbps": 1.0, "downlink_rate_mbps": 1.0},

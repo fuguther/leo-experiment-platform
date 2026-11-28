@@ -46,7 +46,17 @@ RESUME_SCHEMA = "leo-sim-primal-cvar-resume/v1"
 OBSERVATION_CONTRACT_SCHEMA = "leo-sim-observation-contract/v1"
 PRIMAL_FEATURE_ORDER = "leo_sim.primal.build_observation/v1"
 NATIVE_CHECKPOINT_FILENAME = "online.keras"
+NATIVE_NUMPY_CHECKPOINT_FILENAME = "online.npz"
 NATIVE_METADATA_FILENAME = "metadata.json"
+
+NUMPY_WEIGHT_KEYS = (
+    "satellite_w", "satellite_b",
+    "packet_w", "packet_b",
+    "trunk128_w", "trunk128_b",
+    "trunk64_w", "trunk64_b",
+    "utility_w", "utility_b",
+    "risk_w", "risk_b",
+)
 
 OBSERVATION_LAYOUT = {
     "contract": "PRIMAL",
@@ -136,6 +146,14 @@ def cvar_tail(values, alpha: float = 0.75) -> np.ndarray:
     tail_count = max(1, int(math.ceil((1.0 - alpha) * arr.shape[-1] - 1e-12)))
     ordered = np.sort(arr, axis=-1)
     return np.mean(ordered[..., -tail_count:], axis=-1, dtype=np.float64)
+
+
+def clip_risk_target(values) -> np.ndarray:
+    """Keep the bounded failure-cost bootstrap inside its physical domain."""
+    arr = np.asarray(values, dtype=np.float32)
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("risk target must contain only finite values")
+    return np.clip(arr, 0.0, 1.0)
 
 
 def risk_scores(utility, risk_quantiles, multiplier: float,
@@ -293,6 +311,188 @@ class _PrimalReplay:
             self._dones[:n] = dones
         self._size = n
         self._pos = n % self._cap if self._size == self.maxlen else n
+
+
+class NumpyPrimalCVaR:
+    """Frozen PRIMAL policy with no TensorFlow import on the inference path."""
+
+    inference_only = True
+
+    def __init__(self, weights_path: str | Path, *, contract: str = "PRIMAL",
+                 feature_order: str = PRIMAL_FEATURE_ORDER,
+                 normalisation: dict | None = None, cvar_alpha: float = 0.75,
+                 lambda_pd: float = 0.1, actions=ACTIONS,
+                 checkpoint_path: str | None = None,
+                 checkpoint_sha256: str | None = None,
+                 numpy_checkpoint_sha256: str | None = None,
+                 metadata_sha256: str | None = None,
+                 weights_purpose: str = "trained"):
+        self.weights_path = Path(weights_path)
+        if self.weights_path.is_symlink() or not self.weights_path.is_file():
+            raise ValueError(f"PRIMAL NumPy checkpoint not found: {self.weights_path}")
+        self.contract = str(contract)
+        self.feature_width = INPUT_DIM
+        self.input_dim = INPUT_DIM
+        self.feature_order = str(feature_order)
+        self.normalisation = dict(normalisation or {"mode": "none"})
+        self.actions = tuple(actions)
+        if self.actions != tuple(ACTIONS):
+            raise ValueError("PRIMAL NumPy checkpoint action order mismatch")
+        self.cvar_alpha = float(cvar_alpha)
+        self.lambda_pd = float(lambda_pd)
+        if not 0.0 < self.cvar_alpha < 1.0:
+            raise ValueError("PRIMAL NumPy checkpoint CVaR alpha is invalid")
+        if not math.isfinite(self.lambda_pd) or self.lambda_pd < 0.0:
+            raise ValueError("PRIMAL NumPy checkpoint dual multiplier is invalid")
+        self.checkpoint_path = (None if checkpoint_path is None
+                                else str(checkpoint_path))
+        self.checkpoint_sha256 = checkpoint_sha256
+        self.numpy_checkpoint_sha256 = numpy_checkpoint_sha256
+        self.metadata_sha256 = metadata_sha256
+        self.weights_purpose = str(weights_purpose)
+        self.observation_contract_id = _observation_contract_id(
+            self.feature_order, self.normalisation)
+        self.epsilon = 0.0
+        self._calls = 0
+        self._last_utility = None
+        self._last_cvar = None
+        self._last_scores = None
+        with np.load(self.weights_path, allow_pickle=False) as archive:
+            self.weights = {key: np.asarray(archive[key], dtype=np.float32)
+                            for key in NUMPY_WEIGHT_KEYS}
+        self._validate_weights()
+        self.parameter_sha256_value = self._weights_sha256()
+
+    def _validate_weights(self) -> None:
+        expected = {
+            "satellite_w": (SATELLITE_INPUT_DIM, 64),
+            "satellite_b": (64,),
+            "packet_w": (PACKET_INPUT_DIM, 32),
+            "packet_b": (32,),
+            "trunk128_w": (96, 128),
+            "trunk128_b": (128,),
+            "trunk64_w": (128, 64),
+            "trunk64_b": (64,),
+            "utility_w": (64, ACTION_COUNT),
+            "utility_b": (ACTION_COUNT,),
+            "risk_w": (64, ACTION_COUNT * RISK_QUANTILES),
+            "risk_b": (ACTION_COUNT * RISK_QUANTILES,),
+        }
+        for key, shape in expected.items():
+            value = self.weights[key]
+            if value.shape != shape:
+                raise ValueError(
+                    f"PRIMAL NumPy weight {key} shape {value.shape} != {shape}")
+            if not np.all(np.isfinite(value)):
+                raise ValueError(f"PRIMAL NumPy weight {key} is non-finite")
+
+    def _weights_sha256(self) -> str:
+        digest = hashlib.sha256()
+        for key in NUMPY_WEIGHT_KEYS:
+            value = np.asarray(self.weights[key], dtype="<f4")
+            digest.update(f"{key}:{value.shape}".encode("ascii"))
+            digest.update(value.tobytes())
+        return digest.hexdigest()
+
+    @staticmethod
+    def _swish(value: np.ndarray) -> np.ndarray:
+        return 0.5 * value * (1.0 + np.tanh(0.5 * value))
+
+    def predict(self, states) -> tuple[np.ndarray, np.ndarray]:
+        array = np.asarray(states, dtype=np.float32)
+        if array.ndim == 1:
+            array = array[None, :]
+        if array.ndim != 2 or array.shape[-1] != INPUT_DIM:
+            raise ValueError(
+                f"PRIMAL observations must end in {INPUT_DIM} features")
+        if not np.all(np.isfinite(array)):
+            raise ValueError("PRIMAL observations must be finite")
+        w = self.weights
+        satellite = self._swish(
+            array[:, :SATELLITE_INPUT_DIM] @ w["satellite_w"] + w["satellite_b"])
+        packet = self._swish(
+            array[:, SATELLITE_INPUT_DIM:] @ w["packet_w"] + w["packet_b"])
+        trunk = self._swish(
+            np.concatenate((satellite, packet), axis=1) @ w["trunk128_w"]
+            + w["trunk128_b"])
+        trunk = self._swish(trunk @ w["trunk64_w"] + w["trunk64_b"])
+        utility = trunk @ w["utility_w"] + w["utility_b"]
+        risk_flat = trunk @ w["risk_w"] + w["risk_b"]
+        risk = np.logaddexp(0.0, risk_flat).reshape(
+            -1, ACTION_COUNT, RISK_QUANTILES)
+        return utility, risk
+
+    def choose(self, observation, mask: dict, now=None) -> str:
+        legal = _mask_array(mask)
+        if not np.any(legal):
+            raise ValueError("PRIMAL decision requires at least one legal action")
+        utility, risk = self.predict(observation)
+        scores = risk_scores(
+            utility[0], risk[0], self.lambda_pd, alpha=self.cvar_alpha)
+        self._last_utility = utility[0].copy()
+        self._last_cvar = cvar_tail(risk[0], alpha=self.cvar_alpha)
+        self._last_scores = scores.copy()
+        self._calls += 1
+        legal_indices = np.flatnonzero(legal)
+        return ACTIONS[int(legal_indices[np.argmax(scores[legal])])]
+
+    def parameter_sha256(self) -> str:
+        return self.parameter_sha256_value
+
+    def counters(self) -> dict:
+        return {
+            "schema": "leo-sim-fixed-inference/v1",
+            "name": "primal-cvar-numpy",
+            "kind": "checkpoint_fixed_inference_policy",
+            "calls": self._calls,
+            "epsilon": 0.0,
+            "updates": 0,
+            "grad_steps": 0,
+            "training": False,
+            "replay_size": 0,
+            "transitions": 0,
+            "actions": list(self.actions),
+            "contract": self.contract,
+            "feature_width": self.feature_width,
+            "feature_order": self.feature_order,
+            "normalisation_mode": self.normalisation.get("mode"),
+            "observation_contract_id": self.observation_contract_id,
+            "weights_purpose": self.weights_purpose,
+            "checkpoint_sha256": self.checkpoint_sha256,
+            "numpy_checkpoint_sha256": self.numpy_checkpoint_sha256,
+            "metadata_sha256": self.metadata_sha256,
+            "parameter_sha256": self.parameter_sha256(),
+            "last_utility": (None if self._last_utility is None
+                             else self._last_utility.tolist()),
+            "last_cvar": (None if self._last_cvar is None
+                           else self._last_cvar.tolist()),
+            "last_scores": (None if self._last_scores is None
+                            else self._last_scores.tolist()),
+        }
+
+    def receipt(self) -> dict:
+        return {
+            "schema": "leo-sim-fixed-inference/v1",
+            "state": "AVAILABLE",
+            "reader": "CODE.leo_sim.rl.agents.primal_cvar.NumpyPrimalCVaR",
+            "checkpoint_path": self.checkpoint_path,
+            "checkpoint_sha256": self.checkpoint_sha256,
+            "numpy_checkpoint_path": str(self.weights_path),
+            "numpy_checkpoint_sha256": self.numpy_checkpoint_sha256,
+            "metadata_sha256": self.metadata_sha256,
+            "contract": self.contract,
+            "feature_width": self.feature_width,
+            "feature_order": self.feature_order,
+            "normalisation": dict(self.normalisation),
+            "action_order": list(self.actions),
+            "observation_contract_id": self.observation_contract_id,
+            "weights_purpose": self.weights_purpose,
+            "parameter_sha256": self.parameter_sha256(),
+            "shape_checked": True,
+            "finite_probe_checked": True,
+            "training": False,
+            "epsilon": 0.0,
+        }
 
 
 @register_agent("primal_cvar", scope="shared")
@@ -701,9 +901,12 @@ class TensorflowPrimalCVaR:
             reward_target = tf.stop_gradient(
                 utilities
                 + gamma * tf.cast(not_done, tf.float32) * reward_bootstrap)
-            risk_target = tf.stop_gradient(
+            risk_target = tf.stop_gradient(tf.clip_by_value(
                 costs[:, None]
-                + gamma * tf.cast(not_done[:, None], tf.float32) * risk_bootstrap)
+                + gamma * tf.cast(not_done[:, None], tf.float32) * risk_bootstrap,
+                0.0,
+                1.0,
+            ))
 
             with tf.GradientTape() as tape:
                 utility_pred, risk_pred = online(
@@ -793,8 +996,9 @@ class TensorflowPrimalCVaR:
         risk_bootstrap = target_risk[rows, next_actions]
         reward_target = utilities + float(self.cfg["gamma"]) * (
             ~dones) * reward_bootstrap
-        risk_target = costs[:, None] + float(self.cfg["gamma"]) * (
-            ~dones)[:, None] * risk_bootstrap
+        risk_target = clip_risk_target(
+            costs[:, None] + float(self.cfg["gamma"]) * (
+                ~dones)[:, None] * risk_bootstrap)
 
         tau = (np.arange(RISK_QUANTILES, dtype=np.float32) + 0.5) / RISK_QUANTILES
         delta = self.quantile_huber_delta
@@ -1124,6 +1328,61 @@ class TensorflowPrimalCVaR:
             digest.update(np.asarray(variable.numpy(), dtype="<f4").tobytes())
         return digest.hexdigest()
 
+    def _numpy_weight_arrays(self, model=None) -> dict[str, np.ndarray]:
+        source = self.online if model is None else model
+        layer_keys = {
+            "satellite_encoder": "satellite",
+            "packet_encoder": "packet",
+            "shared_trunk_128": "trunk128",
+            "shared_trunk_64": "trunk64",
+            "utility_head": "utility",
+            "risk_quantile_flat": "risk",
+        }
+        arrays = {}
+        for layer_name, prefix in layer_keys.items():
+            weights, biases = source.get_layer(layer_name).get_weights()
+            arrays[prefix + "_w"] = np.asarray(weights, dtype="<f4")
+            arrays[prefix + "_b"] = np.asarray(biases, dtype="<f4")
+        return arrays
+
+    def _save_numpy_and_verify(self, out: Path):
+        weights_path = out / NATIVE_NUMPY_CHECKPOINT_FILENAME
+        np.savez_compressed(weights_path, **self._numpy_weight_arrays())
+        weights_sha = hashlib.sha256(weights_path.read_bytes()).hexdigest()
+        policy = NumpyPrimalCVaR(
+            weights_path,
+            contract=self.contract,
+            feature_order=self.feature_order,
+            normalisation=self.normalisation,
+            cvar_alpha=self.cvar_alpha,
+            lambda_pd=self.lambda_pd,
+            checkpoint_path=str(out / NATIVE_CHECKPOINT_FILENAME),
+            checkpoint_sha256=hashlib.sha256(
+                (out / NATIVE_CHECKPOINT_FILENAME).read_bytes()).hexdigest(),
+            numpy_checkpoint_sha256=weights_sha,
+            weights_purpose=str(self.cfg.get("weights_purpose", "trained")),
+        )
+        probe = np.concatenate((
+            np.linspace(-0.5, 0.5, SATELLITE_INPUT_DIM, dtype=np.float32),
+            np.linspace(-0.5, 0.5, PACKET_INPUT_DIM, dtype=np.float32),
+        ))
+        numpy_utility, numpy_risk = policy.predict(probe)
+        tf_utility, tf_risk = self.online(
+            [probe[None, :SATELLITE_INPUT_DIM],
+             probe[None, SATELLITE_INPUT_DIM:]], training=False)
+        max_error = max(
+            float(np.max(np.abs(numpy_utility - tf_utility.numpy()))),
+            float(np.max(np.abs(numpy_risk - tf_risk.numpy()))),
+        )
+        verified = bool(
+            np.all(np.isfinite(numpy_utility))
+            and np.all(np.isfinite(numpy_risk))
+            and np.allclose(numpy_utility, tf_utility.numpy(),
+                            rtol=1e-5, atol=1e-6)
+            and np.allclose(numpy_risk, tf_risk.numpy(),
+                            rtol=1e-5, atol=1e-6))
+        return weights_path, weights_sha, policy, verified, max_error
+
     def save_and_verify(self, directory: str | Path) -> dict:
         out = Path(directory)
         out.mkdir(parents=True, exist_ok=True)
@@ -1153,6 +1412,8 @@ class TensorflowPrimalCVaR:
         max_error = max(
             float(np.max(np.abs(before_utility.numpy() - after_utility.numpy()))),
             float(np.max(np.abs(before_risk.numpy() - after_risk.numpy()))))
+        numpy_path, numpy_sha, numpy_policy, numpy_verified, numpy_max_error = (
+            self._save_numpy_and_verify(out))
         self.tf.random.get_global_generator().state.assign(
             self.tf.constant(tf_rng_state, dtype=self.tf.int64))
         metadata = self.diagnostics()
@@ -1160,7 +1421,12 @@ class TensorflowPrimalCVaR:
             "schema": CHECKPOINT_SCHEMA,
             "checkpoint": model_path.name,
             "checkpoint_sha256": checkpoint_sha,
-            "checkpoint_verified": verified,
+            "checkpoint_verified": verified and numpy_verified,
+            "numpy_checkpoint": numpy_path.name,
+            "numpy_checkpoint_sha256": numpy_sha,
+            "numpy_verified": numpy_verified,
+            "numpy_parameter_sha256": numpy_policy.parameter_sha256(),
+            "numpy_probe_max_abs_error": numpy_max_error,
             "probe_max_abs_error": max_error,
             "weights_purpose": str(self.cfg.get("weights_purpose", "trained")),
             "risk_quantiles": RISK_QUANTILES,
@@ -1180,9 +1446,10 @@ class TensorflowPrimalCVaR:
         (out / NATIVE_METADATA_FILENAME).write_text(
             json.dumps(metadata, indent=2, sort_keys=True) + "\n",
             encoding="utf-8")
-        if not verified:
+        if not (verified and numpy_verified):
             raise LearningUnavailable(
-                "saved PRIMAL-inspired checkpoint failed load/prediction verification")
+                "saved PRIMAL-inspired TensorFlow or NumPy checkpoint failed "
+                "load/prediction verification")
         self.checkpoint_verified = True
         result = dict(metadata)
         result["metadata_sha256"] = hashlib.sha256(
@@ -1194,6 +1461,7 @@ class TensorflowPrimalCVaR:
             "algorithm": "primal_cvar",
             "implementation": "PRIMAL-inspired online dual-stream CVaR learner",
             "native_checkpoint_filename": NATIVE_CHECKPOINT_FILENAME,
+            "native_numpy_checkpoint_filename": NATIVE_NUMPY_CHECKPOINT_FILENAME,
             "native_metadata_filename": NATIVE_METADATA_FILENAME,
             "contract": self.contract,
             "input_dim": int(self.input_dim),
@@ -1265,6 +1533,7 @@ class TensorflowPrimalCVaR:
 
 __all__ = [
     "TensorflowPrimalCVaR",
+    "NumpyPrimalCVaR",
     "INPUT_DIM",
     "SATELLITE_INPUT_DIM",
     "PACKET_INPUT_DIM",
@@ -1275,8 +1544,10 @@ __all__ = [
     "DEFAULT_NORMALISATION",
     "DEFAULT_OBSERVATION_CONTRACT_ID",
     "NATIVE_CHECKPOINT_FILENAME",
+    "NATIVE_NUMPY_CHECKPOINT_FILENAME",
     "NATIVE_METADATA_FILENAME",
     "split_observation",
+    "clip_risk_target",
     "cvar_tail",
     "risk_scores",
     "masked_risk_argmax",

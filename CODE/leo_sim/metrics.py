@@ -87,6 +87,7 @@ def summarize(
     holding_wait: defaultdict[int, float] = defaultdict(float)
     packet_bits: dict[int, int] = {}
     ingress: dict[int, dict] = {}
+    retry_ingress_credit: defaultdict[int, int] = defaultdict(int)
 
     for event in packet_events:
         if not isinstance(event, dict):
@@ -113,7 +114,10 @@ def summarize(
             queue_entries[qid] = (pid, at, _nonempty(event, "queue"))
         elif kind == "satellite_ingress":
             if pid in ingress:
-                raise MetricsError(f"duplicate satellite_ingress for {pid}")
+                if retry_ingress_credit[pid] < 1:
+                    raise MetricsError(
+                        f"duplicate satellite_ingress for {pid}")
+                retry_ingress_credit[pid] -= 1
             endpoint = _nonempty(event, "endpoint")
             satellite = event.get("satellite")
             if (isinstance(satellite, bool) or not isinstance(satellite, int)
@@ -142,6 +146,22 @@ def summarize(
             consumed_uplink_arrivals[pid] += 1
             ingress[pid] = {"at": at, "endpoint": endpoint,
                             "satellite": satellite, "bits": bits}
+        elif kind == "retry_reinject":
+            if pid not in emitted:
+                raise MetricsError(
+                    f"retry_reinject packet {pid} was never emitted")
+            retry_index = event.get("retry_index")
+            if (isinstance(retry_index, bool)
+                    or not isinstance(retry_index, int)
+                    or retry_index < 1):
+                raise MetricsError(
+                    "retry_reinject.retry_index must be a positive integer")
+            prior_fate = _nonempty(event, "prior_fate")
+            if prior_fate not in {
+                    "DATA_DEADLINE_EXPIRED", "ISL_QUEUE_OVERFLOW"}:
+                raise MetricsError(
+                    f"retry_reinject.prior_fate is invalid: {prior_fate!r}")
+            retry_ingress_credit[pid] += 1
         elif kind == "service_start":
             stage = _nonempty(event, "stage")
             link_id = _nonempty(event, "link_id")

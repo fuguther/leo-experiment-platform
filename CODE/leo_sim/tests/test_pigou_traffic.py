@@ -113,14 +113,16 @@ def test_scene_catalogs_and_native_config_contract(builder, tmp_path):
     assert cfg_a["demand"]["packet_bits"] == 64_000
     assert cfg_a["demand"]["deadline_s"] == 0.240
     assert cfg_a["demand"]["research_deadline_s"] == 0.240
+    assert cfg_a["demand"]["retry"]["enabled"] is True
+    assert cfg_a["demand"]["retry"]["max_retries"] == 2
     assert cfg_a["demand"]["mode"] == "csv"
     assert cfg_a["demand"]["csv_path"] == str(scene_a["trace_path"])
     assert cfg_a["endpoints"]["mlab_auto"] is False
     assert cfg_a["demand"]["population_path"] is None
     assert cfg_a["links"]["isl_rate_mbps"] == 70.0
-    assert cfg_a["links"]["isl_queue_bits"] == 2_240_000
-    assert 0.030 <= (cfg_a["links"]["isl_queue_bits"]
-                      / (cfg_a["links"]["isl_rate_mbps"] * 1_000_000)) <= 0.035
+    assert cfg_a["links"]["isl_queue_bits"] == 2_800_000
+    assert (cfg_a["links"]["isl_queue_bits"]
+            / (cfg_a["links"]["isl_rate_mbps"] * 1_000_000)) == pytest.approx(0.040)
     assert cfg_a["links"]["max_isl_km"] >= 6_000.0
     assert cfg_a["control_plane"]["vis_k"] == 1
     assert cfg_a["control_plane"]["ttl_s"] > 0
@@ -140,10 +142,10 @@ def test_scene_catalogs_and_native_config_contract(builder, tmp_path):
     assert cfg_b["demand"]["deadline_s"] == 0.280
     assert cfg_b["demand"]["research_deadline_s"] == 0.280
     assert cfg_b["links"]["isl_rate_mbps"] == 60.0
-    assert cfg_b["links"]["isl_queue_bits"] == 1_800_000
-    assert cfg_b["demand"]["packet_bits"] == 128_000
-    assert 0.030 <= (cfg_b["links"]["isl_queue_bits"]
-                      / (cfg_b["links"]["isl_rate_mbps"] * 1_000_000)) <= 0.035
+    assert cfg_b["links"]["isl_queue_bits"] == 2_400_000
+    assert cfg_b["demand"]["packet_bits"] == 64_000
+    assert (cfg_b["links"]["isl_queue_bits"]
+            / (cfg_b["links"]["isl_rate_mbps"] * 1_000_000)) == pytest.approx(0.040)
     assert cfg_b["links"]["max_isl_km"] >= 6_000.0
     assert cfg_b["control_plane"]["advertise_interval_s"] == 0.10
 
@@ -202,7 +204,8 @@ def test_background_is_byte_identical_and_pulse_is_only_targeted(
             assert float(row["deadline_at_s"]) == pytest.approx(
                 float(row["research_deadline_at_s"]))
             assert float(row["deadline_at_s"]) == pytest.approx(
-                emit_time_s + 0.240)
+                emit_time_s + builder._transaction_deadline_s(
+                    builder._scene_spec("A")))
             if int(row["packet_id"]) in pulse_ids:
                 assert 2.0 <= emit_time_s < 3.5
                 assert _route_for(row, coordinate_names) in expected_hotspots
@@ -217,7 +220,7 @@ def test_background_is_byte_identical_and_pulse_is_only_targeted(
     ("scene", "expected_count_range", "expected_sites"),
     [
         ("A", (17_500, 18_500), 12),
-        ("B", (15_500, 17_000), 24),
+        ("B", (31_000, 34_000), 24),
     ],
 )
 def test_native_compile_preserves_deadline_and_budget(

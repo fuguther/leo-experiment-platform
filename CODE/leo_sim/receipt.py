@@ -139,6 +139,7 @@ MECHANISM_COUNTER_KEYS = {
     "holding_queue_overflows", "topo_recomputes", "topo_dynamic_init",
     "mcs_rate_samples",
     "mcs_zero_rate_holds", "mcs_rate_min_bps", "mcs_rate_max_bps",
+    "retry_reinjections",
 }
 MECHANISM_COUNTER_BOOLS = {"control_initialized", "ge_initialized",
                            "learning_initialized", "topo_dynamic_init"}
@@ -967,10 +968,10 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
         if learning != {"algorithm": "none"}:
             errors.append("non-learning ledger must be exactly {'algorithm': 'none'}")
     elif learning_policy == "fixed_inference_checkpoint":
-        if requested_learning != "ddqn":
+        if requested_learning not in {"ddqn", "primal_cvar"}:
             errors.append(
                 "learning_policy=fixed_inference_checkpoint requires "
-                "learning_algorithm=ddqn")
+                "learning_algorithm=ddqn or primal_cvar")
         # A1: a FIXED-INFERENCE run reads a real artifact and never trains.
         # It is verified on its own terms: no replay buffer, no gradient step,
         # no saved training bundle, and the artifact identity it ran against
@@ -1018,6 +1019,14 @@ def _validate_ledgers(ledgers, receipt: dict, trace_rows: dict,
                     and learning.get("metadata_sha256") != expected_meta:
                 errors.append(
                     "model.metadata_sha256 != resolved config pin")
+            if requested_learning == "primal_cvar":
+                numpy_checkpoint = verify_root / "primal_cvar" / "online.npz"
+                numpy_sha = learning.get("numpy_checkpoint_sha256")
+                if not numpy_checkpoint.is_file() or numpy_checkpoint.is_symlink():
+                    errors.append("PRIMAL NumPy checkpoint artifact missing")
+                elif isinstance(numpy_sha, str) \
+                        and _sha_file(numpy_checkpoint) != numpy_sha:
+                    errors.append("PRIMAL NumPy checkpoint artifact SHA mismatch")
     elif requested_learning in ("ddqn", "primal_cvar"):
         if not isinstance(learning, dict):
             errors.append(f"{requested_learning} run must have a learning ledger")

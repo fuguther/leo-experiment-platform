@@ -1,7 +1,9 @@
 """Focused tests for the staged B6 PRIMAL-inspired CVaR learner."""
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
 
 import numpy as np
 import pytest
@@ -16,6 +18,7 @@ from CODE.leo_sim.rl.agents.primal_cvar import (
     RISK_QUANTILES,
     SATELLITE_INPUT_DIM,
     _PrimalReplay,
+    clip_risk_target,
     cvar_tail,
     masked_risk_argmax,
     project_dual,
@@ -51,6 +54,76 @@ def test_cvar_uses_worst_quantile_tail_not_the_mean():
     assert np.isclose(cvar_tail(costs, alpha=0.75), 14.5)
     repeated = np.vstack([costs, costs])
     assert np.allclose(cvar_tail(repeated, alpha=0.75), [14.5, 14.5])
+
+
+def test_risk_target_is_clipped_to_the_bounded_failure_domain():
+    values = np.asarray([-3.0, 0.0, 0.25, 1.0, 4.0], dtype=np.float32)
+    assert clip_risk_target(values).tolist() == [0.0, 0.0, 0.25, 1.0, 1.0]
+    with pytest.raises(ValueError, match="finite"):
+        clip_risk_target([0.0, np.nan])
+
+
+def _zero_numpy_weights():
+    return {
+        "satellite_w": np.zeros((SATELLITE_INPUT_DIM, 64), dtype=np.float32),
+        "satellite_b": np.zeros(64, dtype=np.float32),
+        "packet_w": np.zeros((PACKET_INPUT_DIM, 32), dtype=np.float32),
+        "packet_b": np.zeros(32, dtype=np.float32),
+        "trunk128_w": np.zeros((96, 128), dtype=np.float32),
+        "trunk128_b": np.zeros(128, dtype=np.float32),
+        "trunk64_w": np.zeros((128, 64), dtype=np.float32),
+        "trunk64_b": np.zeros(64, dtype=np.float32),
+        "utility_w": np.zeros((64, ACTION_COUNT), dtype=np.float32),
+        "utility_b": np.zeros(ACTION_COUNT, dtype=np.float32),
+        "risk_w": np.zeros((64, ACTION_COUNT * RISK_QUANTILES),
+                           dtype=np.float32),
+        "risk_b": np.zeros(ACTION_COUNT * RISK_QUANTILES, dtype=np.float32),
+    }
+
+
+def test_numpy_primal_checkpoint_runs_and_fixed_loader_uses_no_tensorflow(tmp_path):
+    from CODE.leo_sim import inference
+    from CODE.leo_sim.rl.agents.primal_cvar import NumpyPrimalCVaR
+
+    weights_path = tmp_path / "online.npz"
+    np.savez_compressed(weights_path, **_zero_numpy_weights())
+    keras_path = tmp_path / "online.keras"
+    keras_path.write_bytes(b"hash-pinned tensorflow artifact")
+    metadata = inference.observation_contract_fields(
+        contract="PRIMAL", feature_width=INPUT_DIM,
+        feature_order=PRIMAL_FEATURE_ORDER,
+        normalisation={"mode": "none"}, actions=ACTIONS)
+    metadata.update({
+        "schema": "leo-sim-primal-cvar/v1",
+        "algorithm": "primal_cvar",
+        "checkpoint": keras_path.name,
+        "checkpoint_sha256": hashlib.sha256(keras_path.read_bytes()).hexdigest(),
+        "checkpoint_verified": True,
+        "numpy_checkpoint": weights_path.name,
+        "numpy_checkpoint_sha256": hashlib.sha256(
+            weights_path.read_bytes()).hexdigest(),
+        "numpy_verified": True,
+        "weights_purpose": "trained",
+        "risk_quantiles": RISK_QUANTILES,
+        "cvar_alpha": 0.75,
+        "lambda_pd": 0.1,
+        "dual_max": 1.0,
+    })
+    metadata_path = tmp_path / "metadata.json"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    policy = inference.load_fixed_adapter_from_checkpoint(
+        keras_path, metadata["checkpoint_sha256"], metadata_path,
+        hashlib.sha256(metadata_path.read_bytes()).hexdigest(),
+        expected_width=INPUT_DIM, expected_contract="PRIMAL",
+        expected_feature_order=PRIMAL_FEATURE_ORDER,
+        algorithm="primal_cvar")
+    assert isinstance(policy, NumpyPrimalCVaR)
+    mask = {action: True for action in ACTIONS}
+    assert policy.choose(np.zeros(INPUT_DIM, dtype=np.float32), mask) == "deliver"
+    assert policy.counters()["calls"] == 1
+    assert policy.counters()["training"] is False
+    assert policy.receipt()["state"] == "AVAILABLE"
 
 
 def test_online_selection_uses_legal_mask_and_risk_adjusted_score():
@@ -147,6 +220,9 @@ def test_tf_smoke_sha_bound_eval_does_not_train_or_update_dual(tmp_path):
     assert metadata["checkpoint_verified"] is True
     assert metadata["risk_quantiles"] == RISK_QUANTILES
     assert metadata["native_checkpoint_filename"] == "online.keras"
+    assert metadata["native_numpy_checkpoint_filename"] == "online.npz"
+    assert metadata["numpy_verified"] is True
+    assert (tmp_path / "trained" / "online.npz").is_file()
     assert metadata["round_updates"] == 1
     assert metadata["last_round_failure_rate"] == 1.0
 

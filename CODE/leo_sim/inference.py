@@ -389,9 +389,11 @@ class ScorerPolicy(InferencePolicy):
 #: refused, never fed a vector whose meaning silently changed.
 OBSERVATION_FEATURE_ORDER = "leo_sim.learning.build_observation/v1"
 OBSERVATION_FEATURE_ORDER_LAST_HOP = "leo_sim.learning.build_observation/v2_last_hop"
+PRIMAL_OBSERVATION_FEATURE_ORDER = "leo_sim.primal.build_observation/v1"
 VALID_FEATURE_ORDERS = (
     OBSERVATION_FEATURE_ORDER,
     OBSERVATION_FEATURE_ORDER_LAST_HOP,
+    PRIMAL_OBSERVATION_FEATURE_ORDER,
 )
 CONTRACT_SCHEMA = "leo-sim-observation-contract/v1"
 CHECKPOINT_SCHEMA = "leo-sim-ddqn/v1"
@@ -864,7 +866,8 @@ def load_fixed_adapter_from_checkpoint(checkpoint_path, checkpoint_sha256,
                                        expected_contract=None,
                                        expected_feature_order=None,
                                        name="checkpoint-model",
-                                       require_weights_purpose=None):
+                                       require_weights_purpose=None,
+                                       algorithm="ddqn"):
     """HARD-GATED READ of a real repository checkpoint.
 
     Gates, in order: path exists, file hash matches, sibling metadata path and
@@ -877,8 +880,10 @@ def load_fixed_adapter_from_checkpoint(checkpoint_path, checkpoint_sha256,
 
     Returns the adapter; its receipt() carries the full provenance.
     """
+    loader = "numpy" if str(algorithm) == "primal_cvar" else "tensorflow"
     report = verify_checkpoint(checkpoint_path, checkpoint_sha256,
-                               metadata_path, metadata_sha256)
+                               metadata_path, metadata_sha256,
+                               loader=loader)
     if report.get("state") != "LOAD_PENDING":
         raise FixedInferenceError(
             "checkpoint not loadable: " + str(report.get("reason")))
@@ -893,6 +898,9 @@ def load_fixed_adapter_from_checkpoint(checkpoint_path, checkpoint_sha256,
             "checkpoint weights_purpose "
             + repr(declared["weights_purpose"]) + " != required "
             + repr(require_weights_purpose))
+    if str(algorithm) == "primal_cvar":
+        return _load_numpy_primal_adapter(
+            report, declared, checkpoint_path=checkpoint_path, name=name)
     try:
         model = _load_keras_model(checkpoint_path)
     except FixedInferenceError:
@@ -913,6 +921,66 @@ def load_fixed_adapter_from_checkpoint(checkpoint_path, checkpoint_sha256,
         checkpoint_path=checkpoint_path)
 
 
+def _load_numpy_primal_adapter(report, declared, *, checkpoint_path, name):
+    """Hash-check the TensorFlow artifact and read its pure-NumPy twin."""
+    metadata = report.get("metadata") or {}
+    if metadata.get("algorithm") != "primal_cvar":
+        raise FixedInferenceError(
+            "primal_cvar metadata declares a different algorithm")
+    if metadata.get("schema") != "leo-sim-primal-cvar/v1":
+        raise FixedInferenceError("primal_cvar metadata schema mismatch")
+    if metadata.get("numpy_verified") is not True:
+        raise FixedInferenceError(
+            "primal_cvar NumPy checkpoint was not verified at save time")
+    filename = metadata.get("numpy_checkpoint")
+    if not isinstance(filename, str) or Path(filename).name != filename:
+        raise FixedInferenceError(
+            "primal_cvar metadata does not declare a sibling NumPy checkpoint")
+    declared_sha = metadata.get("numpy_checkpoint_sha256")
+    if not isinstance(declared_sha, str) or len(declared_sha) != 64:
+        raise FixedInferenceError(
+            "primal_cvar metadata lacks the NumPy checkpoint SHA-256")
+    path = Path(checkpoint_path).with_name(filename)
+    if path.is_symlink() or not path.is_file():
+        raise FixedInferenceError(f"PRIMAL NumPy checkpoint missing: {path}")
+    actual_sha = _sha256_file(path)
+    if actual_sha != declared_sha:
+        raise FixedInferenceError(
+            "primal_cvar NumPy checkpoint SHA-256 mismatch")
+    try:
+        from .rl.agents.primal_cvar import NumpyPrimalCVaR
+
+        policy = NumpyPrimalCVaR(
+            path,
+            contract=declared["contract"],
+            feature_order=declared["feature_order"],
+            normalisation=declared["normalisation"],
+            cvar_alpha=metadata["cvar_alpha"],
+            lambda_pd=metadata["lambda_pd"],
+            actions=declared["actions"],
+            checkpoint_path=checkpoint_path,
+            checkpoint_sha256=report["actual_sha256"],
+            numpy_checkpoint_sha256=actual_sha,
+            metadata_sha256=report["metadata_actual_sha256"],
+            weights_purpose=declared["weights_purpose"],
+        )
+        probe = np.linspace(-0.5, 0.5, declared["feature_width"],
+                            dtype=np.float32)
+        utility, risk = policy.predict(probe)
+    except Exception as exc:
+        raise FixedInferenceError(
+            "PRIMAL NumPy checkpoint could not be read: "
+            f"{type(exc).__name__}: {exc}") from exc
+    if utility.shape != (1, len(ACTIONS)) or risk.shape != (1, len(ACTIONS), 16):
+        raise FixedInferenceError(
+            "PRIMAL NumPy checkpoint probe returned wrong shapes")
+    if not np.all(np.isfinite(utility)) or not np.all(np.isfinite(risk)):
+        raise FixedInferenceError(
+            "PRIMAL NumPy checkpoint probe returned non-finite values")
+    policy.name = str(name)
+    return policy
+
+
 def _sha256_file(path: Path) -> str | None:
     try:
         return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -929,7 +997,8 @@ def tf_available() -> bool:
 
 
 def verify_checkpoint(checkpoint_path, checkpoint_sha256=None,
-                      metadata_path=None, metadata_sha256=None) -> dict:
+                      metadata_path=None, metadata_sha256=None,
+                      *, loader="tensorflow") -> dict:
     """Hash-verified availability of a REAL trained checkpoint.
 
     AVAILABLE requires ALL of: a path, a matching file hash, a DECLARED
@@ -939,12 +1008,15 @@ def verify_checkpoint(checkpoint_path, checkpoint_sha256=None,
     omitting metadata_sha256 (or metadata_path entirely) let a fabricated
     120-byte file reach AVAILABLE.
     """
+    if loader not in {"tensorflow", "numpy"}:
+        raise FixedInferenceError(f"unknown checkpoint loader {loader!r}")
+    loader_available = True if loader == "numpy" else tf_available()
     report = {"schema": SCHEMA, "checkpoint_path": (None if checkpoint_path
                                                     is None
                                                     else str(checkpoint_path)),
               "metadata_path": (None if metadata_path is None
                                 else str(metadata_path)),
-              "loader": "tensorflow", "loader_available": tf_available(),
+              "loader": loader, "loader_available": loader_available,
               "reader": "CODE.leo_sim.inference.load_fixed_adapter_from_checkpoint"}
     if not checkpoint_path:
         report.update(state="EXTERNAL_BLOCKER",
@@ -1015,7 +1087,7 @@ def verify_checkpoint(checkpoint_path, checkpoint_sha256=None,
     if not report["loader_available"]:
         report.update(state="EXTERNAL_BLOCKER",
                       reason="the checkpoint hashes verify but the loader "
-                             "(tensorflow) is not installed on this host",
+                             f"({loader}) is not installed on this host",
                       recovery="install the pinned loader on the execution "
                                "host")
         return report
