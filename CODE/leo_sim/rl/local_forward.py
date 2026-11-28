@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 import hashlib
+import json
 import math
 from pathlib import Path
 import zlib
@@ -112,7 +113,9 @@ def primal_observation(view):
 def validate_adapter(options):
     allowed = {"kind", "threshold", "beta_ext", "temperature", "argmax", "shield",
                "checkpoint_path", "checkpoint_sha256", "capture", "telemetry_sat",
-               "exploration", "seed", "hop_guard", "hop_penalty"}
+               "exploration", "seed", "hop_guard", "hop_penalty",
+               "expert_checkpoint_path", "expert_checkpoint_sha256",
+               "expert_metadata_sha256", "expert_weight"}
     if set(options) - allowed:
         raise ValueError("unknown adapter options")
     kind = options.get("kind")
@@ -121,7 +124,8 @@ def validate_adapter(options):
     for name, default, lo, hi in (
             ("threshold", 0.50, 0.0, 1.0), ("beta_ext", 0.50, 0.0, 2.0),
             ("temperature", 0.08, 0.001, 2.0), ("exploration", 0.33, 0.0, 1.0),
-            ("hop_penalty", 0.0, 0.0, 2.0)):
+            ("hop_penalty", 0.0, 0.0, 2.0),
+            ("expert_weight", 0.0, 0.0, 1.0)):
         value = options.get(name, default)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not lo <= value <= hi:
             raise ValueError(f"{name} must be a number in [{lo}, {hi}]")
@@ -136,8 +140,24 @@ def validate_adapter(options):
         if not isinstance(path, str) or not path or not isinstance(digest, str) \
                 or len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
             raise ValueError("pigou_metadrl requires a checkpoint path and lowercase SHA-256")
-    elif path is not None or digest is not None:
-        raise ValueError("only pigou_metadrl loads weights")
+        expert_path = options.get("expert_checkpoint_path")
+        expert_digest = options.get("expert_checkpoint_sha256")
+        expert_meta_digest = options.get("expert_metadata_sha256")
+        if any(x is not None for x in (expert_path, expert_digest, expert_meta_digest)):
+            if not isinstance(expert_path, str) or not expert_path:
+                raise ValueError("expert checkpoint requires a path")
+            for name, value in (("expert_checkpoint_sha256", expert_digest),
+                                ("expert_metadata_sha256", expert_meta_digest)):
+                if not isinstance(value, str) or len(value) != 64 \
+                        or any(ch not in "0123456789abcdef" for ch in value):
+                    raise ValueError(f"{name} must be a lowercase SHA-256")
+    else:
+        if path is not None or digest is not None:
+            raise ValueError("only pigou_metadrl loads weights")
+        if any(options.get(name) is not None for name in (
+                "expert_checkpoint_path", "expert_checkpoint_sha256",
+                "expert_metadata_sha256")):
+            raise ValueError("only pigou_metadrl loads an expert checkpoint")
 
 
 @dataclass
@@ -194,10 +214,11 @@ def _softmax(values, temperature):
 
 
 class LocalForwardAdapter:
-    def __init__(self, cfg, seed, model=None):
+    def __init__(self, cfg, seed, model=None, expert=None):
         self.cfg = cfg
         self.kind = cfg["kind"]
         self.model = model
+        self.expert = expert
         self.rng = np.random.default_rng(np.random.SeedSequence([cfg.get("seed", seed), 20261128]))
         self.sats = {}
         self.snapshots = []
@@ -338,7 +359,32 @@ class LocalForwardAdapter:
                      - self.cfg.get("beta_ext", 0.50) * costs[ids]
                      - charge * np.asarray(hops)[ids]
                      - self.cfg.get("hop_penalty", 0.0) * np.asarray(hops)[ids])
-            if self.cfg.get("argmax"):
+            if self.expert is not None:
+                mask = {direction: direction in legal for direction in DIRS}
+                expert_action = self.expert.choose(
+                    primal_observation(view), mask, view.now)
+                expert_raw = np.asarray(self.expert._last_scores, dtype=np.float32)
+
+                def _unit(values):
+                    low = float(np.min(values))
+                    high = float(np.max(values))
+                    if high - low <= 1e-9:
+                        return np.ones_like(values, dtype=np.float32)
+                    return (values - low) / (high - low)
+
+                unit_pigou = _unit(score[eligible_positions])
+                unit_expert = _unit(expert_raw[[DIRS.index(legal[i]) + 1
+                                               for i in eligible_positions]])
+                weight = self.cfg.get("expert_weight", 0.0)
+                blended = weight * unit_expert + (1.0 - weight) * unit_pigou
+                local_choice = int(np.argmax(blended))
+                choice = eligible_positions[local_choice]
+                score = np.full(4, -np.inf, dtype=np.float32)
+                score[eligible_ids] = 0.0
+                score[ids[choice]] = 1.0
+                prob = np.zeros(len(legal), dtype=np.float64)
+                prob[choice] = 1.0
+            elif self.cfg.get("argmax"):
                 local_choice = int(np.argmax(score[eligible_positions]))
                 choice = eligible_positions[local_choice]
                 prob = np.zeros(len(legal), dtype=np.float64)
@@ -392,10 +438,43 @@ class LocalForwardAdapter:
 def build_adapter(cfg, seed):
     validate_adapter(cfg)
     model = None
+    expert = None
     if cfg["kind"] == "pigou_metadrl":
         from .pigou_model import NumpyPigou
         path = Path(cfg["checkpoint_path"])
         if hashlib.sha256(path.read_bytes()).hexdigest() != cfg["checkpoint_sha256"]:
             raise ValueError("Pigou checkpoint SHA-256 mismatch")
         model = NumpyPigou.load(path)
-    return LocalForwardAdapter(cfg, seed, model)
+        expert_path = cfg.get("expert_checkpoint_path")
+        if expert_path is not None:
+            expert_path = Path(expert_path)
+            metadata_path = expert_path.with_name("metadata.json")
+            if hashlib.sha256(expert_path.read_bytes()).hexdigest() != cfg["expert_checkpoint_sha256"]:
+                raise ValueError("expert checkpoint SHA-256 mismatch")
+            if hashlib.sha256(metadata_path.read_bytes()).hexdigest() != cfg["expert_metadata_sha256"]:
+                raise ValueError("expert metadata SHA-256 mismatch")
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            from . import create_learner
+            expert_cfg = {
+                "algorithm": "primal_cvar", "agent_scope": "shared",
+                "mode": "eval", "checkpoint_path": str(expert_path),
+                "checkpoint_sha256": cfg["expert_checkpoint_sha256"],
+                "checkpoint_metadata_sha256": cfg["expert_metadata_sha256"],
+                "replay_size": 1, "batch_size": 32, "warmup_steps": 0,
+                "train_every_steps": 1, "target_update_interval": 500,
+                "lr": 0.001, "clip_norm": 10.0, "gamma": 1.0,
+                "epsilon_start": 0.0, "epsilon_end": 0.0,
+                "epsilon_decay_s": 1.0,
+                "cvar_alpha": metadata.get("cvar_alpha", 0.75),
+                "dual_max": metadata.get("dual_max", 10.0),
+                "dual_constraint": metadata.get("dual_constraint", 0.05),
+                "dual_lr": metadata.get("dual_lr", 0.05),
+                "risk_loss_weight": metadata.get("risk_loss_weight", 1.0),
+                "quantile_huber_delta": metadata.get("quantile_huber_delta", 1.0),
+                "feature_order": metadata["feature_order"],
+                "normalisation": metadata["normalisation"],
+                "observation_contract_id": metadata["observation_contract_id"],
+                "fast_train": True,
+            }
+            expert = create_learner("PRIMAL", expert_cfg, seed)
+    return LocalForwardAdapter(cfg, seed, model, expert)

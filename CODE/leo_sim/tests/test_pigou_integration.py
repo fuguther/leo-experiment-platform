@@ -185,3 +185,39 @@ def test_pigou_hop_penalty_can_prefer_a_lower_detour_despite_ego_score():
          "argmax": True}, 7)
     adapter.model = _Model()
     assert adapter.choose(view, 1) == "N"
+
+
+def test_pigou_expert_blend_can_select_primal_action_without_extra_state():
+    from CODE.leo_sim.rl.local_forward import LocalForwardView, Port, validate_adapter
+
+    class _Model:
+        def encode(self, *_args):
+            return np.zeros(32, dtype=np.float32)
+
+        def score(self, *_args):
+            ego = np.asarray([0.2, 0.1, 0.9, 0.0], dtype=np.float32)
+            quantile = np.zeros((4, 16), dtype=np.float32)
+            return ego, quantile
+
+    class _Expert:
+        _last_scores = np.asarray([0.0, 0.1, 0.2, 3.0, 0.3], dtype=np.float32)
+
+        def choose(self, observation, mask, now):
+            assert observation.shape == (50,)
+            assert mask["E"] and now == 0.0
+            return "E"
+
+    view = LocalForwardView(
+        0, 0.0, 1, "src", "dst", 0.0, 10, 0,
+        (0.0, 1.0, 0.8), 1,
+        (Port(1, up=True), Port(2, up=True), Port(3, up=True), Port(None)),
+        ("N", "S", "E"), ("N",), ("N",))
+    options = {
+        "kind": "pigou_metadrl", "checkpoint_path": "/unused",
+        "checkpoint_sha256": "0" * 64, "expert_weight": 1.0,
+    }
+    validate_adapter(options)
+    adapter = LocalForwardAdapter(options, 7)
+    adapter.model = _Model()
+    adapter.expert = _Expert()
+    assert adapter.choose(view, 1) == "E"
