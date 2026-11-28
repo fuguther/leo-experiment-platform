@@ -15,6 +15,11 @@ import re
 import shutil
 import sys
 
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from CODE.scripts.pigou_study import (
     ALGORITHMS, CADENCES, CORRIDOR_EDGES, LEARNERS, MODULE, TEST_SEEDS, TRAIN_SEEDS,
     VAL_SEEDS, _pinned_env, sha,
@@ -196,7 +201,7 @@ class Matrix:
                     spec = _params(scene, seed, "B1", "exp0", rate, multiplier=1.0)
                     label = f"cal-{scene}-B1-l{int(round(rate * 10))}-s{seed}"
                     items.append((self.cell, (label, spec), {}))
-            cells = self.parallel(items, 4)
+            cells = self.parallel(items, 8)
             self.record(cells)
             by_rate = {}
             for rate in CALIBRATION_LOADS[scene]:
@@ -258,7 +263,7 @@ class Matrix:
     def native(self, scene, train_seeds=TRAIN_SEEDS):
         tasks = [(self._native_seed, (scene, alg, train_seed), {})
                  for alg in LEARNERS for train_seed in train_seeds]
-        for alg, seed, path in self.parallel(tasks, 2):
+        for alg, seed, path in self.parallel(tasks, 4):
             self.models[(scene, alg, seed, "full")] = path, {}
 
     def _pigou_fit(self, scene, train_seed, variant, number, data, previous):
@@ -272,7 +277,7 @@ class Matrix:
         parent = self.run(
             f"{scene}-pigou-{variant}-t{train_seed}-f{number}", "fit",
             {"seed": train_seed, "steps": steps, "lr": lr, "epochs": number,
-             "variant": variant, "datasets": len(data), "threads": 8}, inputs)
+             "variant": variant, "datasets": len(data), "threads": 2}, inputs)
         stats = _read(parent / "fit.json")
         self.fit_index.append({"scene": scene, "train_seed": train_seed, "round": number,
                                "variant": variant, "fit_path": str(parent / "fit.json"),
@@ -288,7 +293,7 @@ class Matrix:
                 _params(scene, s, "Ours", "validation", self.loads[scene], train_seed=train_seed,
                         variant=variant)),
                 {"model": (model, {"beta_ext": beta})})
-            for s in VAL_SEEDS], 2)
+            for s in VAL_SEEDS], 8)
         return sum(row["val_score"] for _, row in vals) / len(vals)
 
     def _pigou_seed(self, scene, train_seed, variants=None):
@@ -376,8 +381,8 @@ class Matrix:
         tasks = list(self._heldout_tasks(scene, experiment, intervals, seeds, algorithms, **options))
         graphs = [(fn, a, kw) for fn, a, kw in tasks if a[1]["alg"] in ("B5", "B6")]
         other = [(fn, a, kw) for fn, a, kw in tasks if a[1]["alg"] not in ("B5", "B6")]
-        self.record(self.parallel(other, 4))
-        self.record(self.parallel(graphs, 2))
+        self.record(self.parallel(other, 10))
+        self.record(self.parallel(graphs, 8))
 
     def _export(self, suffix):
         # Bind the run-ID index as one byte-exact input to the export run.
@@ -404,8 +409,11 @@ class Matrix:
 
     def pilot(self):
         self.calibrate()
+        self.parallel([
+            (self.train_four_concurrent, ("A",), {}),
+            (self.train_four_concurrent, ("B",), {}),
+        ], 2)
         for scene in ("A", "B"):
-            self.train_four_concurrent(scene)
             self.heldout(scene, "exp2", (0.05,), (101,), ALGORITHMS,
                          train_seeds=(11,), tag="pilot")
         self._export("pilot")
@@ -448,6 +456,120 @@ class Matrix:
         self.heldout("A", "exp3_zeroshot", (0.05,), TEST_SEEDS, large=True)
         self._export("extras")
 
+    @staticmethod
+    def _mean_metric(rows, key):
+        values = [float(row[key]) for row in rows if row.get(key) is not None]
+        return sum(values) / len(values) if values else None
+
+    def _gate2_probe(self):
+        rows = []
+        for scene in ("A", "B"):
+            tasks = list(self._heldout_tasks(
+                scene, "gate2", (0.05,), VAL_SEEDS, ALGORITHMS,
+                train_seeds=(11,), tag="gate2"))
+            rows.extend(row for _, row in self.parallel(tasks, 10))
+        no_ext = []
+        for scene in ("A", "B"):
+            tasks = list(self._heldout_tasks(
+                scene, "gate2_no_ext", (0.05,), VAL_SEEDS, ("Ours",),
+                train_seeds=(11,), variant="no_ext", tag="gate2-no-ext"))
+            no_ext.extend(row for _, row in self.parallel(tasks, 10))
+        self.raw.extend(rows)
+        self.raw.extend(no_ext)
+        report = {}
+        for scene in ("A", "B"):
+            scene_rows = [row for row in rows if row["scene"] == scene]
+            ours = [row for row in scene_rows if row["alg"] == "Ours"]
+            baselines = [row for row in scene_rows if row["alg"] != "Ours"]
+            ours_tx = self._mean_metric(ours, "tx_goodput")
+            baseline_tx = {
+                alg: self._mean_metric([r for r in baselines if r["alg"] == alg],
+                                       "tx_goodput")
+                for alg in ("B1", "B2", "B4", "B5", "B6")
+            }
+            no_ext_rows = [row for row in no_ext if row["scene"] == scene]
+            no_ext_tx = self._mean_metric(no_ext_rows, "tx_goodput")
+            passed = (
+                ours_tx is not None
+                and all(value is not None and ours_tx > value
+                        for value in baseline_tx.values())
+                and no_ext_tx is not None and ours_tx > no_ext_tx
+            )
+            report[scene] = {
+                "ours_tx_goodput": ours_tx,
+                "baseline_tx_goodput": baseline_tx,
+                "no_ext_tx_goodput": no_ext_tx,
+                "passed_tx_goodput": passed,
+            }
+        _json_write(ROOT / "runs" / f"{self.prefix}-gate2.json", report)
+        if not all(item["passed_tx_goodput"] for item in report.values()):
+            raise RuntimeError(f"Gate-2 failed: {report}")
+        return report
+
+    def tonight(self):
+        """Five-round meeting edition ending in all 14 required figure CSVs."""
+        self.calibrate()
+        self.parallel([
+            (self.train_four_concurrent, ("A",), {}),
+            (self.train_four_concurrent, ("B",), {}),
+        ], 2)
+        self._gate2_probe()
+
+        # Wave 1: calibration is already in self.raw; add shock and hysteresis.
+        for multiplier in (1.0, 2.5, 2.8):
+            self.heldout("A", "exp0b", (0.05,), (101,), ("B1", "B2"),
+                         multiplier=multiplier, tag=f"m{round(multiplier * 10)}")
+        self.heldout("A", "exp0_hysteresis", (0.05,), (9003,),
+                     ("B1", "B2", "B4", "Ours"), sweep=True,
+                     multiplier=1.0, tag="step")
+        self._export("wave1")
+
+        # Wave 3: Scene-B only at 50 ms; Scene-A gets the requested scans.
+        self.heldout("B", "exp2", (0.05,), TEST_SEEDS, ALGORITHMS,
+                     train_seeds=(11,), tag="main")
+        self.heldout("A", "exp2", (0.05,), TEST_SEEDS, ALGORITHMS,
+                     train_seeds=(11,), tag="main")
+        self.heldout("A", "exp2", (0.010, 0.100), TEST_SEEDS, ALGORITHMS,
+                     train_seeds=(11,), tag="main")
+        outage = self.parallel([(self.cell, (
+            f"A-outage-{alg}-t11-s{seed}",
+            _params("A", seed, alg, "exp3_outage", self.loads["A"],
+                    train_seed=11 if alg in LEARNERS or alg == "Ours" else None,
+                    multiplier=1.0, outage=True)),
+            ({"model": self.models[("A", alg, 11, "full")]}
+             if alg in LEARNERS or alg == "Ours" else {}))
+            for alg in ALGORITHMS for seed in TEST_SEEDS], 8)
+        self.record(outage)
+        large = self.parallel([(self.cell, (
+            f"A-large-{alg}-t11-s{seed}",
+            _params("A", seed, alg, "exp3_zeroshot", self.loads["A"],
+                    train_seed=11 if alg in LEARNERS or alg == "Ours" else None,
+                    large=True)),
+            ({"model": self.models[("A", alg, 11, "full")]}
+             if alg in LEARNERS or alg == "Ours" else {}))
+            for alg in ALGORITHMS for seed in TEST_SEEDS], 8)
+        self.record(large)
+        self._export("wave3")
+
+        # Wave 4: four high-value ablations and the compute-cost sweep.
+        for variant in ("no_ext", "mean", "frame", "no_ais"):
+            self.heldout("A", "exp4_ablation", (0.05,), TEST_SEEDS, ("Ours",),
+                         variant=variant, tag=variant)
+        self.raw.extend({**row, "exp": "exp4_ablation", "variant": "full"}
+                        for row in self.raw
+                        if row.get("exp") == "exp2" and row.get("scene") == "A"
+                        and row.get("interval") == 0.05 and row.get("alg") == "Ours")
+        for delay in (0.000010, 0.000100):
+            self.heldout("A", "exp4_compute", (0.05,), TEST_SEEDS,
+                         ("B2", "Ours"), compute_delay_s=delay,
+                         tag=f"us{round(delay * 1e6)}")
+        self.raw.extend({**row, "exp": "exp4_compute", "compute_delay_s": 0.0}
+                        for row in self.raw
+                        if row.get("exp") == "exp2" and row.get("scene") == "A"
+                        and row.get("interval") == 0.05
+                        and row.get("alg") in ("B2", "Ours"))
+        self._export("complete")
+
     def execute(self):
         self.calibrate()
         for scene in ("A", "B"):
@@ -486,7 +608,7 @@ def main():
     parser.add_argument("--prefix")
     parser.add_argument("--preflight")
     parser.add_argument("--attempt", type=int, default=0)
-    parser.add_argument("--wave", choices=("exp0", "pilot", "core", "extras", "all"),
+    parser.add_argument("--wave", choices=("exp0", "pilot", "core", "extras", "tonight", "all"),
                         default="all")
     args = parser.parse_args()
     if args.describe:
