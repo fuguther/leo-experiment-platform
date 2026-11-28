@@ -165,10 +165,10 @@ class Matrix:
         if model:
             weight, options = model
             spec = {**spec, **options}
-            if spec["alg"] in LEARNERS:
+            if spec["alg"] in LEARNERS or spec.get("online_ours"):
                 inputs.extend((("online.keras", weight),
                                ("metadata.json", weight.with_name("metadata.json"))))
-                if spec["alg"] == "B6":
+                if spec["alg"] == "B6" or spec.get("online_ours"):
                     inputs.append(("online.npz", weight.with_name("online.npz")))
             else:
                 inputs.append(("frozen.npz", weight))
@@ -238,35 +238,45 @@ class Matrix:
             points.append((sum(row["val_score"] for _, row in vals), t))
         self.thresholds[scene] = max(points, key=lambda x: (x[0], -x[1]))[1]
 
-    def _native_seed(self, scene, alg, train_seed):
+    def _native_seed(self, scene, alg, train_seed, variant="full"):
         previous = None
         best = None
         for round_no in range(1, 6):
             scenario_seed = (200_000 if scene == "B" else 100_000) + train_seed * 100 + round_no
+            online_ours = alg == "Ours"
+            extra = {"online_ours": True, "variant": variant,
+                     "train_every_steps": 32} if online_ours else {}
             parent, report = self.cell(
-                f"{scene}-{alg}-t{train_seed}-r{round_no}",
+                f"{scene}-{alg}-{variant}-t{train_seed}-r{round_no}",
                 _params(scene, scenario_seed, alg, "exp1", self.loads[scene],
                         train_seed=train_seed, epoch=round_no, threads=2,
-                        duration_s=5.5),
+                        duration_s=5.5, **extra),
                 resume=previous)
             previous = parent / "resume.tar"
-            path = Path(report["run_dir"]) / ("primal_cvar" if alg == "B6" else "ddqn") / "online.keras"
+            artifact_dir = ("pigou_online" if online_ours
+                            else ("primal_cvar" if alg == "B6" else "ddqn"))
+            path = Path(report["run_dir"]) / artifact_dir / "online.keras"
             if round_no in {3, 5}:
-                vals = [self.cell(f"{scene}-{alg}-t{train_seed}-r{round_no}-v{s}",
+                validation_label = (
+                    f"{scene}-{alg}-{variant}-t{train_seed}-r{round_no}-v{s}"
+                    if online_ours else
+                    f"{scene}-{alg}-t{train_seed}-r{round_no}-v{s}")
+                vals = [self.cell(validation_label,
                                   _params(scene, s, alg, "validation", self.loads[scene],
-                                          train_seed=train_seed), model=(path, {}))
+                                          train_seed=train_seed, **extra),
+                                  model=(path, {}))
                         for s in VAL_SEEDS]
                 score = sum(row["pdr"] for _, row in vals) / len(vals)
                 report.update(validation_score=score, checkpoint_sha256=sha(path))
                 if best is None or score > best[0]:
                     best = score, path
             self.raw.append(report)
-        return alg, train_seed, best[1]
+        return scene, alg, train_seed, variant, best[1]
 
     def native(self, scene, train_seeds=TRAIN_SEEDS):
         tasks = [(self._native_seed, (scene, alg, train_seed), {})
                  for alg in LEARNERS for train_seed in train_seeds]
-        for alg, seed, path in self.parallel(tasks, 4):
+        for _scene, alg, seed, _variant, path in self.parallel(tasks, 4):
             self.models[(scene, alg, seed, "full")] = path, {}
 
     def _pigou_fit(self, scene, train_seed, variant, number, data, previous):
@@ -329,12 +339,16 @@ class Matrix:
                     best[variant] = score, fitted
         for variant in arch_variants:
             _, path = best[variant]
-            candidates = [(self._pigou_validation(
-                scene, train_seed, variant, 9, path, beta), beta)
-                for beta in BETA_GRID]
+            beta_tasks = [
+                (self._pigou_validation,
+                 (scene, train_seed, variant, 9, path, beta), {})
+                for beta in BETA_GRID
+            ]
+            candidates = list(zip(
+                self.parallel(beta_tasks, len(beta_tasks)), BETA_GRID))
             beta = max(candidates, key=lambda point: (point[0], -point[1]))[1]
             self.models[(scene, "Ours", train_seed, variant)] = path, {"beta_ext": beta}
-        return "Ours", train_seed, best["full"][1]
+        return scene, "Ours", train_seed, "full", best["full"][1]
 
     def pigou(self, scene, train_seeds=TRAIN_SEEDS, variants=None):
         for train_seed in train_seeds:
@@ -346,7 +360,7 @@ class Matrix:
             for alg in LEARNERS
         ]
         tasks.append((self._pigou_seed, (scene, 11, ("full",)), {}))
-        for alg, seed, path in self.parallel(tasks, 4):
+        for _scene, alg, seed, _variant, path in self.parallel(tasks, 4):
             if alg != "Ours":
                 self.models[(scene, alg, seed, "full")] = path, {}
 
@@ -357,15 +371,22 @@ class Matrix:
         for alg in algorithms:
             learning = alg in LEARNERS or alg == "Ours"
             for train_seed in train_seeds if learning else (None,):
-                selected = self.models.get((scene, alg, train_seed,
-                    variant if variant in {"full", "mean", "frame", "no_ais"} else "full"))
+                model_variant = (
+                    variant if alg == "Ours" and getattr(self, "online_ours", False)
+                    else (variant if variant in {"full", "mean", "frame", "no_ais"}
+                          else "full"))
+                selected = self.models.get((scene, alg, train_seed, model_variant))
                 if learning and selected is None:
                     raise RuntimeError(f"no frozen model for {scene} {alg} {train_seed}")
                 for interval in intervals:
                     for seed in seeds:
                         spec = _params(scene, seed, alg, experiment, self.loads[scene],
                                        interval=interval, train_seed=train_seed, **options)
-                        if variant == "no_ext" or variant == "argmax" or variant == "no_shield":
+                        if alg == "Ours" and getattr(self, "online_ours", False):
+                            spec["online_ours"] = True
+                            spec["variant"] = variant
+                            use_model = selected
+                        elif variant == "no_ext" or variant == "argmax" or variant == "no_shield":
                             path, knobs = selected
                             override = {"no_ext": {"beta_ext": 0.0},
                                         "argmax": {"argmax": True},
@@ -378,7 +399,8 @@ class Matrix:
                         if scene == "A" and experiment == "exp2" and seed == 101 and alg == "Ours":
                             spec["telemetry_sat"] = CORRIDOR_EDGES[0][0]
                         tag = options.get("tag", "main")
-                        label = f"{scene}-{experiment.replace('_','-')}-{alg}-{tag}-t{train_seed}-p{int(interval*1000)}-s{seed}"
+                        suffix = f"-{variant}" if alg == "Ours" and getattr(self, "online_ours", False) else ""
+                        label = f"{scene}-{experiment.replace('_','-')}-{alg}{suffix}-{tag}-t{train_seed}-p{int(interval*1000)}-s{seed}"
                         yield (self.cell, (label, spec), {"model": use_model})
 
     def heldout(self, scene, experiment, intervals, seeds, algorithms=ALGORITHMS, **options):
@@ -510,6 +532,115 @@ class Matrix:
             raise RuntimeError(f"Gate-2 failed: {report}")
         return report
 
+    def _reuse_calibration(self, baseline_prefix):
+        reused = []
+        for scene in ("A", "B"):
+            by_rate = {}
+            for path in sorted((ROOT / "runs").glob(
+                    f"{baseline_prefix}-cal-{scene}-*/cell/summary.json")):
+                row = _read(path)
+                row.update(
+                    run_id=path.parents[2].name,
+                    base_trace_sha256=row["background_sha256"],
+                    outer_receipt_sha256=sha(path.parents[2] / "run-receipt.json"),
+                )
+                reused.append(row)
+                by_rate[float(row["offered_mbps"])] = float(
+                    row["steady_utilization_peak"])
+            if len(by_rate) < 2:
+                raise RuntimeError(
+                    f"cannot reuse calibration for scene {scene}: {by_rate}")
+            selected = min(
+                sorted(by_rate),
+                key=lambda rate: abs(by_rate[rate] - TARGET_STEADY_UTILIZATION))
+            self.loads[scene] = selected
+        self.raw.extend(reused)
+        print(f"reused calibration loads {self.loads}", flush=True)
+
+    def _reuse_baselines(self, baseline_prefix):
+        for scene in ("A", "B"):
+            for alg in LEARNERS:
+                run = ROOT / "runs" / f"{baseline_prefix}-{scene}-{alg}-t11-r5"
+                artifact = "primal_cvar" if alg == "B6" else "ddqn"
+                path = run / "cell" / "sim" / artifact / "online.keras"
+                metadata = path.with_name("metadata.json")
+                if path.is_symlink() or not path.is_file() or not metadata.is_file():
+                    raise RuntimeError(f"retained baseline checkpoint missing: {path}")
+                self.models[(scene, alg, 11, "full")] = path, {}
+
+    def _phase3_waves(self):
+        for multiplier in (1.0, 2.5, 2.8):
+            self.heldout("A", "exp0b", (0.05,), (101,), ("B1", "B2"),
+                         multiplier=multiplier, tag=f"m{round(multiplier * 10)}")
+        self.heldout("A", "exp0_hysteresis", (0.05,), (9003,),
+                     ("B1", "B2", "B4", "Ours"), sweep=True,
+                     multiplier=1.0, tag="step")
+        self._export("wave1")
+
+        self.heldout("B", "exp2", (0.05,), TEST_SEEDS, ALGORITHMS,
+                     train_seeds=(11,), tag="main")
+        self.heldout("A", "exp2", (0.05,), TEST_SEEDS, ALGORITHMS,
+                     train_seeds=(11,), tag="main")
+        self.heldout("A", "exp2", (0.010, 0.100), TEST_SEEDS, ALGORITHMS,
+                     train_seeds=(11,), tag="main")
+        outage = self.parallel([(self.cell, (
+            f"A-outage-{alg}-t11-s{seed}",
+            _params("A", seed, alg, "exp3_outage", self.loads["A"],
+                    train_seed=11 if alg in LEARNERS or alg == "Ours" else None,
+                    multiplier=1.0, outage=True,
+                    **({"online_ours": True} if alg == "Ours" else {}))),
+            ({"model": self.models[("A", alg, 11, "full")]}
+             if alg in LEARNERS or alg == "Ours" else {}))
+            for alg in ALGORITHMS for seed in TEST_SEEDS], 16)
+        self.record(outage)
+        large = self.parallel([(self.cell, (
+            f"A-large-{alg}-t11-s{seed}",
+            _params("A", seed, alg, "exp3_zeroshot", self.loads["A"],
+                    train_seed=11 if alg in LEARNERS or alg == "Ours" else None,
+                    large=True,
+                    **({"online_ours": True} if alg == "Ours" else {}))),
+            ({"model": self.models[("A", alg, 11, "full")]}
+             if alg in LEARNERS or alg == "Ours" else {}))
+            for alg in ALGORITHMS for seed in TEST_SEEDS], 16)
+        self.record(large)
+        self._export("wave3")
+
+        for variant in ("no_ext", "mean", "frame", "no_ais"):
+            self.heldout("A", "exp4_ablation", (0.05,), TEST_SEEDS, ("Ours",),
+                         variant=variant, tag=variant)
+        self.raw.extend({**row, "exp": "exp4_ablation", "variant": "full"}
+                        for row in self.raw
+                        if row.get("exp") == "exp2" and row.get("scene") == "A"
+                        and row.get("interval") == 0.05 and row.get("alg") == "Ours")
+        for delay in (0.000010, 0.000100):
+            self.heldout("A", "exp4_compute", (0.05,), TEST_SEEDS,
+                         ("B2", "Ours"), compute_delay_s=delay,
+                         tag=f"us{round(delay * 1e6)}")
+        self.raw.extend({**row, "exp": "exp4_compute", "compute_delay_s": 0.0}
+                        for row in self.raw
+                        if row.get("exp") == "exp2" and row.get("scene") == "A"
+                        and row.get("interval") == 0.05
+                        and row.get("alg") in ("B2", "Ours"))
+        self._export("complete")
+
+    def online_tonight(self, baseline_prefix):
+        self._reuse_calibration(baseline_prefix)
+        self._reuse_baselines(baseline_prefix)
+        self.online_ours = True
+        variants = {
+            "A": ("full", "no_ext", "mean", "frame", "no_ais"),
+            "B": ("full", "no_ext"),
+        }
+        tasks = [
+            (self._native_seed, (scene, "Ours", 11, variant), {})
+            for scene, names in variants.items() for variant in names
+        ]
+        for scene, _alg, seed, variant, path in self.parallel(
+                tasks, min(10, len(tasks))):
+            self.models[(scene, "Ours", seed, variant)] = path, {}
+        self._gate2_probe()
+        self._phase3_waves()
+
     def tonight(self):
         """Five-round meeting edition ending in all 14 required figure CSVs."""
         self.calibrate()
@@ -611,8 +742,9 @@ def main():
     parser.add_argument("--release")
     parser.add_argument("--prefix")
     parser.add_argument("--preflight")
+    parser.add_argument("--baseline-prefix", default="pigou-20261128-meeting")
     parser.add_argument("--attempt", type=int, default=0)
-    parser.add_argument("--wave", choices=("exp0", "pilot", "core", "extras", "tonight", "all"),
+    parser.add_argument("--wave", choices=("exp0", "pilot", "core", "extras", "tonight", "online_tonight", "all"),
                         default="all")
     args = parser.parse_args()
     if args.describe:
@@ -639,6 +771,8 @@ def main():
         matrix = Matrix(args.release, args.prefix, args.attempt)
         if args.wave == "all":
             matrix.execute()
+        elif args.wave == "online_tonight":
+            matrix.online_tonight(args.baseline_prefix)
         else:
             getattr(matrix, args.wave)()
 

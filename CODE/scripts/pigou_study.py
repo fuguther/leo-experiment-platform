@@ -89,7 +89,8 @@ def cell_config(cfg, spec, checkpoint=None, metadata=None, resume=None):
         cfg["learning"].update(
             algorithm="pigou_online", seed=spec["train_seed"], obs_hops=1,
             include_last_hop=False, replay_size=50_000,
-            warmup_steps=spec.get("warmup_steps", 128), batch_size=32, train_every_steps=4,
+            warmup_steps=spec.get("warmup_steps", 128), batch_size=32,
+            train_every_steps=spec.get("train_every_steps", 32),
             lr=0.001, clip_norm=10.0, gamma=1.0, reward="deadline_loss_v1",
             epsilon_start=0.35, epsilon_end=0.02, epsilon_decay_s=15.0,
             target_update_interval=500,
@@ -338,7 +339,8 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
         raise ValueError(f"unverified simulation {spec['alg']}: {rcp.get('error') or errors}")
     if rcp["fate_counts"].get("IN_SYSTEM_AT_STOP", 0):
         raise ValueError("some offered data remains unsettled after the hard deadline and drain")
-    if spec["alg"] in LEARNERS and not rcp["mechanisms"]["effective"]["learning"]:
+    if (spec["alg"] in LEARNERS or spec.get("online_ours")) \
+            and not rcp["mechanisms"]["effective"]["learning"]:
         raise ValueError(f"{spec['alg']} made no train/eval decision updates under this workload")
     policy = result.get("local_forward_adapter")
     if policy and policy["calls"] == 0:
@@ -437,9 +439,11 @@ def _cell_main(spec):
                 raise ValueError("unexpected member in native learner resume bundle")
             archive.extractall(resume, members)
     summary = simulate(root / "cell", spec, checkpoint=checkpoint, metadata=metadata, resume=resume)
-    if spec["alg"] in LEARNERS and checkpoint is None:
+    if (spec["alg"] in LEARNERS or spec.get("online_ours")) and checkpoint is None:
         import tarfile
-        learner = Path(summary["run_dir"]) / ("primal_cvar" if spec["alg"] == "B6" else "ddqn")
+        algorithm = ("pigou_online" if spec.get("online_ours")
+                     else ("primal_cvar" if spec["alg"] == "B6" else "ddqn"))
+        learner = Path(summary["run_dir"]) / algorithm
         with tarfile.open(root / "resume.tar", "x") as archive:
             for item in sorted((learner / "resume").iterdir()):
                 archive.add(item, arcname=item.name, recursive=False)
@@ -505,16 +509,18 @@ def preflight(spec):
     summaries = []
     for alg in ("B1", "B2", "Collect"):
         summaries.append(simulate(root / alg, {**small, "alg": alg}))
-    for alg in ("B6", "B4", "B5"):
-        train = simulate(root / alg, {**small, "alg": alg, "train_seed": 11})
-        artifact = Path(train["run_dir"]) / ("primal_cvar" if alg == "B6" else "ddqn")
-        summaries.append(simulate(root / (alg + "-eval"), {**small, "alg": alg, "train_seed": 11},
+    for alg in ("B6", "B4", "B5", "Ours"):
+        online = alg == "Ours"
+        train_spec = {**small, "alg": alg, "train_seed": 11, "train_every_steps": 32}
+        if online:
+            train_spec.update(online_ours=True, variant="full")
+        train = simulate(root / alg, train_spec)
+        artifact_name = ("pigou_online" if online
+                         else ("primal_cvar" if alg == "B6" else "ddqn"))
+        artifact = Path(train["run_dir"]) / artifact_name
+        summaries.append(simulate(root / (alg + "-eval"), train_spec,
                                   checkpoint=artifact / "online.keras",
                                   metadata=artifact / "metadata.json"))
-    checkpoint, stats = _fit(root, [(root / "Collect" / "snaps.npz", root / "Collect" / "pkts.npz")],
-                             {"seed": 11, "steps": 1000, "lr": 0.0005, "batch_size": 64})
-    summaries.append(simulate(root / "Ours", {**small, "alg": "Ours",
-                             "telemetry_sat": CORRIDOR_EDGES[0][0]}, checkpoint=checkpoint))
     if len({row["trace_sha256"] for row in summaries}) != 1:
         raise ValueError("preflight arms used different packet cohorts")
     b = simulate(root / "scene-b", {**small, "scene": "B", "alg": "B1"})
@@ -523,8 +529,10 @@ def preflight(spec):
     staircase = simulate(root / "staircase", {**small, "alg": "B1", "sweep": True,
                                              "multiplier": 1.0})
     summaries.extend((b, fault, staircase))
-    _json_write(root / "preflight.json", {"status": "passed", "tensorflow": tf.__version__,
-                                         "fit_steps": stats["steps"], "arms": summaries})
+    _json_write(root / "preflight.json", {
+        "status": "passed", "tensorflow": tf.__version__,
+        "online_ours": True, "arms": summaries,
+    })
 
 
 def export_main():
