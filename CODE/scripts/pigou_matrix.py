@@ -76,7 +76,8 @@ def describe():
 
 def _params(scene, seed, alg, exp, rate, **options):
     return {"scene": scene, "seed": seed, "alg": alg, "exp": exp,
-            "interval": 0.05, "multiplier": 2.5, "offered_mbps": rate, **options}
+            "interval": 0.05, "multiplier": 2.5, "offered_mbps": rate,
+            "threads": 1, **options}
 
 
 def _read(path):
@@ -116,10 +117,10 @@ class Matrix:
         lines = dict(line.split() for line in (limits / "memory.stat").read_text().splitlines())
         rss = int(lines["total_rss"])
         limit = int((limits / "memory.limit_in_bytes").read_text())
-        if rss >= 22 * 2**30:
-            raise RuntimeError("VM anonymous memory has reached the study's 22 GiB ceiling")
-        if limit - rss < 14 * 2**30:
-            raise RuntimeError("study has less than the reserved 14 GiB memory headroom")
+        if rss >= 40 * 2**30:
+            raise RuntimeError("VM anonymous RSS has reached the study's 40 GiB ceiling")
+        if limit - rss < 16 * 2**30:
+            raise RuntimeError("study has less than the reserved 16 GiB memory headroom")
 
     def _argv(self, task, spec):
         encoded = json.dumps(spec, sort_keys=True, separators=(",", ":"))
@@ -201,7 +202,7 @@ class Matrix:
                     spec = _params(scene, seed, "B1", "exp0", rate, multiplier=1.0)
                     label = f"cal-{scene}-B1-l{int(round(rate * 10))}-s{seed}"
                     items.append((self.cell, (label, spec), {}))
-            cells = self.parallel(items, 8)
+            cells = self.parallel(items, 16)
             self.record(cells)
             by_rate = {}
             for rate in CALIBRATION_LOADS[scene]:
@@ -245,7 +246,8 @@ class Matrix:
             parent, report = self.cell(
                 f"{scene}-{alg}-t{train_seed}-r{round_no}",
                 _params(scene, scenario_seed, alg, "exp1", self.loads[scene],
-                        train_seed=train_seed, epoch=round_no), resume=previous)
+                        train_seed=train_seed, epoch=round_no, threads=2),
+                resume=previous)
             previous = parent / "resume.tar"
             path = Path(report["run_dir"]) / ("primal_cvar" if alg == "B6" else "ddqn") / "online.keras"
             if round_no in {3, 5}:
@@ -293,7 +295,7 @@ class Matrix:
                 _params(scene, s, "Ours", "validation", self.loads[scene], train_seed=train_seed,
                         variant=variant)),
                 {"model": (model, {"beta_ext": beta})})
-            for s in VAL_SEEDS], 8)
+            for s in VAL_SEEDS], 16)
         return sum(row["val_score"] for _, row in vals) / len(vals)
 
     def _pigou_seed(self, scene, train_seed, variants=None):
@@ -313,7 +315,8 @@ class Matrix:
                     scene, seed, "Collect" if model is None else "Ours",
                     "collection", self.loads[scene], train_seed=train_seed,
                     capture=True, exploration=0.12 if model else (0.08, 0.24)[i % 2],
-                    temperature=(0.06, 0.12)[i % 2] if number < 3 else (0.04, 0.08)[i % 2])
+                    temperature=(0.06, 0.12)[i % 2] if number < 3 else (0.04, 0.08)[i % 2],
+                    threads=2)
                 rollouts.append((self.cell, (f"{scene}-roll-t{train_seed}-r{number}-e{i}", spec),
                                  {"model": model}))
             data.extend(parent for parent, _ in self.parallel(rollouts, 2))
@@ -381,8 +384,8 @@ class Matrix:
         tasks = list(self._heldout_tasks(scene, experiment, intervals, seeds, algorithms, **options))
         graphs = [(fn, a, kw) for fn, a, kw in tasks if a[1]["alg"] in ("B5", "B6")]
         other = [(fn, a, kw) for fn, a, kw in tasks if a[1]["alg"] not in ("B5", "B6")]
-        self.record(self.parallel(other, 10))
-        self.record(self.parallel(graphs, 8))
+        self.record(self.parallel(other, 16))
+        self.record(self.parallel(graphs, 16))
 
     def _export(self, suffix):
         # Bind the run-ID index as one byte-exact input to the export run.
@@ -467,13 +470,13 @@ class Matrix:
             tasks = list(self._heldout_tasks(
                 scene, "gate2", (0.05,), VAL_SEEDS, ALGORITHMS,
                 train_seeds=(11,), tag="gate2"))
-            rows.extend(row for _, row in self.parallel(tasks, 10))
+            rows.extend(row for _, row in self.parallel(tasks, 16))
         no_ext = []
         for scene in ("A", "B"):
             tasks = list(self._heldout_tasks(
                 scene, "gate2_no_ext", (0.05,), VAL_SEEDS, ("Ours",),
                 train_seeds=(11,), variant="no_ext", tag="gate2-no-ext"))
-            no_ext.extend(row for _, row in self.parallel(tasks, 10))
+            no_ext.extend(row for _, row in self.parallel(tasks, 16))
         self.raw.extend(rows)
         self.raw.extend(no_ext)
         report = {}
@@ -538,7 +541,7 @@ class Matrix:
                     multiplier=1.0, outage=True)),
             ({"model": self.models[("A", alg, 11, "full")]}
              if alg in LEARNERS or alg == "Ours" else {}))
-            for alg in ALGORITHMS for seed in TEST_SEEDS], 8)
+            for alg in ALGORITHMS for seed in TEST_SEEDS], 16)
         self.record(outage)
         large = self.parallel([(self.cell, (
             f"A-large-{alg}-t11-s{seed}",
@@ -547,7 +550,7 @@ class Matrix:
                     large=True)),
             ({"model": self.models[("A", alg, 11, "full")]}
              if alg in LEARNERS or alg == "Ours" else {}))
-            for alg in ALGORITHMS for seed in TEST_SEEDS], 8)
+            for alg in ALGORITHMS for seed in TEST_SEEDS], 16)
         self.record(large)
         self._export("wave3")
 
