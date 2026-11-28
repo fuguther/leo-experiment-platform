@@ -22,9 +22,11 @@ def _close_busy(episode, labels, pkt_bits, rate_bps, deadline_s):
             cost = 1.0
         else:
             cost = min(1.0, 0.5 * (len(accepted) - i - 1) * pkt_bits / (rate_bps * deadline_s))
-        if key in labels:
-            raise ValueError(f"duplicate directed enqueue label {key}")
-        labels[key] = cost
+        # A bounded transaction may revisit the same directed edge with the
+        # same packet id after retry.  The learning observation does not gain a
+        # second action slot for that retry, so retain the worst realized cost
+        # rather than dropping the later cascade or rejecting the dataset.
+        labels[key] = max(float(labels.get(key, 0.0)), float(cost))
 
 
 def _reconstruct(events, capacity, pkt_bits, rate_bps, deadline_s):

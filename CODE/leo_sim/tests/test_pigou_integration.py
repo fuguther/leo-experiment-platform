@@ -222,3 +222,17 @@ def test_nominal_egress_uses_current_time_bucket_and_nearest_visible_satellite()
     assert sim._nominal_egress(1, "dest", 0.04) == [2]
     assert sim._nominal_egress(0, "dest", 0.05) == [2]
     assert set(sim._planned_egress) == {("dest", 0), ("dest", 1)}
+
+
+def test_retry_label_aggregation_preserves_the_worst_edge_cost():
+    from CODE.leo_sim.rl.pigou_labels import _close_busy
+
+    labels = {}
+    key = (17, 3, 9, 2)
+    low = {"accepted": [(0, key)], "last_saturated": -1}
+    high = {"accepted": [(0, key)], "last_saturated": 5}
+    _close_busy(low, labels, pkt_bits=10, rate_bps=100, deadline_s=1.0)
+    first = labels[key]
+    _close_busy(high, labels, pkt_bits=10, rate_bps=100, deadline_s=1.0)
+    assert first < 1.0
+    assert labels[key] == 1.0
