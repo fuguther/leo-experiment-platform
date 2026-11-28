@@ -120,7 +120,7 @@ def cell_config(cfg, spec, checkpoint=None, metadata=None, resume=None):
     return cfg
 
 
-def _metric_components(rows, results, *, burst_end=3.5, recovery_end=7.5):
+def _metric_components(rows, results, *, burst_end=3.5, recovery_end=9.5):
     delivered = results["deliveries"]
     success = {
         row["packet_id"] for row in rows

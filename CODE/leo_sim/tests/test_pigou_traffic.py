@@ -107,9 +107,9 @@ def test_scene_catalogs_and_native_config_contract(builder, tmp_path):
     assert cfg_a["scenario"]["num_planes"] == 12
     assert cfg_a["scenario"]["altitude_km"] == 800.0
     assert cfg_a["scenario"]["inclination_deg"] == 53.0
-    assert cfg_a["scenario"]["duration_s"] == 9.5
+    assert cfg_a["scenario"]["duration_s"] == 10.5
     assert cfg_a["demand"]["emission_start_s"] == 0.2
-    assert cfg_a["demand"]["emission_end_s"] == 7.5
+    assert cfg_a["demand"]["emission_end_s"] == 9.5
     assert cfg_a["demand"]["packet_bits"] == 64_000
     assert cfg_a["demand"]["deadline_s"] == 0.240
     assert cfg_a["demand"]["research_deadline_s"] == 0.240
@@ -198,7 +198,7 @@ def test_background_is_byte_identical_and_pulse_is_only_targeted(
             range(base_count + 1, result["packet_count"] + 1))
         for row in rows:
             emit_time_s = float(row["emit_time_s"])
-            assert 0.2 <= emit_time_s < 7.5
+            assert 0.2 <= emit_time_s < 9.5
             assert float(row["deadline_at_s"]) == pytest.approx(
                 float(row["research_deadline_at_s"]))
             assert float(row["deadline_at_s"]) == pytest.approx(
@@ -209,15 +209,15 @@ def test_background_is_byte_identical_and_pulse_is_only_targeted(
 
     assert built[1.6]["pulse_packet_count"] > 0
     assert built[2.5]["pulse_packet_count"] > built[1.6]["pulse_packet_count"]
-    assert 13_000 <= built[2.5]["packet_count"] <= 15_000
+    assert 17_500 <= built[2.5]["packet_count"] <= 18_500
     assert built[2.5]["pulse_packet_sha256"] != baseline["pulse_packet_sha256"]
 
 
 @pytest.mark.parametrize(
     ("scene", "expected_count_range", "expected_sites"),
     [
-        ("A", (13_000, 15_000), 12),
-        ("B", (12_500, 14_500), 24),
+        ("A", (17_500, 18_500), 12),
+        ("B", (15_500, 17_000), 24),
     ],
 )
 def test_native_compile_preserves_deadline_and_budget(
@@ -238,7 +238,7 @@ def test_native_compile_preserves_deadline_and_budget(
     compiled_dir = tmp_path / f"compiled-{scene}"
     manifest = trace.compile_trace(resolved, str(compiled_dir))
     assert manifest["offered_packets"] == result["packet_count"]
-    assert manifest["drain_s"] == pytest.approx(2.0)
+    assert manifest["drain_s"] == pytest.approx(1.0)
     assert manifest["trace_schema"] == trace.TRACE_SCHEMA_V2
     assert manifest["provenance_contract"]["source"]["sha256"] == \
         result["trace_sha256"]
@@ -270,7 +270,7 @@ def test_repeat_build_and_cli_are_deterministic(builder, tmp_path):
     assert first["pulse_packet_count"] == 0
     assert first["config"]["links"]["ge_enabled"] is False
     rows = _raw_rows(first["trace_path"])
-    for start, end in ((0.2, 2.0), (2.0, 3.5), (3.5, 7.5)):
+    for start, end in ((0.2, 2.0), (2.0, 3.5), (3.5, 9.5)):
         assert any(start <= float(row["emit_time_s"]) < end for row in rows)
     no_burst_manifest = trace.compile_trace(
         config.resolve_config(first["config"]),

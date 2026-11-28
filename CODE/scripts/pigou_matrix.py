@@ -57,7 +57,7 @@ def describe():
         "compute_sensitivity": 3 * len(TEST_SEEDS) * (1 + len(TRAIN_SEEDS)),
     }
     return {**jobs, "total_jobs_excluding_validation_probes": sum(jobs.values()),
-        "post_export_onset_censor_s": 3.2,
+        "post_export_onset_censor_s": 5.2,
         "cadence_s": CADENCES,
         "train_seeds": TRAIN_SEEDS, "validation_seeds": VAL_SEEDS, "test_seeds": TEST_SEEDS,
     }

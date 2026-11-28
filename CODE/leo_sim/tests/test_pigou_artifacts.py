@@ -164,9 +164,9 @@ def test_goodput_and_recovery_use_emission_time_full_confirmation_and_right_cens
         emit = 0.5 + index * 0.1
         packets.append(_packet(pid, emit, emit + 0.05, delivered=emit + 0.01))
         pid += 1
-    # Recovery contains twenty failed 100 ms buckets followed by twenty good
+    # Recovery contains twenty failed 100 ms buckets followed by forty good
     # buckets.  Recovery is therefore confirmed exactly at 5.5 s, T_rec=2.0 s.
-    for index in range(40):
+    for index in range(60):
         emit = 3.5 + index * 0.1
         if index < 20:
             packets.append(_packet(
@@ -179,7 +179,7 @@ def test_goodput_and_recovery_use_emission_time_full_confirmation_and_right_cens
     metrics = ex._run_metrics(evidence)
 
     assert metrics["goodput_pdr_prepulse_pct"] == pytest.approx(100.0)
-    assert metrics["goodput_pdr_recovery_pct"] == pytest.approx(50.0)
+    assert metrics["goodput_pdr_recovery_pct"] == pytest.approx(200.0 / 3.0)
     assert metrics["t_rec_s"] == pytest.approx(2.0)
     assert metrics["t_rec_status"] == "COMPUTED"
     assert metrics["rgd_delivery_ratio_seconds"] == pytest.approx(2.0)
@@ -209,7 +209,7 @@ def test_recovery_is_right_censored_without_a_complete_0_8_s_confirmation(tmp_pa
     metrics = ex._run_metrics(evidence)
 
     assert metrics["t_rec_s"] is None
-    assert metrics["t_rec_right_censor_s"] == pytest.approx(3.2)
+    assert metrics["t_rec_right_censor_s"] == pytest.approx(5.2)
     assert metrics["t_rec_status"] == "RIGHT_CENSORED"
 
 

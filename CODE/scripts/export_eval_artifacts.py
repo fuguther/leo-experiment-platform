@@ -19,12 +19,12 @@ Implementation assumptions fixed here
   never zero.
 * Recovery uses 100 ms emission-time buckets.  A recovery is confirmed only
   when every one of eight consecutive buckets meets 95% of the pre-pulse PDR.
-  The last allowed onset is 6.7 s: the confirmation then ends at the 7.5 s
+  The last allowed onset is 8.7 s: the confirmation then ends at the 9.5 s
   observation boundary.  Failure to find such a window is right-censored as
-  ``> 4.0 s`` after the shock-end reference point at 3.5 s.
+  ``> 5.2 s`` after the shock-end reference point at 3.5 s.
 * Recovery Goodput Deficit is integrated as
   ``max(0, pre_pulse_PDR - recovery_PDR) * seconds`` over
-  ``[3.5, 7.5)``.  Its unit is delivery-ratio seconds.  The baseline is the
+  ``[3.5, 9.5)``.  Its unit is delivery-ratio seconds.  The baseline is the
   mean of the same trace's fifteen 100 ms pre-pulse PDR buckets in
   ``[0.5, 2.0)``.  It is not a packet-weighted pool over treatments and not
   another algorithm's result.
@@ -97,7 +97,7 @@ ALL_DATA_FATES = (
 DIRECTIONS = ("N", "S", "E", "W")
 SHOCK_START_S = 2.0
 SHOCK_END_S = 3.5
-OBSERVATION_END_S = 7.5
+OBSERVATION_END_S = 9.5
 PREPULSE_START_S = 0.5
 PREPULSE_END_S = 2.0
 RECOVERY_BIN_S = 0.1
@@ -158,17 +158,17 @@ FIGURE_SOURCE_FILES = {
 
 SCENE_WINDOWS = {
     "A": (
-        ("full", 0.2, 7.5),
+        ("full", 0.2, 9.5),
         ("steady_prepulse", 0.5, 2.0),
         ("burst", 2.0, 3.5),
-        ("recovery", 3.5, 7.5),
+        ("recovery", 3.5, 9.5),
     ),
     "B": (
-        ("emission_window", 0.2, 7.5),
+        ("emission_window", 0.2, 9.5),
         ("steady_prepulse", 0.5, 2.0),
         ("burst", 2.0, 3.5),
-        ("recovery", 3.5, 7.5),
-        ("full", 0.2, 7.5),
+        ("recovery", 3.5, 9.5),
+        ("full", 0.2, 9.5),
     ),
 }
 
@@ -2048,7 +2048,7 @@ def export(root: Path | str, index: list[dict[str, Any]]) -> dict[str, Any]:
     for evidence in exp0b:
         if evidence.seed != 101:
             continue
-        for row in _series_rows(evidence, 0.2, 7.5, RECOVERY_BIN_S):
+        for row in _series_rows(evidence, 0.2, 9.5, RECOVERY_BIN_S):
             row.update(evidence.entry.get("_victim_result") or {})
             exp0b_series.append(row)
 
@@ -2069,7 +2069,7 @@ def export(root: Path | str, index: list[dict[str, Any]]) -> dict[str, Any]:
         "exp2_aoi_sweep.csv": _summary_rows(exp2, metrics_by_id),
         "exp2_timeseries_100ms_seed101.csv": [
             row for evidence in exp2 if evidence.seed == 101
-            for row in _series_rows(evidence, 0.2, 7.5, RECOVERY_BIN_S)],
+            for row in _series_rows(evidence, 0.2, 9.5, RECOVERY_BIN_S)],
         "exp3_link_outage.csv": [
             _metric_row(evidence, metrics_by_id[id(evidence)]) for evidence in exp3_outage],
         "exp3_zeroshot_large.csv": [

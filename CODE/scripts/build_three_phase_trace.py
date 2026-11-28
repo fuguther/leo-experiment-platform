@@ -5,7 +5,7 @@ The generated CSV is the coordinate-form input consumed by
 ``CODE.leo_sim.trace.compile_trace`` when ``demand.mode=csv``.  The packet
 stream has two disjoint layers:
 
-* a background layer emitted over ``[0.2, 7.5)`` whose packet IDs, routes,
+* a background layer emitted over ``[0.2, 9.5)`` whose packet IDs, routes,
   emission times, and deadlines do not depend on the burst multiplier; and
 * an optional pulse layer emitted only over ``[2.0, 3.5)`` on declared hotspot
   corridors, using a separate deterministic random stream.
@@ -51,12 +51,12 @@ TRACE_FILENAME = "three-phase-demand.csv"
 PHASE_WINDOWS_S = {
     "steady_base": (0.2, 2.0),
     "declared_pulse_overlay": (2.0, 3.5),
-    "recovery_base": (3.5, 7.5),
-    "drain": (7.5, 9.5),
+    "recovery_base": (3.5, 9.5),
+    "drain": (9.5, 10.5),
 }
-EMISSION_WINDOW_S = (0.2, 7.5)
+EMISSION_WINDOW_S = (0.2, 9.5)
 PULSE_WINDOW_S = (2.0, 3.5)
-DURATION_S = 9.5
+DURATION_S = 10.5
 REAL_CONTROL_INTERVALS_S = (0.01, 0.05, 0.10)
 DEFAULT_OFFERED_MBPS = {"A": 100.0, "B": 180.0}
 MAX_PACKETS = 200_000
