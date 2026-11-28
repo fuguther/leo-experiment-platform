@@ -1409,14 +1409,19 @@ class Kernel:
                     if include_lh
                     else _inference.OBSERVATION_FEATURE_ORDER
                 )
+            expected_width = (
+                _inference.PRIMAL_OBSERVATION_DIM
+                if algorithm == "primal_cvar"
+                else _learning.contract_dim(
+                    self.cfg_rt["contract"], include_lh)
+            )
             self.fixed_policy = _inference.load_fixed_adapter_from_checkpoint(
                 self.cfg_learning["checkpoint_path"],
                 self.cfg_learning["checkpoint_sha256"],
                 self._fixed_policy_metadata_path(),
                 self.cfg_learning["checkpoint_metadata_sha256"],
                 expected_contract=self.cfg_rt["contract"],
-                expected_width=_learning.contract_dim(
-                    self.cfg_rt["contract"], include_lh),
+                expected_width=expected_width,
                 expected_feature_order=expected_fo,
                 name=(f"checkpoint-{algorithm}"),
                 algorithm=algorithm)

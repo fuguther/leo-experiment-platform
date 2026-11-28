@@ -390,6 +390,7 @@ class ScorerPolicy(InferencePolicy):
 OBSERVATION_FEATURE_ORDER = "leo_sim.learning.build_observation/v1"
 OBSERVATION_FEATURE_ORDER_LAST_HOP = "leo_sim.learning.build_observation/v2_last_hop"
 PRIMAL_OBSERVATION_FEATURE_ORDER = "leo_sim.primal.build_observation/v1"
+PRIMAL_OBSERVATION_DIM = 50
 VALID_FEATURE_ORDERS = (
     OBSERVATION_FEATURE_ORDER,
     OBSERVATION_FEATURE_ORDER_LAST_HOP,

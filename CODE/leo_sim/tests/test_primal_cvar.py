@@ -8,7 +8,10 @@ import json
 import numpy as np
 import pytest
 
-from CODE.leo_sim.inference import observation_contract_id
+from CODE.leo_sim.inference import (
+    PRIMAL_OBSERVATION_DIM,
+    observation_contract_id,
+)
 from CODE.leo_sim.rl.agents.primal_cvar import (
     ACTION_COUNT,
     DEFAULT_OBSERVATION_CONTRACT_ID,
@@ -32,6 +35,7 @@ HAS_TENSORFLOW = importlib.util.find_spec("tensorflow") is not None
 
 
 def test_primal_observation_contract_is_fixed_32_plus_18():
+    assert PRIMAL_OBSERVATION_DIM == INPUT_DIM == 50
     obs = np.linspace(-1.0, 1.0, INPUT_DIM, dtype=np.float32)
     satellite, packet = split_observation(obs)
     assert satellite.shape == (SATELLITE_INPUT_DIM,)
