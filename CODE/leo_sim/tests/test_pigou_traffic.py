@@ -238,6 +238,9 @@ def test_native_compile_preserves_deadline_and_budget(
     assert len(result["config"]["endpoints"]["sites"]) == expected_sites
 
     resolved = config.resolve_config(result["config"])
+    assert builder._transaction_deadline_s(
+        builder._scene_spec(scene)) == pytest.approx(
+            3 * 0.240 + 2 * (0.040 + 0.020 + builder.TIME_STEP_S))
     compiled_dir = tmp_path / f"compiled-{scene}"
     manifest = trace.compile_trace(resolved, str(compiled_dir))
     assert manifest["offered_packets"] == result["packet_count"]

@@ -57,6 +57,7 @@ PHASE_WINDOWS_S = {
 EMISSION_WINDOW_S = (0.2, 9.5)
 PULSE_WINDOW_S = (2.0, 3.5)
 DURATION_S = 11.5
+TIME_STEP_S = 0.05
 REAL_CONTROL_INTERVALS_S = (0.01, 0.05, 0.10)
 DEFAULT_OFFERED_MBPS = {"A": 100.0, "B": 180.0}
 MAX_PACKETS = 200_000
@@ -406,7 +407,8 @@ def _transaction_deadline_s(spec: SceneSpec) -> float:
     return (
         attempts * float(RETRY_POLICY["attempt_timeout_s"])
         + retries * (float(RETRY_POLICY["backoff_s"])
-                     + float(RETRY_POLICY["jitter_s"]))
+                     + float(RETRY_POLICY["jitter_s"])
+                     + TIME_STEP_S)
     )
 
 
@@ -423,7 +425,7 @@ def _make_config(
         "scenario": {
             "name": spec.name,
             "duration_s": DURATION_S,
-            "time_step_s": 0.05,
+            "time_step_s": TIME_STEP_S,
             "num_satellites": spec.num_satellites,
             "num_planes": spec.num_planes,
             "altitude_km": spec.altitude_km,
