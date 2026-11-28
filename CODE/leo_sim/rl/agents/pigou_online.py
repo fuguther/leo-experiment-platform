@@ -591,10 +591,14 @@ class NumpyPigouOnline:
         return digest.hexdigest()
 
     def predict(self, states) -> tuple[np.ndarray, np.ndarray]:
+        return self.predict_with_weights(self.weights, self.variant, states)
+
+    @staticmethod
+    def predict_with_weights(weights, variant, states) -> tuple[np.ndarray, np.ndarray]:
         ports, packet = _split_observation_batch(states)
-        w = self.weights
+        w = weights
         h = _np_swish(ports @ w["port_proj_w"] + w["port_proj_b"])  # (B, 4, 32)
-        if self.variant != "frame":
+        if variant != "frame":
             bsz = h.shape[0]
             q = (h @ w["attn_q_w"] + w["attn_q_b"]).reshape(
                 bsz, PORT_COUNT, ATTN_HEADS, ATTN_HEAD_DIM).transpose(0, 2, 1, 3)
@@ -779,6 +783,7 @@ class TensorflowPigouOnline:
         self.online = self._build_model("pigou_online")
         self.target = self._build_model("pigou_target")
         self.target.set_weights(self.online.get_weights())
+        self._numpy_weights = self._extract_numpy_weights()
         opt_kwargs: dict[str, Any] = {"learning_rate": float(cfg.get("lr", 0.001))}
         if cfg.get("clip_norm") is not None:
             opt_kwargs["clipnorm"] = float(cfg["clip_norm"])
@@ -809,6 +814,7 @@ class TensorflowPigouOnline:
             self._load_eval_checkpoint()
         elif cfg.get("resume_path") is not None:
             self._restore_resume_bundle()
+        self._numpy_weights = self._extract_numpy_weights()
 
     def _build_model(self, name: str):
         tf = self.tf
@@ -908,10 +914,10 @@ class TensorflowPigouOnline:
         elif len(legal_indices) == 1:
             chosen = int(legal_indices[0])
         else:
-            ports, packet = _split_observation_batch(observation)
-            ego, risk, _ = self.online([ports, packet], training=False)
-            ego_np = ego.numpy()[0]
-            risk_np = risk.numpy()[0]
+            ego_np, risk_np = NumpyPigouOnline.predict_with_weights(
+                self._numpy_weights, self.variant, observation)
+            ego_np = ego_np[0]
+            risk_np = risk_np[0]
             scores = pigou_action_scores(
                 ego_np, risk_np, self.lambda_pd, alpha=self.cvar_alpha,
                 use_mean_risk=self.use_mean_risk, z_u=z_u,
@@ -1072,6 +1078,7 @@ class TensorflowPigouOnline:
         self.last_risk_loss = float(r_loss.numpy())
         self.last_ais_loss = float(a_loss.numpy())
         self.last_loss = float(total.numpy())
+        self._numpy_weights = self._extract_numpy_weights()
         if not math.isfinite(self.last_loss) or self.last_risk_loss > 100.0:
             raise LearningUnavailable(
                 f"Pigou online training diverged: risk_loss={self.last_risk_loss}")
