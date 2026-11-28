@@ -230,7 +230,9 @@ def test_pigou_online_restore_resume_bundle_restores_state(tmp_path, monkeypatch
             return self
 
         def assert_consumed(self):
-            return None
+            raise AssertionError(
+                "Found 1 Python objects that were not bound to checkpointed "
+                "values: [<tf.Variable 'save_counter:0' shape=() dtype=int64>]")
 
     checkpoint = _Checkpoint()
     agent = object.__new__(pigou_online_module.TensorflowPigouOnline)
@@ -243,7 +245,7 @@ def test_pigou_online_restore_resume_bundle_restores_state(tmp_path, monkeypatch
     agent.replay = pigou_online_module._PigouReplay(64)
     agent.online = object()
     agent.target = object()
-    agent.optimizer = object()
+    agent.optimizer = SimpleNamespace(build=lambda variables: None)
     agent.tf = SimpleNamespace(
         train=SimpleNamespace(Checkpoint=lambda **kwargs: checkpoint))
 

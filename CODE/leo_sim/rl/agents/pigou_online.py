@@ -1148,9 +1148,34 @@ class TensorflowPigouOnline:
                 buf["states"], buf["actions"], buf["utilities"], buf["costs"],
                 buf["next_states"], buf["next_masks"], buf["dones"],
                 buf["ais_targets"], buf["ais_valid"])
-        ckpt = self.tf.train.Checkpoint(
-            online=self.online, target=self.target, optimizer=self.optimizer)
-        ckpt.restore(str(resume_dir / "tf.ckpt")).assert_consumed()
+        try:
+            self.optimizer.build(self.online.trainable_variables)
+        except AttributeError:
+            # TF 2.13 Adam exposes build; retain a controlled fallback for
+            # compatible runtimes that materialize slots lazily.
+            pass
+        try:
+            ckpt = self.tf.train.Checkpoint(
+                online=self.online, target=self.target, optimizer=self.optimizer)
+            status = ckpt.restore(str(resume_dir / "tf.ckpt"))
+            try:
+                status.assert_consumed()
+            except AssertionError as exc:
+                # Checkpoint.write does not persist the synthetic save_counter,
+                # while a fresh Checkpoint object creates it. Require every
+                # real model/optimizer object to match and tolerate only that
+                # TensorFlow bookkeeping variable.
+                message = str(exc)
+                if ("Found 1 Python objects" not in message
+                        or "save_counter" not in message
+                        or "not assigned a value" in message):
+                    raise
+        except Exception as exc:
+            raise LearningUnavailable(
+                f"Pigou online TensorFlow resume checkpoint could not be restored: {exc}"
+            ) from exc
+        self.loaded_resume_path = str(resume_dir.resolve())
+        self.loaded_resume_sha256 = self.cfg["resume_sha256"]
 
     def diagnostics(self) -> dict:
         return {
