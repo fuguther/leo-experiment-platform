@@ -762,7 +762,7 @@ class TensorflowPigouOnline:
         self.lambda_max = _resolve_cfg_float(cfg, ("dual_max",), 4.0)
         self.initial_lambda_pd = _resolve_cfg_float(cfg, ("lambda_init",), 0.15)
         self.lambda_pd = float(self.initial_lambda_pd)
-        self.dual_lr = _resolve_cfg_float(cfg, ("dual_lr",), 0.08)
+        self.dual_lr = _resolve_cfg_float(cfg, ("dual_lr",), 0.05)
         self.dual_constraint = _resolve_cfg_float(cfg, ("dual_constraint",), 0.08)
         self.risk_loss_weight = _resolve_cfg_float(cfg, ("risk_loss_weight",), 1.0)
         self.ais_loss_weight = (

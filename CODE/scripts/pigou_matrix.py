@@ -246,13 +246,16 @@ class Matrix:
         best = None
         seed_base = {"A": 100_000, "B": 200_000, "C": 500_000}[scene]
         interval = 0.10 if scene == "C" else 0.05
-        multiplier = 3.5 if scene == "C" else 2.5
-        train_every = 32
+        multiplier = 2.2 if scene == "C" else 2.5
+        train_every = 16 if scene == "C" else 32
         for round_no in range(1, 6):
             scenario_seed = seed_base + train_seed * 100 + round_no
             online_ours = alg == "Ours"
-            extra = {"online_ours": True, "variant": variant,
-                     "train_every_steps": train_every} if online_ours else {}
+            extra = (
+                {"online_ours": True, "variant": variant, "train_every_steps": train_every}
+                if online_ours else
+                ({"train_every_steps": train_every} if scene == "C" else {})
+            )
             parent, report = self.cell(
                 f"{scene}-{alg}-{variant}-t{train_seed}-r{round_no}",
                 _params(scene, scenario_seed, alg, "exp1", self.loads[scene],
@@ -765,14 +768,14 @@ class Matrix:
             row for _, row in self.parallel(
                 list(self._heldout_tasks(
                     "C", "gateC", (0.10,), VAL_SEEDS, ALGORITHMS,
-                    train_seeds=(11,), multiplier=3.5, tag="gateC")),
+                    train_seeds=(11,), multiplier=2.2, tag="gateC")),
                 self.eval_workers)
         ]
         no_ext = [
             row for _, row in self.parallel(
                 list(self._heldout_tasks(
                     "C", "gateC_no_ext", (0.10,), VAL_SEEDS, ("Ours",),
-                    train_seeds=(11,), multiplier=3.5, variant="no_ext", tag="gateC-no-ext")),
+                    train_seeds=(11,), multiplier=2.2, variant="no_ext", tag="gateC-no-ext")),
                 self.eval_workers)
         ]
         self.raw.extend(rows)
@@ -828,7 +831,7 @@ class Matrix:
         self._train_scene_c(("full", "no_ext", "mean", "frame", "no_ais"))
         self._gate_c_probe()
 
-        for multiplier in (1.0, 2.5, 3.5):
+        for multiplier in (1.0, 2.2, 3.0):
             self.heldout("C", "exp0b", (0.10,), (101,), ("B1", "B2"),
                          multiplier=multiplier, tag=f"m{round(multiplier * 10)}")
         self.heldout("C", "exp0_hysteresis", (0.10,), (9003,),
@@ -837,25 +840,25 @@ class Matrix:
         self._export("wave1")
 
         self.heldout("C", "exp2", (0.10,), TEST_SEEDS, ALGORITHMS,
-                     train_seeds=(11,), multiplier=3.5, tag="main")
+                     train_seeds=(11,), multiplier=2.2, tag="main")
         self.heldout("C", "exp2", (0.010, 0.050), TEST_SEEDS, ALGORITHMS,
-                     train_seeds=(11,), multiplier=3.5, tag="main")
+                     train_seeds=(11,), multiplier=2.2, tag="main")
         self.heldout("C", "exp3_outage", (0.10,), TEST_SEEDS, ALGORITHMS,
                      train_seeds=(11,), outage=True, multiplier=1.0, tag="outage")
         self.heldout("C", "exp3_zeroshot", (0.10,), TEST_SEEDS, ALGORITHMS,
-                     train_seeds=(11,), large=True, multiplier=3.5, tag="large")
+                     train_seeds=(11,), large=True, multiplier=2.2, tag="large")
         self._export("wave3")
 
         for variant in ("no_ext", "mean", "frame", "no_ais"):
             self.heldout("C", "exp4_ablation", (0.10,), TEST_SEEDS, ("Ours",),
-                         multiplier=3.5, variant=variant, tag=variant)
+                         multiplier=2.2, variant=variant, tag=variant)
         self.raw.extend({**row, "exp": "exp4_ablation", "variant": "full"}
                         for row in self.raw
                         if row.get("exp") == "exp2" and row.get("scene") == "C"
                         and row.get("interval") == 0.10 and row.get("alg") == "Ours")
         for delay in (0.000010, 0.000100):
             self.heldout("C", "exp4_compute", (0.10,), TEST_SEEDS,
-                         ("B2", "Ours"), multiplier=3.5, compute_delay_s=delay,
+                         ("B2", "Ours"), multiplier=2.2, compute_delay_s=delay,
                          tag=f"us{round(delay * 1e6)}")
         self.raw.extend({**row, "exp": "exp4_compute", "compute_delay_s": 0.0}
                         for row in self.raw
