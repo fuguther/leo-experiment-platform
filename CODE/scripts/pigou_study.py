@@ -62,6 +62,8 @@ def _set_threads(threads):
 def cell_config(cfg, spec, checkpoint=None, metadata=None, resume=None):
     cfg = deepcopy(cfg)
     alg = spec["alg"]
+    if spec.get("retry") is not None:
+        cfg["demand"]["retry"] = deepcopy(spec["retry"])
     cfg["routing"].update(policy="hop", ephemeris_egress_fallback=True)
     cfg["control_plane"].update(vis_k=1)
     delay = spec.get("compute_delay_s", 0.0)
@@ -369,7 +371,8 @@ def simulate(out, spec, *, checkpoint=None, metadata=None, resume=None):
         workload = build(out / "traffic", scene=spec["scene"], seed=spec["seed"],
                          interval=spec.get("interval", 0.05), multiplier=spec.get("multiplier", 2.5),
                          offered_mbps=spec.get("offered_mbps"),
-                         duration_s=spec.get("duration_s"))
+                         duration_s=spec.get("duration_s"),
+                         packet_bits=spec.get("packet_bits"))
     raw = cell_config(workload["config"], spec, checkpoint=checkpoint, metadata=metadata, resume=resume)
     raw["outputs"]["out_dir"] = str(sim)
     resolved = config.resolve_config(raw)

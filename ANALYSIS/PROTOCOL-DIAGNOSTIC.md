@@ -43,6 +43,16 @@ python3 CODE/scripts/pigou_protocol_diagnostic.py \
 
 The generator writes 10 arms plus `manifest.json`.
 
+The same semantics are accepted by the remote cell entrypoint through an
+explicit `retry` spec. Example main arm:
+
+```bash
+python3 CODE/scripts/pigou_study.py cell --spec '{"scene":"A","seed":101,"interval":0.05,"multiplier":2.8,"offered_mbps":235.0,"packet_bits":64000,"alg":"B1","retry":{"enabled":true,"max_retries":2,"retry_fraction":0.65,"backoff_s":0.04,"jitter_s":0.02,"attempt_timeout_s":0.24,"stop_reinject_at_s":9.3,"discovery":"endpoint_timeout","backoff_policy":"exponential","deadline_policy":"endpoint_only"}}'
+```
+
+Run this only through the release-bound VM diagnostic runner. It self-generates
+the deterministic trace inside the receipted run.
+
 Main contrast, 64 kbit, 235 Mbps, 2.8x pulse:
 
 - `sp-retry-off`
