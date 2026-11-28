@@ -135,3 +135,28 @@ def test_two_episode_merge_rejects_cross_episode_snapshot_alias(tmp_path):
         paths.append((snap, pkt))
     with pytest.raises(ValueError, match="outside its own episode"):
         merge_dataset(paths)
+
+
+def test_pigou_hop_guard_restricts_late_decisions_to_shortest_legal_ports():
+    from CODE.leo_sim.rl.local_forward import LocalForwardView, Port
+
+    class _Model:
+        def encode(self, *_args):
+            return np.zeros(32, dtype=np.float32)
+
+        def score(self, *_args):
+            ego = np.asarray([0.0, 0.0, 1.0, 0.0], dtype=np.float32)
+            quantile = np.zeros((4, 16), dtype=np.float32)
+            return ego, quantile
+
+    view = LocalForwardView(
+        0, 0.0, 1, "src", "dst", 0.0, 10, 6,
+        (0.0, 1.0, 0.8), 2,
+        (Port(1, hops=1), Port(2, hops=3), Port(None), Port(None)),
+        ("N", "S"), ("N",), ("N",))
+    adapter = LocalForwardAdapter(
+        {"kind": "pigou_metadrl", "checkpoint_path": "/unused",
+         "checkpoint_sha256": "0" * 64, "hop_guard": 4,
+         "argmax": True}, 7)
+    adapter.model = _Model()
+    assert adapter.choose(view, 1) == "N"

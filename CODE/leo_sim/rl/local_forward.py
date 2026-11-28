@@ -112,7 +112,7 @@ def primal_observation(view):
 def validate_adapter(options):
     allowed = {"kind", "threshold", "beta_ext", "temperature", "argmax", "shield",
                "checkpoint_path", "checkpoint_sha256", "capture", "telemetry_sat",
-               "exploration", "seed"}
+               "exploration", "seed", "hop_guard"}
     if set(options) - allowed:
         raise ValueError("unknown adapter options")
     kind = options.get("kind")
@@ -127,7 +127,7 @@ def validate_adapter(options):
     for name in ("argmax", "shield", "capture"):
         if name in options and not isinstance(options[name], bool):
             raise ValueError(f"{name} must be boolean")
-    for name in ("telemetry_sat", "seed"):
+    for name in ("telemetry_sat", "seed", "hop_guard"):
         if name in options and (type(options[name]) is not int or options[name] < 0):
             raise ValueError(f"{name} must be a non-negative integer")
     path, digest = options.get("checkpoint_path"), options.get("checkpoint_sha256")
@@ -312,25 +312,42 @@ class LocalForwardAdapter:
              spatial[i][1], d in view.shortest]
             for i, (d, p) in enumerate(zip(DIRS, view.ports))], dtype=np.float32)
         ids = [DIRS.index(d) for d in legal]
+        eligible_positions = list(range(len(legal)))
+        guard_hops = int(self.cfg.get("hop_guard", 0))
+        if guard_hops and view.hops_taken >= guard_hops:
+            shortest_positions = [
+                index for index, direction in enumerate(legal)
+                if direction in view.shortest
+            ]
+            if shortest_positions:
+                eligible_positions = shortest_positions
+        eligible_ids = [ids[index] for index in eligible_positions]
         ego = costs = None
         if self.model is None:
             explore = self.cfg.get("exploration", 0.33)
-            prob = np.full(len(legal), explore / len(legal))
+            prob = np.full(len(eligible_positions), explore / len(eligible_positions))
             prob[0] += 1.0 - explore
-            choice = int(self.rng.choice(len(legal), p=prob))
+            local_choice = int(self.rng.choice(len(eligible_positions), p=prob))
+            choice = eligible_positions[local_choice]
         else:
             ego, quantile = self.model.score(state.encoded, g, x)
             costs = quantile[:, -4:].mean(axis=1)
             charge = 2.0 * max(0.0, state.shield_state - 1.0) if self.cfg.get("shield", True) else 0.0
             score = ego[ids] - self.cfg.get("beta_ext", 0.50) * costs[ids] - charge * np.asarray(hops)[ids]
             if self.cfg.get("argmax"):
-                choice = int(np.argmax(score))
-                prob = np.eye(1, len(legal), choice)[0]
+                local_choice = int(np.argmax(score[eligible_positions]))
+                choice = eligible_positions[local_choice]
+                prob = np.zeros(len(legal), dtype=np.float64)
+                prob[choice] = 1.0
             else:
-                prob = _softmax(score, self.cfg.get("temperature", 0.08))
+                eligible_prob = _softmax(
+                    score[eligible_positions], self.cfg.get("temperature", 0.08))
+                prob = np.zeros(len(legal), dtype=np.float64)
+                prob[eligible_positions] = eligible_prob
                 if self.cfg.get("capture"):
                     explore = self.cfg.get("exploration", 0.10)
-                    prob = (1 - explore) * prob + explore / len(legal)
+                    prob = (1 - explore) * prob
+                    prob[eligible_positions] += explore / len(eligible_positions)
                     choice = int(self.rng.choice(len(legal), p=prob))
                 else:
                     bucket = int(view.now / FLOWLET_S)
@@ -339,7 +356,7 @@ class LocalForwardAdapter:
                         state.bucket = bucket
                     flow = (view.src, view.dst)
                     pinned = state.flowlets.get(flow)
-                    if pinned in legal:
+                    if pinned in legal and pinned in [legal[p] for p in eligible_positions]:
                         choice = legal.index(pinned)
                     else:
                         key = f"{view.src}|{view.dst}|{bucket}|{view.sat}".encode()
